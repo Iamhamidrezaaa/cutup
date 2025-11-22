@@ -1,0 +1,18 @@
+node_modules/
+.env
+*.log
+.DS_Store
+.vscode/
+.idea/
+*.tar.gz
+cutup.tar.gz
+parspack.txt
+# فایل‌هایی که ممکن است شامل secrets باشند
+*_LOGS.md
+*SECRET*.md
+*API_KEY*.md
+# فایل‌های تصویری بزرگ
+*.gif
+*.GIF
+# فایل‌های موقت
+{

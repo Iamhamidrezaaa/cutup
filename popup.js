@@ -1,0 +1,613 @@
+// API Configuration
+// برای استفاده از سرور پارس پک:
+const API_BASE_URL = 'http://195.248.240.108:3001';
+// یا اگر domain دارید:
+// const API_BASE_URL = 'https://yourdomain.com';
+
+// DOM Elements
+const youtubeUrlInput = document.getElementById('youtubeUrl');
+const audioFileInput = document.getElementById('audioFile');
+const pasteBtn = document.getElementById('pasteBtn');
+const summarizeBtn = document.getElementById('summarizeBtn');
+const resultSection = document.getElementById('resultSection');
+const themeToggle = document.getElementById('themeToggle');
+const copyBtn = document.getElementById('copyBtn');
+const summaryText = document.getElementById('summaryText');
+const fulltext = document.getElementById('fulltext');
+const historyList = document.getElementById('historyList');
+const tabButtons = document.querySelectorAll('.tab-btn');
+const tabContents = document.querySelectorAll('.tab-content');
+const srtContainer = document.getElementById('srtContainer');
+const srtPreview = document.getElementById('srtPreview');
+const downloadSrtBtn = document.getElementById('downloadSrtBtn');
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+  loadTheme();
+  loadHistory();
+  setupEventListeners();
+  checkInput();
+});
+
+// Theme Management
+function loadTheme() {
+  chrome.storage.local.get(['theme'], (result) => {
+    const theme = result.theme || 'light';
+    document.documentElement.setAttribute('data-theme', theme);
+    updateThemeIcon(theme);
+  });
+}
+
+function toggleTheme() {
+  const currentTheme = document.documentElement.getAttribute('data-theme');
+  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', newTheme);
+  chrome.storage.local.set({ theme: newTheme });
+  updateThemeIcon(newTheme);
+}
+
+function updateThemeIcon(theme) {
+  const icon = themeToggle.querySelector('.theme-icon');
+  icon.textContent = theme === 'dark' ? '☀️' : '🌙';
+}
+
+// Event Listeners
+function setupEventListeners() {
+  themeToggle.addEventListener('click', toggleTheme);
+  pasteBtn.addEventListener('click', pasteFromClipboard);
+  summarizeBtn.addEventListener('click', handleSummarize);
+  audioFileInput.addEventListener('change', handleFileSelect);
+  youtubeUrlInput.addEventListener('input', checkInput);
+  copyBtn.addEventListener('click', copyResult);
+  downloadSrtBtn.addEventListener('click', downloadSrtFile);
+  
+  // Tab switching
+  tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tabName = btn.dataset.tab;
+      switchTab(tabName);
+    });
+  });
+}
+
+function checkInput() {
+  const hasUrl = youtubeUrlInput.value.trim().length > 0;
+  const hasFile = audioFileInput.files.length > 0;
+  summarizeBtn.disabled = !(hasUrl || hasFile);
+}
+
+async function pasteFromClipboard() {
+  try {
+    const text = await navigator.clipboard.readText();
+    youtubeUrlInput.value = text;
+    checkInput();
+  } catch (err) {
+    console.error('Failed to read clipboard:', err);
+    alert('نمی‌توان از کلیپ‌بورد خواند. لطفاً دستی وارد کنید.');
+  }
+}
+
+function handleFileSelect(e) {
+  const file = e.target.files[0];
+  if (file) {
+    // بررسی اندازه فایل (حداکثر 4MB - محدودیت Vercel)
+    const maxSize = 4 * 1024 * 1024; // 4MB
+    if (file.size > maxSize) {
+      alert(`فایل خیلی بزرگ است (${(file.size / 1024 / 1024).toFixed(2)}MB). لطفاً فایلی کمتر از 4MB انتخاب کنید. می‌توانید فایل را فشرده کنید یا به قسمت‌های کوچکتر تقسیم کنید.`);
+      audioFileInput.value = ''; // پاک کردن انتخاب
+      youtubeUrlInput.value = '';
+      checkInput();
+      return;
+    }
+    
+    youtubeUrlInput.value = `📁 ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`;
+    checkInput();
+  }
+}
+
+// Main Summarize Function
+async function handleSummarize() {
+  const url = youtubeUrlInput.value.trim();
+  const file = audioFileInput.files[0];
+  
+  if (!url && !file) {
+    alert('لطفاً لینک یوتیوب یا فایل صوتی را وارد کنید');
+    return;
+  }
+
+  // Show loading state
+  summarizeBtn.disabled = true;
+  summarizeBtn.querySelector('.btn-text').textContent = 'در حال پردازش...';
+  summarizeBtn.querySelector('.btn-loader').style.display = 'inline-block';
+  resultSection.style.display = 'none';
+
+  try {
+    let audioUrl = null;
+    
+    // بررسی اندازه فایل قبل از پردازش
+    // Vercel محدودیت 4.5MB برای request body دارد
+    if (file) {
+      const maxSize = 4 * 1024 * 1024; // 4MB - محدودیت Vercel
+      if (file.size > maxSize) {
+        throw new Error(`فایل خیلی بزرگ است (${(file.size / 1024 / 1024).toFixed(2)}MB). لطفاً فایلی کمتر از 4MB انتخاب کنید. می‌توانید فایل را فشرده کنید یا به قسمت‌های کوچکتر تقسیم کنید.`);
+      }
+    }
+    
+    // Handle YouTube URL
+    if (url && isYouTubeUrl(url)) {
+      audioUrl = await extractYouTubeAudio(url);
+      
+      // Transcribe audio
+      const transcription = await transcribeAudio(audioUrl);
+      
+      // Summarize text
+      const summary = await summarizeText(transcription.text);
+
+      // Display results
+      displayResults(summary, transcription.text, transcription.segments);
+
+      // Save to history
+      saveToHistory(url, summary, transcription.text, transcription.segments);
+    } else if (file) {
+      // Handle file upload - send directly to upload endpoint which transcribes
+      // This avoids the 4.5MB limit by processing in the upload endpoint
+      const transcription = await transcribeAudio(file);
+      
+      // Summarize text
+      const summary = await summarizeText(transcription.text);
+
+      // Display results
+      displayResults(summary, transcription.text, transcription.segments);
+
+      // Save to history
+      saveToHistory(file.name, summary, transcription.text, transcription.segments);
+    } else {
+      throw new Error('لینک یوتیوب معتبر نیست');
+    }
+    
+
+  } catch (error) {
+    console.error('Error:', error);
+    alert(`خطا: ${error.message}`);
+  } finally {
+    // Reset button state
+    summarizeBtn.disabled = false;
+    summarizeBtn.querySelector('.btn-text').textContent = 'خلاصه‌سازی';
+    summarizeBtn.querySelector('.btn-loader').style.display = 'none';
+  }
+}
+
+// YouTube URL validation
+function isYouTubeUrl(url) {
+  const patterns = [
+    /^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\/.+/,
+    /^https?:\/\/youtube\.com\/watch\?v=.+/,
+    /^https?:\/\/youtu\.be\/.+/
+  ];
+  return patterns.some(pattern => pattern.test(url));
+}
+
+// Extract YouTube video ID
+function extractVideoId(url) {
+  const patterns = [
+    /[?&]v=([^&]+)/,
+    /youtu\.be\/([^?]+)/,
+    /^([a-zA-Z0-9_-]{11})$/
+  ];
+  
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+// Extract YouTube audio (placeholder - needs backend implementation)
+async function extractYouTubeAudio(url) {
+  const videoId = extractVideoId(url);
+  if (!videoId) {
+    throw new Error('لینک یوتیوب معتبر نیست');
+  }
+  
+  // For MVP: YouTube extraction is not implemented yet
+  // User should download audio manually or we need a separate service
+  throw new Error('استخراج صوت از یوتیوب در حال حاضر پشتیبانی نمی‌شود. لطفاً فایل صوتی را آپلود کنید.');
+  
+  // Future implementation:
+  // This should call a backend service to extract audio
+  // return { videoId, url };
+}
+
+// Upload audio file - return file object for direct transmission
+async function uploadAudioFile(file) {
+  // Return file object directly - will be sent as FormData
+  return file;
+}
+
+// API Calls
+async function transcribeAudio(audioUrlOrVideoId) {
+  try {
+    let response;
+    
+    // If it's a File object, send to transcribe endpoint (upload endpoint needs redeploy)
+    if (audioUrlOrVideoId instanceof File) {
+      // Convert file to data URL first (temporary workaround until upload endpoint is redeployed)
+      const fileDataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(audioUrlOrVideoId);
+      });
+      
+      console.log('TRANSCRIBE: Sending file to transcribe endpoint, size:', audioUrlOrVideoId.size, 'bytes');
+      
+      response = await fetch(`${API_BASE_URL}/api/transcribe`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ audioUrl: fileDataUrl }),
+        signal: AbortSignal.timeout(600000) // 10 minutes timeout for larger files
+      });
+    } else {
+      // Handle JSON request (audioUrl or videoId) - send to transcribe endpoint
+      console.log('TRANSCRIBE: Sending request to', `${API_BASE_URL}/api/transcribe`);
+      
+      // Handle both audioUrl string and {videoId, url} object (for YouTube)
+      const body = typeof audioUrlOrVideoId === 'string' 
+        ? { audioUrl: audioUrlOrVideoId }
+        : { videoId: audioUrlOrVideoId.videoId };
+      
+      console.log('TRANSCRIBE: Body size:', JSON.stringify(body).length, 'bytes');
+      
+      response = await fetch(`${API_BASE_URL}/api/transcribe`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(600000) // 10 minutes timeout for larger files
+      });
+    }
+
+    console.log('TRANSCRIBE: Response status:', response.status);
+    console.log('TRANSCRIBE: Response headers:', Object.fromEntries(response.headers.entries()));
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      console.error('Transcribe error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: error,
+        url: `${API_BASE_URL}/api/transcribe`,
+        headers: Object.fromEntries(response.headers.entries()),
+        errorDetails: error.details,
+        errorType: error.errorType,
+        errorCode: error.errorCode,
+        retryable: error.retryable
+      });
+      
+      // نمایش خطای دقیق‌تر بر اساس نوع خطا
+      let errorMessage = error.message || error.details || `تبدیل صوت به متن ناموفق بود (${response.status})`;
+      
+      // اگر خطای quota است
+      if (error.error === 'QUOTA_ERROR' || error.errorType === 'QuotaError') {
+        errorMessage = 'سهمیه OpenAI شما تمام شده است. لطفاً به حساب OpenAI خود بروید و سهمیه یا روش پرداخت را بررسی کنید.';
+      }
+      // اگر خطای authentication است
+      else if (error.error === 'AUTH_ERROR' || error.errorType === 'AuthError') {
+        errorMessage = 'کلید API معتبر نیست. لطفاً کلید API را در تنظیمات Vercel بررسی کنید.';
+      }
+      // اگر خطای connection است و retryable است
+      else if (error.retryable || error.error === 'CONNECTION_ERROR') {
+        errorMessage = 'خطای اتصال به سرور. لطفاً دوباره تلاش کنید. اگر مشکل ادامه داشت، فایل ممکن است خیلی بزرگ باشد.';
+      }
+      
+      // اگر errorType وجود دارد، آن را به پیام اضافه نکن (پیام قبلاً تنظیم شده)
+      throw new Error(errorMessage);
+    }
+
+    // Get response text first to see what we're getting
+    const responseText = await response.text();
+    console.log('TRANSCRIBE: Response text (first 500 chars):', responseText.substring(0, 500));
+    
+    let result;
+    try {
+      result = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('TRANSCRIBE: Failed to parse JSON:', parseError);
+      console.error('TRANSCRIBE: Response text:', responseText);
+      throw new Error('پاسخ نامعتبر از سرور دریافت شد. لطفاً دوباره تلاش کنید.');
+    }
+    
+    // Log full response for debugging
+    console.log('TRANSCRIBE: Response parsed:', {
+      hasText: !!result.text,
+      textLength: result.text?.length || 0,
+      hasSegments: !!result.segments,
+      segmentsCount: result.segments?.length || 0,
+      hasError: !!result.error,
+      error: result.error,
+      message: result.message,
+      fullResponse: JSON.stringify(result).substring(0, 500)
+    });
+    
+    // Validate result
+    if (!result) {
+      console.error('TRANSCRIBE: No result received');
+      throw new Error('پاسخ نامعتبر از سرور دریافت شد');
+    }
+    
+    if (!result.text || result.text.trim().length === 0) {
+      console.error('TRANSCRIBE: No text in result:', result);
+      throw new Error(`متن تبدیل شده در دسترس نیست. ${result.error ? 'خطا: ' + result.message : 'لطفاً دوباره تلاش کنید.'}`);
+    }
+    
+    console.log('TRANSCRIBE: Success, text length:', result.text.length);
+    console.log('TRANSCRIBE: Segments count:', result.segments?.length || 0);
+    
+    // Ensure segments is always an array
+    return {
+      text: result.text,
+      language: result.language || 'fa',
+      segments: (result.segments && Array.isArray(result.segments)) ? result.segments : []
+    };
+  } catch (error) {
+    if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+      console.error('TRANSCRIBE: Request timeout');
+      throw new Error('درخواست timeout شد. لطفاً دوباره تلاش کنید یا فایل کوچکتری انتخاب کنید.');
+    } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      console.error('TRANSCRIBE: Network error', error);
+      throw new Error('خطای اتصال. لطفاً اتصال اینترنت خود را بررسی کنید و دوباره تلاش کنید.');
+    } else {
+      throw error;
+    }
+  }
+}
+
+async function summarizeText(text) {
+  console.log('SUMMARIZE: Sending request, text length:', text.length);
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/summarize`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ text }),
+      signal: AbortSignal.timeout(120000) // 2 minutes timeout
+    });
+
+    console.log('SUMMARIZE: Response status:', response.status);
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      console.error('Summarize error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: error
+      });
+      throw new Error(error.details || error.message || `خلاصه‌سازی ناموفق بود (${response.status})`);
+    }
+
+    const result = await response.json();
+    console.log('SUMMARIZE: Success');
+    return result;
+  } catch (error) {
+    if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+      console.error('SUMMARIZE: Request timeout');
+      throw new Error('درخواست خلاصه‌سازی timeout شد. لطفاً دوباره تلاش کنید.');
+    } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      console.error('SUMMARIZE: Network error', error);
+      throw new Error('خطای اتصال. لطفاً اتصال اینترنت خود را بررسی کنید و دوباره تلاش کنید.');
+    } else {
+      throw error;
+    }
+  }
+}
+
+// Display Results
+function displayResults(summary, fullText, segments = null) {
+  // Display summary
+  summaryText.textContent = summary.summary || 'خلاصه در دسترس نیست';
+
+  // Display full text
+  fulltext.textContent = fullText;
+
+  // Generate and display SRT
+  if (segments && Array.isArray(segments) && segments.length > 0) {
+    // Validate segments have proper timing
+    const validSegments = segments.filter(s => 
+      s && 
+      typeof s.start === 'number' && 
+      typeof s.end === 'number' && 
+      s.start >= 0 && 
+      s.end > s.start &&
+      s.text && 
+      s.text.trim().length > 0
+    );
+    
+    if (validSegments.length > 0) {
+      const srtContent = generateSRT(validSegments);
+      srtPreview.textContent = srtContent;
+      window.currentSrtContent = srtContent;
+    } else {
+      // If segments are invalid, create a simple SRT with full text
+      // Estimate duration: ~150 words per minute, minimum 10 seconds
+      const wordCount = fullText.split(/\s+/).length;
+      const estimatedDuration = Math.max(wordCount / 2.5, 10); // ~2.5 words per second
+      const simpleSrt = `1\n00:00:00,000 --> ${formatSRTTime(estimatedDuration)}\n${fullText}\n\n`;
+      srtPreview.textContent = simpleSrt;
+      window.currentSrtContent = simpleSrt;
+    }
+  } else {
+    // If no segments, create a simple SRT with full text
+    // Estimate duration: ~150 words per minute, minimum 10 seconds
+    const wordCount = fullText.split(/\s+/).length;
+    const estimatedDuration = Math.max(wordCount / 2.5, 10); // ~2.5 words per second
+    const simpleSrt = `1\n00:00:00,000 --> ${formatSRTTime(estimatedDuration)}\n${fullText}\n\n`;
+    srtPreview.textContent = simpleSrt;
+    window.currentSrtContent = simpleSrt;
+  }
+
+  // Show result section
+  resultSection.style.display = 'block';
+  
+  // Switch to fulltext tab (first tab)
+  switchTab('fulltext');
+}
+
+// Tab Management
+function switchTab(tabName) {
+  tabButtons.forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tabName);
+  });
+  
+  tabContents.forEach(content => {
+    content.classList.toggle('active', content.id === `${tabName}-tab`);
+  });
+}
+
+// Copy Result
+async function copyResult() {
+  const activeTab = document.querySelector('.tab-content.active');
+  let textToCopy = '';
+  
+  if (activeTab.id === 'summary-tab') {
+    textToCopy = summaryText.textContent;
+  } else if (activeTab.id === 'srt-tab') {
+    textToCopy = window.currentSrtContent || '';
+  } else {
+    textToCopy = fulltext.textContent;
+  }
+
+  try {
+    await navigator.clipboard.writeText(textToCopy);
+    copyBtn.textContent = '✓';
+    setTimeout(() => {
+      copyBtn.textContent = '📋';
+    }, 2000);
+  } catch (err) {
+    console.error('Failed to copy:', err);
+    alert('کپی ناموفق بود');
+  }
+}
+
+// Generate SRT file content from segments
+function generateSRT(segments) {
+  let srtContent = '';
+  let segmentIndex = 1;
+  
+  segments.forEach((segment) => {
+    // Validate segment has required fields
+    if (!segment || typeof segment.start !== 'number' || typeof segment.end !== 'number') {
+      return; // Skip invalid segments
+    }
+    
+    // Ensure end time is after start time
+    if (segment.end <= segment.start) {
+      return; // Skip invalid timing
+    }
+    
+    const startTime = formatSRTTime(segment.start);
+    const endTime = formatSRTTime(segment.end);
+    const text = (segment.text || '').trim();
+    
+    // Only add segment if it has text
+    if (text.length > 0) {
+      srtContent += `${segmentIndex}\n${startTime} --> ${endTime}\n${text}\n\n`;
+      segmentIndex++;
+    }
+  });
+  
+  return srtContent;
+}
+
+// Format time in seconds to SRT format (HH:MM:SS,mmm)
+function formatSRTTime(seconds) {
+  // Ensure seconds is a valid number
+  const secs = Math.max(0, Number(seconds) || 0);
+  const hours = Math.floor(secs / 3600);
+  const minutes = Math.floor((secs % 3600) / 60);
+  const secsPart = Math.floor(secs % 60);
+  const milliseconds = Math.floor((secs % 1) * 1000);
+  
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secsPart).padStart(2, '0')},${String(milliseconds).padStart(3, '0')}`;
+}
+
+// Download SRT file
+function downloadSrtFile() {
+  const srtContent = window.currentSrtContent || '';
+  if (!srtContent) {
+    alert('فایل SRT در دسترس نیست');
+    return;
+  }
+  
+  const blob = new Blob([srtContent], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `subtitles_${Date.now()}.srt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// History Management
+function saveToHistory(title, summary, fullText, segments = null) {
+  chrome.storage.local.get(['history'], (result) => {
+    const history = result.history || [];
+    const newItem = {
+      id: Date.now(),
+      title: title.substring(0, 50),
+      date: new Date().toLocaleDateString('fa-IR'),
+      summary,
+      fullText,
+      segments
+    };
+    
+    history.unshift(newItem);
+    // Keep only last 20 items
+    const limitedHistory = history.slice(0, 20);
+    
+    chrome.storage.local.set({ history: limitedHistory }, () => {
+      loadHistory();
+    });
+  });
+}
+
+function loadHistory() {
+  chrome.storage.local.get(['history'], (result) => {
+    const history = result.history || [];
+    
+    if (history.length === 0) {
+      historyList.innerHTML = '<div class="empty-state">تاریخچه‌ای وجود ندارد</div>';
+      return;
+    }
+
+    historyList.innerHTML = history.map(item => `
+      <div class="history-item" data-id="${item.id}">
+        <div class="history-item-title">${item.title}</div>
+        <div class="history-item-date">${item.date}</div>
+      </div>
+    `).join('');
+
+    // Add click listeners
+    document.querySelectorAll('.history-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const id = parseInt(item.dataset.id);
+        loadHistoryItem(id, history);
+      });
+    });
+  });
+}
+
+function loadHistoryItem(id, history) {
+  const item = history.find(h => h.id === id);
+  if (item) {
+    displayResults(item.summary, item.fullText, item.segments || null);
+    resultSection.scrollIntoView({ behavior: 'smooth' });
+  }
+}
+

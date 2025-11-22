@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cutup - خلاصه‌ساز هوشمند</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <div class="logo">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <h1>Cutup</h1>
+      </div>
+      <button class="theme-toggle" id="themeToggle" aria-label="تغییر تم">
+        <span class="theme-icon">🌙</span>
+      </button>
+    </header>
+
+    <main class="main-content">
+      <div class="input-section">
+        <label for="youtubeUrl" class="label">لینک یوتیوب یا فایل صوتی</label>
+        <div class="input-group">
+          <input 
+            type="text" 
+            id="youtubeUrl" 
+            class="input" 
+            placeholder="https://youtube.com/watch?v=..."
+          >
+          <button class="paste-btn" id="pasteBtn" title="چسباندن از کلیپ‌بورد">
+            📋
+          </button>
+        </div>
+        <div class="file-upload">
+          <label for="audioFile" class="file-label">
+            <span class="file-icon">📁</span>
+            <span>یا فایل صوتی را انتخاب کنید</span>
+            <input type="file" id="audioFile" accept="audio/*" hidden>
+          </label>
+        </div>
+      </div>
+
+      <button class="summarize-btn" id="summarizeBtn" disabled>
+        <span class="btn-text">خلاصه‌سازی</span>
+        <span class="btn-loader" style="display: none;">⏳</span>
+      </button>
+
+      <div class="result-section" id="resultSection" style="display: none;">
+        <div class="result-header">
+          <h2>نتیجه</h2>
+          <button class="copy-btn" id="copyBtn" title="کپی">
+            📋
+          </button>
+        </div>
+        
+        <div class="result-tabs">
+          <button class="tab-btn active" data-tab="fulltext">متن کامل</button>
+          <button class="tab-btn" data-tab="summary">خلاصه</button>
+          <button class="tab-btn" data-tab="srt">زیرنویس SRT</button>
+        </div>
+
+        <div class="result-content">
+          <div class="tab-content active" id="fulltext-tab">
+            <p class="fulltext" id="fulltext"></p>
+          </div>
+          <div class="tab-content" id="summary-tab">
+            <p class="summary-text" id="summaryText"></p>
+          </div>
+          <div class="tab-content" id="srt-tab">
+            <div class="srt-container" id="srtContainer">
+              <button class="download-btn" id="downloadSrtBtn">📥 دانلود فایل SRT</button>
+              <div class="srt-preview" id="srtPreview"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="history-section" id="historySection">
+        <h3>تاریخچه</h3>
+        <div class="history-list" id="historyList"></div>
+      </div>
+    </main>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
+
