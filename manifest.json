@@ -11,10 +11,12 @@
     "https://www.youtube.com/*",
     "https://youtube.com/*",
     "https://youtu.be/*",
-    "https://*.vercel.app/*"
+    "https://*.vercel.app/*",
+    "http://195.248.240.108:3001/*",
+    "http://localhost:3001/*"
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://*.vercel.app https://api.openai.com;"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://*.vercel.app https://api.openai.com http://195.248.240.108:3001 http://localhost:3001;"
   },
   "action": {
     "default_popup": "popup.html",
