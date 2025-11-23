@@ -528,8 +528,8 @@ let progressEstimatedDuration = null;
 let currentProgress = 0;
 let targetProgress = 0;
 let progressAnimationId = null;
-let progressText = '';
-let progressDetails = '';
+let currentProgressText = '';
+let currentProgressDetails = '';
 
 // Smooth progress animation
 function animateProgress() {
@@ -569,18 +569,16 @@ function updateProgress(percent, text, details) {
   
   // Update text and details immediately
   if (text) {
-    progressText = text;
-    const progressTextEl = document.getElementById('progressText');
-    if (progressTextEl) {
-      progressTextEl.textContent = text;
+    currentProgressText = text;
+    if (progressText) {
+      progressText.textContent = text;
     }
   }
   
   if (details !== undefined) {
-    progressDetails = details;
-    const progressDetailsEl = document.getElementById('progressDetails');
-    if (progressDetailsEl) {
-      progressDetailsEl.textContent = details;
+    currentProgressDetails = details;
+    if (progressDetails) {
+      progressDetails.textContent = details;
     }
   }
   
@@ -594,6 +592,8 @@ function updateProgress(percent, text, details) {
 function resetProgress() {
   currentProgress = 0;
   targetProgress = 0;
+  currentProgressText = '';
+  currentProgressDetails = '';
   if (progressAnimationId) {
     cancelAnimationFrame(progressAnimationId);
     progressAnimationId = null;
@@ -604,6 +604,12 @@ function resetProgress() {
   const progressPercent = document.getElementById('progressPercent');
   if (progressPercent) {
     progressPercent.textContent = '0%';
+  }
+  if (progressText) {
+    progressText.textContent = 'در حال آماده‌سازی...';
+  }
+  if (progressDetails) {
+    progressDetails.textContent = '';
   }
 }
 
