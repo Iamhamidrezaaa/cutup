@@ -126,13 +126,17 @@
             <input type="checkbox" id="selectAllHistory">
             <span>انتخاب همه</span>
           </label>
-          <button class="delete-selected-btn" id="deleteSelectedBtn" disabled>پاک کردن</button>
+          <div class="history-controls-actions">
+            <button class="save-selected-btn" id="saveSelectedBtn" disabled>ذخیره</button>
+            <button class="delete-selected-btn" id="deleteSelectedBtn" disabled>پاک کردن</button>
+          </div>
         </div>
         <div class="history-list" id="historyList"></div>
       </div>
     </main>
   </div>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

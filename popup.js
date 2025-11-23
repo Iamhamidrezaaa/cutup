@@ -27,6 +27,7 @@ const deleteHistoryBtn = document.getElementById('deleteHistoryBtn');
 const historyControls = document.getElementById('historyControls');
 const selectAllHistory = document.getElementById('selectAllHistory');
 const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+const saveSelectedBtn = document.getElementById('saveSelectedBtn');
 const progressSection = document.getElementById('progressSection');
 const progressBar = document.getElementById('progressBar');
 const progressText = document.getElementById('progressText');
@@ -72,7 +73,7 @@ function setupEventListeners() {
   copyBtn.addEventListener('click', copyResult);
   downloadSrtBtn.addEventListener('click', downloadSrtFile);
   translateSrtBtn.addEventListener('click', handleTranslateSRT);
-  saveHistoryBtn.addEventListener('click', handleSaveHistory);
+  saveHistoryBtn.addEventListener('click', toggleSaveMode);
   deleteHistoryBtn.addEventListener('click', toggleDeleteMode);
   selectAllHistory.addEventListener('change', handleSelectAll);
   deleteSelectedBtn.addEventListener('click', handleDeleteSelected);
@@ -1450,6 +1451,9 @@ function saveToHistory(title, summary, fullText, segments = null) {
   });
 }
 
+// Track expanded history item
+let expandedHistoryId = null;
+
 function loadHistory() {
   chrome.storage.local.get(['history'], (result) => {
     const history = result.history || [];
@@ -1460,48 +1464,130 @@ function loadHistory() {
       return;
     }
 
-    const isDeleteMode = historyControls.style.display !== 'none';
+    const isDeleteMode = historyControls.dataset.mode === 'delete';
+    const isSaveMode = historyControls.dataset.mode === 'save';
+    const isSelectionMode = isDeleteMode || isSaveMode;
     
-    historyList.innerHTML = history.map(item => `
-      <div class="history-item" data-id="${item.id}">
-        ${isDeleteMode ? `<input type="checkbox" class="history-checkbox" data-id="${item.id}">` : ''}
-        <div class="history-item-content" ${!isDeleteMode ? 'style="cursor: pointer;"' : ''}>
-          <div class="history-item-title">${item.title}</div>
-          <div class="history-item-date">${item.date}</div>
+    historyList.innerHTML = history.map(item => {
+      const isExpanded = expandedHistoryId === item.id;
+      return `
+        <div class="history-item" data-id="${item.id}">
+          ${isSelectionMode ? `<input type="checkbox" class="history-checkbox" data-id="${item.id}">` : ''}
+          <div class="history-item-content" ${!isSelectionMode ? 'style="cursor: pointer;"' : ''}>
+            <div class="history-item-header">
+              <div class="history-item-info">
+                <div class="history-item-title">${item.title}</div>
+                <div class="history-item-date">${item.date}</div>
+              </div>
+              ${!isSelectionMode ? `<span class="history-expand-icon">${isExpanded ? '▼' : '▶'}</span>` : ''}
+            </div>
+            ${isExpanded && !isSelectionMode ? `
+              <div class="history-item-details">
+                <div class="history-detail-section">
+                  <strong>خلاصه:</strong>
+                  <p>${item.summary || 'بدون خلاصه'}</p>
+                </div>
+                <div class="history-detail-section">
+                  <strong>متن کامل:</strong>
+                  <p class="history-fulltext">${item.fullText || 'بدون متن'}</p>
+                </div>
+                ${item.segments && item.segments.length > 0 ? `
+                  <div class="history-detail-section">
+                    <strong>زیرنویس:</strong>
+                    <button class="history-download-srt-btn" data-id="${item.id}">دانلود SRT</button>
+                  </div>
+                ` : ''}
+              </div>
+            ` : ''}
+          </div>
         </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
 
-    // Add click listeners
+    // Add click listeners for expand/collapse
     document.querySelectorAll('.history-item').forEach(item => {
       const content = item.querySelector('.history-item-content');
-      if (content && !isDeleteMode) {
-        content.addEventListener('click', () => {
+      const header = item.querySelector('.history-item-header');
+      if (content && header && !isSelectionMode) {
+        header.addEventListener('click', (e) => {
+          e.stopPropagation();
           const id = parseInt(item.dataset.id);
-          loadHistoryItem(id, history);
+          
+          // Close previously expanded item
+          if (expandedHistoryId === id) {
+            expandedHistoryId = null;
+          } else {
+            expandedHistoryId = id;
+          }
+          
+          loadHistory(); // Reload to update UI
         });
       }
     });
     
     // Add checkbox change listeners
-    if (isDeleteMode) {
+    if (isSelectionMode) {
       document.querySelectorAll('.history-checkbox').forEach(checkbox => {
-        checkbox.addEventListener('change', updateDeleteButtonState);
+        checkbox.addEventListener('change', () => {
+          updateDeleteButtonState();
+          updateSaveButtonState();
+        });
       });
     }
     
+    // Add SRT download listeners
+    document.querySelectorAll('.history-download-srt-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = parseInt(btn.dataset.id);
+        const item = history.find(h => h.id === id);
+        if (item && item.segments) {
+          downloadHistorySrt(item);
+        }
+      });
+    });
+    
     updateDeleteButtonState();
+    updateSaveButtonState();
   });
 }
 
 // Toggle delete mode
 function toggleDeleteMode() {
   const isVisible = historyControls.style.display !== 'none';
-  historyControls.style.display = isVisible ? 'none' : 'flex';
+  const currentMode = historyControls.dataset.mode;
   
-  if (!isVisible) {
+  if (isVisible && currentMode === 'delete') {
+    // Exit delete mode
+    historyControls.style.display = 'none';
+    historyControls.dataset.mode = '';
+  } else {
     // Enter delete mode
+    historyControls.style.display = 'flex';
+    historyControls.dataset.mode = 'delete';
     selectAllHistory.checked = false;
+    deleteSelectedBtn.disabled = true;
+    saveSelectedBtn.disabled = true;
+  }
+  
+  loadHistory(); // Reload to show/hide checkboxes
+}
+
+// Toggle save mode
+function toggleSaveMode() {
+  const isVisible = historyControls.style.display !== 'none';
+  const currentMode = historyControls.dataset.mode;
+  
+  if (isVisible && currentMode === 'save') {
+    // Exit save mode
+    historyControls.style.display = 'none';
+    historyControls.dataset.mode = '';
+  } else {
+    // Enter save mode
+    historyControls.style.display = 'flex';
+    historyControls.dataset.mode = 'save';
+    selectAllHistory.checked = false;
+    saveSelectedBtn.disabled = true;
     deleteSelectedBtn.disabled = true;
   }
   
@@ -1515,12 +1601,25 @@ function handleSelectAll() {
     checkbox.checked = selectAllHistory.checked;
   });
   updateDeleteButtonState();
+  updateSaveButtonState();
 }
 
 // Update delete button state
 function updateDeleteButtonState() {
   const checkboxes = document.querySelectorAll('.history-checkbox:checked');
-  deleteSelectedBtn.disabled = checkboxes.length === 0;
+  const isDeleteMode = historyControls.dataset.mode === 'delete';
+  if (isDeleteMode) {
+    deleteSelectedBtn.disabled = checkboxes.length === 0;
+  }
+}
+
+// Update save button state
+function updateSaveButtonState() {
+  const checkboxes = document.querySelectorAll('.history-checkbox:checked');
+  const isSaveMode = historyControls.dataset.mode === 'save';
+  if (isSaveMode) {
+    saveSelectedBtn.disabled = checkboxes.length === 0;
+  }
 }
 
 // Handle delete selected
@@ -1545,28 +1644,152 @@ function handleDeleteSelected() {
   }
 }
 
-// Handle save history (export to file)
-function handleSaveHistory() {
-  chrome.storage.local.get(['history'], (result) => {
+// Handle save selected history items as ZIP
+async function handleSaveSelected() {
+  const checkboxes = document.querySelectorAll('.history-checkbox:checked');
+  if (checkboxes.length === 0) return;
+  
+  const idsToSave = Array.from(checkboxes).map(cb => parseInt(cb.dataset.id));
+  
+  chrome.storage.local.get(['history'], async (result) => {
     const history = result.history || [];
+    const itemsToSave = history.filter(item => idsToSave.includes(item.id));
     
-    if (history.length === 0) {
-      alert('تاریخچه‌ای برای ذخیره وجود ندارد');
+    if (itemsToSave.length === 0) {
+      alert('موردی برای ذخیره انتخاب نشده است');
       return;
     }
     
-    // Convert history to JSON
-    const historyJson = JSON.stringify(history, null, 2);
-    const blob = new Blob([historyJson], { type: 'application/json;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `cutup_history_${Date.now()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+      // Create ZIP file
+      const zip = new JSZip();
+      
+      if (itemsToSave.length === 1) {
+        // Single item: Create folder with title, then ZIP it
+        const item = itemsToSave[0];
+        const folderName = sanitizeFileName(item.title);
+        const folder = zip.folder(folderName);
+        
+        // Add full text
+        if (item.fullText) {
+          folder.file('متن کامل.txt', item.fullText);
+        }
+        
+        // Add summary
+        if (item.summary) {
+          folder.file('خلاصه.txt', item.summary);
+        }
+        
+        // Add SRT
+        if (item.segments && item.segments.length > 0) {
+          const srtContent = generateSRT(item.segments);
+          folder.file('زیرنویس.srt', srtContent);
+        }
+        
+        // Generate and download ZIP
+        const blob = await zip.generateAsync({ type: 'blob' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${folderName}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } else {
+        // Multiple items: Create CutUp folder, then subfolders for each item
+        const cutupFolder = zip.folder('CutUp');
+        
+        itemsToSave.forEach(item => {
+          const folderName = sanitizeFileName(item.title);
+          const itemFolder = cutupFolder.folder(folderName);
+          
+          // Add full text
+          if (item.fullText) {
+            itemFolder.file('متن کامل.txt', item.fullText);
+          }
+          
+          // Add summary
+          if (item.summary) {
+            itemFolder.file('خلاصه.txt', item.summary);
+          }
+          
+          // Add SRT
+          if (item.segments && item.segments.length > 0) {
+            const srtContent = generateSRT(item.segments);
+            itemFolder.file('زیرنویس.srt', srtContent);
+          }
+        });
+        
+        // Generate and download ZIP
+        const blob = await zip.generateAsync({ type: 'blob' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'CutUp.zip';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+      
+      // Exit save mode after successful download
+      toggleSaveMode();
+    } catch (error) {
+      console.error('Error creating ZIP:', error);
+      alert('خطا در ایجاد فایل ZIP. لطفاً دوباره تلاش کنید.');
+    }
   });
+}
+
+// Sanitize file name (remove invalid characters)
+function sanitizeFileName(fileName) {
+  // Remove or replace invalid characters for file/folder names
+  return fileName
+    .replace(/[<>:"/\\|?*]/g, '_') // Replace invalid chars with underscore
+    .replace(/\s+/g, ' ') // Normalize whitespace
+    .trim()
+    .substring(0, 100); // Limit length
+}
+
+// Generate SRT content from segments
+function generateSRT(segments) {
+  if (!segments || segments.length === 0) return '';
+  
+  return segments.map((segment, index) => {
+    const start = formatSRTTime(segment.start);
+    const end = formatSRTTime(segment.end);
+    return `${index + 1}\n${start} --> ${end}\n${segment.text}\n`;
+  }).join('\n');
+}
+
+// Format time for SRT (HH:MM:SS,mmm)
+function formatSRTTime(seconds) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  const milliseconds = Math.floor((seconds % 1) * 1000);
+  
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')},${String(milliseconds).padStart(3, '0')}`;
+}
+
+// Download SRT for a history item
+function downloadHistorySrt(item) {
+  if (!item.segments || item.segments.length === 0) {
+    alert('زیرنویسی برای این مورد وجود ندارد');
+    return;
+  }
+  
+  const srtContent = generateSRT(item.segments);
+  const blob = new Blob([srtContent], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${sanitizeFileName(item.title)}.srt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function loadHistoryItem(id, history) {
