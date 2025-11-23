@@ -80,7 +80,7 @@ app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
@@ -191,7 +191,7 @@ loadRoutes().then(() => {
     console.log(`   POST /api/youtube`);
     console.log(`   POST /api/youtube-title`);
     console.log(`   POST /api/translate-srt`);
-    console.log(`   GET  /health`);
+    console.log(`   GET  /api/health`);
   });
   
   server.on('error', (err) => {
