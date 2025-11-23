@@ -1523,32 +1523,43 @@ function loadHistory() {
       `;
     }).join('');
 
-    // Add click listeners for expand/collapse
+    // Add click listeners
     document.querySelectorAll('.history-item').forEach(item => {
       const header = item.querySelector('.history-item-header');
-      if (header && !isSelectionMode) {
-        header.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const id = parseInt(item.dataset.id);
-          
-          // Toggle expanded state
-          if (expandedHistoryIds.has(id)) {
-            expandedHistoryIds.delete(id);
-          } else {
-            expandedHistoryIds.add(id);
-          }
-          
-          loadHistory(); // Reload to update UI
-        });
-      }
-      
-      // Also allow double-click to load in tabs
+      const expandIcon = item.querySelector('.history-expand-icon');
       const content = item.querySelector('.history-item-content');
-      if (content && !isSelectionMode) {
-        content.addEventListener('dblclick', () => {
-          const id = parseInt(item.dataset.id);
-          loadHistoryItem(id, history);
-        });
+      
+      if (!isSelectionMode) {
+        // Click on expand icon to expand/collapse
+        if (expandIcon) {
+          expandIcon.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const id = parseInt(item.dataset.id);
+            
+            // Toggle expanded state
+            if (expandedHistoryIds.has(id)) {
+              expandedHistoryIds.delete(id);
+            } else {
+              expandedHistoryIds.add(id);
+            }
+            
+            loadHistory(); // Reload to update UI
+          });
+        }
+        
+        // Click on title/info to load in tabs (like before)
+        if (header) {
+          const info = header.querySelector('.history-item-info');
+          if (info) {
+            info.addEventListener('click', (e) => {
+              // Only if not clicking on expand icon
+              if (e.target !== expandIcon && !expandIcon.contains(e.target)) {
+                const id = parseInt(item.dataset.id);
+                loadHistoryItem(id, history);
+              }
+            });
+          }
+        }
       }
     });
     
@@ -1607,7 +1618,13 @@ function toggleDeleteMode() {
     historyControls.dataset.mode = '';
     deleteSelectedBtn.style.display = 'none';
     saveSelectedBtn.style.display = 'none';
+    // Remove active state from button
+    deleteHistoryBtn.classList.remove('active');
   } else {
+    // Exit save mode if active
+    if (currentMode === 'save') {
+      saveHistoryBtn.classList.remove('active');
+    }
     // Enter delete mode - hide save button, show delete button
     historyControls.style.display = 'flex';
     historyControls.dataset.mode = 'delete';
@@ -1615,6 +1632,9 @@ function toggleDeleteMode() {
     deleteSelectedBtn.disabled = true;
     deleteSelectedBtn.style.display = 'block';
     saveSelectedBtn.style.display = 'none';
+    // Add active state to button
+    deleteHistoryBtn.classList.add('active');
+    saveHistoryBtn.classList.remove('active');
   }
   
   loadHistory(); // Reload to show/hide checkboxes
@@ -1631,7 +1651,13 @@ function toggleSaveMode() {
     historyControls.dataset.mode = '';
     saveSelectedBtn.style.display = 'none';
     deleteSelectedBtn.style.display = 'none';
+    // Remove active state from button
+    saveHistoryBtn.classList.remove('active');
   } else {
+    // Exit delete mode if active
+    if (currentMode === 'delete') {
+      deleteHistoryBtn.classList.remove('active');
+    }
     // Enter save mode - hide delete button, show save button
     historyControls.style.display = 'flex';
     historyControls.dataset.mode = 'save';
@@ -1639,6 +1665,9 @@ function toggleSaveMode() {
     saveSelectedBtn.disabled = true;
     saveSelectedBtn.style.display = 'block';
     deleteSelectedBtn.style.display = 'none';
+    // Add active state to button
+    saveHistoryBtn.classList.add('active');
+    deleteHistoryBtn.classList.remove('active');
   }
   
   loadHistory(); // Reload to show/hide checkboxes
@@ -1745,15 +1774,21 @@ async function handleSaveSelected() {
         }
         
         // Generate and download ZIP
+        console.log('SAVE: Generating ZIP for single item:', folderName);
         const blob = await zip.generateAsync({ type: 'blob' });
+        console.log('SAVE: ZIP blob created, size:', blob.size);
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = `${folderName}.zip`;
         document.body.appendChild(a);
+        console.log('SAVE: Triggering download...');
         a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          console.log('SAVE: Download completed');
+        }, 100);
       } else {
         // Multiple items: Create CutUp folder, then subfolders for each item
         const cutupFolder = zip.folder('CutUp');
@@ -1781,15 +1816,21 @@ async function handleSaveSelected() {
         });
         
         // Generate and download ZIP
+        console.log('SAVE: Generating ZIP for multiple items (CutUp)');
         const blob = await zip.generateAsync({ type: 'blob' });
+        console.log('SAVE: ZIP blob created, size:', blob.size);
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = 'CutUp.zip';
         document.body.appendChild(a);
+        console.log('SAVE: Triggering download...');
         a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          console.log('SAVE: Download completed');
+        }, 100);
       }
       
       // Exit save mode after successful download

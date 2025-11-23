@@ -337,6 +337,11 @@ body {
   transform: translateY(-1px);
 }
 
+.history-action-btn.active {
+  background: var(--primary);
+  color: white;
+}
+
 .history-controls {
   display: flex;
   justify-content: space-between;
@@ -451,6 +456,23 @@ body {
   margin-left: 8px;
   transition: transform 0.2s;
   user-select: none;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.history-expand-icon:hover {
+  color: var(--primary);
+  background: var(--bg-primary);
+  border-radius: 4px;
+}
+
+.history-item-info {
+  cursor: pointer;
+  flex: 1;
+}
+
+.history-item-info:hover {
+  opacity: 0.8;
 }
 
 .history-item-details {
