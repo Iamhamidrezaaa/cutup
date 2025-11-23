@@ -225,17 +225,17 @@ export default async function handler(req, res) {
       let lastError;
       
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        console.log(`TRANSCRIBE V4.0: Attempt ${attempt}/${maxRetries} starting...`);
-        
-        // Create FormData using form-data library
-        const formData = new FormDataLib();
-        formData.append('file', audioBuffer, {
-          filename: `audio.${extension}`,
-          contentType: mimeType,
-          knownLength: audioBuffer.length
-        });
-        formData.append('model', 'whisper-1');
+        try {
+          console.log(`TRANSCRIBE V4.0: Attempt ${attempt}/${maxRetries} starting...`);
+          
+          // Create FormData using form-data library
+          const formData = new FormDataLib();
+          formData.append('file', audioBuffer, {
+            filename: `audio.${extension}`,
+            contentType: mimeType,
+            knownLength: audioBuffer.length
+          });
+          formData.append('model', 'whisper-1');
         // Don't specify language - let Whisper auto-detect
         // formData.append('language', 'fa');
         formData.append('response_format', 'verbose_json'); // Get segments with timestamps
@@ -537,7 +537,6 @@ export default async function handler(req, res) {
       language: transcript.language || 'unknown',
       segments: validSegments // Include valid segments with timestamps for SRT
     });
-
   } catch (err) {
     console.error('TRANSCRIBE_ERROR:', {
       message: err?.message,
