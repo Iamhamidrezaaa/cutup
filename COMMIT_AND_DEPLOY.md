@@ -1,152 +1,65 @@
 # دستورات Git و Deploy
 
-## 📦 مرحله 1: Commit کردن تغییرات به Git
+## 1. Commit و Push به GitHub
 
-### 1.1 اضافه کردن فایل‌ها
 ```bash
-git add api/transcribe.js
-git add api/upload.js
-git add api/youtube.js
-git add api/translate-srt.js
-git add manifest.json
-git add popup.css
-git add popup.html
-git add popup.js
-git add server.js
-```
+# اضافه کردن فایل‌های تغییر یافته
+git add popup.js popup.html popup.css manifest.json
 
-یا به صورت خلاصه:
-```bash
-git add api/ popup.* manifest.json server.js
-```
+# Commit
+git commit -m "Fix history expand/collapse and save button
 
-### 1.2 Commit کردن
-```bash
-git commit -m "Add YouTube subtitle support, translation, and history management
+- Remove expand/collapse from history items (only result section expands)
+- Fix save button functionality and JSZip loading
+- Move result section below history section
+- Add collapse functionality for result section
+- Fix JSZip CDN and CSP policy
+- Improve UX for save/delete modes"
 
-- Add YouTube auto-generated subtitle extraction
-- Add SRT translation to multiple languages
-- Add language selection dropdown in SRT tab
-- Add history save and delete functionality
-- Fix clipboard paste permission
-- Improve language detection for English/Farsi
-- Add Vazir font to tab buttons"
-```
-
-### 1.3 Push به GitHub
-```bash
+# Push به GitHub
 git push origin main
 ```
 
----
+## 2. آپلود فایل‌ها به سرور (WinSCP)
 
-## 🚀 مرحله 2: Deploy به سرور
+فایل‌های زیر را به `/var/www/cutup/` آپلود کنید:
 
-### 2.1 آپلود فایل‌ها با WinSCP
-
-فایل‌های زیر را با WinSCP به `/var/www/cutup/` آپلود کنید:
-
-**فایل‌های API:**
-- `api/youtube.js`
-- `api/translate-srt.js` (فایل جدید)
-- `api/transcribe.js`
-- `api/upload.js`
-
-**فایل‌های Frontend:**
-- `popup.html`
+**فایل‌های Extension:**
 - `popup.js`
+- `popup.html`
 - `popup.css`
 - `manifest.json`
 
-**فایل‌های Server:**
-- `server.js`
+**فایل‌های Backend (اگر تغییر کرده‌اند):**
+- `server.js` (اگر تغییر کرده)
+- `api/youtube-title.js` (اگر تغییر کرده)
 
----
-
-### 2.2 دستورات سرور (SSH)
-
-بعد از آپلود فایل‌ها، به سرور SSH کنید و این دستورات را اجرا کنید:
+## 3. Restart PM2 در سرور
 
 ```bash
-# اتصال به سرور
 ssh root@195.248.240.108
-
-# رفتن به دایرکتوری پروژه
 cd /var/www/cutup
-
-# بررسی فایل‌های جدید
-ls -la api/translate-srt.js
-ls -la api/youtube.js
-
-# نصب dependencies (اگر لازم باشد)
-npm install
-
-# Restart کردن PM2
 pm2 restart cutup-api --update-env
-
-# بررسی لاگ‌ها
 pm2 logs cutup-api --lines 30
-
-# بررسی وضعیت
-pm2 status
 ```
 
----
+## 4. Reload Extension
 
-### 2.3 بررسی Endpoint جدید
+1. به `chrome://extensions/` بروید
+2. افزونه Cutup را **Remove** کنید
+3. دوباره **Load unpacked** کنید (مهم: باید Remove و دوباره Load کنید تا `manifest.json` جدید اعمال شود)
 
-```bash
-# تست health endpoint
-curl http://localhost:3001/health
+## 5. تست
 
-# باید این پاسخ را ببینید:
-# {"status":"ok","timestamp":"..."}
-```
+1. Extension را reload کنید
+2. یک تاریخچه را کلیک کنید → تب نتیجه زیر تاریخچه باز می‌شود
+3. دوباره روی همان تاریخچه کلیک کنید → تب نتیجه بسته می‌شود
+4. روی emoji Save کلیک کنید → Save mode فعال می‌شود
+5. تاریخچه‌ها را انتخاب کنید → دکمه "ذخیره" فعال می‌شود
+6. روی "ذخیره" کلیک کنید → فایل ZIP دانلود می‌شود
 
----
+## نکات مهم
 
-## ✅ چک‌لیست بعد از Deploy
-
-- [ ] فایل‌های جدید آپلود شده‌اند
-- [ ] PM2 restart شده است
-- [ ] لاگ‌ها خطایی نشان نمی‌دهند
-- [ ] Endpoint `/api/translate-srt` در لاگ‌ها نمایش داده می‌شود
-- [ ] Extension reload شده است
-- [ ] تست YouTube subtitle extraction
-- [ ] تست SRT translation
-- [ ] تست history save/delete
-
----
-
-## 🔧 عیب‌یابی
-
-### اگر PM2 restart نشد:
-```bash
-pm2 stop cutup-api
-pm2 start ecosystem.config.cjs
-pm2 save
-```
-
-### اگر فایل جدید پیدا نشد:
-```bash
-# بررسی مسیر
-ls -la /var/www/cutup/api/translate-srt.js
-
-# اگر وجود ندارد، دوباره با WinSCP آپلود کنید
-```
-
-### اگر خطای module not found:
-```bash
-cd /var/www/cutup
-npm install
-pm2 restart cutup-api
-```
-
----
-
-## 📝 یادداشت
-
-- Extension را بعد از تغییر `manifest.json` حتماً reload کنید
-- اگر permission clipboard کار نکرد، Extension را remove و دوباره load کنید
-- برای تست، از یک ویدیو یوتیوب با زیرنویس خودکار استفاده کنید
-
+- **Extension را حتماً Remove و دوباره Load کنید** - فقط Reload کافی نیست
+- **PM2 را restart کنید** - تغییرات در `server.js` نیاز به restart دارد
+- **JSZip از CDN jsdelivr بارگذاری می‌شود** - اگر مشکل داشت، بررسی کنید که اینترنت وصل است

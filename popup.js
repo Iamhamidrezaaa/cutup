@@ -1476,8 +1476,6 @@ function saveToHistory(title, summary, fullText, segments = null) {
   });
 }
 
-// Track expanded history items
-const expandedHistoryIds = new Set();
 // Track which history item is currently loaded in result section
 let selectedHistoryId = null;
 
@@ -1495,79 +1493,24 @@ function loadHistory() {
     const isSaveMode = historyControls.dataset.mode === 'save';
     const isSelectionMode = isDeleteMode || isSaveMode;
     
-    historyList.innerHTML = history.map(item => {
-      const isExpanded = expandedHistoryIds.has(item.id);
-      return `
-        <div class="history-item" data-id="${item.id}">
-          ${isSelectionMode ? `<input type="checkbox" class="history-checkbox" data-id="${item.id}">` : ''}
-          <div class="history-item-content">
-            <div class="history-item-header" ${!isSelectionMode ? 'style="cursor: pointer;"' : ''}>
-              <div class="history-item-info">
-                <div class="history-item-title">${item.title}</div>
-                <div class="history-item-date">${item.date}</div>
-              </div>
-              ${!isSelectionMode ? `<span class="history-expand-icon">${isExpanded ? '▼' : '▶'}</span>` : ''}
-            </div>
-            ${isExpanded && !isSelectionMode ? `
-              <div class="history-item-details">
-                <div class="history-detail-section">
-                  <strong>خلاصه:</strong>
-                  <p>${formatSummary(item.summary)}</p>
-                </div>
-                <div class="history-detail-section">
-                  <strong>متن کامل:</strong>
-                  <p class="history-fulltext">${item.fullText || 'بدون متن'}</p>
-                </div>
-                ${item.segments && item.segments.length > 0 ? `
-                  <div class="history-detail-section">
-                    <strong>زیرنویس:</strong>
-                    <button class="history-download-srt-btn" data-id="${item.id}">دانلود SRT</button>
-                  </div>
-                ` : ''}
-              </div>
-            ` : ''}
-          </div>
+    historyList.innerHTML = history.map(item => `
+      <div class="history-item" data-id="${item.id}">
+        ${isSelectionMode ? `<input type="checkbox" class="history-checkbox" data-id="${item.id}">` : ''}
+        <div class="history-item-content" ${!isSelectionMode ? 'style="cursor: pointer;"' : ''}>
+          <div class="history-item-title">${item.title}</div>
+          <div class="history-item-date">${item.date}</div>
         </div>
-      `;
-    }).join('');
+      </div>
+    `).join('');
 
-    // Add click listeners
+    // Add click listeners - click on history item to toggle result section
     document.querySelectorAll('.history-item').forEach(item => {
-      const header = item.querySelector('.history-item-header');
-      const expandIcon = item.querySelector('.history-expand-icon');
       const content = item.querySelector('.history-item-content');
-      
-      if (!isSelectionMode) {
-        // Click on expand icon to expand/collapse
-        if (expandIcon) {
-          expandIcon.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const id = parseInt(item.dataset.id);
-            
-            // Toggle expanded state
-            if (expandedHistoryIds.has(id)) {
-              expandedHistoryIds.delete(id);
-            } else {
-              expandedHistoryIds.add(id);
-            }
-            
-            loadHistory(); // Reload to update UI
-          });
-        }
-        
-        // Click on title/info to load in tabs (like before)
-        if (header) {
-          const info = header.querySelector('.history-item-info');
-          if (info) {
-            info.addEventListener('click', (e) => {
-              // Only if not clicking on expand icon
-              if (e.target !== expandIcon && !expandIcon.contains(e.target)) {
-                const id = parseInt(item.dataset.id);
-                loadHistoryItem(id, history);
-              }
-            });
-          }
-        }
+      if (content && !isSelectionMode) {
+        content.addEventListener('click', () => {
+          const id = parseInt(item.dataset.id);
+          loadHistoryItem(id, history);
+        });
       }
     });
     
@@ -1580,18 +1523,6 @@ function loadHistory() {
         });
       });
     }
-    
-    // Add SRT download listeners
-    document.querySelectorAll('.history-download-srt-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const id = parseInt(btn.dataset.id);
-        const item = history.find(h => h.id === id);
-        if (item && item.segments) {
-          downloadHistorySrt(item);
-        }
-      });
-    });
     
     updateDeleteButtonState();
     updateSaveButtonState();
