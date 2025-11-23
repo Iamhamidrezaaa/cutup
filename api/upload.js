@@ -25,11 +25,14 @@ export default async function handler(req, res) {
   try {
     // Check API Key
     const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      console.error('UPLOAD_ERROR: OPENAI_API_KEY is not set');
+    console.log('UPLOAD: API Key check:', apiKey ? `Present (${apiKey.substring(0, 20)}...${apiKey.substring(apiKey.length - 10)})` : 'MISSING');
+    console.log('UPLOAD: API Key length:', apiKey ? apiKey.length : 0);
+    
+    if (!apiKey || apiKey.length < 20) {
+      console.error('UPLOAD_ERROR: OPENAI_API_KEY is not set or invalid');
       return res.status(500).json({ 
         error: 'OPENAI_ERROR', 
-        details: 'API Key is not configured. Please set OPENAI_API_KEY in Vercel environment variables.' 
+        details: 'API Key is not configured or invalid. Please set OPENAI_API_KEY in server .env file.' 
       });
     }
 
@@ -145,12 +148,12 @@ export default async function handler(req, res) {
       knownLength: audioBuffer.length
     });
     formData.append('model', 'whisper-1');
-    formData.append('language', 'fa');
+    // Don't specify language - let Whisper auto-detect
+    // formData.append('language', 'fa');
     formData.append('response_format', 'verbose_json');
     
-    // Add comprehensive prompt for Persian poetry, songs, and common words
-    const prompt = 'یار عزیز قامت بلندم بی چه نتای تا عقدت ببندم پات از حنیرن صد تا گلیش هه قلبم تو سینه ت صد منزلیش هه بی تو مه حتی وا خوم غریبم تنهایی و غم اتکه نصیبم عشق مه و تو اینی تمونی وقتی خوشن که پهلوم بمونی کس نی بپرسن وازت چه بودن یارن کجاین دشمن حسودن از شر جنتک از ترس شیطون اسپند و گشنه ی بی بی ندودن سلام، خوبی، مونا، زاهدی، کاتاب، کات آپ، cutup، پیام، تست، فارسی، زبان، شعر، آهنگ، موسیقی';
-    formData.append('prompt', prompt);
+    // Note: We'll add prompt only if language is detected as Persian
+    // For now, let Whisper detect the language first
     
     const formHeaders = formData.getHeaders();
     
@@ -184,7 +187,48 @@ export default async function handler(req, res) {
       });
     }
     
-    const transcript = await whisperResponse.json();
+    let transcript = await whisperResponse.json();
+    
+    // If language is Persian, retry with prompt for better accuracy
+    const detectedLanguage = transcript.language || 'unknown';
+    console.log('UPLOAD: Detected language:', detectedLanguage);
+    
+    // If Persian detected, retry with prompt for better accuracy
+    if (detectedLanguage === 'fa' || detectedLanguage === 'per' || detectedLanguage === 'persian') {
+      console.log('UPLOAD: Persian detected, retrying with prompt for better accuracy...');
+      const formDataWithPrompt = new FormDataLib();
+      formDataWithPrompt.append('file', audioBuffer, {
+        filename: `audio.${extension}`,
+        contentType: mimeType,
+        knownLength: audioBuffer.length
+      });
+      formDataWithPrompt.append('model', 'whisper-1');
+      formDataWithPrompt.append('language', 'fa');
+      formDataWithPrompt.append('response_format', 'verbose_json');
+      
+      // Add comprehensive prompt for Persian poetry, songs, and common words
+      const prompt = 'یار عزیز قامت بلندم بی چه نتای تا عقدت ببندم پات از حنیرن صد تا گلیش هه قلبم تو سینه ت صد منزلیش هه بی تو مه حتی وا خوم غریبم تنهایی و غم اتکه نصیبم عشق مه و تو اینی تمونی وقتی خوشن که پهلوم بمونی کس نی بپرسن وازت چه بودن یارن کجاین دشمن حسودن از شر جنتک از ترس شیطون اسپند و گشنه ی بی بی ندودن سلام، خوبی، مونا، زاهدی، کاتاب، کات آپ، cutup، پیام، تست، فارسی، زبان، شعر، آهنگ، موسیقی';
+      formDataWithPrompt.append('prompt', prompt);
+      
+      const formHeadersWithPrompt = formDataWithPrompt.getHeaders();
+      
+      const whisperResponseWithPrompt = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          ...formHeadersWithPrompt
+        },
+        body: formDataWithPrompt,
+        timeout: 300000
+      });
+      
+      if (whisperResponseWithPrompt.ok) {
+        transcript = await whisperResponseWithPrompt.json();
+        console.log('UPLOAD: Retry with prompt successful');
+      } else {
+        console.warn('UPLOAD: Retry with prompt failed, using original transcript');
+      }
+    }
     
     // Log full transcript for debugging
     console.log('UPLOAD: Whisper response:', {

@@ -12,16 +12,51 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Load environment variables
+console.log('📂 Loading .env file from:', join(__dirname, '.env'));
 try {
   const envFile = readFileSync(join(__dirname, '.env'), 'utf8');
-  envFile.split('\n').forEach(line => {
-    const [key, ...values] = line.split('=');
-    if (key && values.length > 0) {
-      process.env[key.trim()] = values.join('=').trim();
+  console.log('✅ .env file read successfully, size:', envFile.length, 'bytes');
+  let loadedCount = 0;
+  envFile.split('\n').forEach((line, index) => {
+    const trimmedLine = line.trim();
+    // Skip comments and empty lines
+    if (trimmedLine && !trimmedLine.startsWith('#')) {
+      const equalIndex = trimmedLine.indexOf('=');
+      if (equalIndex > 0) {
+        const key = trimmedLine.substring(0, equalIndex).trim();
+        const value = trimmedLine.substring(equalIndex + 1).trim();
+        // Remove quotes if present
+        const cleanValue = value.replace(/^["']|["']$/g, '');
+        if (key && cleanValue) {
+          process.env[key] = cleanValue;
+          loadedCount++;
+          // Log API key prefix for debugging (don't log full key)
+          if (key === 'OPENAI_API_KEY') {
+            console.log(`✅ Loaded ${key}: ${cleanValue.substring(0, 20)}...${cleanValue.substring(cleanValue.length - 10)} (length: ${cleanValue.length})`);
+          }
+        }
+      }
     }
   });
+  console.log(`✅ Loaded ${loadedCount} environment variables from .env file`);
+  
+  // Verify API key is set
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (apiKey) {
+    console.log(`✅ OPENAI_API_KEY is set: ${apiKey.substring(0, 20)}...${apiKey.substring(apiKey.length - 10)} (length: ${apiKey.length})`);
+  } else {
+    console.error('❌ OPENAI_API_KEY is NOT set after loading .env file!');
+  }
 } catch (err) {
-  console.warn('No .env file found, using environment variables');
+  console.error('⚠️ Error loading .env file:', err.message);
+  console.error('⚠️ Stack:', err.stack);
+  // Check if API key exists in process.env (from PM2 or system)
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (apiKey) {
+    console.log(`⚠️ Using OPENAI_API_KEY from environment: ${apiKey.substring(0, 20)}...${apiKey.substring(apiKey.length - 10)}`);
+  } else {
+    console.error('❌ OPENAI_API_KEY not found in environment variables!');
+  }
 }
 
 // CORS middleware - Allow all origins for Chrome Extension
@@ -50,7 +85,7 @@ app.get('/health', (req, res) => {
 });
 
 // Import and use API routes
-let uploadHandler, transcribeHandler, summarizeHandler;
+let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler;
 
 async function loadRoutes() {
   try {
@@ -65,6 +100,10 @@ async function loadRoutes() {
     // Summarize endpoint
     const summarizeModule = await import('./api/summarize.js');
     summarizeHandler = summarizeModule.default;
+    
+    // YouTube endpoint
+    const youtubeModule = await import('./api/youtube.js');
+    youtubeHandler = youtubeModule.default;
     
     console.log('All routes loaded successfully');
   } catch (err) {
@@ -95,6 +134,13 @@ app.post('/api/summarize', async (req, res) => {
   return summarizeHandler(req, res);
 });
 
+app.post('/api/youtube', async (req, res) => {
+  if (!youtubeHandler) {
+    return res.status(500).json({ error: 'YouTube handler not loaded' });
+  }
+  return youtubeHandler(req, res);
+});
+
 // Error handler
 app.use((err, req, res, next) => {
   console.error('Error:', err);
@@ -120,6 +166,7 @@ loadRoutes().then(() => {
     console.log(`   POST /api/upload`);
     console.log(`   POST /api/transcribe`);
     console.log(`   POST /api/summarize`);
+    console.log(`   POST /api/youtube`);
     console.log(`   GET  /health`);
   });
   

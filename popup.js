@@ -140,8 +140,8 @@ async function handleSummarize() {
       // Transcribe audio
       const transcription = await transcribeAudio(audioUrl);
       
-      // Summarize text
-      const summary = await summarizeText(transcription.text);
+      // Summarize text with detected language
+      const summary = await summarizeText(transcription.text, transcription.language);
 
       // Display results
       displayResults(summary, transcription.text, transcription.segments);
@@ -153,8 +153,8 @@ async function handleSummarize() {
       // This avoids the 4.5MB limit by processing in the upload endpoint
       const transcription = await transcribeAudio(file);
       
-      // Summarize text
-      const summary = await summarizeText(transcription.text);
+      // Summarize text with detected language
+      const summary = await summarizeText(transcription.text, transcription.language);
 
       // Display results
       displayResults(summary, transcription.text, transcription.segments);
@@ -202,20 +202,59 @@ function extractVideoId(url) {
   return null;
 }
 
-// Extract YouTube audio (placeholder - needs backend implementation)
+// Extract YouTube audio using backend API
 async function extractYouTubeAudio(url) {
   const videoId = extractVideoId(url);
   if (!videoId) {
     throw new Error('لینک یوتیوب معتبر نیست');
   }
   
-  // For MVP: YouTube extraction is not implemented yet
-  // User should download audio manually or we need a separate service
-  throw new Error('استخراج صوت از یوتیوب در حال حاضر پشتیبانی نمی‌شود. لطفاً فایل صوتی را آپلود کنید.');
+  console.log('YOUTUBE: Extracting audio for video ID:', videoId);
   
-  // Future implementation:
-  // This should call a backend service to extract audio
-  // return { videoId, url };
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/youtube`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ videoId, url }),
+      signal: AbortSignal.timeout(300000) // 5 minutes timeout
+    });
+
+    console.log('YOUTUBE: Response status:', response.status);
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      console.error('YOUTUBE: Error:', error);
+      
+      let errorMessage = error.message || error.details || `استخراج صوت از یوتیوب ناموفق بود (${response.status})`;
+      
+      if (error.error === 'YOUTUBE_ERROR' && error.details?.includes('yt-dlp')) {
+        errorMessage = 'yt-dlp روی سرور نصب نیست. لطفاً با مدیر سرور تماس بگیرید.';
+      } else if (error.error === 'FILE_TOO_LARGE') {
+        errorMessage = error.message || 'ویدئو خیلی بزرگ است. لطفاً ویدئوی کوتاه‌تری انتخاب کنید.';
+      }
+      
+      throw new Error(errorMessage);
+    }
+
+    const result = await response.json();
+    console.log('YOUTUBE: Success, audio URL received');
+    
+    // Return audioUrl as string (data URL)
+    return result.audioUrl;
+    
+  } catch (error) {
+    if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+      console.error('YOUTUBE: Request timeout');
+      throw new Error('درخواست timeout شد. لطفاً دوباره تلاش کنید یا ویدئوی کوتاه‌تری انتخاب کنید.');
+    } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      console.error('YOUTUBE: Network error', error);
+      throw new Error('خطای اتصال. لطفاً اتصال اینترنت خود را بررسی کنید و دوباره تلاش کنید.');
+    } else {
+      throw error;
+    }
+  }
 }
 
 // Upload audio file - return file object for direct transmission
@@ -296,7 +335,7 @@ async function transcribeAudio(audioUrlOrVideoId) {
       }
       // اگر خطای authentication است
       else if (error.error === 'AUTH_ERROR' || error.errorType === 'AuthError') {
-        errorMessage = 'کلید API معتبر نیست. لطفاً کلید API را در تنظیمات Vercel بررسی کنید.';
+        errorMessage = 'کلید API معتبر نیست. لطفاً کلید API را در فایل .env سرور بررسی کنید.';
       }
       // اگر خطای connection است و retryable است
       else if (error.retryable || error.error === 'CONNECTION_ERROR') {
@@ -365,8 +404,8 @@ async function transcribeAudio(audioUrlOrVideoId) {
   }
 }
 
-async function summarizeText(text) {
-  console.log('SUMMARIZE: Sending request, text length:', text.length);
+async function summarizeText(text, language = null) {
+  console.log('SUMMARIZE: Sending request, text length:', text.length, 'language:', language);
   
   try {
     const response = await fetch(`${API_BASE_URL}/api/summarize`, {
@@ -374,7 +413,7 @@ async function summarizeText(text) {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, language }),
       signal: AbortSignal.timeout(120000) // 2 minutes timeout
     });
 
