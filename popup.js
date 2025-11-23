@@ -20,6 +20,13 @@ const tabContents = document.querySelectorAll('.tab-content');
 const srtContainer = document.getElementById('srtContainer');
 const srtPreview = document.getElementById('srtPreview');
 const downloadSrtBtn = document.getElementById('downloadSrtBtn');
+const srtLanguageSelect = document.getElementById('srtLanguage');
+const translateSrtBtn = document.getElementById('translateSrtBtn');
+const saveHistoryBtn = document.getElementById('saveHistoryBtn');
+const deleteHistoryBtn = document.getElementById('deleteHistoryBtn');
+const historyControls = document.getElementById('historyControls');
+const selectAllHistory = document.getElementById('selectAllHistory');
+const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -60,6 +67,11 @@ function setupEventListeners() {
   youtubeUrlInput.addEventListener('input', checkInput);
   copyBtn.addEventListener('click', copyResult);
   downloadSrtBtn.addEventListener('click', downloadSrtFile);
+  translateSrtBtn.addEventListener('click', handleTranslateSRT);
+  saveHistoryBtn.addEventListener('click', handleSaveHistory);
+  deleteHistoryBtn.addEventListener('click', toggleDeleteMode);
+  selectAllHistory.addEventListener('change', handleSelectAll);
+  deleteSelectedBtn.addEventListener('click', handleDeleteSelected);
   
   // Tab switching
   tabButtons.forEach(btn => {
@@ -78,12 +90,30 @@ function checkInput() {
 
 async function pasteFromClipboard() {
   try {
-    const text = await navigator.clipboard.readText();
-    youtubeUrlInput.value = text;
-    checkInput();
+    // Try using Clipboard API first
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      const text = await navigator.clipboard.readText();
+      youtubeUrlInput.value = text;
+      checkInput();
+      return;
+    }
+    
+    // Fallback: Try using document.execCommand
+    youtubeUrlInput.focus();
+    const pasted = document.execCommand('paste');
+    if (pasted) {
+      checkInput();
+      return;
+    }
+    
+    // If both fail, show error
+    throw new Error('Clipboard access not available');
   } catch (err) {
     console.error('Failed to read clipboard:', err);
-    alert('نمی‌توان از کلیپ‌بورد خواند. لطفاً دستی وارد کنید.');
+    // Try alternative method: ask user to paste manually
+    youtubeUrlInput.focus();
+    youtubeUrlInput.select();
+    alert('لطفاً متن را با Ctrl+V (یا Cmd+V در Mac) در فیلد وارد کنید.');
   }
 }
 
@@ -135,16 +165,32 @@ async function handleSummarize() {
     
     // Handle YouTube URL
     if (url && isYouTubeUrl(url)) {
-      audioUrl = await extractYouTubeAudio(url);
+      // Extract audio from YouTube
+      const youtubeResult = await extractYouTubeAudio(url);
+      audioUrl = youtubeResult.audioUrl || youtubeResult; // Support both old and new format
+      const youtubeLanguage = youtubeResult.language || null;
       
-      // Transcribe audio
-      const transcription = await transcribeAudio(audioUrl);
+      // Check if YouTube subtitles are available
+      let transcription = null;
+      if (youtubeResult.subtitles) {
+        // Use YouTube subtitles if available
+        console.log('YOUTUBE: Using YouTube subtitles');
+        transcription = await parseYouTubeSubtitles(youtubeResult.subtitles, youtubeResult.subtitleLanguage);
+      } else {
+        // Fallback to audio transcription
+        console.log('YOUTUBE: No subtitles available, transcribing audio');
+        transcription = await transcribeAudio(audioUrl, youtubeLanguage);
+      }
       
       // Summarize text with detected language
       const summary = await summarizeText(transcription.text, transcription.language);
 
-      // Display results
-      displayResults(summary, transcription.text, transcription.segments);
+      // Display results with subtitle info
+      displayResults(summary, transcription.text, transcription.segments, {
+        isYouTubeSubtitle: !!youtubeResult.subtitles,
+        availableLanguages: youtubeResult.availableLanguages || [],
+        originalLanguage: transcription.language
+      });
 
       // Save to history
       saveToHistory(url, summary, transcription.text, transcription.segments);
@@ -239,10 +285,22 @@ async function extractYouTubeAudio(url) {
     }
 
     const result = await response.json();
-    console.log('YOUTUBE: Success, audio URL received');
+    console.log('YOUTUBE: Success, audio URL received, language hint:', result.language);
+    console.log('YOUTUBE: Subtitles available:', !!result.subtitles, 'Language:', result.subtitleLanguage);
+    console.log('YOUTUBE: Available languages:', result.availableLanguages);
     
-    // Return audioUrl as string (data URL)
-    return result.audioUrl;
+    // Return audioUrl as string (data URL) and language hint
+    // Support both old format (just string) and new format (object)
+    if (typeof result === 'string') {
+      return { audioUrl: result, language: null, subtitles: null, subtitleLanguage: null, availableLanguages: [] };
+    }
+    return {
+      audioUrl: result.audioUrl,
+      language: result.language || null,
+      subtitles: result.subtitles || null,
+      subtitleLanguage: result.subtitleLanguage || null,
+      availableLanguages: result.availableLanguages || []
+    };
     
   } catch (error) {
     if (error.name === 'AbortError' || error.name === 'TimeoutError') {
@@ -294,8 +352,8 @@ async function transcribeAudio(audioUrlOrVideoId) {
       
       // Handle both audioUrl string and {videoId, url} object (for YouTube)
       const body = typeof audioUrlOrVideoId === 'string' 
-        ? { audioUrl: audioUrlOrVideoId }
-        : { videoId: audioUrlOrVideoId.videoId };
+        ? { audioUrl: audioUrlOrVideoId, languageHint }
+        : { videoId: audioUrlOrVideoId.videoId, languageHint };
       
       console.log('TRANSCRIBE: Body size:', JSON.stringify(body).length, 'bytes');
       
@@ -388,7 +446,7 @@ async function transcribeAudio(audioUrlOrVideoId) {
     // Ensure segments is always an array
     return {
       text: result.text,
-      language: result.language || 'fa',
+      language: result.language || 'unknown',
       segments: (result.segments && Array.isArray(result.segments)) ? result.segments : []
     };
   } catch (error) {
@@ -445,8 +503,78 @@ async function summarizeText(text, language = null) {
   }
 }
 
+// Parse YouTube VTT subtitles to SRT format
+async function parseYouTubeSubtitles(vttContent, language) {
+  // Convert VTT to SRT format
+  const srtContent = vttToSRT(vttContent);
+  
+  // Parse SRT to segments
+  const segments = parseSRTToSegments(srtContent);
+  
+  // Extract full text
+  const fullText = segments.map(s => s.text).join(' ');
+  
+  return {
+    text: fullText,
+    language: language || 'en',
+    segments: segments
+  };
+}
+
+// Convert VTT to SRT format
+function vttToSRT(vttContent) {
+  // Remove VTT header and WEBVTT line
+  let srt = vttContent.replace(/WEBVTT[\s\S]*?\n\n/, '');
+  
+  // Replace VTT timestamp format with SRT format
+  srt = srt.replace(/(\d{2}):(\d{2}):(\d{2})\.(\d{3})/g, '$1:$2:$3,$4');
+  
+  // Add segment numbers
+  const blocks = srt.trim().split(/\n\s*\n/);
+  let srtContent = '';
+  blocks.forEach((block, index) => {
+    if (block.trim()) {
+      srtContent += `${index + 1}\n${block}\n\n`;
+    }
+  });
+  
+  return srtContent;
+}
+
+// Parse SRT content to segments array
+function parseSRTToSegments(srtContent) {
+  const segments = [];
+  const blocks = srtContent.trim().split(/\n\s*\n/);
+  
+  for (const block of blocks) {
+    const lines = block.trim().split('\n');
+    if (lines.length < 3) continue;
+    
+    const timeLine = lines[1];
+    const textLines = lines.slice(2);
+    
+    const timeMatch = timeLine.match(/(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})/);
+    if (!timeMatch) continue;
+    
+    const startTime = parseSRTTimeToSeconds(timeMatch[1], timeMatch[2], timeMatch[3], timeMatch[4]);
+    const endTime = parseSRTTimeToSeconds(timeMatch[5], timeMatch[6], timeMatch[7], timeMatch[8]);
+    const text = textLines.join(' ').trim();
+    
+    if (text.length > 0) {
+      segments.push({ start: startTime, end: endTime, text });
+    }
+  }
+  
+  return segments;
+}
+
+// Parse SRT time to seconds
+function parseSRTTimeToSeconds(hours, minutes, seconds, milliseconds) {
+  return parseInt(hours) * 3600 + parseInt(minutes) * 60 + parseInt(seconds) + parseInt(milliseconds) / 1000;
+}
+
 // Display Results
-function displayResults(summary, fullText, segments = null) {
+function displayResults(summary, fullText, segments = null, options = {}) {
   // Display summary
   summaryText.textContent = summary.summary || 'خلاصه در دسترس نیست';
 
@@ -489,11 +617,191 @@ function displayResults(summary, fullText, segments = null) {
     window.currentSrtContent = simpleSrt;
   }
 
+  // Store original SRT for translation
+  window.originalSrtContent = window.currentSrtContent;
+  window.originalSrtSegments = segments;
+  window.originalSrtLanguage = (options && options.originalLanguage) || 'en';
+  window.availableLanguages = (options && options.availableLanguages) || [];
+  
+  // Update language select if YouTube subtitles available
+  if (options && options.isYouTubeSubtitle && options.availableLanguages && options.availableLanguages.length > 0) {
+    // Add available languages to select
+    const currentOptions = Array.from(srtLanguageSelect.options);
+    const existingValues = currentOptions.map(opt => opt.value);
+    
+    options.availableLanguages.forEach(lang => {
+      if (!existingValues.includes(lang)) {
+        const option = document.createElement('option');
+        option.value = lang;
+        option.textContent = getLanguageName(lang);
+        srtLanguageSelect.appendChild(option);
+      }
+    });
+  }
+  
   // Show result section
   resultSection.style.display = 'block';
   
   // Switch to fulltext tab (first tab)
   switchTab('fulltext');
+}
+
+// Get language name from code
+function getLanguageName(code) {
+  const names = {
+    'fa': 'فارسی',
+    'en': 'English',
+    'ar': 'العربية',
+    'es': 'Español',
+    'fr': 'Français',
+    'de': 'Deutsch',
+    'it': 'Italiano',
+    'ru': 'Русский',
+    'tr': 'Türkçe',
+    'zh': '中文',
+    'ja': '日本語',
+    'ko': '한국어'
+  };
+  return names[code] || code;
+}
+
+// Handle SRT translation
+async function handleTranslateSRT() {
+  const targetLanguage = srtLanguageSelect.value;
+  
+  if (targetLanguage === 'original') {
+    // Restore original SRT
+    if (window.originalSrtContent) {
+      srtPreview.textContent = window.originalSrtContent;
+      window.currentSrtContent = window.originalSrtContent;
+    }
+    return;
+  }
+  
+  const srtContent = window.originalSrtContent || window.currentSrtContent;
+  if (!srtContent) {
+    alert('فایل SRT در دسترس نیست');
+    return;
+  }
+  
+  // Show loading state
+  translateSrtBtn.disabled = true;
+  translateSrtBtn.textContent = '⏳ در حال ترجمه...';
+  
+  try {
+    console.log('TRANSLATE_SRT: Translating to', targetLanguage);
+    
+    const response = await fetch(`${API_BASE_URL}/api/translate-srt`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        srtContent: srtContent,
+        targetLanguage: targetLanguage,
+        sourceLanguage: window.originalSrtLanguage || 'en'
+      }),
+      signal: AbortSignal.timeout(300000) // 5 minutes timeout
+    });
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.details || error.message || `ترجمه ناموفق بود (${response.status})`);
+    }
+    
+    const result = await response.json();
+    console.log('TRANSLATE_SRT: Success, translated segments:', result.segmentCount);
+    
+    // Update preview and current content
+    srtPreview.textContent = result.srtContent;
+    window.currentSrtContent = result.srtContent;
+    
+  } catch (error) {
+    console.error('TRANSLATE_SRT: Error:', error);
+    alert(`خطا در ترجمه: ${error.message}`);
+  } finally {
+    translateSrtBtn.disabled = false;
+    translateSrtBtn.textContent = '🔄 ترجمه';
+  }
+}
+
+// Get language name from code
+function getLanguageName(code) {
+  const names = {
+    'fa': 'فارسی',
+    'en': 'English',
+    'ar': 'العربية',
+    'es': 'Español',
+    'fr': 'Français',
+    'de': 'Deutsch',
+    'it': 'Italiano',
+    'ru': 'Русский',
+    'tr': 'Türkçe',
+    'zh': '中文',
+    'ja': '日本語',
+    'ko': '한국어'
+  };
+  return names[code] || code;
+}
+
+// Handle SRT translation
+async function handleTranslateSRT() {
+  const targetLanguage = srtLanguageSelect.value;
+  
+  if (targetLanguage === 'original') {
+    // Restore original SRT
+    if (window.originalSrtContent) {
+      srtPreview.textContent = window.originalSrtContent;
+      window.currentSrtContent = window.originalSrtContent;
+    }
+    return;
+  }
+  
+  const srtContent = window.originalSrtContent || window.currentSrtContent;
+  if (!srtContent) {
+    alert('فایل SRT در دسترس نیست');
+    return;
+  }
+  
+  // Show loading state
+  translateSrtBtn.disabled = true;
+  translateSrtBtn.textContent = '⏳ در حال ترجمه...';
+  
+  try {
+    console.log('TRANSLATE_SRT: Translating to', targetLanguage);
+    
+    const response = await fetch(`${API_BASE_URL}/api/translate-srt`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        srtContent: srtContent,
+        targetLanguage: targetLanguage,
+        sourceLanguage: window.originalSrtLanguage || 'en'
+      }),
+      signal: AbortSignal.timeout(300000) // 5 minutes timeout
+    });
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.details || error.message || `ترجمه ناموفق بود (${response.status})`);
+    }
+    
+    const result = await response.json();
+    console.log('TRANSLATE_SRT: Success, translated segments:', result.segmentCount);
+    
+    // Update preview and current content
+    srtPreview.textContent = result.srtContent;
+    window.currentSrtContent = result.srtContent;
+    
+  } catch (error) {
+    console.error('TRANSLATE_SRT: Error:', error);
+    alert(`خطا در ترجمه: ${error.message}`);
+  } finally {
+    translateSrtBtn.disabled = false;
+    translateSrtBtn.textContent = '🔄 ترجمه';
+  }
 }
 
 // Tab Management
@@ -622,23 +930,116 @@ function loadHistory() {
     
     if (history.length === 0) {
       historyList.innerHTML = '<div class="empty-state">تاریخچه‌ای وجود ندارد</div>';
+      historyControls.style.display = 'none';
       return;
     }
 
+    const isDeleteMode = historyControls.style.display !== 'none';
+    
     historyList.innerHTML = history.map(item => `
       <div class="history-item" data-id="${item.id}">
-        <div class="history-item-title">${item.title}</div>
-        <div class="history-item-date">${item.date}</div>
+        ${isDeleteMode ? `<input type="checkbox" class="history-checkbox" data-id="${item.id}">` : ''}
+        <div class="history-item-content" ${!isDeleteMode ? 'style="cursor: pointer;"' : ''}>
+          <div class="history-item-title">${item.title}</div>
+          <div class="history-item-date">${item.date}</div>
+        </div>
       </div>
     `).join('');
 
     // Add click listeners
     document.querySelectorAll('.history-item').forEach(item => {
-      item.addEventListener('click', () => {
-        const id = parseInt(item.dataset.id);
-        loadHistoryItem(id, history);
+      const content = item.querySelector('.history-item-content');
+      if (content && !isDeleteMode) {
+        content.addEventListener('click', () => {
+          const id = parseInt(item.dataset.id);
+          loadHistoryItem(id, history);
+        });
+      }
+    });
+    
+    // Add checkbox change listeners
+    if (isDeleteMode) {
+      document.querySelectorAll('.history-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', updateDeleteButtonState);
+      });
+    }
+    
+    updateDeleteButtonState();
+  });
+}
+
+// Toggle delete mode
+function toggleDeleteMode() {
+  const isVisible = historyControls.style.display !== 'none';
+  historyControls.style.display = isVisible ? 'none' : 'flex';
+  
+  if (!isVisible) {
+    // Enter delete mode
+    selectAllHistory.checked = false;
+    deleteSelectedBtn.disabled = true;
+  }
+  
+  loadHistory(); // Reload to show/hide checkboxes
+}
+
+// Handle select all
+function handleSelectAll() {
+  const checkboxes = document.querySelectorAll('.history-checkbox');
+  checkboxes.forEach(checkbox => {
+    checkbox.checked = selectAllHistory.checked;
+  });
+  updateDeleteButtonState();
+}
+
+// Update delete button state
+function updateDeleteButtonState() {
+  const checkboxes = document.querySelectorAll('.history-checkbox:checked');
+  deleteSelectedBtn.disabled = checkboxes.length === 0;
+}
+
+// Handle delete selected
+function handleDeleteSelected() {
+  const checkboxes = document.querySelectorAll('.history-checkbox:checked');
+  if (checkboxes.length === 0) return;
+  
+  const idsToDelete = Array.from(checkboxes).map(cb => parseInt(cb.dataset.id));
+  
+  if (confirm(`آیا مطمئن هستید که می‌خواهید ${idsToDelete.length} مورد را حذف کنید؟`)) {
+    chrome.storage.local.get(['history'], (result) => {
+      const history = result.history || [];
+      const filteredHistory = history.filter(item => !idsToDelete.includes(item.id));
+      
+      chrome.storage.local.set({ history: filteredHistory }, () => {
+        loadHistory();
+        if (filteredHistory.length === 0) {
+          toggleDeleteMode(); // Exit delete mode if no items left
+        }
       });
     });
+  }
+}
+
+// Handle save history (export to file)
+function handleSaveHistory() {
+  chrome.storage.local.get(['history'], (result) => {
+    const history = result.history || [];
+    
+    if (history.length === 0) {
+      alert('تاریخچه‌ای برای ذخیره وجود ندارد');
+      return;
+    }
+    
+    // Convert history to JSON
+    const historyJson = JSON.stringify(history, null, 2);
+    const blob = new Blob([historyJson], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cutup_history_${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   });
 }
 

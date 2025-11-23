@@ -85,7 +85,7 @@ app.get('/health', (req, res) => {
 });
 
 // Import and use API routes
-let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler;
+let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler;
 
 async function loadRoutes() {
   try {
@@ -104,6 +104,10 @@ async function loadRoutes() {
     // YouTube endpoint
     const youtubeModule = await import('./api/youtube.js');
     youtubeHandler = youtubeModule.default;
+    
+    // Translate SRT endpoint
+    const translateSrtModule = await import('./api/translate-srt.js');
+    translateSrtHandler = translateSrtModule.default;
     
     console.log('All routes loaded successfully');
   } catch (err) {
@@ -141,6 +145,13 @@ app.post('/api/youtube', async (req, res) => {
   return youtubeHandler(req, res);
 });
 
+app.post('/api/translate-srt', async (req, res) => {
+  if (!translateSrtHandler) {
+    return res.status(500).json({ error: 'Translate SRT handler not loaded' });
+  }
+  return translateSrtHandler(req, res);
+});
+
 // Error handler
 app.use((err, req, res, next) => {
   console.error('Error:', err);
@@ -167,6 +178,7 @@ loadRoutes().then(() => {
     console.log(`   POST /api/transcribe`);
     console.log(`   POST /api/summarize`);
     console.log(`   POST /api/youtube`);
+    console.log(`   POST /api/translate-srt`);
     console.log(`   GET  /health`);
   });
   

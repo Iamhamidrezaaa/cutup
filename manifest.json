@@ -5,7 +5,8 @@
   "description": "تبدیل ویدئو و صوت به متن و خلاصه هوشمند با AI",
   "permissions": [
     "storage",
-    "activeTab"
+    "activeTab",
+    "clipboardRead"
   ],
   "host_permissions": [
     "https://www.youtube.com/*",

@@ -76,6 +76,25 @@
           </div>
           <div class="tab-content" id="srt-tab">
             <div class="srt-container" id="srtContainer">
+              <div class="srt-controls">
+                <label for="srtLanguage" class="srt-language-label">زبان زیرنویس:</label>
+                <select id="srtLanguage" class="srt-language-select">
+                  <option value="original">زبان اصلی</option>
+                  <option value="fa">فارسی</option>
+                  <option value="en">English</option>
+                  <option value="ar">العربية</option>
+                  <option value="es">Español</option>
+                  <option value="fr">Français</option>
+                  <option value="de">Deutsch</option>
+                  <option value="it">Italiano</option>
+                  <option value="ru">Русский</option>
+                  <option value="tr">Türkçe</option>
+                  <option value="zh">中文</option>
+                  <option value="ja">日本語</option>
+                  <option value="ko">한국어</option>
+                </select>
+                <button class="translate-srt-btn" id="translateSrtBtn">🔄 ترجمه</button>
+              </div>
               <button class="download-btn" id="downloadSrtBtn">📥 دانلود فایل SRT</button>
               <div class="srt-preview" id="srtPreview"></div>
             </div>
@@ -84,7 +103,20 @@
       </div>
 
       <div class="history-section" id="historySection">
-        <h3>تاریخچه</h3>
+        <div class="history-header">
+          <h3>تاریخچه</h3>
+          <div class="history-actions">
+            <button class="history-action-btn" id="saveHistoryBtn" title="ذخیره">💾</button>
+            <button class="history-action-btn" id="deleteHistoryBtn" title="حذف">🗑️</button>
+          </div>
+        </div>
+        <div class="history-controls" id="historyControls" style="display: none;">
+          <label class="select-all-checkbox">
+            <input type="checkbox" id="selectAllHistory">
+            <span>انتخاب همه</span>
+          </label>
+          <button class="delete-selected-btn" id="deleteSelectedBtn" disabled>پاک کردن</button>
+        </div>
         <div class="history-list" id="historyList"></div>
       </div>
     </main>

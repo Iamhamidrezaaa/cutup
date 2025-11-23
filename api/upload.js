@@ -189,13 +189,45 @@ export default async function handler(req, res) {
     
     let transcript = await whisperResponse.json();
     
-    // If language is Persian, retry with prompt for better accuracy
+    // Get detected language from Whisper
     const detectedLanguage = transcript.language || 'unknown';
     console.log('UPLOAD: Detected language:', detectedLanguage);
+    console.log('UPLOAD: Transcript text preview:', transcript.text?.substring(0, 100));
     
-    // If Persian detected, retry with prompt for better accuracy
-    if (detectedLanguage === 'fa' || detectedLanguage === 'per' || detectedLanguage === 'persian') {
-      console.log('UPLOAD: Persian detected, retrying with prompt for better accuracy...');
+    // Additional check: verify if the text actually contains Persian characters
+    // This helps avoid false positives where Whisper misdetects language
+    const textContainsPersian = /[\u0600-\u06FF]/.test(transcript.text || '');
+    const textContainsEnglish = /[a-zA-Z]/.test(transcript.text || '');
+    
+    // Count characters to determine dominant language
+    const persianCharCount = (transcript.text || '').match(/[\u0600-\u06FF]/g)?.length || 0;
+    const englishCharCount = (transcript.text || '').match(/[a-zA-Z]/g)?.length || 0;
+    const totalChars = (transcript.text || '').length;
+    
+    console.log('UPLOAD: Text analysis - Persian chars:', persianCharCount, 'English chars:', englishCharCount, 'Total:', totalChars);
+    
+        // Determine if text is actually Persian:
+        // 1. Language is detected as Persian (fa, per, persian)
+        // 2. AND text contains Persian characters
+        // 3. AND Persian characters are more than 30% of the text (to avoid false positives)
+        // 4. AND English characters are less than 50% of the text
+        // 5. AND if English ratio is high (>60%), definitely not Persian
+        const persianRatio = totalChars > 0 ? persianCharCount / totalChars : 0;
+        const englishRatio = totalChars > 0 ? englishCharCount / totalChars : 0;
+        
+        // More strict check: if English is dominant, definitely not Persian
+        const isActuallyPersian = (detectedLanguage === 'fa' || detectedLanguage === 'per' || detectedLanguage === 'persian') 
+                              && textContainsPersian 
+                              && persianRatio > 0.3  // At least 30% Persian characters
+                              && englishRatio < 0.5  // Less than 50% English characters
+                              && !(englishRatio > 0.6 && persianRatio < 0.2);  // If English is >60% and Persian <20%, definitely not Persian
+    
+    console.log('UPLOAD: Language ratios - Persian:', persianRatio.toFixed(2), 'English:', englishRatio.toFixed(2), 'Is Persian:', isActuallyPersian);
+    
+    // If language is detected as English or other non-Persian, use it as-is
+    // Don't retry with Persian prompt
+    if (isActuallyPersian) {
+      console.log('UPLOAD: Confirmed Persian, retrying with prompt for better accuracy...');
       const formDataWithPrompt = new FormDataLib();
       formDataWithPrompt.append('file', audioBuffer, {
         filename: `audio.${extension}`,
@@ -223,10 +255,25 @@ export default async function handler(req, res) {
       });
       
       if (whisperResponseWithPrompt.ok) {
-        transcript = await whisperResponseWithPrompt.json();
-        console.log('UPLOAD: Retry with prompt successful');
+        const retryTranscript = await whisperResponseWithPrompt.json();
+        // Verify the retry actually improved (contains Persian chars)
+        if (/[\u0600-\u06FF]/.test(retryTranscript.text || '')) {
+          transcript = retryTranscript;
+          console.log('UPLOAD: Retry with prompt successful');
+        } else {
+          console.warn('UPLOAD: Retry with prompt returned non-Persian text, using original transcript');
+        }
       } else {
         console.warn('UPLOAD: Retry with prompt failed, using original transcript');
+      }
+    } else {
+      console.log('UPLOAD: Not Persian or misdetected, using original transcript without retry');
+      // If language was misdetected as Persian but text is actually English, keep original
+      // If language is English or other, use it as-is
+      if (detectedLanguage === 'en' || detectedLanguage === 'english') {
+        console.log('UPLOAD: English detected, using transcript as-is');
+      } else {
+        console.log(`UPLOAD: Language ${detectedLanguage} detected, using transcript as-is`);
       }
     }
     
@@ -309,7 +356,7 @@ export default async function handler(req, res) {
     
     const responseData = {
       text: correctedText,
-      language: transcript.language || 'fa',
+      language: transcript.language || 'unknown',
       segments: validSegments || []
     };
     
