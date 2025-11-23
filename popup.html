@@ -64,6 +64,27 @@
         <div class="progress-details" id="progressDetails"></div>
       </div>
 
+      <div class="history-section" id="historySection">
+        <div class="history-header">
+          <h3>تاریخچه</h3>
+          <div class="history-actions">
+            <button class="history-action-btn" id="saveHistoryBtn" title="ذخیره">💾</button>
+            <button class="history-action-btn" id="deleteHistoryBtn" title="حذف">🗑️</button>
+          </div>
+        </div>
+        <div class="history-controls" id="historyControls" style="display: none;">
+          <label class="select-all-checkbox">
+            <input type="checkbox" id="selectAllHistory">
+            <span>انتخاب همه</span>
+          </label>
+          <div class="history-controls-actions">
+            <button class="save-selected-btn" id="saveSelectedBtn" disabled style="display: none;">ذخیره</button>
+            <button class="delete-selected-btn" id="deleteSelectedBtn" disabled style="display: none;">پاک کردن</button>
+          </div>
+        </div>
+        <div class="history-list" id="historyList"></div>
+      </div>
+
       <div class="result-section" id="resultSection" style="display: none;">
         <div class="result-header">
           <h2>نتیجه</h2>
@@ -111,27 +132,6 @@
             </div>
           </div>
         </div>
-      </div>
-
-      <div class="history-section" id="historySection">
-        <div class="history-header">
-          <h3>تاریخچه</h3>
-          <div class="history-actions">
-            <button class="history-action-btn" id="saveHistoryBtn" title="ذخیره">💾</button>
-            <button class="history-action-btn" id="deleteHistoryBtn" title="حذف">🗑️</button>
-          </div>
-        </div>
-        <div class="history-controls" id="historyControls" style="display: none;">
-          <label class="select-all-checkbox">
-            <input type="checkbox" id="selectAllHistory">
-            <span>انتخاب همه</span>
-          </label>
-          <div class="history-controls-actions">
-            <button class="save-selected-btn" id="saveSelectedBtn" disabled style="display: none;">ذخیره</button>
-            <button class="delete-selected-btn" id="deleteSelectedBtn" disabled style="display: none;">پاک کردن</button>
-          </div>
-        </div>
-        <div class="history-list" id="historyList"></div>
       </div>
     </main>
   </div>

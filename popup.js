@@ -77,6 +77,7 @@ function setupEventListeners() {
   deleteHistoryBtn.addEventListener('click', toggleDeleteMode);
   selectAllHistory.addEventListener('change', handleSelectAll);
   deleteSelectedBtn.addEventListener('click', handleDeleteSelected);
+  saveSelectedBtn.addEventListener('click', handleSaveSelected);
   
   // Tab switching
   tabButtons.forEach(btn => {
@@ -1173,6 +1174,11 @@ function displayResults(summary, fullText, segments = null, options = {}) {
   
   // Switch to fulltext tab (first tab)
   switchTab('fulltext');
+  
+  // Scroll result section into view (below history)
+  setTimeout(() => {
+    resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 100);
 }
 
 // Get language name from code
@@ -1472,6 +1478,8 @@ function saveToHistory(title, summary, fullText, segments = null) {
 
 // Track expanded history items
 const expandedHistoryIds = new Set();
+// Track which history item is currently loaded in result section
+let selectedHistoryId = null;
 
 function loadHistory() {
   chrome.storage.local.get(['history'], (result) => {
@@ -1725,8 +1733,13 @@ function handleDeleteSelected() {
 
 // Handle save selected history items as ZIP
 async function handleSaveSelected() {
+  console.log('SAVE: handleSaveSelected called');
   const checkboxes = document.querySelectorAll('.history-checkbox:checked');
-  if (checkboxes.length === 0) return;
+  console.log('SAVE: Checked checkboxes:', checkboxes.length);
+  if (checkboxes.length === 0) {
+    alert('لطفاً حداقل یک تاریخچه را انتخاب کنید');
+    return;
+  }
   
   const idsToSave = Array.from(checkboxes).map(cb => parseInt(cb.dataset.id));
   
@@ -1895,9 +1908,21 @@ function downloadHistorySrt(item) {
 function loadHistoryItem(id, history) {
   const item = history.find(h => h.id === id);
   if (item) {
+    // If clicking on the same item, collapse result section
+    if (selectedHistoryId === id && resultSection.style.display !== 'none') {
+      resultSection.style.display = 'none';
+      selectedHistoryId = null;
+      return;
+    }
+    
     // Pass empty options object to maintain compatibility
     displayResults(item.summary, item.fullText, item.segments || null, {});
-    resultSection.scrollIntoView({ behavior: 'smooth' });
+    selectedHistoryId = id;
+    
+    // Scroll result section into view (below history)
+    setTimeout(() => {
+      resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
   }
 }
 
