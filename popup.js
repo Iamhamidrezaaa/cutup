@@ -197,8 +197,9 @@ async function handleSummarize() {
         originalLanguage: transcription.language
       });
 
-      // Save to history
-      saveToHistory(url, summary, transcription.text, transcription.segments);
+      // Save to history with video title if available, otherwise use URL
+      const historyTitle = youtubeResult.title || url;
+      saveToHistory(historyTitle, summary, transcription.text, transcription.segments);
     } else if (file) {
       // Handle file upload - send directly to upload endpoint which transcribes
       // This avoids the 4.5MB limit by processing in the upload endpoint
@@ -297,14 +298,15 @@ async function extractYouTubeAudio(url) {
     // Return audioUrl as string (data URL) and language hint
     // Support both old format (just string) and new format (object)
     if (typeof result === 'string') {
-      return { audioUrl: result, language: null, subtitles: null, subtitleLanguage: null, availableLanguages: [] };
+      return { audioUrl: result, language: null, subtitles: null, subtitleLanguage: null, availableLanguages: [], title: null };
     }
     return {
       audioUrl: result.audioUrl,
       language: result.language || null,
       subtitles: result.subtitles || null,
       subtitleLanguage: result.subtitleLanguage || null,
-      availableLanguages: result.availableLanguages || []
+      availableLanguages: result.availableLanguages || [],
+      title: result.title || null
     };
     
   } catch (error) {
@@ -327,7 +329,7 @@ async function uploadAudioFile(file) {
 }
 
 // API Calls
-async function transcribeAudio(audioUrlOrVideoId) {
+async function transcribeAudio(audioUrlOrVideoId, languageHint = null) {
   try {
     let response;
     
@@ -348,7 +350,7 @@ async function transcribeAudio(audioUrlOrVideoId) {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ audioUrl: fileDataUrl }),
+        body: JSON.stringify({ audioUrl: fileDataUrl, languageHint }),
         signal: AbortSignal.timeout(600000) // 10 minutes timeout for larger files
       });
     } else {
@@ -936,9 +938,11 @@ function downloadSrtFile() {
 function saveToHistory(title, summary, fullText, segments = null) {
   chrome.storage.local.get(['history'], (result) => {
     const history = result.history || [];
+    // Truncate title to 80 characters for better display
+    const truncatedTitle = title.length > 80 ? title.substring(0, 77) + '...' : title;
     const newItem = {
       id: Date.now(),
-      title: title.substring(0, 50),
+      title: truncatedTitle,
       date: new Date().toLocaleDateString('fa-IR'),
       summary,
       fullText,
