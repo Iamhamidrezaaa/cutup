@@ -27,6 +27,10 @@ const deleteHistoryBtn = document.getElementById('deleteHistoryBtn');
 const historyControls = document.getElementById('historyControls');
 const selectAllHistory = document.getElementById('selectAllHistory');
 const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+const progressSection = document.getElementById('progressSection');
+const progressBar = document.getElementById('progressBar');
+const progressText = document.getElementById('progressText');
+const progressDetails = document.getElementById('progressDetails');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -155,6 +159,8 @@ async function handleSummarize() {
   summarizeBtn.querySelector('.btn-text').textContent = 'در حال پردازش...';
   summarizeBtn.querySelector('.btn-loader').style.display = 'inline-block';
   resultSection.style.display = 'none';
+  progressSection.style.display = 'block';
+  updateProgress(0, 'در حال آماده‌سازی...', '');
 
   try {
     let audioUrl = null;
@@ -184,7 +190,9 @@ async function handleSummarize() {
       } else {
         // Fallback to audio transcription
         console.log('YOUTUBE: No subtitles available, transcribing audio');
-        transcription = await transcribeAudio(audioUrl, youtubeLanguage);
+        transcription = await transcribeAudio(audioUrl, youtubeLanguage, (progress) => {
+          updateProgress(30 + (progress * 0.5), 'در حال تبدیل صوت به متن...', `پیشرفت: ${Math.round(progress)}%`);
+        });
       }
       
       // Summarize text with detected language
@@ -200,19 +208,34 @@ async function handleSummarize() {
       // Save to history with video title if available, otherwise use URL
       const historyTitle = youtubeResult.title || url;
       saveToHistory(historyTitle, summary, transcription.text, transcription.segments);
+      updateProgress(100, 'تمام!', '');
+      setTimeout(() => {
+        progressSection.style.display = 'none';
+      }, 1000);
     } else if (file) {
       // Handle file upload - send directly to upload endpoint which transcribes
       // This avoids the 4.5MB limit by processing in the upload endpoint
-      const transcription = await transcribeAudio(file);
+      const fileSizeMB = (file.size / 1024 / 1024).toFixed(2);
+      updateProgress(10, 'در حال آپلود فایل...', `حجم فایل: ${fileSizeMB} MB`);
+      const transcription = await transcribeAudio(file, null, (progress) => {
+        updateProgress(10 + (progress * 0.7), 'در حال تبدیل صوت به متن...', `پیشرفت: ${Math.round(progress)}%`);
+      });
+      updateProgress(80, 'تبدیل صوت به متن انجام شد', '');
       
       // Summarize text with detected language
+      updateProgress(85, 'در حال خلاصه‌سازی متن...', '');
       const summary = await summarizeText(transcription.text, transcription.language);
+      updateProgress(95, 'خلاصه‌سازی انجام شد', '');
 
       // Display results
       displayResults(summary, transcription.text, transcription.segments);
 
       // Save to history
       saveToHistory(file.name, summary, transcription.text, transcription.segments);
+      updateProgress(100, 'تمام!', '');
+      setTimeout(() => {
+        progressSection.style.display = 'none';
+      }, 1000);
     } else {
       throw new Error('لینک یوتیوب معتبر نیست');
     }
@@ -220,7 +243,18 @@ async function handleSummarize() {
 
   } catch (error) {
     console.error('Error:', error);
-    alert(`خطا: ${error.message}`);
+    // Better error message handling
+    let errorMessage = 'خطای نامشخص رخ داد';
+    if (error && typeof error === 'object') {
+      errorMessage = error.message || error.details || error.error || (error.toString ? error.toString() : JSON.stringify(error));
+    } else if (error) {
+      errorMessage = String(error);
+    }
+    updateProgress(0, 'خطا رخ داد', errorMessage);
+    setTimeout(() => {
+      progressSection.style.display = 'none';
+      alert(`خطا: ${errorMessage}`);
+    }, 2000);
   } finally {
     // Reset button state
     summarizeBtn.disabled = false;
@@ -328,8 +362,21 @@ async function uploadAudioFile(file) {
   return file;
 }
 
+// Progress Management
+function updateProgress(percent, text, details) {
+  if (progressBar) {
+    progressBar.style.width = `${Math.min(100, Math.max(0, percent))}%`;
+  }
+  if (progressText) {
+    progressText.textContent = text;
+  }
+  if (progressDetails) {
+    progressDetails.textContent = details;
+  }
+}
+
 // API Calls
-async function transcribeAudio(audioUrlOrVideoId, languageHint = null) {
+async function transcribeAudio(audioUrlOrVideoId, languageHint = null, onProgress = null) {
   try {
     let response;
     
@@ -351,8 +398,16 @@ async function transcribeAudio(audioUrlOrVideoId, languageHint = null) {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ audioUrl: fileDataUrl, languageHint }),
-        signal: AbortSignal.timeout(600000) // 10 minutes timeout for larger files
+        signal: AbortSignal.timeout(900000) // 15 minutes timeout for larger files (14 min video needs more time)
       });
+      
+      // Simulate progress for file upload
+      if (onProgress) {
+        onProgress(10);
+        setTimeout(() => onProgress(30), 1000);
+        setTimeout(() => onProgress(50), 3000);
+        setTimeout(() => onProgress(70), 5000);
+      }
     } else {
       // Handle JSON request (audioUrl or videoId) - send to transcribe endpoint
       console.log('TRANSCRIBE: Sending request to', `${API_BASE_URL}/api/transcribe`);
@@ -364,14 +419,32 @@ async function transcribeAudio(audioUrlOrVideoId, languageHint = null) {
       
       console.log('TRANSCRIBE: Body size:', JSON.stringify(body).length, 'bytes');
       
+      // Simulate progress for transcription
+      if (onProgress) {
+        onProgress(10);
+        const progressInterval = setInterval(() => {
+          const current = parseInt(progressBar?.style.width) || 10;
+          if (current < 80) {
+            onProgress(Math.min(current + 5, 80));
+          }
+        }, 5000); // Update every 5 seconds
+        
+        // Clear interval when done
+        setTimeout(() => clearInterval(progressInterval), 900000);
+      }
+      
       response = await fetch(`${API_BASE_URL}/api/transcribe`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(600000) // 10 minutes timeout for larger files
+        signal: AbortSignal.timeout(900000) // 15 minutes timeout for larger files (14 min video needs more time)
       });
+      
+      if (onProgress) {
+        onProgress(90);
+      }
     }
 
     console.log('TRANSCRIBE: Response status:', response.status);
