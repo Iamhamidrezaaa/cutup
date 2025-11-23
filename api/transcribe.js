@@ -249,11 +249,11 @@ export default async function handler(req, res) {
           
           // Use node-fetch with timeout
           const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            ...formHeaders
-          },
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              ...formHeaders
+            },
             body: formData,
             timeout: 300000 // 5 minutes timeout for larger files
           });
@@ -393,7 +393,7 @@ export default async function handler(req, res) {
           
           break; // Success, exit retry loop
         
-      } catch (retryError) {
+        } catch (retryError) {
         lastError = retryError;
         const isConnectionError = 
           retryError?.code === 'ECONNRESET' || 
