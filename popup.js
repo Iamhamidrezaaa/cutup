@@ -531,6 +531,27 @@ function vttToSRT(vttContent) {
   // Remove VTT header and WEBVTT line
   let srt = vttContent.replace(/WEBVTT[\s\S]*?\n\n/, '');
   
+  // Process each line to clean up HTML tags and inline timestamps
+  const lines = srt.split('\n');
+  const cleanedLines = lines.map(line => {
+    // Skip timestamp lines (they start with time format)
+    if (line.match(/^\d{2}:\d{2}:\d{2}[,\.]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[,\.]\d{3}/)) {
+      return line;
+    }
+    
+    // For text lines, remove HTML tags and inline timestamps
+    let cleaned = line;
+    // Remove inline timestamps like <00:00:02,000> or <00:00:02.000>
+    cleaned = cleaned.replace(/<\d{2}:\d{2}:\d{2}[,\.]\d{3}>/g, '');
+    // Remove HTML tags like <c>, </c>, <i>, </i>, <b>, </b>, etc.
+    cleaned = cleaned.replace(/<[^>]+>/g, '');
+    // Normalize whitespace
+    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+    return cleaned;
+  });
+  
+  srt = cleanedLines.join('\n');
+  
   // Replace VTT timestamp format with SRT format
   srt = srt.replace(/(\d{2}):(\d{2}):(\d{2})\.(\d{3})/g, '$1:$2:$3,$4');
   
@@ -563,7 +584,12 @@ function parseSRTToSegments(srtContent) {
     
     const startTime = parseSRTTimeToSeconds(timeMatch[1], timeMatch[2], timeMatch[3], timeMatch[4]);
     const endTime = parseSRTTimeToSeconds(timeMatch[5], timeMatch[6], timeMatch[7], timeMatch[8]);
-    const text = textLines.join(' ').trim();
+    let text = textLines.join(' ').trim();
+    
+    // Clean up text: remove any remaining HTML tags and inline timestamps
+    text = text.replace(/<[^>]+>/g, ''); // Remove HTML tags
+    text = text.replace(/<\d{2}:\d{2}:\d{2}[,\.]\d{3}>/g, ''); // Remove inline timestamps
+    text = text.replace(/\s+/g, ' ').trim(); // Normalize whitespace
     
     if (text.length > 0) {
       segments.push({ start: startTime, end: endTime, text });
