@@ -17,7 +17,7 @@
     "http://localhost:3001/*"
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self' https://cdn.jsdelivr.net; object-src 'self'; connect-src 'self' https://*.vercel.app https://api.openai.com http://195.248.240.108:3001 http://localhost:3001 https://www.youtube.com https://youtube.com;"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://*.vercel.app https://api.openai.com http://195.248.240.108:3001 http://localhost:3001 https://www.youtube.com https://youtube.com;"
   },
   "action": {
     "default_popup": "popup.html",
