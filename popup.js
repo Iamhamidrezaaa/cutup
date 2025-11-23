@@ -98,9 +98,9 @@ async function pasteFromClipboard() {
   try {
     // Try using Clipboard API first
     if (navigator.clipboard && navigator.clipboard.readText) {
-      const text = await navigator.clipboard.readText();
-      youtubeUrlInput.value = text;
-      checkInput();
+    const text = await navigator.clipboard.readText();
+    youtubeUrlInput.value = text;
+    checkInput();
       return;
     }
     
@@ -349,12 +349,12 @@ async function handleSummarize() {
             }
           }
         }, 1000); // Update every second for smoother progress
-      } else {
+    } else {
         // If no duration, use time-based estimation
         progressInterval = setInterval(() => {
           if (targetProgress < 75) {
             updateProgress(targetProgress + 1, 'در حال تبدیل صوت به متن...', '');
-          }
+    }
         }, 2000);
       }
       
@@ -381,10 +381,10 @@ async function handleSummarize() {
       clearInterval(summaryProgressInterval);
       updateProgress(95, 'خلاصه‌سازی انجام شد', '');
 
-      // Display results
+    // Display results
       displayResults(summary, transcription.text, transcription.segments);
 
-      // Save to history
+    // Save to history
       saveToHistory(file.name, summary, transcription.text, transcription.segments);
       
       // Smooth final progress to 100%
@@ -703,11 +703,11 @@ async function transcribeAudio(audioUrlOrVideoId, languageHint = null, onProgres
     if (audioUrlOrVideoId instanceof File) {
       // Convert file to data URL first (temporary workaround until upload endpoint is redeployed)
       const fileDataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
+    const reader = new FileReader();
         reader.onload = (e) => resolve(e.target.result);
-        reader.onerror = reject;
+    reader.onerror = reject;
         reader.readAsDataURL(audioUrlOrVideoId);
-      });
+  });
       
       console.log('TRANSCRIBE: Sending file to transcribe endpoint, size:', audioUrlOrVideoId.size, 'bytes');
       
@@ -732,12 +732,12 @@ async function transcribeAudio(audioUrlOrVideoId, languageHint = null, onProgres
       console.log('TRANSCRIBE: Sending request to', `${API_BASE_URL}/api/transcribe`);
       
       // Handle both audioUrl string and {videoId, url} object (for YouTube)
-      const body = typeof audioUrlOrVideoId === 'string' 
+  const body = typeof audioUrlOrVideoId === 'string' 
         ? { audioUrl: audioUrlOrVideoId, languageHint }
         : { videoId: audioUrlOrVideoId.videoId, languageHint };
-      
-      console.log('TRANSCRIBE: Body size:', JSON.stringify(body).length, 'bytes');
-      
+  
+  console.log('TRANSCRIBE: Body size:', JSON.stringify(body).length, 'bytes');
+  
       // Simulate progress for transcription
       if (onProgress) {
         onProgress(10);
@@ -753,13 +753,13 @@ async function transcribeAudio(audioUrlOrVideoId, languageHint = null, onProgres
       }
       
       response = await fetch(`${API_BASE_URL}/api/transcribe`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body),
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body),
         signal: AbortSignal.timeout(900000) // 15 minutes timeout for larger files (14 min video needs more time)
-      });
+    });
       
       if (onProgress) {
         onProgress(90);
@@ -1038,7 +1038,7 @@ function parseSRTToSegments(srtContent) {
       seenTexts.add(normalizedText);
     }
   }
-  
+
   // If we removed too many, use original segments but deduplicate by text similarity
   if (uniqueSegments.length < segments.length * 0.5) {
     // Use a smarter deduplication: keep segments that are significantly different
@@ -1168,7 +1168,7 @@ function displayResults(summary, fullText, segments = null, options = {}) {
       }
     });
   }
-  
+
   // Show result section
   resultSection.style.display = 'block';
   
@@ -1492,13 +1492,13 @@ function loadHistory() {
     const isDeleteMode = historyControls.dataset.mode === 'delete';
     const isSaveMode = historyControls.dataset.mode === 'save';
     const isSelectionMode = isDeleteMode || isSaveMode;
-    
+
     historyList.innerHTML = history.map(item => `
       <div class="history-item" data-id="${item.id}">
         ${isSelectionMode ? `<input type="checkbox" class="history-checkbox" data-id="${item.id}">` : ''}
         <div class="history-item-content" ${!isSelectionMode ? 'style="cursor: pointer;"' : ''}>
-          <div class="history-item-title">${item.title}</div>
-          <div class="history-item-date">${item.date}</div>
+        <div class="history-item-title">${item.title}</div>
+        <div class="history-item-date">${item.date}</div>
         </div>
       </div>
     `).join('');
@@ -1508,9 +1508,9 @@ function loadHistory() {
       const content = item.querySelector('.history-item-content');
       if (content && !isSelectionMode) {
         content.addEventListener('click', () => {
-          const id = parseInt(item.dataset.id);
-          loadHistoryItem(id, history);
-        });
+        const id = parseInt(item.dataset.id);
+        loadHistoryItem(id, history);
+      });
       }
     });
     
@@ -1520,8 +1520,8 @@ function loadHistory() {
         checkbox.addEventListener('change', () => {
           updateDeleteButtonState();
           updateSaveButtonState();
-        });
-      });
+    });
+  });
     }
     
     updateDeleteButtonState();
