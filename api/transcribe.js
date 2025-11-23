@@ -394,37 +394,38 @@ export default async function handler(req, res) {
           break; // Success, exit retry loop
         
         } catch (retryError) {
-        lastError = retryError;
-        const isConnectionError = 
-          retryError?.code === 'ECONNRESET' || 
-          retryError?.code === 'ETIMEDOUT' ||
-          retryError?.cause?.code === 'ECONNRESET' ||
-          retryError?.message?.includes('ECONNRESET') ||
-          retryError?.message?.includes('Connection error') ||
-          retryError?.message?.includes('timeout') ||
-          retryError?.message?.includes('aborted') ||
-          retryError?.name === 'AbortError' ||
-          retryError?.name === 'FetchError' ||
-          retryError?.type === 'system' ||
-          (retryError?.cause && retryError.cause.code === 'ECONNRESET');
-        
-        console.log(`TRANSCRIBE V4.0: Attempt ${attempt} failed:`, {
-          error: retryError?.message,
-          code: retryError?.code,
-          name: retryError?.name,
-          type: retryError?.type,
-          causeCode: retryError?.cause?.code,
-          isConnectionError
-        });
-        
-        if (isConnectionError && attempt < maxRetries) {
-          const waitTime = Math.min(attempt * 3000, 10000); // 3s, 6s, 9s, 10s, 10s
-          console.log(`TRANSCRIBE V4.0: Connection error detected, retrying in ${waitTime}ms...`);
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-          continue; // Retry
-        } else {
-          console.log(`TRANSCRIBE V4.0: Not retrying - isConnectionError: ${isConnectionError}, attempt: ${attempt}/${maxRetries}`);
-          throw retryError;
+          lastError = retryError;
+          const isConnectionError = 
+            retryError?.code === 'ECONNRESET' || 
+            retryError?.code === 'ETIMEDOUT' ||
+            retryError?.cause?.code === 'ECONNRESET' ||
+            retryError?.message?.includes('ECONNRESET') ||
+            retryError?.message?.includes('Connection error') ||
+            retryError?.message?.includes('timeout') ||
+            retryError?.message?.includes('aborted') ||
+            retryError?.name === 'AbortError' ||
+            retryError?.name === 'FetchError' ||
+            retryError?.type === 'system' ||
+            (retryError?.cause && retryError.cause.code === 'ECONNRESET');
+          
+          console.log(`TRANSCRIBE V4.0: Attempt ${attempt} failed:`, {
+            error: retryError?.message,
+            code: retryError?.code,
+            name: retryError?.name,
+            type: retryError?.type,
+            causeCode: retryError?.cause?.code,
+            isConnectionError
+          });
+          
+          if (isConnectionError && attempt < maxRetries) {
+            const waitTime = Math.min(attempt * 3000, 10000); // 3s, 6s, 9s, 10s, 10s
+            console.log(`TRANSCRIBE V4.0: Connection error detected, retrying in ${waitTime}ms...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            continue; // Retry
+          } else {
+            console.log(`TRANSCRIBE V4.0: Not retrying - isConnectionError: ${isConnectionError}, attempt: ${attempt}/${maxRetries}`);
+            throw retryError;
+          }
         }
       }
       
