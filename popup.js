@@ -446,6 +446,78 @@ function extractVideoId(url) {
   return null;
 }
 
+// Extract YouTube video title from page HTML (fallback method)
+async function extractYouTubeTitleFromPage(url) {
+  try {
+    console.log('YOUTUBE: Attempting to extract title from page:', url);
+    
+    // Use YouTube oEmbed API as a fallback
+    const videoId = extractVideoId(url);
+    if (!videoId) {
+      return null;
+    }
+    
+    const oEmbedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+    
+    try {
+      const response = await fetch(oEmbedUrl, {
+        signal: AbortSignal.timeout(10000) // 10 seconds timeout
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.title) {
+          console.log('YOUTUBE: Title extracted from oEmbed:', data.title);
+          return data.title;
+        }
+      }
+    } catch (oEmbedError) {
+      console.warn('YOUTUBE: oEmbed API failed, trying direct fetch:', oEmbedError);
+    }
+    
+    // Fallback: Try to fetch the page directly (may fail due to CORS)
+    try {
+      const pageResponse = await fetch(url, {
+        signal: AbortSignal.timeout(10000),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+      
+      if (pageResponse.ok) {
+        const html = await pageResponse.text();
+        // Try to extract title from various possible locations in HTML
+        const titlePatterns = [
+          /<meta\s+property="og:title"\s+content="([^"]+)"/i,
+          /<title>([^<]+)<\/title>/i,
+          /"title":"([^"]+)"/i,
+          /<h1[^>]*class="[^"]*watch-title[^"]*"[^>]*>([^<]+)<\/h1>/i
+        ];
+        
+        for (const pattern of titlePatterns) {
+          const match = html.match(pattern);
+          if (match && match[1]) {
+            const title = match[1].trim();
+            // Clean up title (remove - YouTube suffix if present)
+            const cleanTitle = title.replace(/\s*-\s*YouTube\s*$/i, '').trim();
+            if (cleanTitle.length > 0) {
+              console.log('YOUTUBE: Title extracted from HTML:', cleanTitle);
+              return cleanTitle;
+            }
+          }
+        }
+      }
+    } catch (fetchError) {
+      console.warn('YOUTUBE: Direct fetch failed (CORS or other):', fetchError);
+    }
+    
+    return null;
+  } catch (error) {
+    console.warn('YOUTUBE: Error extracting title from page:', error);
+    return null;
+  }
+}
+
 // Extract YouTube audio using backend API
 async function extractYouTubeAudio(url) {
   const videoId = extractVideoId(url);
@@ -454,6 +526,14 @@ async function extractYouTubeAudio(url) {
   }
   
   console.log('YOUTUBE: Extracting audio for video ID:', videoId);
+  
+  // Try to extract title from page first (as fallback)
+  let pageTitle = null;
+  try {
+    pageTitle = await extractYouTubeTitleFromPage(url);
+  } catch (titleError) {
+    console.warn('YOUTUBE: Could not extract title from page:', titleError);
+  }
   
   try {
     const response = await fetch(`${API_BASE_URL}/api/youtube`, {
@@ -488,10 +568,24 @@ async function extractYouTubeAudio(url) {
     console.log('YOUTUBE: Available languages:', result.availableLanguages);
     console.log('YOUTUBE: Video title from API:', result.title);
     
+    // Use page title as fallback if API didn't return title
+    const finalTitle = result.title || pageTitle;
+    if (finalTitle) {
+      console.log('YOUTUBE: Using title:', finalTitle);
+    }
+    
     // Return audioUrl as string (data URL) and language hint
     // Support both old format (just string) and new format (object)
     if (typeof result === 'string') {
-      return { audioUrl: result, language: null, subtitles: null, subtitleLanguage: null, availableLanguages: [], title: null };
+      return { 
+        audioUrl: result, 
+        language: null, 
+        subtitles: null, 
+        subtitleLanguage: null, 
+        availableLanguages: [], 
+        title: pageTitle || null,
+        duration: null
+      };
     }
     return {
       audioUrl: result.audioUrl,
@@ -499,7 +593,7 @@ async function extractYouTubeAudio(url) {
       subtitles: result.subtitles || null,
       subtitleLanguage: result.subtitleLanguage || null,
       availableLanguages: result.availableLanguages || [],
-      title: result.title || null,
+      title: finalTitle || null, // Use API title or page title
       duration: result.duration || null
     };
     
@@ -536,7 +630,7 @@ function animateProgress() {
   if (currentProgress < targetProgress) {
     // Smooth increment (easing function for natural feel)
     const diff = targetProgress - currentProgress;
-    const increment = Math.max(0.5, diff * 0.1); // 10% of remaining distance per frame
+    const increment = Math.max(0.3, diff * 0.15); // 15% of remaining distance per frame, min 0.3%
     currentProgress = Math.min(targetProgress, currentProgress + increment);
     
     // Update UI
@@ -560,12 +654,17 @@ function animateProgress() {
     if (progressPercent) {
       progressPercent.textContent = `${Math.round(currentProgress)}%`;
     }
+    progressAnimationId = null; // Reset animation ID when complete
   }
 }
 
 function updateProgress(percent, text, details) {
   const clampedPercent = Math.min(100, Math.max(0, percent));
-  targetProgress = clampedPercent;
+  
+  // Only update target if it's higher than current (prevent going backwards)
+  if (clampedPercent > targetProgress) {
+    targetProgress = clampedPercent;
+  }
   
   // Update text and details immediately
   if (text) {
@@ -590,14 +689,19 @@ function updateProgress(percent, text, details) {
 
 // Reset progress
 function resetProgress() {
-  currentProgress = 0;
-  targetProgress = 0;
-  currentProgressText = '';
-  currentProgressDetails = '';
+  // Cancel any running animation first
   if (progressAnimationId) {
     cancelAnimationFrame(progressAnimationId);
     progressAnimationId = null;
   }
+  
+  // Reset progress values
+  currentProgress = 0;
+  targetProgress = 0;
+  currentProgressText = '';
+  currentProgressDetails = '';
+  
+  // Reset UI immediately
   if (progressBar) {
     progressBar.style.width = '0%';
   }
