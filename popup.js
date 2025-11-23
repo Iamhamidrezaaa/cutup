@@ -1470,6 +1470,9 @@ function saveToHistory(title, summary, fullText, segments = null) {
   });
 }
 
+// Track expanded history items
+const expandedHistoryIds = new Set();
+
 function loadHistory() {
   chrome.storage.local.get(['history'], (result) => {
     const history = result.history || [];
@@ -1484,21 +1487,65 @@ function loadHistory() {
     const isSaveMode = historyControls.dataset.mode === 'save';
     const isSelectionMode = isDeleteMode || isSaveMode;
     
-    historyList.innerHTML = history.map(item => `
-      <div class="history-item" data-id="${item.id}">
-        ${isSelectionMode ? `<input type="checkbox" class="history-checkbox" data-id="${item.id}">` : ''}
-        <div class="history-item-content" ${!isSelectionMode ? 'style="cursor: pointer;"' : ''}>
-          <div class="history-item-title">${item.title}</div>
-          <div class="history-item-date">${item.date}</div>
+    historyList.innerHTML = history.map(item => {
+      const isExpanded = expandedHistoryIds.has(item.id);
+      return `
+        <div class="history-item" data-id="${item.id}">
+          ${isSelectionMode ? `<input type="checkbox" class="history-checkbox" data-id="${item.id}">` : ''}
+          <div class="history-item-content">
+            <div class="history-item-header" ${!isSelectionMode ? 'style="cursor: pointer;"' : ''}>
+              <div class="history-item-info">
+                <div class="history-item-title">${item.title}</div>
+                <div class="history-item-date">${item.date}</div>
+              </div>
+              ${!isSelectionMode ? `<span class="history-expand-icon">${isExpanded ? '▼' : '▶'}</span>` : ''}
+            </div>
+            ${isExpanded && !isSelectionMode ? `
+              <div class="history-item-details">
+                <div class="history-detail-section">
+                  <strong>خلاصه:</strong>
+                  <p>${formatSummary(item.summary)}</p>
+                </div>
+                <div class="history-detail-section">
+                  <strong>متن کامل:</strong>
+                  <p class="history-fulltext">${item.fullText || 'بدون متن'}</p>
+                </div>
+                ${item.segments && item.segments.length > 0 ? `
+                  <div class="history-detail-section">
+                    <strong>زیرنویس:</strong>
+                    <button class="history-download-srt-btn" data-id="${item.id}">دانلود SRT</button>
+                  </div>
+                ` : ''}
+              </div>
+            ` : ''}
+          </div>
         </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
 
-    // Add click listeners - restore original behavior (loadHistoryItem)
+    // Add click listeners for expand/collapse
     document.querySelectorAll('.history-item').forEach(item => {
+      const header = item.querySelector('.history-item-header');
+      if (header && !isSelectionMode) {
+        header.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = parseInt(item.dataset.id);
+          
+          // Toggle expanded state
+          if (expandedHistoryIds.has(id)) {
+            expandedHistoryIds.delete(id);
+          } else {
+            expandedHistoryIds.add(id);
+          }
+          
+          loadHistory(); // Reload to update UI
+        });
+      }
+      
+      // Also allow double-click to load in tabs
       const content = item.querySelector('.history-item-content');
       if (content && !isSelectionMode) {
-        content.addEventListener('click', () => {
+        content.addEventListener('dblclick', () => {
           const id = parseInt(item.dataset.id);
           loadHistoryItem(id, history);
         });
@@ -1515,9 +1562,38 @@ function loadHistory() {
       });
     }
     
+    // Add SRT download listeners
+    document.querySelectorAll('.history-download-srt-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const id = parseInt(btn.dataset.id);
+        const item = history.find(h => h.id === id);
+        if (item && item.segments) {
+          downloadHistorySrt(item);
+        }
+      });
+    });
+    
     updateDeleteButtonState();
     updateSaveButtonState();
   });
+}
+
+// Format summary for display
+function formatSummary(summary) {
+  if (!summary) return 'بدون خلاصه';
+  if (typeof summary === 'string') return summary;
+  if (typeof summary === 'object') {
+    if (summary.summary) {
+      const keyPoints = Array.isArray(summary.keyPoints) ? summary.keyPoints : [];
+      if (keyPoints.length > 0) {
+        return summary.summary + '\n\n' + keyPoints.map((kp, i) => `${i + 1}. ${kp}`).join('\n');
+      }
+      return summary.summary;
+    }
+    return JSON.stringify(summary);
+  }
+  return String(summary);
 }
 
 // Toggle delete mode
@@ -1529,13 +1605,16 @@ function toggleDeleteMode() {
     // Exit delete mode
     historyControls.style.display = 'none';
     historyControls.dataset.mode = '';
+    deleteSelectedBtn.style.display = 'none';
+    saveSelectedBtn.style.display = 'none';
   } else {
-    // Enter delete mode
+    // Enter delete mode - hide save button, show delete button
     historyControls.style.display = 'flex';
     historyControls.dataset.mode = 'delete';
     selectAllHistory.checked = false;
     deleteSelectedBtn.disabled = true;
-    saveSelectedBtn.disabled = true;
+    deleteSelectedBtn.style.display = 'block';
+    saveSelectedBtn.style.display = 'none';
   }
   
   loadHistory(); // Reload to show/hide checkboxes
@@ -1550,13 +1629,16 @@ function toggleSaveMode() {
     // Exit save mode
     historyControls.style.display = 'none';
     historyControls.dataset.mode = '';
+    saveSelectedBtn.style.display = 'none';
+    deleteSelectedBtn.style.display = 'none';
   } else {
-    // Enter save mode
+    // Enter save mode - hide delete button, show save button
     historyControls.style.display = 'flex';
     historyControls.dataset.mode = 'save';
     selectAllHistory.checked = false;
     saveSelectedBtn.disabled = true;
-    deleteSelectedBtn.disabled = true;
+    saveSelectedBtn.style.display = 'block';
+    deleteSelectedBtn.style.display = 'none';
   }
   
   loadHistory(); // Reload to show/hide checkboxes
@@ -1629,6 +1711,13 @@ async function handleSaveSelected() {
     }
     
     try {
+      // Check if JSZip is available
+      if (typeof JSZip === 'undefined') {
+        alert('خطا: کتابخانه JSZip بارگذاری نشده است. لطفاً صفحه را refresh کنید.');
+        console.error('JSZip is not defined');
+        return;
+      }
+      
       // Create ZIP file
       const zip = new JSZip();
       
@@ -1643,10 +1732,11 @@ async function handleSaveSelected() {
           folder.file('متن کامل.txt', item.fullText);
         }
         
-        // Add summary
-        if (item.summary) {
-          folder.file('خلاصه.txt', item.summary);
-        }
+          // Add summary
+          if (item.summary) {
+            const summaryText = formatSummary(item.summary);
+            folder.file('خلاصه.txt', summaryText);
+          }
         
         // Add SRT
         if (item.segments && item.segments.length > 0) {
@@ -1679,7 +1769,8 @@ async function handleSaveSelected() {
           
           // Add summary
           if (item.summary) {
-            itemFolder.file('خلاصه.txt', item.summary);
+            const summaryText = formatSummary(item.summary);
+            itemFolder.file('خلاصه.txt', summaryText);
           }
           
           // Add SRT
