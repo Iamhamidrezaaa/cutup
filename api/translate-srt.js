@@ -130,17 +130,19 @@ async function translateSegments(segments, targetLanguage, sourceLanguage, apiKe
     const batch = segments.slice(i, i + batchSize);
     const batchTexts = batch.map(s => s.text).join('\n---SEGMENT---\n');
     
-    const systemPrompt = `You are a professional subtitle translator. Translate subtitle text accurately while preserving the meaning and context. Return only the translated text, one segment per line, separated by "---SEGMENT---". Do not add any explanations or formatting.`;
+    const systemPrompt = `You are a professional subtitle translator. Your task is to translate subtitle text accurately from the source language to the target language. You MUST translate to the target language specified, regardless of what language the source text is in. Return only the translated text, one segment per line, separated by "---SEGMENT---". Do not add any explanations, formatting, or keep the original language. Always translate to the target language.`;
     
     const userPrompt = `Translate the following subtitle segments from ${sourceLangName} to ${targetLangName}. 
-    
+
+IMPORTANT: You MUST translate ALL text to ${targetLangName}. Do NOT keep any text in the original language. Every word must be translated to ${targetLangName}.
+
 Return the translated text exactly as provided, with each segment on a separate line, separated by "---SEGMENT---". 
-Preserve the meaning and keep the translation natural and accurate.
+Preserve the meaning and keep the translation natural and accurate in ${targetLangName}.
 
 Subtitle segments:
 ${batchTexts}
 
-Translated segments:`;
+Translated segments (ALL in ${targetLangName}):`;
     
     try {
       const completion = await client.chat.completions.create({

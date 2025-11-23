@@ -1483,9 +1483,19 @@ function loadHistory() {
   chrome.storage.local.get(['history'], (result) => {
     const history = result.history || [];
     
+    // If result section was moved, restore it to original position
+    const currentParent = resultSection.parentElement;
+    if (currentParent && currentParent !== historySection.parentElement) {
+      resultSection.remove();
+      // Re-append to original position (after history section)
+      historySection.parentElement.insertBefore(resultSection, historySection.nextSibling);
+    }
+    
     if (history.length === 0) {
       historyList.innerHTML = '<div class="empty-state">تاریخچه‌ای وجود ندارد</div>';
       historyControls.style.display = 'none';
+      resultSection.style.display = 'none';
+      selectedHistoryId = null;
       return;
     }
 
@@ -1843,14 +1853,45 @@ function loadHistoryItem(id, history) {
     if (selectedHistoryId === id && resultSection.style.display !== 'none') {
       resultSection.style.display = 'none';
       selectedHistoryId = null;
+      
+      // Remove result section from its current position if it was moved
+      const currentParent = resultSection.parentElement;
+      if (currentParent && currentParent !== historySection.parentElement) {
+        resultSection.remove();
+        // Re-append to original position (after history section)
+        historySection.parentElement.insertBefore(resultSection, historySection.nextSibling);
+      }
       return;
     }
+    
+    // Find the history item element
+    const historyItemElement = document.querySelector(`.history-item[data-id="${id}"]`);
+    if (!historyItemElement) {
+      console.error('History item element not found');
+      return;
+    }
+    
+    // Remove result section from its current position if it exists elsewhere
+    const currentParent = resultSection.parentElement;
+    if (currentParent && currentParent !== historySection.parentElement) {
+      resultSection.remove();
+    }
+    
+    // Move result section to be right after the clicked history item
+    // Check if there's already a result section after this item
+    const existingResult = historyItemElement.nextElementSibling;
+    if (existingResult && existingResult.id === 'resultSection') {
+      existingResult.remove();
+    }
+    
+    // Insert result section after the clicked history item
+    historyItemElement.insertAdjacentElement('afterend', resultSection);
     
     // Pass empty options object to maintain compatibility
     displayResults(item.summary, item.fullText, item.segments || null, {});
     selectedHistoryId = id;
     
-    // Scroll result section into view (below history)
+    // Scroll result section into view (below the clicked history item)
     setTimeout(() => {
       resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 100);
