@@ -146,6 +146,9 @@ function handleFileSelect(e) {
 
 // Main Summarize Function
 async function handleSummarize() {
+  // Reset progress at start
+  resetProgress();
+  
   const url = youtubeUrlInput.value.trim();
   const file = audioFileInput.files[0];
   
@@ -177,14 +180,16 @@ async function handleSummarize() {
     // Handle YouTube URL
     if (url && isYouTubeUrl(url)) {
       // Initialize progress tracking
+      resetProgress();
       progressStartTime = Date.now();
       progressEstimatedDuration = null;
       
-      // Extract audio from YouTube
-      updateProgress(10, 'در حال دریافت ویدیو از یوتیوب...', '');
+      // Extract audio from YouTube (5-15% of total)
+      updateProgress(5, 'در حال دریافت ویدیو از یوتیوب...', '');
       const youtubeResult = await extractYouTubeAudio(url);
       audioUrl = youtubeResult.audioUrl || youtubeResult; // Support both old and new format
       const youtubeLanguage = youtubeResult.language || null;
+      updateProgress(15, 'ویدیو دریافت شد', '');
       
       // Set estimated duration for progress calculation
       if (youtubeResult.duration) {
@@ -195,40 +200,72 @@ async function handleSummarize() {
       // Check if YouTube subtitles are available
       let transcription = null;
       if (youtubeResult.subtitles) {
-        // Use YouTube subtitles if available
+        // Use YouTube subtitles if available (15-60% of total)
         console.log('YOUTUBE: Using YouTube subtitles');
-        updateProgress(30, 'در حال پردازش زیرنویس‌های یوتیوب...', '');
+        updateProgress(20, 'در حال پردازش زیرنویس‌های یوتیوب...', '');
+        
+        // Simulate smooth progress during subtitle parsing
+        const subtitleProgressInterval = setInterval(() => {
+          if (targetProgress < 60) {
+            updateProgress(targetProgress + 2, 'در حال پردازش زیرنویس‌های یوتیوب...', '');
+          }
+        }, 500);
+        
         transcription = await parseYouTubeSubtitles(youtubeResult.subtitles, youtubeResult.subtitleLanguage);
+        clearInterval(subtitleProgressInterval);
         updateProgress(60, 'زیرنویس پردازش شد', '');
       } else {
-        // Fallback to audio transcription
+        // Fallback to audio transcription (15-75% of total)
         console.log('YOUTUBE: No subtitles available, transcribing audio');
         const durationText = youtubeResult.duration ? `(حدود ${Math.round(youtubeResult.duration / 60)} دقیقه)` : '';
-        updateProgress(30, 'در حال تبدیل صوت به متن...', `این مرحله ممکن است چند دقیقه طول بکشد ${durationText}`);
+        updateProgress(20, 'در حال تبدیل صوت به متن...', `این مرحله ممکن است چند دقیقه طول بکشد ${durationText}`);
         
-        // Calculate progress based on elapsed time vs estimated duration
+        // Smooth progress based on elapsed time vs estimated duration
         let progressInterval = null;
         if (progressEstimatedDuration) {
           progressInterval = setInterval(() => {
             if (progressStartTime) {
               const elapsed = Date.now() - progressStartTime;
-              const estimatedProgress = Math.min(80, 30 + (elapsed / progressEstimatedDuration) * 50);
-              updateProgress(estimatedProgress, 'در حال تبدیل صوت به متن...', `زمان سپری شده: ${Math.round(elapsed / 1000)} ثانیه`);
+              // Estimate: transcription takes about 1.5x video duration
+              const estimatedTranscriptionTime = progressEstimatedDuration * 1.5;
+              const progressRatio = Math.min(0.55, elapsed / estimatedTranscriptionTime); // Max 55% (20% to 75%)
+              const estimatedProgress = 20 + (progressRatio * 55);
+              if (estimatedProgress > targetProgress) {
+                updateProgress(estimatedProgress, 'در حال تبدیل صوت به متن...', `زمان سپری شده: ${Math.round(elapsed / 1000)} ثانیه`);
+              }
             }
-          }, 2000); // Update every 2 seconds
+          }, 1000); // Update every second for smoother progress
+        } else {
+          // If no duration, use time-based estimation
+          progressInterval = setInterval(() => {
+            if (targetProgress < 75) {
+              updateProgress(targetProgress + 1, 'در حال تبدیل صوت به متن...', '');
+            }
+          }, 2000);
         }
         
         transcription = await transcribeAudio(audioUrl, youtubeLanguage, (progress) => {
           if (progressInterval) clearInterval(progressInterval);
-          updateProgress(30 + (progress * 0.5), 'در حال تبدیل صوت به متن...', `پیشرفت: ${Math.round(progress)}%`);
+          // Map callback progress (0-100) to our range (20-75%)
+          const mappedProgress = 20 + (progress * 0.55);
+          updateProgress(mappedProgress, 'در حال تبدیل صوت به متن...', `پیشرفت: ${Math.round(progress)}%`);
         });
         if (progressInterval) clearInterval(progressInterval);
-        updateProgress(80, 'تبدیل صوت به متن انجام شد', '');
+        updateProgress(75, 'تبدیل صوت به متن انجام شد', '');
       }
       
-      // Summarize text with detected language
-      updateProgress(85, 'در حال خلاصه‌سازی متن...', '');
+      // Summarize text with detected language (75-95% of total)
+      updateProgress(80, 'در حال خلاصه‌سازی متن...', '');
+      
+      // Simulate smooth progress during summarization
+      const summaryProgressInterval = setInterval(() => {
+        if (targetProgress < 95) {
+          updateProgress(targetProgress + 1, 'در حال خلاصه‌سازی متن...', '');
+        }
+      }, 300);
+      
       const summary = await summarizeText(transcription.text, transcription.language);
+      clearInterval(summaryProgressInterval);
       updateProgress(95, 'خلاصه‌سازی انجام شد', '');
 
       // Display results with subtitle info
@@ -260,13 +297,20 @@ async function handleSummarize() {
       }
       
       saveToHistory(historyTitle, summary, transcription.text, transcription.segments);
-      updateProgress(100, 'تمام!', '');
+      
+      // Smooth final progress to 100%
+      updateProgress(98, 'در حال ذخیره...', '');
       setTimeout(() => {
-        progressSection.style.display = 'none';
-      }, 1000);
+        updateProgress(100, 'تمام!', '');
+        setTimeout(() => {
+          progressSection.style.display = 'none';
+          resetProgress();
+        }, 1500);
+      }, 500);
     } else if (file) {
       // Handle file upload - send directly to upload endpoint which transcribes
       // This avoids the 4.5MB limit by processing in the upload endpoint
+      resetProgress();
       progressStartTime = Date.now();
       const fileSizeMB = (file.size / 1024 / 1024).toFixed(2);
       
@@ -274,30 +318,65 @@ async function handleSummarize() {
       const estimatedMinutes = parseFloat(fileSizeMB);
       progressEstimatedDuration = estimatedMinutes * 60 * 1000; // Convert to milliseconds
       
-      updateProgress(10, 'در حال آپلود فایل...', `حجم فایل: ${fileSizeMB} MB`);
+      updateProgress(5, 'در حال آپلود فایل...', `حجم فایل: ${fileSizeMB} MB`);
       
-      // Calculate progress based on elapsed time
+      // Simulate upload progress (5-15%)
+      const uploadProgressInterval = setInterval(() => {
+        if (targetProgress < 15) {
+          updateProgress(targetProgress + 1, 'در حال آپلود فایل...', `حجم فایل: ${fileSizeMB} MB`);
+        }
+      }, 200);
+      
+      setTimeout(() => {
+        clearInterval(uploadProgressInterval);
+        updateProgress(15, 'فایل آپلود شد', '');
+      }, 3000);
+      
+      // Calculate progress based on elapsed time (15-75% for transcription)
       let progressInterval = null;
       if (progressEstimatedDuration) {
         progressInterval = setInterval(() => {
           if (progressStartTime) {
             const elapsed = Date.now() - progressStartTime;
-            const estimatedProgress = Math.min(80, 10 + (elapsed / progressEstimatedDuration) * 70);
-            updateProgress(estimatedProgress, 'در حال تبدیل صوت به متن...', `زمان سپری شده: ${Math.round(elapsed / 1000)} ثانیه`);
+            // Estimate: transcription takes about 1.5x audio duration
+            const estimatedTranscriptionTime = progressEstimatedDuration * 1.5;
+            const progressRatio = Math.min(0.6, (elapsed - 3000) / estimatedTranscriptionTime); // Subtract upload time
+            const estimatedProgress = 15 + (progressRatio * 60); // 15% to 75%
+            if (estimatedProgress > targetProgress) {
+              updateProgress(estimatedProgress, 'در حال تبدیل صوت به متن...', `زمان سپری شده: ${Math.round(elapsed / 1000)} ثانیه`);
+            }
           }
-        }, 2000); // Update every 2 seconds
+        }, 1000); // Update every second for smoother progress
+      } else {
+        // If no duration, use time-based estimation
+        progressInterval = setInterval(() => {
+          if (targetProgress < 75) {
+            updateProgress(targetProgress + 1, 'در حال تبدیل صوت به متن...', '');
+          }
+        }, 2000);
       }
       
       const transcription = await transcribeAudio(file, null, (progress) => {
         if (progressInterval) clearInterval(progressInterval);
-        updateProgress(10 + (progress * 0.7), 'در حال تبدیل صوت به متن...', `پیشرفت: ${Math.round(progress)}%`);
+        // Map callback progress (0-100) to our range (15-75%)
+        const mappedProgress = 15 + (progress * 0.6);
+        updateProgress(mappedProgress, 'در حال تبدیل صوت به متن...', `پیشرفت: ${Math.round(progress)}%`);
       });
       if (progressInterval) clearInterval(progressInterval);
-      updateProgress(80, 'تبدیل صوت به متن انجام شد', '');
+      updateProgress(75, 'تبدیل صوت به متن انجام شد', '');
       
-      // Summarize text with detected language
-      updateProgress(85, 'در حال خلاصه‌سازی متن...', '');
+      // Summarize text with detected language (75-95% of total)
+      updateProgress(80, 'در حال خلاصه‌سازی متن...', '');
+      
+      // Simulate smooth progress during summarization
+      const summaryProgressInterval = setInterval(() => {
+        if (targetProgress < 95) {
+          updateProgress(targetProgress + 1, 'در حال خلاصه‌سازی متن...', '');
+        }
+      }, 300);
+      
       const summary = await summarizeText(transcription.text, transcription.language);
+      clearInterval(summaryProgressInterval);
       updateProgress(95, 'خلاصه‌سازی انجام شد', '');
 
       // Display results
@@ -305,10 +384,16 @@ async function handleSummarize() {
 
       // Save to history
       saveToHistory(file.name, summary, transcription.text, transcription.segments);
-      updateProgress(100, 'تمام!', '');
+      
+      // Smooth final progress to 100%
+      updateProgress(98, 'در حال ذخیره...', '');
       setTimeout(() => {
-        progressSection.style.display = 'none';
-      }, 1000);
+        updateProgress(100, 'تمام!', '');
+        setTimeout(() => {
+          progressSection.style.display = 'none';
+          resetProgress();
+        }, 1500);
+      }, 500);
     } else {
       throw new Error('لینک یوتیوب معتبر نیست');
     }
@@ -440,34 +525,85 @@ async function uploadAudioFile(file) {
 // Progress Management
 let progressStartTime = null;
 let progressEstimatedDuration = null;
-let lastProgressUpdate = 0;
+let currentProgress = 0;
+let targetProgress = 0;
+let progressAnimationId = null;
+let progressText = '';
+let progressDetails = '';
+
+// Smooth progress animation
+function animateProgress() {
+  if (currentProgress < targetProgress) {
+    // Smooth increment (easing function for natural feel)
+    const diff = targetProgress - currentProgress;
+    const increment = Math.max(0.5, diff * 0.1); // 10% of remaining distance per frame
+    currentProgress = Math.min(targetProgress, currentProgress + increment);
+    
+    // Update UI
+    if (progressBar) {
+      progressBar.style.width = `${currentProgress}%`;
+    }
+    const progressPercent = document.getElementById('progressPercent');
+    if (progressPercent) {
+      progressPercent.textContent = `${Math.round(currentProgress)}%`;
+    }
+    
+    // Continue animation
+    progressAnimationId = requestAnimationFrame(animateProgress);
+  } else {
+    // Animation complete
+    currentProgress = targetProgress;
+    if (progressBar) {
+      progressBar.style.width = `${currentProgress}%`;
+    }
+    const progressPercent = document.getElementById('progressPercent');
+    if (progressPercent) {
+      progressPercent.textContent = `${Math.round(currentProgress)}%`;
+    }
+  }
+}
 
 function updateProgress(percent, text, details) {
   const clampedPercent = Math.min(100, Math.max(0, percent));
+  targetProgress = clampedPercent;
   
-  // Slow down progress from 80% to 100% (reduce update frequency)
-  if (clampedPercent >= 80 && clampedPercent < 100) {
-    const now = Date.now();
-    if (now - lastProgressUpdate < 3000) { // Only update every 3 seconds in this range
-      return;
+  // Update text and details immediately
+  if (text) {
+    progressText = text;
+    const progressTextEl = document.getElementById('progressText');
+    if (progressTextEl) {
+      progressTextEl.textContent = text;
     }
-    lastProgressUpdate = now;
   }
   
+  if (details !== undefined) {
+    progressDetails = details;
+    const progressDetailsEl = document.getElementById('progressDetails');
+    if (progressDetailsEl) {
+      progressDetailsEl.textContent = details;
+    }
+  }
+  
+  // Start smooth animation if not already running
+  if (!progressAnimationId) {
+    progressAnimationId = requestAnimationFrame(animateProgress);
+  }
+}
+
+// Reset progress
+function resetProgress() {
+  currentProgress = 0;
+  targetProgress = 0;
+  if (progressAnimationId) {
+    cancelAnimationFrame(progressAnimationId);
+    progressAnimationId = null;
+  }
   if (progressBar) {
-    progressBar.style.width = `${clampedPercent}%`;
+    progressBar.style.width = '0%';
   }
-  if (progressText) {
-    progressText.textContent = text;
-  }
-  if (progressDetails) {
-    progressDetails.textContent = details;
-  }
-  
-  // Update percent display
   const progressPercent = document.getElementById('progressPercent');
   if (progressPercent) {
-    progressPercent.textContent = `${Math.round(clampedPercent)}%`;
+    progressPercent.textContent = '0%';
   }
 }
 
