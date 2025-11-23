@@ -176,27 +176,60 @@ async function handleSummarize() {
     
     // Handle YouTube URL
     if (url && isYouTubeUrl(url)) {
+      // Initialize progress tracking
+      progressStartTime = Date.now();
+      progressEstimatedDuration = null;
+      
       // Extract audio from YouTube
+      updateProgress(10, 'در حال دریافت ویدیو از یوتیوب...', '');
       const youtubeResult = await extractYouTubeAudio(url);
       audioUrl = youtubeResult.audioUrl || youtubeResult; // Support both old and new format
       const youtubeLanguage = youtubeResult.language || null;
+      
+      // Set estimated duration for progress calculation
+      if (youtubeResult.duration) {
+        progressEstimatedDuration = youtubeResult.duration * 1000; // Convert to milliseconds
+        console.log('PROGRESS: Video duration:', youtubeResult.duration, 'seconds');
+      }
       
       // Check if YouTube subtitles are available
       let transcription = null;
       if (youtubeResult.subtitles) {
         // Use YouTube subtitles if available
         console.log('YOUTUBE: Using YouTube subtitles');
+        updateProgress(30, 'در حال پردازش زیرنویس‌های یوتیوب...', '');
         transcription = await parseYouTubeSubtitles(youtubeResult.subtitles, youtubeResult.subtitleLanguage);
+        updateProgress(60, 'زیرنویس پردازش شد', '');
       } else {
         // Fallback to audio transcription
         console.log('YOUTUBE: No subtitles available, transcribing audio');
+        const durationText = youtubeResult.duration ? `(حدود ${Math.round(youtubeResult.duration / 60)} دقیقه)` : '';
+        updateProgress(30, 'در حال تبدیل صوت به متن...', `این مرحله ممکن است چند دقیقه طول بکشد ${durationText}`);
+        
+        // Calculate progress based on elapsed time vs estimated duration
+        let progressInterval = null;
+        if (progressEstimatedDuration) {
+          progressInterval = setInterval(() => {
+            if (progressStartTime) {
+              const elapsed = Date.now() - progressStartTime;
+              const estimatedProgress = Math.min(80, 30 + (elapsed / progressEstimatedDuration) * 50);
+              updateProgress(estimatedProgress, 'در حال تبدیل صوت به متن...', `زمان سپری شده: ${Math.round(elapsed / 1000)} ثانیه`);
+            }
+          }, 2000); // Update every 2 seconds
+        }
+        
         transcription = await transcribeAudio(audioUrl, youtubeLanguage, (progress) => {
+          if (progressInterval) clearInterval(progressInterval);
           updateProgress(30 + (progress * 0.5), 'در حال تبدیل صوت به متن...', `پیشرفت: ${Math.round(progress)}%`);
         });
+        if (progressInterval) clearInterval(progressInterval);
+        updateProgress(80, 'تبدیل صوت به متن انجام شد', '');
       }
       
       // Summarize text with detected language
+      updateProgress(85, 'در حال خلاصه‌سازی متن...', '');
       const summary = await summarizeText(transcription.text, transcription.language);
+      updateProgress(95, 'خلاصه‌سازی انجام شد', '');
 
       // Display results with subtitle info
       displayResults(summary, transcription.text, transcription.segments, {
@@ -215,11 +248,32 @@ async function handleSummarize() {
     } else if (file) {
       // Handle file upload - send directly to upload endpoint which transcribes
       // This avoids the 4.5MB limit by processing in the upload endpoint
+      progressStartTime = Date.now();
       const fileSizeMB = (file.size / 1024 / 1024).toFixed(2);
+      
+      // Estimate duration based on file size (rough estimate: ~1MB per minute for MP3)
+      const estimatedMinutes = parseFloat(fileSizeMB);
+      progressEstimatedDuration = estimatedMinutes * 60 * 1000; // Convert to milliseconds
+      
       updateProgress(10, 'در حال آپلود فایل...', `حجم فایل: ${fileSizeMB} MB`);
+      
+      // Calculate progress based on elapsed time
+      let progressInterval = null;
+      if (progressEstimatedDuration) {
+        progressInterval = setInterval(() => {
+          if (progressStartTime) {
+            const elapsed = Date.now() - progressStartTime;
+            const estimatedProgress = Math.min(80, 10 + (elapsed / progressEstimatedDuration) * 70);
+            updateProgress(estimatedProgress, 'در حال تبدیل صوت به متن...', `زمان سپری شده: ${Math.round(elapsed / 1000)} ثانیه`);
+          }
+        }, 2000); // Update every 2 seconds
+      }
+      
       const transcription = await transcribeAudio(file, null, (progress) => {
+        if (progressInterval) clearInterval(progressInterval);
         updateProgress(10 + (progress * 0.7), 'در حال تبدیل صوت به متن...', `پیشرفت: ${Math.round(progress)}%`);
       });
+      if (progressInterval) clearInterval(progressInterval);
       updateProgress(80, 'تبدیل صوت به متن انجام شد', '');
       
       // Summarize text with detected language
@@ -340,7 +394,8 @@ async function extractYouTubeAudio(url) {
       subtitles: result.subtitles || null,
       subtitleLanguage: result.subtitleLanguage || null,
       availableLanguages: result.availableLanguages || [],
-      title: result.title || null
+      title: result.title || null,
+      duration: result.duration || null
     };
     
   } catch (error) {
@@ -363,15 +418,36 @@ async function uploadAudioFile(file) {
 }
 
 // Progress Management
+let progressStartTime = null;
+let progressEstimatedDuration = null;
+let lastProgressUpdate = 0;
+
 function updateProgress(percent, text, details) {
+  const clampedPercent = Math.min(100, Math.max(0, percent));
+  
+  // Slow down progress from 80% to 100% (reduce update frequency)
+  if (clampedPercent >= 80 && clampedPercent < 100) {
+    const now = Date.now();
+    if (now - lastProgressUpdate < 3000) { // Only update every 3 seconds in this range
+      return;
+    }
+    lastProgressUpdate = now;
+  }
+  
   if (progressBar) {
-    progressBar.style.width = `${Math.min(100, Math.max(0, percent))}%`;
+    progressBar.style.width = `${clampedPercent}%`;
   }
   if (progressText) {
     progressText.textContent = text;
   }
   if (progressDetails) {
     progressDetails.textContent = details;
+  }
+  
+  // Update percent display
+  const progressPercent = document.getElementById('progressPercent');
+  if (progressPercent) {
+    progressPercent.textContent = `${Math.round(clampedPercent)}%`;
   }
 }
 
@@ -643,10 +719,13 @@ function vttToSRT(vttContent) {
 }
 
 // Parse SRT content to segments array
+// YouTube VTT subtitles are incremental (each segment contains all words up to that point)
+// We need to extract only the new words in each segment
 function parseSRTToSegments(srtContent) {
-  const segments = [];
+  const rawSegments = [];
   const blocks = srtContent.trim().split(/\n\s*\n/);
   
+  // First pass: collect all segments with cleaned text
   for (const block of blocks) {
     const lines = block.trim().split('\n');
     if (lines.length < 3) continue;
@@ -667,11 +746,94 @@ function parseSRTToSegments(srtContent) {
     text = text.replace(/\s+/g, ' ').trim(); // Normalize whitespace
     
     if (text.length > 0) {
-      segments.push({ start: startTime, end: endTime, text });
+      rawSegments.push({ start: startTime, end: endTime, text });
     }
   }
   
-  return segments;
+  // Second pass: remove incremental duplicates (YouTube VTT format)
+  // Each segment contains all words up to that point, so we need to extract only new words
+  const segments = [];
+  let previousText = '';
+  
+  for (let i = 0; i < rawSegments.length; i++) {
+    const current = rawSegments[i];
+    const currentText = current.text.trim();
+    
+    // If current text starts with previous text, extract only the new part
+    if (previousText && currentText.startsWith(previousText)) {
+      const newText = currentText.substring(previousText.length).trim();
+      if (newText.length > 0) {
+        // Use the start time of this segment for the new text
+        segments.push({
+          start: current.start,
+          end: current.end,
+          text: newText
+        });
+        previousText = currentText;
+      }
+    } else {
+      // New segment (not incremental)
+      segments.push({
+        start: current.start,
+        end: current.end,
+        text: currentText
+      });
+      previousText = currentText;
+    }
+  }
+  
+  // If we still have duplicates, try a different approach: merge segments with same text
+  // and only keep unique segments
+  const uniqueSegments = [];
+  const seenTexts = new Set();
+  
+  for (const segment of segments) {
+    const normalizedText = segment.text.trim().toLowerCase();
+    // Only add if we haven't seen this exact text before
+    if (!seenTexts.has(normalizedText) || normalizedText.length > 50) {
+      uniqueSegments.push(segment);
+      seenTexts.add(normalizedText);
+    }
+  }
+  
+  // If we removed too many, use original segments but deduplicate by text similarity
+  if (uniqueSegments.length < segments.length * 0.5) {
+    // Use a smarter deduplication: keep segments that are significantly different
+    const smartSegments = [];
+    let lastText = '';
+    
+    for (const segment of segments) {
+      const currentText = segment.text.trim();
+      // Calculate similarity with last text
+      const similarity = calculateTextSimilarity(lastText, currentText);
+      
+      // Only add if similarity is low (texts are different) or if it's the first segment
+      if (similarity < 0.7 || lastText === '') {
+        smartSegments.push(segment);
+        lastText = currentText;
+      }
+    }
+    
+    return smartSegments.length > 0 ? smartSegments : segments;
+  }
+  
+  return uniqueSegments.length > 0 ? uniqueSegments : segments;
+}
+
+// Calculate text similarity (0-1, where 1 is identical)
+function calculateTextSimilarity(text1, text2) {
+  if (!text1 || !text2) return 0;
+  
+  const words1 = text1.toLowerCase().split(/\s+/);
+  const words2 = text2.toLowerCase().split(/\s+/);
+  
+  const set1 = new Set(words1);
+  const set2 = new Set(words2);
+  
+  const intersection = new Set([...set1].filter(x => set2.has(x)));
+  const union = new Set([...set1, ...set2]);
+  
+  return intersection.size / union.size;
 }
 
 // Parse SRT time to seconds
