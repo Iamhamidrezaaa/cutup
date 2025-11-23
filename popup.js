@@ -446,74 +446,38 @@ function extractVideoId(url) {
   return null;
 }
 
-// Extract YouTube video title from page HTML (fallback method)
-async function extractYouTubeTitleFromPage(url) {
+// Extract YouTube video title using backend API
+async function extractYouTubeTitleFromAPI(url) {
   try {
-    console.log('YOUTUBE: Attempting to extract title from page:', url);
+    console.log('YOUTUBE: Attempting to extract title from API:', url);
     
-    // Use YouTube oEmbed API as a fallback
     const videoId = extractVideoId(url);
     if (!videoId) {
       return null;
     }
     
-    const oEmbedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+    const response = await fetch(`${API_BASE_URL}/api/youtube-title`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ videoId, url }),
+      signal: AbortSignal.timeout(30000) // 30 seconds timeout
+    });
     
-    try {
-      const response = await fetch(oEmbedUrl, {
-        signal: AbortSignal.timeout(10000) // 10 seconds timeout
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data && data.title) {
-          console.log('YOUTUBE: Title extracted from oEmbed:', data.title);
-          return data.title;
-        }
+    if (response.ok) {
+      const result = await response.json();
+      if (result && result.title) {
+        console.log('YOUTUBE: Title extracted from API:', result.title);
+        return result.title;
       }
-    } catch (oEmbedError) {
-      console.warn('YOUTUBE: oEmbed API failed, trying direct fetch:', oEmbedError);
-    }
-    
-    // Fallback: Try to fetch the page directly (may fail due to CORS)
-    try {
-      const pageResponse = await fetch(url, {
-        signal: AbortSignal.timeout(10000),
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-      });
-      
-      if (pageResponse.ok) {
-        const html = await pageResponse.text();
-        // Try to extract title from various possible locations in HTML
-        const titlePatterns = [
-          /<meta\s+property="og:title"\s+content="([^"]+)"/i,
-          /<title>([^<]+)<\/title>/i,
-          /"title":"([^"]+)"/i,
-          /<h1[^>]*class="[^"]*watch-title[^"]*"[^>]*>([^<]+)<\/h1>/i
-        ];
-        
-        for (const pattern of titlePatterns) {
-          const match = html.match(pattern);
-          if (match && match[1]) {
-            const title = match[1].trim();
-            // Clean up title (remove - YouTube suffix if present)
-            const cleanTitle = title.replace(/\s*-\s*YouTube\s*$/i, '').trim();
-            if (cleanTitle.length > 0) {
-              console.log('YOUTUBE: Title extracted from HTML:', cleanTitle);
-              return cleanTitle;
-            }
-          }
-        }
-      }
-    } catch (fetchError) {
-      console.warn('YOUTUBE: Direct fetch failed (CORS or other):', fetchError);
+    } else {
+      console.warn('YOUTUBE: Title API failed with status:', response.status);
     }
     
     return null;
   } catch (error) {
-    console.warn('YOUTUBE: Error extracting title from page:', error);
+    console.warn('YOUTUBE: Error extracting title from API:', error);
     return null;
   }
 }
@@ -527,12 +491,12 @@ async function extractYouTubeAudio(url) {
   
   console.log('YOUTUBE: Extracting audio for video ID:', videoId);
   
-  // Try to extract title from page first (as fallback)
-  let pageTitle = null;
+  // Try to extract title from API first (fast, no download needed)
+  let apiTitle = null;
   try {
-    pageTitle = await extractYouTubeTitleFromPage(url);
+    apiTitle = await extractYouTubeTitleFromAPI(url);
   } catch (titleError) {
-    console.warn('YOUTUBE: Could not extract title from page:', titleError);
+    console.warn('YOUTUBE: Could not extract title from API:', titleError);
   }
   
   try {
@@ -568,10 +532,12 @@ async function extractYouTubeAudio(url) {
     console.log('YOUTUBE: Available languages:', result.availableLanguages);
     console.log('YOUTUBE: Video title from API:', result.title);
     
-    // Use page title as fallback if API didn't return title
-    const finalTitle = result.title || pageTitle;
+    // Use title from title API as fallback if main API didn't return title
+    const finalTitle = result.title || apiTitle;
     if (finalTitle) {
       console.log('YOUTUBE: Using title:', finalTitle);
+    } else {
+      console.warn('YOUTUBE: No title found from any source');
     }
     
     // Return audioUrl as string (data URL) and language hint
@@ -583,7 +549,7 @@ async function extractYouTubeAudio(url) {
         subtitles: null, 
         subtitleLanguage: null, 
         availableLanguages: [], 
-        title: pageTitle || null,
+        title: apiTitle || null,
         duration: null
       };
     }
@@ -593,7 +559,7 @@ async function extractYouTubeAudio(url) {
       subtitles: result.subtitles || null,
       subtitleLanguage: result.subtitleLanguage || null,
       availableLanguages: result.availableLanguages || [],
-      title: finalTitle || null, // Use API title or page title
+      title: finalTitle || null, // Use API title or title API result
       duration: result.duration || null
     };
     
