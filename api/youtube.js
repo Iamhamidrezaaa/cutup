@@ -111,19 +111,30 @@ export default async function handler(req, res) {
       
       try {
         const metadataCommand = `${ytDlpPath} --dump-json --no-download "${youtubeUrl}"`;
-        const { stdout: metadataStdout } = await execAsync(metadataCommand, {
+        console.log(`YOUTUBE: Executing metadata command: ${metadataCommand}`);
+        const { stdout: metadataStdout, stderr: metadataStderr } = await execAsync(metadataCommand, {
           timeout: 30000, // 30 seconds
           maxBuffer: 5 * 1024 * 1024 // 5MB buffer
         });
+        
+        if (metadataStderr) {
+          console.warn('YOUTUBE: Metadata command stderr:', metadataStderr.substring(0, 200));
+        }
+        
+        console.log(`YOUTUBE: Metadata stdout length: ${metadataStdout.length}`);
         const metadata = JSON.parse(metadataStdout);
+        
+        console.log('YOUTUBE: Metadata keys:', Object.keys(metadata || {}));
+        console.log('YOUTUBE: Metadata.title exists:', !!metadata.title);
+        console.log('YOUTUBE: Metadata.title value:', metadata.title);
         
         // Get video title
         if (metadata.title) {
           videoTitle = metadata.title;
-          console.log(`YOUTUBE: Video title: ${videoTitle}`);
+          console.log(`YOUTUBE: Video title extracted: ${videoTitle}`);
         } else {
           console.warn('YOUTUBE: No title found in metadata');
-          console.warn('YOUTUBE: Metadata keys:', Object.keys(metadata || {}));
+          console.warn('YOUTUBE: Full metadata (first 500 chars):', JSON.stringify(metadata).substring(0, 500));
         }
         
         // Get video duration

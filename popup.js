@@ -453,6 +453,7 @@ async function extractYouTubeTitleFromAPI(url) {
     
     const videoId = extractVideoId(url);
     if (!videoId) {
+      console.warn('YOUTUBE: Could not extract video ID from URL');
       return null;
     }
     
@@ -465,14 +466,20 @@ async function extractYouTubeTitleFromAPI(url) {
       signal: AbortSignal.timeout(30000) // 30 seconds timeout
     });
     
+    console.log('YOUTUBE: Title API response status:', response.status);
+    
     if (response.ok) {
       const result = await response.json();
+      console.log('YOUTUBE: Title API result:', result);
       if (result && result.title) {
         console.log('YOUTUBE: Title extracted from API:', result.title);
         return result.title;
+      } else {
+        console.warn('YOUTUBE: Title API returned no title:', result);
       }
     } else {
-      console.warn('YOUTUBE: Title API failed with status:', response.status);
+      const errorText = await response.text().catch(() => '');
+      console.warn('YOUTUBE: Title API failed with status:', response.status, 'Error:', errorText);
     }
     
     return null;
@@ -530,14 +537,16 @@ async function extractYouTubeAudio(url) {
     console.log('YOUTUBE: Success, audio URL received, language hint:', result.language);
     console.log('YOUTUBE: Subtitles available:', !!result.subtitles, 'Language:', result.subtitleLanguage);
     console.log('YOUTUBE: Available languages:', result.availableLanguages);
-    console.log('YOUTUBE: Video title from API:', result.title);
+    console.log('YOUTUBE: Video title from main API:', result.title);
+    console.log('YOUTUBE: Video title from title API:', apiTitle);
     
-    // Use title from title API as fallback if main API didn't return title
+    // Use title from main API first, then title API as fallback
     const finalTitle = result.title || apiTitle;
     if (finalTitle) {
-      console.log('YOUTUBE: Using title:', finalTitle);
+      console.log('YOUTUBE: Final title selected:', finalTitle);
     } else {
       console.warn('YOUTUBE: No title found from any source');
+      console.warn('YOUTUBE: Main API result keys:', Object.keys(result || {}));
     }
     
     // Return audioUrl as string (data URL) and language hint
