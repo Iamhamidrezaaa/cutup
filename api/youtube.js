@@ -198,8 +198,9 @@ export default async function handler(req, res) {
       const fs = await import('fs');
       const audioBuffer = fs.readFileSync(audioFilePath);
       
-      // Check file size (limit to 25MB for Whisper API)
-      const maxSize = 25 * 1024 * 1024; // 25MB
+      // Note: Whisper API has 25MB limit, but we'll process large files by chunks
+      // For now, we'll allow up to 100MB and process in chunks if needed
+      const maxSize = 100 * 1024 * 1024; // 100MB (will be chunked if > 25MB)
       if (audioBuffer.length > maxSize) {
         // Clean up
         try {
@@ -210,9 +211,15 @@ export default async function handler(req, res) {
         
         return res.status(413).json({
           error: 'FILE_TOO_LARGE',
-          message: `ویدئو خیلی بزرگ است (${(audioBuffer.length / 1024 / 1024).toFixed(2)}MB). لطفاً ویدئوی کوتاه‌تری انتخاب کنید.`,
+          message: `ویدئو خیلی بزرگ است (${(audioBuffer.length / 1024 / 1024).toFixed(2)}MB). حداکثر حجم مجاز ${maxSize / 1024 / 1024}MB است.`,
           details: `Maximum file size is ${maxSize / 1024 / 1024}MB`
         });
+      }
+      
+      // If file is larger than 25MB, we'll need to chunk it
+      // But for now, we'll return it and let the transcribe endpoint handle chunking
+      if (audioBuffer.length > 25 * 1024 * 1024) {
+        console.log(`YOUTUBE: File is ${(audioBuffer.length / 1024 / 1024).toFixed(2)}MB, will be processed in chunks`);
       }
 
       // Convert to base64

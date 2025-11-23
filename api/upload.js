@@ -7,6 +7,7 @@ import FormDataLib from 'form-data';
 import fetchModule from 'node-fetch';
 import OpenAI from 'openai';
 import Busboy from 'busboy';
+import { transcribeLargeFile } from './chunk-processor.js';
 
 export default async function handler(req, res) {
   // Log immediately to verify this endpoint is being called
@@ -52,9 +53,10 @@ export default async function handler(req, res) {
       });
     }
 
-    // Check file size limit before processing (Vercel has 4.5MB limit for request body)
-    // We'll limit to 4MB to be safe
-    const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
+    // Check file size limit before processing
+    // Since we're on our own server now, we can handle larger files
+    // Whisper API has 25MB limit, but we'll chunk larger files
+    const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB (will be chunked if > 25MB)
     
     // Receive file using busboy
     console.log('UPLOAD: Receiving file as multipart/form-data');
@@ -123,9 +125,14 @@ export default async function handler(req, res) {
       setCORSHeaders(res);
       return res.status(413).json({ 
         error: 'FILE_TOO_LARGE',
-        message: `فایل خیلی بزرگ است (${(totalSize / 1024 / 1024).toFixed(2)}MB). لطفاً فایلی کمتر از 4MB انتخاب کنید.`,
+        message: `فایل خیلی بزرگ است (${(totalSize / 1024 / 1024).toFixed(2)}MB). حداکثر حجم مجاز ${MAX_FILE_SIZE / 1024 / 1024}MB است.`,
         details: `Maximum file size is ${MAX_FILE_SIZE / 1024 / 1024}MB`
       });
+    }
+    
+    // If file is larger than 25MB, we'll need to chunk it
+    if (totalSize > 25 * 1024 * 1024) {
+      console.log(`UPLOAD: File is ${(totalSize / 1024 / 1024).toFixed(2)}MB, will be processed in chunks`);
     }
     
     const audioBuffer = Buffer.concat(chunks);
@@ -139,55 +146,68 @@ export default async function handler(req, res) {
     else if (mimeType.includes('webm')) extension = 'webm';
 
     // Transcribe using OpenAI Whisper API
-    console.log('UPLOAD: Sending to Whisper API...');
+    // If file is larger than 25MB, use chunk processor
+    let transcript;
     
-    const formData = new FormDataLib();
-    formData.append('file', audioBuffer, {
-      filename: `audio.${extension}`,
-      contentType: mimeType,
-      knownLength: audioBuffer.length
-    });
-    formData.append('model', 'whisper-1');
-    // Don't specify language - let Whisper auto-detect
-    // formData.append('language', 'fa');
-    formData.append('response_format', 'verbose_json');
-    
-    // Note: We'll add prompt only if language is detected as Persian
-    // For now, let Whisper detect the language first
-    
-    const formHeaders = formData.getHeaders();
-    
-    const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        ...formHeaders
-      },
-      body: formData,
-      timeout: 300000 // 5 minutes timeout
-    });
-    
-    if (!whisperResponse.ok) {
-      const errorText = await whisperResponse.text();
-      let errorData;
-      try {
-        errorData = JSON.parse(errorText);
-      } catch {
-        errorData = { message: errorText };
+    if (audioBuffer.length > 25 * 1024 * 1024) {
+      console.log('UPLOAD: File is larger than 25MB, using chunk processor...');
+      const chunkResult = await transcribeLargeFile(audioBuffer, mimeType, apiKey, extension);
+      transcript = {
+        text: chunkResult.text,
+        segments: chunkResult.segments,
+        language: chunkResult.language
+      };
+    } else {
+      console.log('UPLOAD: Sending to Whisper API (single request)...');
+      
+      const formData = new FormDataLib();
+      formData.append('file', audioBuffer, {
+        filename: `audio.${extension}`,
+        contentType: mimeType,
+        knownLength: audioBuffer.length
+      });
+      formData.append('model', 'whisper-1');
+      // Don't specify language - let Whisper auto-detect
+      // formData.append('language', 'fa');
+      formData.append('response_format', 'verbose_json');
+      
+      // Note: We'll add prompt only if language is detected as Persian
+      // For now, let Whisper detect the language first
+      
+      const formHeaders = formData.getHeaders();
+      
+      const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          ...formHeaders
+        },
+        body: formData,
+        timeout: 300000 // 5 minutes timeout
+      });
+      
+      if (!whisperResponse.ok) {
+        const errorText = await whisperResponse.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { message: errorText };
+        }
+        
+        const errorMessage = errorData.error?.message || errorText || `OpenAI API error: ${whisperResponse.status} ${whisperResponse.statusText}`;
+        console.error('UPLOAD: Whisper API Error:', errorMessage);
+        
+        setCORSHeaders(res);
+        return res.status(whisperResponse.status).json({ 
+          error: 'WHISPER_ERROR', 
+          details: errorMessage,
+          message: 'Transcription failed'
+        });
       }
       
-      const errorMessage = errorData.error?.message || errorText || `OpenAI API error: ${whisperResponse.status} ${whisperResponse.statusText}`;
-      console.error('UPLOAD: Whisper API Error:', errorMessage);
-      
-      setCORSHeaders(res);
-      return res.status(whisperResponse.status).json({ 
-        error: 'WHISPER_ERROR', 
-        details: errorMessage,
-        message: 'Transcription failed'
-      });
+      transcript = await whisperResponse.json();
     }
-    
-    let transcript = await whisperResponse.json();
     
     // Get detected language from Whisper
     const detectedLanguage = transcript.language || 'unknown';

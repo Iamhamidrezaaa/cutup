@@ -120,14 +120,19 @@ async function pasteFromClipboard() {
 function handleFileSelect(e) {
   const file = e.target.files[0];
   if (file) {
-    // بررسی اندازه فایل (حداکثر 4MB - محدودیت Vercel)
-    const maxSize = 4 * 1024 * 1024; // 4MB
+    // بررسی اندازه فایل (حداکثر 100MB - پردازش در chunk برای فایل‌های بزرگ)
+    const maxSize = 100 * 1024 * 1024; // 100MB
     if (file.size > maxSize) {
-      alert(`فایل خیلی بزرگ است (${(file.size / 1024 / 1024).toFixed(2)}MB). لطفاً فایلی کمتر از 4MB انتخاب کنید. می‌توانید فایل را فشرده کنید یا به قسمت‌های کوچکتر تقسیم کنید.`);
+      alert(`فایل خیلی بزرگ است (${(file.size / 1024 / 1024).toFixed(2)}MB). حداکثر حجم مجاز ${maxSize / 1024 / 1024}MB است.`);
       audioFileInput.value = ''; // پاک کردن انتخاب
       youtubeUrlInput.value = '';
       checkInput();
       return;
+    }
+    
+    // هشدار برای فایل‌های بزرگ
+    if (file.size > 25 * 1024 * 1024) {
+      console.log(`FILE: Large file detected (${(file.size / 1024 / 1024).toFixed(2)}MB), will be processed in chunks`);
     }
     
     youtubeUrlInput.value = `📁 ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`;
@@ -155,11 +160,11 @@ async function handleSummarize() {
     let audioUrl = null;
     
     // بررسی اندازه فایل قبل از پردازش
-    // Vercel محدودیت 4.5MB برای request body دارد
+    // محدودیت 100MB - فایل‌های بزرگ به صورت chunk پردازش می‌شوند
     if (file) {
-      const maxSize = 4 * 1024 * 1024; // 4MB - محدودیت Vercel
+      const maxSize = 100 * 1024 * 1024; // 100MB
       if (file.size > maxSize) {
-        throw new Error(`فایل خیلی بزرگ است (${(file.size / 1024 / 1024).toFixed(2)}MB). لطفاً فایلی کمتر از 4MB انتخاب کنید. می‌توانید فایل را فشرده کنید یا به قسمت‌های کوچکتر تقسیم کنید.`);
+        throw new Error(`فایل خیلی بزرگ است (${(file.size / 1024 / 1024).toFixed(2)}MB). حداکثر حجم مجاز ${maxSize / 1024 / 1024}MB است.`);
       }
     }
     
