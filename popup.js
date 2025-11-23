@@ -239,7 +239,16 @@ async function handleSummarize() {
       });
 
       // Save to history with video title if available, otherwise use URL
-      const historyTitle = youtubeResult.title || url;
+      // Make sure we use the title from youtubeResult, not the URL
+      console.log('HISTORY: youtubeResult object:', youtubeResult);
+      console.log('HISTORY: youtubeResult.title:', youtubeResult?.title);
+      let historyTitle = url; // Default to URL
+      if (youtubeResult && youtubeResult.title && youtubeResult.title.trim().length > 0) {
+        historyTitle = youtubeResult.title.trim();
+        console.log('HISTORY: Using video title:', historyTitle);
+      } else {
+        console.warn('HISTORY: No title found in youtubeResult, using URL:', url);
+      }
       saveToHistory(historyTitle, summary, transcription.text, transcription.segments);
       updateProgress(100, 'تمام!', '');
       setTimeout(() => {
@@ -1175,10 +1184,25 @@ function saveToHistory(title, summary, fullText, segments = null) {
     const history = result.history || [];
     // Truncate title to 80 characters for better display
     const truncatedTitle = title.length > 80 ? title.substring(0, 77) + '...' : title;
+    
+    // Format date with time (Persian format: YYYY/M/D HH:MM)
+    const now = new Date();
+    const persianDate = now.toLocaleDateString('fa-IR', {
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric'
+    });
+    const persianTime = now.toLocaleTimeString('fa-IR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    const dateWithTime = `${persianDate} ${persianTime}`;
+    
     const newItem = {
       id: Date.now(),
       title: truncatedTitle,
-      date: new Date().toLocaleDateString('fa-IR'),
+      date: dateWithTime,
       summary,
       fullText,
       segments
