@@ -242,13 +242,23 @@ async function handleSummarize() {
       // Make sure we use the title from youtubeResult, not the URL
       console.log('HISTORY: youtubeResult object:', youtubeResult);
       console.log('HISTORY: youtubeResult.title:', youtubeResult?.title);
+      console.log('HISTORY: youtubeResult keys:', Object.keys(youtubeResult || {}));
+      
       let historyTitle = url; // Default to URL
-      if (youtubeResult && youtubeResult.title && youtubeResult.title.trim().length > 0) {
-        historyTitle = youtubeResult.title.trim();
+      
+      // Check multiple possible locations for title
+      const possibleTitle = youtubeResult?.title || 
+                           youtubeResult?.videoTitle || 
+                           (youtubeResult && typeof youtubeResult === 'object' && youtubeResult.title);
+      
+      if (possibleTitle && typeof possibleTitle === 'string' && possibleTitle.trim().length > 0) {
+        historyTitle = possibleTitle.trim();
         console.log('HISTORY: Using video title:', historyTitle);
       } else {
         console.warn('HISTORY: No title found in youtubeResult, using URL:', url);
+        console.warn('HISTORY: youtubeResult structure:', JSON.stringify(youtubeResult, null, 2));
       }
+      
       saveToHistory(historyTitle, summary, transcription.text, transcription.segments);
       updateProgress(100, 'تمام!', '');
       setTimeout(() => {
@@ -391,6 +401,7 @@ async function extractYouTubeAudio(url) {
     console.log('YOUTUBE: Success, audio URL received, language hint:', result.language);
     console.log('YOUTUBE: Subtitles available:', !!result.subtitles, 'Language:', result.subtitleLanguage);
     console.log('YOUTUBE: Available languages:', result.availableLanguages);
+    console.log('YOUTUBE: Video title from API:', result.title);
     
     // Return audioUrl as string (data URL) and language hint
     // Support both old format (just string) and new format (object)
@@ -1185,7 +1196,7 @@ function saveToHistory(title, summary, fullText, segments = null) {
     // Truncate title to 80 characters for better display
     const truncatedTitle = title.length > 80 ? title.substring(0, 77) + '...' : title;
     
-    // Format date with time (Persian format: YYYY/M/D HH:MM)
+    // Format date with time (Persian format: HH:MM - YYYY/M/D)
     const now = new Date();
     const persianDate = now.toLocaleDateString('fa-IR', {
       year: 'numeric',
@@ -1197,7 +1208,7 @@ function saveToHistory(title, summary, fullText, segments = null) {
       minute: '2-digit',
       hour12: false
     });
-    const dateWithTime = `${persianDate} ${persianTime}`;
+    const dateWithTime = `${persianTime} - ${persianDate}`;
     
     const newItem = {
       id: Date.now(),
