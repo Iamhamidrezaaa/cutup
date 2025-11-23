@@ -7,6 +7,7 @@ import FormDataLib from 'form-data';
 import fetchModule from 'node-fetch';
 import OpenAI from 'openai';
 import Busboy from 'busboy';
+import { transcribeLargeFile } from './chunk-processor.js';
 
 export default async function handler(req, res) {
   // Log immediately when function is called
@@ -197,11 +198,33 @@ export default async function handler(req, res) {
     console.log('=== TRANSCRIBE V4.0: Using node-fetch (NO SDK) ===');
     console.log('TRANSCRIBE: File size:', audioBuffer.length, 'bytes, type:', mimeType);
     
+    // If file is larger than 25MB, use chunk processor
     let transcript;
-    const maxRetries = 5;
-    let lastError;
-    
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    if (audioBuffer.length > 25 * 1024 * 1024) {
+      console.log(`TRANSCRIBE: File is ${(audioBuffer.length / 1024 / 1024).toFixed(2)}MB, using chunk processor`);
+      try {
+        const chunkResult = await transcribeLargeFile(audioBuffer, mimeType, apiKey, extension);
+        transcript = {
+          text: chunkResult.text,
+          segments: chunkResult.segments,
+          language: chunkResult.language
+        };
+        console.log('TRANSCRIBE: Chunk processing completed, text length:', transcript.text?.length || 0);
+      } catch (chunkError) {
+        console.error('TRANSCRIBE: Chunk processing error:', chunkError);
+        setCORSHeaders(res);
+        return res.status(500).json({
+          error: 'TRANSCRIBE_ERROR',
+          details: chunkError.message || 'Failed to transcribe large file',
+          message: 'Transcription failed'
+        });
+      }
+    } else {
+      // Process normally for files <= 25MB
+      const maxRetries = 5;
+      let lastError;
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         console.log(`TRANSCRIBE V4.0: Attempt ${attempt}/${maxRetries} starting...`);
         
@@ -404,11 +427,11 @@ export default async function handler(req, res) {
           throw retryError;
         }
       }
-    }
-    
-    if (!transcript) {
-      console.error('TRANSCRIBE V4.0: Failed after all retries');
-      throw lastError || new Error('Failed to transcribe after all retries');
+      
+      if (!transcript) {
+        console.error('TRANSCRIBE V4.0: Failed after all retries');
+        throw lastError || new Error('Failed to transcribe after all retries');
+      }
     }
 
     console.log('TRANSCRIBE: Success, text length:', transcript.text?.length || 0);
