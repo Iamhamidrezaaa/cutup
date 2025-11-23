@@ -1085,8 +1085,27 @@ function parseSRTTimeToSeconds(hours, minutes, seconds, milliseconds) {
 
 // Display Results
 function displayResults(summary, fullText, segments = null, options = {}) {
-  // Display summary
-  summaryText.textContent = summary.summary || 'خلاصه در دسترس نیست';
+  // Display summary - handle both object and string formats
+  let summaryTextContent = 'خلاصه در دسترس نیست';
+  if (summary) {
+    if (typeof summary === 'string') {
+      summaryTextContent = summary;
+    } else if (typeof summary === 'object' && summary.summary) {
+      summaryTextContent = summary.summary;
+    } else if (typeof summary === 'object' && summary.keyPoints) {
+      // If it's an object with keyPoints, format it nicely
+      const keyPoints = Array.isArray(summary.keyPoints) ? summary.keyPoints : [];
+      const summaryPart = summary.summary || '';
+      if (keyPoints.length > 0) {
+        summaryTextContent = summaryPart + '\n\n' + keyPoints.map((kp, i) => `${i + 1}. ${kp}`).join('\n');
+      } else {
+        summaryTextContent = summaryPart || JSON.stringify(summary);
+      }
+    } else {
+      summaryTextContent = JSON.stringify(summary);
+    }
+  }
+  summaryText.textContent = summaryTextContent;
 
   // Display full text
   fulltext.textContent = fullText;
@@ -1451,9 +1470,6 @@ function saveToHistory(title, summary, fullText, segments = null) {
   });
 }
 
-// Track expanded history item
-let expandedHistoryId = null;
-
 function loadHistory() {
   chrome.storage.local.get(['history'], (result) => {
     const history = result.history || [];
@@ -1468,59 +1484,23 @@ function loadHistory() {
     const isSaveMode = historyControls.dataset.mode === 'save';
     const isSelectionMode = isDeleteMode || isSaveMode;
     
-    historyList.innerHTML = history.map(item => {
-      const isExpanded = expandedHistoryId === item.id;
-      return `
-        <div class="history-item" data-id="${item.id}">
-          ${isSelectionMode ? `<input type="checkbox" class="history-checkbox" data-id="${item.id}">` : ''}
-          <div class="history-item-content" ${!isSelectionMode ? 'style="cursor: pointer;"' : ''}>
-            <div class="history-item-header">
-              <div class="history-item-info">
-                <div class="history-item-title">${item.title}</div>
-                <div class="history-item-date">${item.date}</div>
-              </div>
-              ${!isSelectionMode ? `<span class="history-expand-icon">${isExpanded ? '▼' : '▶'}</span>` : ''}
-            </div>
-            ${isExpanded && !isSelectionMode ? `
-              <div class="history-item-details">
-                <div class="history-detail-section">
-                  <strong>خلاصه:</strong>
-                  <p>${item.summary || 'بدون خلاصه'}</p>
-                </div>
-                <div class="history-detail-section">
-                  <strong>متن کامل:</strong>
-                  <p class="history-fulltext">${item.fullText || 'بدون متن'}</p>
-                </div>
-                ${item.segments && item.segments.length > 0 ? `
-                  <div class="history-detail-section">
-                    <strong>زیرنویس:</strong>
-                    <button class="history-download-srt-btn" data-id="${item.id}">دانلود SRT</button>
-                  </div>
-                ` : ''}
-              </div>
-            ` : ''}
-          </div>
+    historyList.innerHTML = history.map(item => `
+      <div class="history-item" data-id="${item.id}">
+        ${isSelectionMode ? `<input type="checkbox" class="history-checkbox" data-id="${item.id}">` : ''}
+        <div class="history-item-content" ${!isSelectionMode ? 'style="cursor: pointer;"' : ''}>
+          <div class="history-item-title">${item.title}</div>
+          <div class="history-item-date">${item.date}</div>
         </div>
-      `;
-    }).join('');
+      </div>
+    `).join('');
 
-    // Add click listeners for expand/collapse
+    // Add click listeners - restore original behavior (loadHistoryItem)
     document.querySelectorAll('.history-item').forEach(item => {
       const content = item.querySelector('.history-item-content');
-      const header = item.querySelector('.history-item-header');
-      if (content && header && !isSelectionMode) {
-        header.addEventListener('click', (e) => {
-          e.stopPropagation();
+      if (content && !isSelectionMode) {
+        content.addEventListener('click', () => {
           const id = parseInt(item.dataset.id);
-          
-          // Close previously expanded item
-          if (expandedHistoryId === id) {
-            expandedHistoryId = null;
-          } else {
-            expandedHistoryId = id;
-          }
-          
-          loadHistory(); // Reload to update UI
+          loadHistoryItem(id, history);
         });
       }
     });
@@ -1534,18 +1514,6 @@ function loadHistory() {
         });
       });
     }
-    
-    // Add SRT download listeners
-    document.querySelectorAll('.history-download-srt-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const id = parseInt(btn.dataset.id);
-        const item = history.find(h => h.id === id);
-        if (item && item.segments) {
-          downloadHistorySrt(item);
-        }
-      });
-    });
     
     updateDeleteButtonState();
     updateSaveButtonState();
@@ -1795,7 +1763,8 @@ function downloadHistorySrt(item) {
 function loadHistoryItem(id, history) {
   const item = history.find(h => h.id === id);
   if (item) {
-    displayResults(item.summary, item.fullText, item.segments || null);
+    // Pass empty options object to maintain compatibility
+    displayResults(item.summary, item.fullText, item.segments || null, {});
     resultSection.scrollIntoView({ behavior: 'smooth' });
   }
 }
