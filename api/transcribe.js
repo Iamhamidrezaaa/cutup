@@ -236,162 +236,162 @@ export default async function handler(req, res) {
             knownLength: audioBuffer.length
           });
           formData.append('model', 'whisper-1');
-        // Don't specify language - let Whisper auto-detect
-        // formData.append('language', 'fa');
-        formData.append('response_format', 'verbose_json'); // Get segments with timestamps
-        
-        // Don't add prompt yet - we'll add it only if Persian is detected
-        
-        // Get form data headers
-        const formHeaders = formData.getHeaders();
-        
-        console.log(`TRANSCRIBE V4.0: Sending request to OpenAI API (attempt ${attempt})...`);
-        
-        // Use node-fetch with timeout
-        const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+          // Don't specify language - let Whisper auto-detect
+          // formData.append('language', 'fa');
+          formData.append('response_format', 'verbose_json'); // Get segments with timestamps
+          
+          // Don't add prompt yet - we'll add it only if Persian is detected
+          
+          // Get form data headers
+          const formHeaders = formData.getHeaders();
+          
+          console.log(`TRANSCRIBE V4.0: Sending request to OpenAI API (attempt ${attempt})...`);
+          
+          // Use node-fetch with timeout
+          const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${apiKey}`,
             ...formHeaders
           },
-          body: formData,
-          timeout: 300000 // 5 minutes timeout for larger files
-        });
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          let errorData;
-          try {
-            errorData = JSON.parse(errorText);
-          } catch {
-            errorData = { message: errorText };
-          }
-          
-          const errorMessage = errorData.error?.message || errorText || `OpenAI API error: ${response.status} ${response.statusText}`;
-          
-          // Log detailed error information
-          console.log(`TRANSCRIBE V4.0: OpenAI API Error (attempt ${attempt}):`, {
-            status: response.status,
-            statusText: response.statusText,
-            errorType: errorData.error?.type,
-            errorCode: errorData.error?.code,
-            errorMessage: errorMessage,
-            fullError: errorData
+            body: formData,
+            timeout: 300000 // 5 minutes timeout for larger files
           });
           
-          // Check for quota errors
-          if (errorMessage.includes('quota') || errorMessage.includes('billing') || response.status === 429) {
-            const quotaError = new Error(errorMessage);
-            quotaError.name = 'QuotaError';
-            quotaError.status = response.status;
-            quotaError.errorType = errorData.error?.type;
-            quotaError.errorCode = errorData.error?.code;
-            throw quotaError;
-          }
-          
-          // Check for authentication errors
-          if (response.status === 401 || errorMessage.includes('Invalid API key') || errorMessage.includes('Incorrect API key')) {
-            const authError = new Error(errorMessage);
-            authError.name = 'AuthError';
-            authError.status = 401;
-            throw authError;
-          }
-          
-          throw new Error(errorMessage);
-        }
-        
-        transcript = await response.json();
-        console.log('TRANSCRIBE V4.0: Success! Text length:', transcript.text?.length || 0);
-        console.log('TRANSCRIBE V4.0: Segments count:', transcript.segments?.length || 0);
-        console.log('TRANSCRIBE V4.0: Detected language:', transcript.language);
-        
-        // If language is Persian, retry with prompt for better accuracy
-        const detectedLanguage = transcript.language || 'unknown';
-        const textContainsPersian = /[\u0600-\u06FF]/.test(transcript.text || '');
-        const textContainsEnglish = /[a-zA-Z]/.test(transcript.text || '');
-        
-        // Count characters to determine dominant language
-        const persianCharCount = (transcript.text || '').match(/[\u0600-\u06FF]/g)?.length || 0;
-        const englishCharCount = (transcript.text || '').match(/[a-zA-Z]/g)?.length || 0;
-        const totalChars = (transcript.text || '').length;
-        
-        console.log('TRANSCRIBE V4.0: Text analysis - Persian chars:', persianCharCount, 'English chars:', englishCharCount, 'Total:', totalChars);
-        
-        // Determine if text is actually Persian:
-        // 1. Language is detected as Persian (fa, per, persian)
-        // 2. AND text contains Persian characters
-        // 3. AND Persian characters are more than 30% of the text (to avoid false positives)
-        // 4. AND English characters are less than 50% of the text
-        const persianRatio = totalChars > 0 ? persianCharCount / totalChars : 0;
-        const englishRatio = totalChars > 0 ? englishCharCount / totalChars : 0;
-        
-        // If language hint is English, be very strict - don't retry with Persian prompt
-        const hasEnglishHint = languageHint && (languageHint === 'en' || languageHint === 'english' || languageHint.startsWith('en'));
-        
-        const isActuallyPersian = !hasEnglishHint  // Don't retry if hint says English
-                                  && (detectedLanguage === 'fa' || detectedLanguage === 'per' || detectedLanguage === 'persian') 
-                                  && textContainsPersian 
-                                  && persianRatio > 0.3  // At least 30% Persian characters
-                                  && englishRatio < 0.5  // Less than 50% English characters
-                                  && !(englishRatio > 0.6 && persianRatio < 0.2);  // If English is >60% and Persian <20%, definitely not Persian
-        
-        console.log('TRANSCRIBE V4.0: Language ratios - Persian:', persianRatio.toFixed(2), 'English:', englishRatio.toFixed(2), 'Has English hint:', hasEnglishHint, 'Is Persian:', isActuallyPersian);
-        
-        // If language is detected as English or other non-Persian, use it as-is
-        // Don't retry with Persian prompt
-        if (isActuallyPersian) {
-          console.log('TRANSCRIBE V4.0: Confirmed Persian, retrying with prompt for better accuracy...');
-          try {
-            const formDataWithPrompt = new FormDataLib();
-            formDataWithPrompt.append('file', audioBuffer, {
-              filename: `audio.${extension}`,
-              contentType: mimeType,
-              knownLength: audioBuffer.length
-            });
-            formDataWithPrompt.append('model', 'whisper-1');
-            formDataWithPrompt.append('language', 'fa');
-            formDataWithPrompt.append('response_format', 'verbose_json');
-            
-            // Add comprehensive prompt for Persian poetry, songs, and common words
-            const prompt = 'یار عزیز قامت بلندم بی چه نتای تا عقدت ببندم پات از حنیرن صد تا گلیش هه قلبم تو سینه ت صد منزلیش هه بی تو مه حتی وا خوم غریبم تنهایی و غم اتکه نصیبم عشق مه و تو اینی تمونی وقتی خوشن که پهلوم بمونی کس نی بپرسن وازت چه بودن یارن کجاین دشمن حسودن از شر جنتک از ترس شیطون اسپند و گشنه ی بی بی ندودن سلام، خوبی، مونا، زاهدی، کاتاب، کات آپ، cutup، پیام، تست، فارسی، زبان، شعر، آهنگ، موسیقی';
-            formDataWithPrompt.append('prompt', prompt);
-            
-            const formHeadersWithPrompt = formDataWithPrompt.getHeaders();
-            
-            const retryResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                ...formHeadersWithPrompt
-              },
-              body: formDataWithPrompt,
-              timeout: 300000
-            });
-            
-            if (retryResponse.ok) {
-              const retryTranscript = await retryResponse.json();
-              if (/[\u0600-\u06FF]/.test(retryTranscript.text || '')) {
-                transcript = retryTranscript;
-                console.log('TRANSCRIBE V4.0: Retry with prompt successful');
-              } else {
-                console.warn('TRANSCRIBE V4.0: Retry returned non-Persian text, using original');
-              }
-            } else {
-              console.warn('TRANSCRIBE V4.0: Retry with prompt failed, using original transcript');
+          if (!response.ok) {
+            const errorText = await response.text();
+            let errorData;
+            try {
+              errorData = JSON.parse(errorText);
+            } catch {
+              errorData = { message: errorText };
             }
-          } catch (retryError) {
-            console.warn('TRANSCRIBE V4.0: Error during retry with prompt, using original:', retryError.message);
+            
+            const errorMessage = errorData.error?.message || errorText || `OpenAI API error: ${response.status} ${response.statusText}`;
+            
+            // Log detailed error information
+            console.log(`TRANSCRIBE V4.0: OpenAI API Error (attempt ${attempt}):`, {
+              status: response.status,
+              statusText: response.statusText,
+              errorType: errorData.error?.type,
+              errorCode: errorData.error?.code,
+              errorMessage: errorMessage,
+              fullError: errorData
+            });
+            
+            // Check for quota errors
+            if (errorMessage.includes('quota') || errorMessage.includes('billing') || response.status === 429) {
+              const quotaError = new Error(errorMessage);
+              quotaError.name = 'QuotaError';
+              quotaError.status = response.status;
+              quotaError.errorType = errorData.error?.type;
+              quotaError.errorCode = errorData.error?.code;
+              throw quotaError;
+            }
+            
+            // Check for authentication errors
+            if (response.status === 401 || errorMessage.includes('Invalid API key') || errorMessage.includes('Incorrect API key')) {
+              const authError = new Error(errorMessage);
+              authError.name = 'AuthError';
+              authError.status = 401;
+              throw authError;
+            }
+            
+            throw new Error(errorMessage);
           }
-        } else {
-          // If language is English or other non-Persian, use it as-is
-          if (detectedLanguage === 'en' || detectedLanguage === 'english') {
-            console.log('TRANSCRIBE V4.0: English detected, using transcript as-is');
+          
+          transcript = await response.json();
+          console.log('TRANSCRIBE V4.0: Success! Text length:', transcript.text?.length || 0);
+          console.log('TRANSCRIBE V4.0: Segments count:', transcript.segments?.length || 0);
+          console.log('TRANSCRIBE V4.0: Detected language:', transcript.language);
+          
+          // If language is Persian, retry with prompt for better accuracy
+          const detectedLanguage = transcript.language || 'unknown';
+          const textContainsPersian = /[\u0600-\u06FF]/.test(transcript.text || '');
+          const textContainsEnglish = /[a-zA-Z]/.test(transcript.text || '');
+          
+          // Count characters to determine dominant language
+          const persianCharCount = (transcript.text || '').match(/[\u0600-\u06FF]/g)?.length || 0;
+          const englishCharCount = (transcript.text || '').match(/[a-zA-Z]/g)?.length || 0;
+          const totalChars = (transcript.text || '').length;
+          
+          console.log('TRANSCRIBE V4.0: Text analysis - Persian chars:', persianCharCount, 'English chars:', englishCharCount, 'Total:', totalChars);
+          
+          // Determine if text is actually Persian:
+          // 1. Language is detected as Persian (fa, per, persian)
+          // 2. AND text contains Persian characters
+          // 3. AND Persian characters are more than 30% of the text (to avoid false positives)
+          // 4. AND English characters are less than 50% of the text
+          const persianRatio = totalChars > 0 ? persianCharCount / totalChars : 0;
+          const englishRatio = totalChars > 0 ? englishCharCount / totalChars : 0;
+          
+          // If language hint is English, be very strict - don't retry with Persian prompt
+          const hasEnglishHint = languageHint && (languageHint === 'en' || languageHint === 'english' || languageHint.startsWith('en'));
+          
+          const isActuallyPersian = !hasEnglishHint  // Don't retry if hint says English
+                                    && (detectedLanguage === 'fa' || detectedLanguage === 'per' || detectedLanguage === 'persian') 
+                                    && textContainsPersian 
+                                    && persianRatio > 0.3  // At least 30% Persian characters
+                                    && englishRatio < 0.5  // Less than 50% English characters
+                                    && !(englishRatio > 0.6 && persianRatio < 0.2);  // If English is >60% and Persian <20%, definitely not Persian
+          
+          console.log('TRANSCRIBE V4.0: Language ratios - Persian:', persianRatio.toFixed(2), 'English:', englishRatio.toFixed(2), 'Has English hint:', hasEnglishHint, 'Is Persian:', isActuallyPersian);
+          
+          // If language is detected as English or other non-Persian, use it as-is
+          // Don't retry with Persian prompt
+          if (isActuallyPersian) {
+            console.log('TRANSCRIBE V4.0: Confirmed Persian, retrying with prompt for better accuracy...');
+            try {
+              const formDataWithPrompt = new FormDataLib();
+              formDataWithPrompt.append('file', audioBuffer, {
+                filename: `audio.${extension}`,
+                contentType: mimeType,
+                knownLength: audioBuffer.length
+              });
+              formDataWithPrompt.append('model', 'whisper-1');
+              formDataWithPrompt.append('language', 'fa');
+              formDataWithPrompt.append('response_format', 'verbose_json');
+              
+              // Add comprehensive prompt for Persian poetry, songs, and common words
+              const prompt = 'یار عزیز قامت بلندم بی چه نتای تا عقدت ببندم پات از حنیرن صد تا گلیش هه قلبم تو سینه ت صد منزلیش هه بی تو مه حتی وا خوم غریبم تنهایی و غم اتکه نصیبم عشق مه و تو اینی تمونی وقتی خوشن که پهلوم بمونی کس نی بپرسن وازت چه بودن یارن کجاین دشمن حسودن از شر جنتک از ترس شیطون اسپند و گشنه ی بی بی ندودن سلام، خوبی، مونا، زاهدی، کاتاب، کات آپ، cutup، پیام، تست، فارسی، زبان، شعر، آهنگ، موسیقی';
+              formDataWithPrompt.append('prompt', prompt);
+              
+              const formHeadersWithPrompt = formDataWithPrompt.getHeaders();
+              
+              const retryResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${apiKey}`,
+                  ...formHeadersWithPrompt
+                },
+                body: formDataWithPrompt,
+                timeout: 300000
+              });
+              
+              if (retryResponse.ok) {
+                const retryTranscript = await retryResponse.json();
+                if (/[\u0600-\u06FF]/.test(retryTranscript.text || '')) {
+                  transcript = retryTranscript;
+                  console.log('TRANSCRIBE V4.0: Retry with prompt successful');
+                } else {
+                  console.warn('TRANSCRIBE V4.0: Retry returned non-Persian text, using original');
+                }
+              } else {
+                console.warn('TRANSCRIBE V4.0: Retry with prompt failed, using original transcript');
+              }
+            } catch (retryError) {
+              console.warn('TRANSCRIBE V4.0: Error during retry with prompt, using original:', retryError.message);
+            }
           } else {
-            console.log(`TRANSCRIBE V4.0: Language ${detectedLanguage} detected, using transcript as-is`);
+            // If language is English or other non-Persian, use it as-is
+            if (detectedLanguage === 'en' || detectedLanguage === 'english') {
+              console.log('TRANSCRIBE V4.0: English detected, using transcript as-is');
+            } else {
+              console.log(`TRANSCRIBE V4.0: Language ${detectedLanguage} detected, using transcript as-is`);
+            }
           }
-        }
-        
-        break; // Success, exit retry loop
+          
+          break; // Success, exit retry loop
         
       } catch (retryError) {
         lastError = retryError;
