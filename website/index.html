@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cutup - خلاصه‌ساز هوشمند ویدئو و صوت</title>
   <meta name="description" content="تبدیل ویدئو و صوت به متن و خلاصه‌سازی هوشمند با AI. پشتیبانی از یوتیوب و فایل‌های صوتی.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -24,6 +27,16 @@
             <a href="#features" class="nav-link">ویژگی‌ها</a>
             <a href="#how-it-works" class="nav-link">نحوه کار</a>
             <a href="#install" class="nav-link">نصب</a>
+            <div class="auth-section" id="authSection">
+              <button class="nav-link login-btn" id="loginBtn" style="display: none;">
+                🔐 ورود با Google
+              </button>
+              <div class="user-profile" id="userProfile" style="display: none;">
+                <img src="" alt="Profile" class="user-avatar" id="userAvatar">
+                <span class="user-name" id="userName"></span>
+                <button class="logout-btn" id="logoutBtn">خروج</button>
+              </div>
+            </div>
             <a href="https://chrome.google.com/webstore" class="nav-link cta" target="_blank">نصب از Chrome Store</a>
           </div>
         </div>

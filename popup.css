@@ -48,6 +48,65 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.auth-section-extension {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.login-btn-extension {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-btn-extension:hover {
+  background: var(--accent-hover);
+}
+
+.user-profile-extension {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.user-avatar-extension {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+}
+
+.logout-btn-extension {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px;
+  transition: opacity 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logout-btn-extension:hover {
+  opacity: 0.7;
+}
+
 .logo {
   display: flex;
   align-items: center;

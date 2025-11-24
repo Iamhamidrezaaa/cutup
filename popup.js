@@ -32,6 +32,14 @@ const progressSection = document.getElementById('progressSection');
 const progressBar = document.getElementById('progressBar');
 const progressText = document.getElementById('progressText');
 const progressDetails = document.getElementById('progressDetails');
+const loginBtnExtension = document.getElementById('loginBtnExtension');
+const logoutBtnExtension = document.getElementById('logoutBtnExtension');
+const userProfileExtension = document.getElementById('userProfileExtension');
+const userAvatarExtension = document.getElementById('userAvatarExtension');
+const authSectionExtension = document.getElementById('authSectionExtension');
+
+// Auth state
+let currentSession = null;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -39,6 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadHistory();
   setupEventListeners();
   checkInput();
+  initAuth();
 });
 
 // Theme Management
@@ -86,6 +95,14 @@ function setupEventListeners() {
       switchTab(tabName);
     });
   });
+  
+  // Auth event listeners
+  if (loginBtnExtension) {
+    loginBtnExtension.addEventListener('click', handleLogin);
+  }
+  if (logoutBtnExtension) {
+    logoutBtnExtension.addEventListener('click', handleLogout);
+  }
 }
 
 function checkInput() {
@@ -1895,6 +1912,109 @@ function loadHistoryItem(id, history) {
     setTimeout(() => {
       resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 100);
+}
+}
+
+// Auth Functions
+async function initAuth() {
+  // Load session from storage
+  chrome.storage.local.get(['cutup_session'], (result) => {
+    if (result.cutup_session) {
+      currentSession = result.cutup_session;
+      verifySession(result.cutup_session);
+    } else {
+      showLoginButton();
+    }
+  });
+}
+
+async function verifySession(sessionId) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/auth?action=verify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': sessionId
+      },
+      body: JSON.stringify({ session: sessionId })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.valid && data.user) {
+        showUserProfile(data.user);
+      } else {
+        showLoginButton();
+      }
+    } else {
+      // Session expired or invalid
+      chrome.storage.local.remove(['cutup_session']);
+      currentSession = null;
+      showLoginButton();
+    }
+  } catch (error) {
+    console.error('Error verifying session:', error);
+    showLoginButton();
   }
 }
+
+function showLoginButton() {
+  if (loginBtnExtension) loginBtnExtension.style.display = 'block';
+  if (userProfileExtension) userProfileExtension.style.display = 'none';
+}
+
+function showUserProfile(user) {
+  if (loginBtnExtension) loginBtnExtension.style.display = 'none';
+  if (userProfileExtension) userProfileExtension.style.display = 'flex';
+  if (userAvatarExtension) {
+    userAvatarExtension.src = user.picture || '';
+    userAvatarExtension.alt = user.name || 'User';
+  }
+}
+
+async function handleLogin() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/auth?action=login`);
+    const data = await response.json();
+    if (data.authUrl) {
+      // Open Google OAuth in a new tab
+      chrome.tabs.create({ url: data.authUrl });
+    } else {
+      alert('خطا در دریافت لینک ورود. لطفاً دوباره تلاش کنید.');
+    }
+  } catch (error) {
+    console.error('Error initiating login:', error);
+    alert('خطا در ورود. لطفاً دوباره تلاش کنید.');
+  }
+}
+
+async function handleLogout() {
+  const sessionId = currentSession || (await chrome.storage.local.get(['cutup_session'])).cutup_session;
+  if (sessionId) {
+    try {
+      await fetch(`${API_BASE_URL}/api/auth?action=logout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Session-Id': sessionId
+        },
+        body: JSON.stringify({ session: sessionId })
+      });
+    } catch (error) {
+      console.error('Error logging out:', error);
+    }
+  }
+  chrome.storage.local.remove(['cutup_session']);
+  currentSession = null;
+  showLoginButton();
+}
+
+// Listen for auth callback from website
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'auth_success' && message.session) {
+    currentSession = message.session;
+    chrome.storage.local.set({ cutup_session: message.session });
+    verifySession(message.session);
+  }
+});
 

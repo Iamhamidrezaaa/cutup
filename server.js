@@ -85,7 +85,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Import and use API routes
-let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler;
+let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler;
 
 async function loadRoutes() {
   try {
@@ -112,6 +112,10 @@ async function loadRoutes() {
     // Translate SRT endpoint
     const translateSrtModule = await import('./api/translate-srt.js');
     translateSrtHandler = translateSrtModule.default;
+    
+    // Auth endpoint
+    const authModule = await import('./api/auth.js');
+    authHandler = authModule.default;
     
     console.log('All routes loaded successfully');
   } catch (err) {
@@ -163,6 +167,28 @@ app.post('/api/translate-srt', async (req, res) => {
   return translateSrtHandler(req, res);
 });
 
+// Auth routes - handle both GET and POST
+app.get('/api/auth', async (req, res) => {
+  if (!authHandler) {
+    return res.status(500).json({ error: 'Auth handler not loaded' });
+  }
+  return authHandler(req, res);
+});
+
+app.post('/api/auth', async (req, res) => {
+  if (!authHandler) {
+    return res.status(500).json({ error: 'Auth handler not loaded' });
+  }
+  return authHandler(req, res);
+});
+
+app.get('/api/auth/callback', async (req, res) => {
+  if (!authHandler) {
+    return res.status(500).json({ error: 'Auth handler not loaded' });
+  }
+  return authHandler(req, res);
+});
+
 // Error handler
 app.use((err, req, res, next) => {
   console.error('Error:', err);
@@ -192,6 +218,10 @@ loadRoutes().then(() => {
     console.log(`   POST /api/youtube-title`);
     console.log(`   POST /api/translate-srt`);
     console.log(`   GET  /api/health`);
+    console.log(`   GET  /api/auth?action=login`);
+    console.log(`   GET  /api/auth/callback`);
+    console.log(`   GET  /api/auth?action=me`);
+    console.log(`   POST /api/auth?action=logout`);
   });
   
   server.on('error', (err) => {
