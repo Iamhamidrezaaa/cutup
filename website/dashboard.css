@@ -1057,7 +1057,162 @@
   color: var(--text-secondary);
 }
 
+/* Free Plan Info */
+.free-plan-info {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border: 2px solid #0ea5e9;
+  border-radius: 16px;
+  padding: 32px;
+  margin-bottom: 48px;
+}
+
+.free-plan-content h3 {
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  color: #0369a1;
+}
+
+.free-plan-description {
+  font-size: 16px;
+  color: #0c4a6e;
+  margin-bottom: 20px;
+  line-height: 1.8;
+}
+
+.free-plan-limits {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.free-plan-limits li {
+  padding: 12px 0;
+  font-size: 15px;
+  color: #075985;
+  border-bottom: 1px solid rgba(3, 105, 161, 0.1);
+}
+
+.free-plan-limits li:last-child {
+  border-bottom: none;
+}
+
+/* Paid Plans Container */
+.paid-plans-container {
+  margin-top: 32px;
+}
+
+.paid-plans-title {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 32px;
+  text-align: center;
+  color: var(--text-primary);
+}
+
+.paid-plans-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  align-items: start;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.paid-plan-card {
+  background: white;
+  border: 2px solid var(--border);
+  border-radius: 16px;
+  padding: 32px;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  cursor: pointer;
+  transform: scale(0.95);
+}
+
+.paid-plan-card:hover {
+  transform: scale(0.98) translateY(-8px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+  border-color: var(--primary);
+}
+
+.paid-plan-card.featured {
+  transform: scale(1.05);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15), 0 24px 48px rgba(0, 0, 0, 0.15);
+  z-index: 10;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.paid-plan-card.featured:hover {
+  transform: scale(1.08) translateY(-12px);
+}
+
+.paid-plan-header {
+  text-align: center;
+  margin-bottom: 24px;
+  position: relative;
+}
+
+.paid-plan-name {
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--text-primary);
+}
+
+.paid-plan-card.featured .paid-plan-name {
+  font-size: 32px;
+  background: linear-gradient(135deg, var(--primary), #8b5cf6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* User Profile Link */
+.user-profile-link {
+  transition: all 0.2s;
+  border-radius: 8px;
+  padding: 4px 8px;
+}
+
+.user-profile-link:hover {
+  background: var(--bg-gray);
+}
+
+.logo {
+  transition: all 0.2s;
+}
+
+.logo:hover {
+  opacity: 0.8;
+  transform: scale(1.05);
+}
+
 /* Responsive */
+@media (max-width: 1024px) {
+  .paid-plans-grid {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+  
+  .paid-plan-card {
+    transform: scale(1);
+  }
+  
+  .paid-plan-card.featured {
+    transform: scale(1);
+  }
+  
+  .paid-plan-card:hover {
+    transform: translateY(-4px);
+  }
+  
+  .paid-plan-card.featured:hover {
+    transform: translateY(-4px);
+  }
+}
+
 @media (max-width: 768px) {
   .dashboard-main {
     grid-template-columns: 1fr;
@@ -1081,6 +1236,30 @@
   
   .plans-grid {
     grid-template-columns: 1fr;
+  }
+  
+  .paid-plans-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .free-plan-info {
+    padding: 24px;
+  }
+  
+  .free-plan-content h3 {
+    font-size: 24px;
+  }
+  
+  .paid-plan-card {
+    padding: 24px;
+  }
+  
+  .paid-plan-name {
+    font-size: 24px;
+  }
+  
+  .paid-plan-card.featured .paid-plan-name {
+    font-size: 26px;
   }
 }
 

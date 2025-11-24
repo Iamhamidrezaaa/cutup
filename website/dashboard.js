@@ -183,28 +183,104 @@ function drawUsageChart() {
 
 async function loadPlans() {
   try {
+    console.log('Loading plans...');
     const response = await fetch(`${API_BASE_URL}/api/subscription?action=plans`);
+    console.log('Plans response status:', response.status);
+    
     if (response.ok) {
       const data = await response.json();
-      displayPlans(data.plans);
+      console.log('Plans data:', data);
+      
+      if (data.plans && Array.isArray(data.plans)) {
+        displayPlans(data.plans);
+      } else {
+        console.error('Invalid plans data:', data);
+        showPlansError('داده‌های پلن نامعتبر است');
+      }
+    } else {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Error loading plans:', response.status, errorData);
+      showPlansError('خطا در بارگذاری پلن‌ها');
     }
   } catch (error) {
     console.error('Error loading plans:', error);
+    showPlansError('خطا در اتصال به سرور');
+  }
+}
+
+function showPlansError(message) {
+  const plansGrid = document.getElementById('plansGrid');
+  if (plansGrid) {
+    plansGrid.innerHTML = `<div class="error-message" style="text-align: center; padding: 48px; color: #ef4444;">
+      <p>${message}</p>
+      <button onclick="loadPlans()" style="margin-top: 16px; padding: 8px 16px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer;">تلاش مجدد</button>
+    </div>`;
   }
 }
 
 function displayPlans(plans) {
   const plansGrid = document.getElementById('plansGrid');
-  if (!plansGrid) return;
+  if (!plansGrid) {
+    console.error('plansGrid element not found!');
+    return;
+  }
+  
+  console.log('Displaying plans:', plans);
+  
+  if (!plans || plans.length === 0) {
+    plansGrid.innerHTML = '<div class="empty-state"><p>پلنی یافت نشد</p></div>';
+    return;
+  }
+  
+  // Find free plan
+  const freePlan = plans.find(p => p.id === 'free');
+  const paidPlans = plans.filter(p => p.id !== 'free');
+  
+  // Sort paid plans: starter, pro, business
+  const sortedPaidPlans = ['starter', 'pro', 'business']
+    .map(id => paidPlans.find(p => p.id === id))
+    .filter(p => p);
   
   plansGrid.innerHTML = '';
   
-  // Display all plans including free
-  plans.forEach(plan => {
+  // Display free plan info first
+  if (freePlan) {
+    const freeInfo = document.createElement('div');
+    freeInfo.className = 'free-plan-info';
+    freeInfo.innerHTML = `
+      <div class="free-plan-content">
+        <h3>💎 پلن رایگان</h3>
+        <p class="free-plan-description">
+          در حالت عادی یا همان عضویت رایگان، شما محدودیت‌های زیر را دارید:
+        </p>
+        <ul class="free-plan-limits">
+          <li>✅ حداکثر 3 دقیقه خلاصه‌سازی در روز یا 20 دقیقه در ماه</li>
+          <li>✅ دانلود موزیک: 3 دانلود در ماه</li>
+          <li>✅ دانلود ویدئو: 3 دانلود در ماه (فقط تا کیفیت 480p)</li>
+          <li>❌ بدون ویژگی‌های پیشرفته مثل زیرنویس‌سازی و خلاصه</li>
+        </ul>
+      </div>
+    `;
+    plansGrid.appendChild(freeInfo);
+  }
+  
+  // Display paid plans in a special grid
+  const paidPlansContainer = document.createElement('div');
+  paidPlansContainer.className = 'paid-plans-container';
+  paidPlansContainer.innerHTML = '<h3 class="paid-plans-title">پلن‌های پولی</h3>';
+  
+  const paidPlansGrid = document.createElement('div');
+  paidPlansGrid.className = 'paid-plans-grid';
+  
+  // Display paid plans
+  sortedPaidPlans.forEach((plan, index) => {
+    console.log('Creating card for plan:', plan.id, plan.name);
     const planCard = document.createElement('div');
-    planCard.className = 'plan-card';
+    planCard.className = 'paid-plan-card';
     planCard.dataset.planId = plan.id;
+    planCard.dataset.index = index;
     
+    // Pro plan is featured (middle, larger)
     if (plan.id === 'pro') {
       planCard.classList.add('featured');
     }
@@ -213,9 +289,15 @@ function displayPlans(plans) {
       planCard.classList.add('current-plan');
     }
     
+    // Get download limits
+    const audioLimit = plan.downloadAudioLimit !== undefined ? plan.downloadAudioLimit : null;
+    const videoLimit = plan.downloadVideoLimit !== undefined ? plan.downloadVideoLimit : null;
+    const audioText = audioLimit ? `${audioLimit} دانلود در ماه` : 'نامحدود';
+    const videoText = videoLimit ? `${videoLimit} دانلود در ماه` : 'نامحدود';
+    
     planCard.innerHTML = `
-      <div class="plan-header">
-        <div class="plan-name">${plan.name}</div>
+      <div class="paid-plan-header">
+        <div class="paid-plan-name">${plan.name}</div>
         ${plan.id === subscriptionInfo?.plan ? '<div class="current-badge">پلن فعلی</div>' : ''}
       </div>
       <div class="plan-billing-selector">
@@ -232,10 +314,10 @@ function displayPlans(plans) {
       </div>
       <ul class="plan-features">
         <li>${plan.monthlyLimit} دقیقه در ماه</li>
-        ${plan.features.summarization ? '<li>✅ خلاصه‌سازی هوشمند</li>' : '<li>❌ خلاصه‌سازی هوشمند</li>'}
-        ${plan.features.srt ? '<li>✅ زیرنویس SRT</li>' : '<li>❌ زیرنویس SRT</li>'}
-        <li>✅ دانلود موزیک ${plan.id === 'free' ? '(محدود)' : '(نامحدود)'}</li>
-        <li>✅ دانلود ویدئو ${plan.id === 'free' ? '(محدود - تا 480p)' : '(نامحدود)'}</li>
+        <li>✅ خلاصه‌سازی هوشمند</li>
+        <li>✅ زیرنویس SRT</li>
+        <li>✅ دانلود موزیک: ${audioText}</li>
+        <li>✅ دانلود ویدئو: ${videoText}</li>
       </ul>
       <button class="plan-btn ${plan.id === subscriptionInfo?.plan ? 'current' : ''}" 
               onclick="addToCart('${plan.id}', document.querySelector('[data-plan-id=\\'${plan.id}\\'] .billing-period-select').value)">
@@ -243,8 +325,50 @@ function displayPlans(plans) {
       </button>
     `;
     
-    plansGrid.appendChild(planCard);
+    // Add click handler to bring card forward
+    planCard.addEventListener('click', (e) => {
+      if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'OPTION') {
+        bringCardForward(planCard);
+      }
+    });
+    
+    paidPlansGrid.appendChild(planCard);
   });
+  
+  paidPlansContainer.appendChild(paidPlansGrid);
+  plansGrid.appendChild(paidPlansContainer);
+}
+
+function bringCardForward(card) {
+  // Remove featured from all cards
+  document.querySelectorAll('.paid-plan-card').forEach(c => {
+    c.classList.remove('featured');
+  });
+  
+  // Add featured to clicked card
+  card.classList.add('featured');
+  
+  // Reorder cards: featured in middle
+  const cards = Array.from(document.querySelectorAll('.paid-plan-card'));
+  const featuredIndex = cards.indexOf(card);
+  const planIds = cards.map(c => c.dataset.planId);
+  
+  // Reorder: starter, pro, business -> keep order but move featured to middle
+  const reordered = [];
+  const starter = cards.find(c => c.dataset.planId === 'starter');
+  const pro = cards.find(c => c.dataset.planId === 'pro');
+  const business = cards.find(c => c.dataset.planId === 'business');
+  
+  if (card.dataset.planId === 'starter') {
+    reordered.push(pro, card, business);
+  } else if (card.dataset.planId === 'pro') {
+    reordered.push(starter, card, business);
+  } else {
+    reordered.push(starter, pro, card);
+  }
+  
+  const grid = card.parentElement;
+  reordered.forEach(c => grid.appendChild(c));
 }
 
 function calculatePlanPriceHTML(plan, billingPeriod) {
@@ -885,6 +1009,19 @@ function setupNavigation() {
       }
     });
   });
+  
+  // Handle user profile link click
+  const userProfileLink = document.getElementById('userProfileLink');
+  if (userProfileLink) {
+    userProfileLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      // Navigate to overview
+      const overviewNav = document.querySelector('[data-section="overview"]');
+      if (overviewNav) {
+        overviewNav.click();
+      }
+    });
+  }
 }
 
 function setupEventListeners() {

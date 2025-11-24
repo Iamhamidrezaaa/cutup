@@ -35,6 +35,8 @@ const PLANS = {
     name: 'Starter',
     nameEn: 'Starter',
     monthlyLimit: 120, // 2 hours = 120 minutes
+    downloadAudioLimit: 20, // 20 audio downloads per month
+    downloadVideoLimit: 20, // 20 video downloads per month
     features: {
       transcription: true,
       summarization: true,
@@ -54,6 +56,8 @@ const PLANS = {
     name: 'Pro',
     nameEn: 'Pro',
     monthlyLimit: 300, // 5 hours = 300 minutes
+    downloadAudioLimit: 100, // 100 audio downloads per month
+    downloadVideoLimit: 100, // 100 video downloads per month
     features: {
       transcription: true,
       summarization: true,
@@ -73,6 +77,8 @@ const PLANS = {
     name: 'Business',
     nameEn: 'Business',
     monthlyLimit: 600, // 10 hours = 600 minutes
+    downloadAudioLimit: null, // Unlimited
+    downloadVideoLimit: null, // Unlimited
     features: {
       transcription: true,
       summarization: true,
@@ -278,14 +284,23 @@ function recordDownload(userId, type) {
 
 export default async function handler(req, res) {
   // Handle CORS
-  const corsHandled = handleCORS(req, res);
-  if (corsHandled) return;
+  setCORSHeaders(res);
 
   const { method, query, body } = req;
   const action = query.action || body?.action;
   const sessionId = req.headers['x-session-id'] || query.session || body?.session;
 
   try {
+    // Get all plans (doesn't require session)
+    if (method === 'GET' && action === 'plans') {
+      return res.json({
+        plans: Object.keys(PLANS).map(key => ({
+          id: key,
+          ...PLANS[key]
+        }))
+      });
+    }
+
     // Get user from session (simplified - in production, verify session properly)
     if (!sessionId) {
       return res.status(401).json({ error: 'No session provided' });
@@ -314,11 +329,11 @@ export default async function handler(req, res) {
           downloads: {
             audio: {
               count: usage.downloads.audio.count,
-              limit: plan.downloadAudioLimit || null
+              limit: plan.downloadAudioLimit !== undefined ? plan.downloadAudioLimit : null
             },
             video: {
               count: usage.downloads.video.count,
-              limit: plan.downloadVideoLimit || null
+              limit: plan.downloadVideoLimit !== undefined ? plan.downloadVideoLimit : null
             }
           }
         },
@@ -364,16 +379,6 @@ export default async function handler(req, res) {
       
       recordDownload(userId, type);
       return res.json({ success: true });
-    }
-
-    // Get all plans
-    if (method === 'GET' && action === 'plans') {
-      return res.json({
-        plans: Object.keys(PLANS).map(key => ({
-          id: key,
-          ...PLANS[key]
-        }))
-      });
     }
 
     // Upgrade subscription (simplified - in production, integrate with payment gateway)

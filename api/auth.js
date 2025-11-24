@@ -81,7 +81,7 @@ export default async function handler(req, res) {
         user,
         tokens,
         createdAt: Date.now(),
-        expiresAt: Date.now() + (7 * 24 * 60 * 60 * 1000) // 7 days
+        expiresAt: Date.now() + (6 * 60 * 60 * 1000) // 6 hours
       });
 
       // Clean up expired sessions

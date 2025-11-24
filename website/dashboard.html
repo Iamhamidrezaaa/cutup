@@ -15,18 +15,20 @@
     <!-- Header -->
     <header class="dashboard-header">
       <div class="header-content">
-        <div class="logo">
+        <a href="/" class="logo" style="text-decoration: none; color: inherit;">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
           <span class="logo-text">Cutup</span>
-        </div>
+        </a>
         <div class="header-actions">
           <div class="user-profile-header" id="userProfileHeader">
-            <img src="" alt="Profile" class="user-avatar-header" id="userAvatarHeader">
-            <span class="user-name-header" id="userNameHeader"></span>
+            <a href="#overview" class="user-profile-link" id="userProfileLink" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 12px; cursor: pointer;">
+              <img src="" alt="Profile" class="user-avatar-header" id="userAvatarHeader">
+              <span class="user-name-header" id="userNameHeader"></span>
+            </a>
             <button class="logout-btn-header" id="logoutBtnHeader">خروج</button>
           </div>
         </div>
