@@ -87,8 +87,8 @@ export default async function handler(req, res) {
       // Clean up expired sessions
       cleanupExpiredSessions();
 
-      // Redirect to frontend with session token
-      return res.redirect(`${FRONTEND_URL}?auth=success&session=${sessionId}`);
+      // Redirect to dashboard with session token
+      return res.redirect(`${FRONTEND_URL}/dashboard.html?auth=success&session=${sessionId}`);
     }
 
     // Get current user

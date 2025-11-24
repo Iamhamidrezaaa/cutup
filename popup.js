@@ -37,17 +37,103 @@ const logoutBtnExtension = document.getElementById('logoutBtnExtension');
 const userProfileExtension = document.getElementById('userProfileExtension');
 const userAvatarExtension = document.getElementById('userAvatarExtension');
 const authSectionExtension = document.getElementById('authSectionExtension');
+const downloadButtons = document.getElementById('downloadButtons');
+const downloadAudioBtn = document.getElementById('downloadAudioBtn');
+const downloadVideoBtn = document.getElementById('downloadVideoBtn');
+const audioQualityDropdown = document.getElementById('audioQualityDropdown');
+const videoQualityDropdown = document.getElementById('videoQualityDropdown');
 
 // Auth state
 let currentSession = null;
 
+// Listen for storage changes (when session is updated from another tab/dashboard)
+// This must be set up BEFORE DOMContentLoaded to catch early changes
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === 'local' && changes.cutup_session) {
+    const newSession = changes.cutup_session.newValue;
+    const oldSession = changes.cutup_session.oldValue;
+    
+    // If session was removed (logout)
+    if (!newSession && oldSession) {
+      console.log('Popup: Session removed from storage (logout)');
+      currentSession = null;
+      showLoginButton();
+      showLoginPrompt();
+      return;
+    }
+    
+    // If session was added or changed
+    if (newSession && newSession !== currentSession) {
+      console.log('Popup: Session changed in storage:', newSession);
+      currentSession = newSession;
+      verifySession(newSession);
+    }
+  }
+});
+
+// Listen for messages from background script
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'session_updated' && message.session) {
+    console.log('Popup: Session updated from background:', message.session);
+    if (message.session !== currentSession) {
+      currentSession = message.session;
+      verifySession(message.session);
+    }
+    sendResponse({ success: true });
+  }
+  return true;
+});
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
-  loadTheme();
-  loadHistory();
-  setupEventListeners();
-  checkInput();
-  initAuth();
+  // Load saved state (YouTube URL)
+  chrome.storage.local.get(['savedYoutubeUrl'], (result) => {
+    if (result.savedYoutubeUrl) {
+      youtubeUrlInput.value = result.savedYoutubeUrl;
+      checkInput();
+    }
+  });
+  
+  // Save YouTube URL when it changes
+  youtubeUrlInput.addEventListener('input', () => {
+    const url = youtubeUrlInput.value.trim();
+    if (url) {
+      chrome.storage.local.set({ savedYoutubeUrl: url });
+    } else {
+      chrome.storage.local.remove(['savedYoutubeUrl']);
+    }
+  });
+  
+  // Check if user is logged in first
+  initAuth().then(() => {
+    loadTheme();
+    loadHistory();
+    setupEventListeners();
+    checkInput();
+  });
+  
+  // Check for session in URL params (if opened from dashboard)
+  const urlParams = new URLSearchParams(window.location.search);
+  const sessionFromUrl = urlParams.get('session');
+  if (sessionFromUrl) {
+    currentSession = sessionFromUrl;
+    chrome.storage.local.set({ cutup_session: sessionFromUrl });
+    verifySession(sessionFromUrl);
+    // Clean URL
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+  
+  // Periodically check for session updates (in case dashboard updated it)
+  // This helps sync when user logs in from dashboard
+  setInterval(() => {
+    chrome.storage.local.get(['cutup_session'], (result) => {
+      if (result.cutup_session && result.cutup_session !== currentSession) {
+        console.log('Popup: Session found in storage (polling):', result.cutup_session);
+        currentSession = result.cutup_session;
+        verifySession(result.cutup_session);
+      }
+    });
+  }, 1000); // Check every 1 second for faster sync
 });
 
 // Theme Management
@@ -103,12 +189,56 @@ function setupEventListeners() {
   if (logoutBtnExtension) {
     logoutBtnExtension.addEventListener('click', handleLogout);
   }
+  
+  // Download button event listeners
+  if (downloadAudioBtn) {
+    downloadAudioBtn.addEventListener('click', toggleAudioQualityDropdown);
+  }
+  if (downloadVideoBtn) {
+    downloadVideoBtn.addEventListener('click', toggleVideoQualityDropdown);
+  }
+  
+  // Quality option event listeners
+  document.querySelectorAll('#audioQualityDropdown .quality-option').forEach(option => {
+    option.addEventListener('click', (e) => {
+      if (!option.classList.contains('pro-locked')) {
+        const quality = option.dataset.quality;
+        downloadAudio(quality);
+      }
+    });
+  });
+  
+  document.querySelectorAll('#videoQualityDropdown .quality-option').forEach(option => {
+    option.addEventListener('click', (e) => {
+      if (!option.classList.contains('pro-locked')) {
+        const quality = option.dataset.quality;
+        downloadVideo(quality);
+      }
+    });
+  });
 }
 
 function checkInput() {
   const hasUrl = youtubeUrlInput.value.trim().length > 0;
   const hasFile = audioFileInput.files.length > 0;
+  const isYouTube = hasUrl && isYouTubeUrl(youtubeUrlInput.value.trim());
+  
   summarizeBtn.disabled = !(hasUrl || hasFile);
+  
+  // Show/hide download buttons for YouTube URLs
+  if (isYouTube) {
+    downloadButtons.style.display = 'flex';
+    downloadAudioBtn.disabled = false;
+    downloadVideoBtn.disabled = false;
+    // Update quality dropdown based on subscription
+    updateVideoQualityDropdown();
+  } else {
+    downloadButtons.style.display = 'none';
+    audioQualityDropdown.style.display = 'none';
+    videoQualityDropdown.style.display = 'none';
+    downloadAudioBtn.classList.remove('active');
+    downloadVideoBtn.classList.remove('active');
+  }
 }
 
 async function pasteFromClipboard() {
@@ -165,6 +295,13 @@ function handleFileSelect(e) {
 
 // Main Summarize Function
 async function handleSummarize() {
+  // Check if user is logged in
+  if (!currentSession) {
+    alert('لطفاً ابتدا وارد حساب کاربری خود شوید');
+    handleLogin();
+    return;
+  }
+  
   // Reset progress at start
   resetProgress();
   
@@ -174,6 +311,44 @@ async function handleSummarize() {
   if (!url && !file) {
     alert('لطفاً لینک یوتیوب یا فایل صوتی را وارد کنید');
     return;
+  }
+
+  // Estimate video duration for limit check
+  let estimatedDurationMinutes = 0;
+  if (url && isYouTubeUrl(url)) {
+    // Try to get duration from YouTube
+    try {
+      const videoId = extractVideoId(url);
+      const response = await fetch(`${API_BASE_URL}/api/youtube-title`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoId, url })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.duration) {
+          estimatedDurationMinutes = Math.ceil(data.duration / 60); // Convert seconds to minutes
+        }
+      }
+    } catch (e) {
+      console.warn('Could not get video duration:', e);
+    }
+  } else if (file) {
+    // Estimate from file size (rough estimate: ~1MB per minute for audio)
+    estimatedDurationMinutes = Math.ceil((file.size / 1024 / 1024) * 1.2); // Add 20% buffer
+  }
+
+  // Check subscription limits before processing
+  try {
+    const limitCheck = await checkSubscriptionLimit('transcription', estimatedDurationMinutes);
+    if (!limitCheck.allowed) {
+      alert(limitCheck.reason + '\n\nلطفاً پلن خود را ارتقا دهید یا بعداً تلاش کنید.');
+      window.open(`${API_BASE_URL}/dashboard.html?session=${currentSession}`, '_blank');
+      return;
+    }
+  } catch (error) {
+    console.error('Error checking subscription limit:', error);
+    // Continue anyway if check fails
   }
 
   // Show loading state
@@ -273,19 +448,41 @@ async function handleSummarize() {
         updateProgress(75, 'تبدیل صوت به متن انجام شد', '');
       }
       
-      // Summarize text with detected language (75-95% of total)
-      updateProgress(80, 'در حال خلاصه‌سازی متن...', '');
-      
-      // Simulate smooth progress during summarization
-      const summaryProgressInterval = setInterval(() => {
-        if (targetProgress < 95) {
-          updateProgress(targetProgress + 1, 'در حال خلاصه‌سازی متن...', '');
+      // Check if summarization is allowed
+      let summary = null;
+      try {
+        const canSummarize = await checkSubscriptionLimit('summarization', 0);
+        if (canSummarize.allowed) {
+          // Summarize text with detected language (75-95% of total)
+          updateProgress(80, 'در حال خلاصه‌سازی متن...', '');
+          
+          // Simulate smooth progress during summarization
+          const summaryProgressInterval = setInterval(() => {
+            if (targetProgress < 95) {
+              updateProgress(targetProgress + 1, 'در حال خلاصه‌سازی متن...', '');
+            }
+          }, 300);
+          
+          summary = await summarizeText(transcription.text, transcription.language);
+          clearInterval(summaryProgressInterval);
+          updateProgress(95, 'خلاصه‌سازی انجام شد', '');
+        } else {
+          // User doesn't have summarization feature
+          updateProgress(95, 'تبدیل به متن انجام شد', '');
+          summary = {
+            keyPoints: ['خلاصه‌سازی در پلن رایگان در دسترس نیست. لطفاً پلن خود را ارتقا دهید.'],
+            summary: 'برای استفاده از خلاصه‌سازی هوشمند، لطفاً پلن خود را ارتقا دهید.'
+          };
         }
-      }, 300);
-      
-      const summary = await summarizeText(transcription.text, transcription.language);
-      clearInterval(summaryProgressInterval);
-      updateProgress(95, 'خلاصه‌سازی انجام شد', '');
+      } catch (error) {
+        console.error('Error checking summarization limit:', error);
+        // Continue without summary if check fails
+        updateProgress(95, 'تبدیل به متن انجام شد', '');
+        summary = {
+          keyPoints: ['خطا در بررسی محدودیت خلاصه‌سازی'],
+          summary: 'متن با موفقیت تبدیل شد اما خلاصه‌سازی در دسترس نیست.'
+        };
+      }
 
       // Display results with subtitle info
       displayResults(summary, transcription.text, transcription.segments, {
@@ -384,19 +581,41 @@ async function handleSummarize() {
       if (progressInterval) clearInterval(progressInterval);
       updateProgress(75, 'تبدیل صوت به متن انجام شد', '');
       
-      // Summarize text with detected language (75-95% of total)
-      updateProgress(80, 'در حال خلاصه‌سازی متن...', '');
-      
-      // Simulate smooth progress during summarization
-      const summaryProgressInterval = setInterval(() => {
-        if (targetProgress < 95) {
-          updateProgress(targetProgress + 1, 'در حال خلاصه‌سازی متن...', '');
+      // Check if summarization is allowed
+      let summary = null;
+      try {
+        const canSummarize = await checkSubscriptionLimit('summarization', 0);
+        if (canSummarize.allowed) {
+          // Summarize text with detected language (75-95% of total)
+          updateProgress(80, 'در حال خلاصه‌سازی متن...', '');
+          
+          // Simulate smooth progress during summarization
+          const summaryProgressInterval = setInterval(() => {
+            if (targetProgress < 95) {
+              updateProgress(targetProgress + 1, 'در حال خلاصه‌سازی متن...', '');
+            }
+          }, 300);
+          
+          summary = await summarizeText(transcription.text, transcription.language);
+          clearInterval(summaryProgressInterval);
+          updateProgress(95, 'خلاصه‌سازی انجام شد', '');
+        } else {
+          // User doesn't have summarization feature
+          updateProgress(95, 'تبدیل به متن انجام شد', '');
+          summary = {
+            keyPoints: ['خلاصه‌سازی در پلن رایگان در دسترس نیست. لطفاً پلن خود را ارتقا دهید.'],
+            summary: 'برای استفاده از خلاصه‌سازی هوشمند، لطفاً پلن خود را ارتقا دهید.'
+          };
         }
-      }, 300);
-      
-      const summary = await summarizeText(transcription.text, transcription.language);
-      clearInterval(summaryProgressInterval);
-      updateProgress(95, 'خلاصه‌سازی انجام شد', '');
+      } catch (error) {
+        console.error('Error checking summarization limit:', error);
+        // Continue without summary if check fails
+        updateProgress(95, 'تبدیل به متن انجام شد', '');
+        summary = {
+          keyPoints: ['خطا در بررسی محدودیت خلاصه‌سازی'],
+          summary: 'متن با موفقیت تبدیل شد اما خلاصه‌سازی در دسترس نیست.'
+        };
+      }
 
     // Display results
       displayResults(summary, transcription.text, transcription.segments);
@@ -1454,7 +1673,7 @@ function downloadSrtFile() {
 }
 
 // History Management
-function saveToHistory(title, summary, fullText, segments = null) {
+function saveToHistory(title, summary, fullText, segments = null, type = 'transcription', metadata = null) {
   chrome.storage.local.get(['history'], (result) => {
     const history = result.history || [];
     // Truncate title to 80 characters for better display
@@ -1478,9 +1697,11 @@ function saveToHistory(title, summary, fullText, segments = null) {
       id: Date.now(),
       title: truncatedTitle,
       date: dateWithTime,
+      type: type, // 'transcription', 'downloadAudio', 'downloadVideo'
       summary,
       fullText,
-      segments
+      segments,
+      metadata: metadata || null // For downloads: { quality, videoId, url }
     };
     
     history.unshift(newItem);
@@ -1520,15 +1741,25 @@ function loadHistory() {
     const isSaveMode = historyControls.dataset.mode === 'save';
     const isSelectionMode = isDeleteMode || isSaveMode;
 
-    historyList.innerHTML = history.map(item => `
+    historyList.innerHTML = history.map(item => {
+      const typeIcon = item.type === 'downloadAudio' ? '🎵' : 
+                       item.type === 'downloadVideo' ? '🎬' : 
+                       '📝';
+      const typeLabel = item.type === 'downloadAudio' ? 'موزیک' : 
+                        item.type === 'downloadVideo' ? 'ویدئو' : 
+                        'خلاصه‌سازی';
+      const qualityLabel = item.metadata && item.metadata.quality ? ` (${item.metadata.quality})` : '';
+      
+      return `
       <div class="history-item" data-id="${item.id}">
         ${isSelectionMode ? `<input type="checkbox" class="history-checkbox" data-id="${item.id}">` : ''}
         <div class="history-item-content" ${!isSelectionMode ? 'style="cursor: pointer;"' : ''}>
-        <div class="history-item-title">${item.title}</div>
-        <div class="history-item-date">${item.date}</div>
+        <div class="history-item-title">${typeIcon} ${item.title}${qualityLabel}</div>
+        <div class="history-item-date">${item.date} • ${typeLabel}</div>
         </div>
       </div>
-    `).join('');
+    `;
+    }).join('');
 
     // Add click listeners - click on history item to toggle result section
     document.querySelectorAll('.history-item').forEach(item => {
@@ -1904,8 +2135,26 @@ function loadHistoryItem(id, history) {
     // Insert result section after the clicked history item
     historyItemElement.insertAdjacentElement('afterend', resultSection);
     
-    // Pass empty options object to maintain compatibility
-    displayResults(item.summary, item.fullText, item.segments || null, {});
+    // For download items, show metadata instead of results
+    if (item.type === 'downloadAudio' || item.type === 'downloadVideo') {
+      resultSection.style.display = 'block';
+      resultSection.innerHTML = `
+        <div class="result-content">
+          <div class="result-header">
+            <h3>${item.type === 'downloadAudio' ? '🎵 دانلود موزیک' : '🎬 دانلود ویدئو'}</h3>
+          </div>
+          <div class="result-body">
+            <p><strong>عنوان:</strong> ${item.title}</p>
+            ${item.metadata && item.metadata.quality ? `<p><strong>کیفیت:</strong> ${item.metadata.quality}</p>` : ''}
+            ${item.metadata && item.metadata.url ? `<p><strong>لینک:</strong> <a href="${item.metadata.url}" target="_blank" style="color: var(--accent);">${item.metadata.url}</a></p>` : ''}
+            <p><strong>تاریخ:</strong> ${item.date}</p>
+          </div>
+        </div>
+      `;
+    } else {
+      // Pass empty options object to maintain compatibility
+      displayResults(item.summary, item.fullText, item.segments || null, {});
+    }
     selectedHistoryId = id;
     
     // Scroll result section into view (below the clicked history item)
@@ -1917,50 +2166,93 @@ function loadHistoryItem(id, history) {
 
 // Auth Functions
 async function initAuth() {
-  // Load session from storage
-  chrome.storage.local.get(['cutup_session'], (result) => {
-    if (result.cutup_session) {
-      currentSession = result.cutup_session;
-      verifySession(result.cutup_session);
-    } else {
-      showLoginButton();
-    }
+  return new Promise((resolve) => {
+    // Load session from storage
+    chrome.storage.local.get(['cutup_session'], (result) => {
+      if (result.cutup_session) {
+        currentSession = result.cutup_session;
+        verifySession(result.cutup_session).then(resolve);
+      } else {
+        // User must login first
+        showLoginButton();
+        // Show login prompt
+        showLoginPrompt();
+        resolve();
+      }
+    });
   });
 }
 
+function showLoginPrompt() {
+  // Create a modal or message to prompt login
+  const loginPrompt = document.createElement('div');
+  loginPrompt.className = 'login-prompt';
+  loginPrompt.innerHTML = `
+    <div class="login-prompt-content">
+      <h3>ورود به حساب کاربری</h3>
+      <p>برای استفاده از Cutup، لطفاً وارد حساب کاربری خود شوید.</p>
+      <button class="login-prompt-btn" id="loginPromptBtn">ورود با Google</button>
+    </div>
+  `;
+  document.body.appendChild(loginPrompt);
+  
+  document.getElementById('loginPromptBtn').addEventListener('click', handleLogin);
+}
+
 async function verifySession(sessionId) {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/auth?action=verify`, {
+  return new Promise((resolve) => {
+    fetch(`${API_BASE_URL}/api/auth?action=verify`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Session-Id': sessionId
       },
       body: JSON.stringify({ session: sessionId })
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      if (data.valid && data.user) {
-        showUserProfile(data.user);
+    })
+    .then(response => {
+      if (response.ok) {
+        return response.json();
       } else {
-        showLoginButton();
+        throw new Error('Session invalid');
       }
-    } else {
-      // Session expired or invalid
+    })
+    .then(data => {
+      if (data.valid && data.user) {
+        currentSession = sessionId; // Ensure session is set
+        showUserProfile(data.user);
+        showLoginButton(); // This will hide login button and show profile
+        // Remove login prompt if exists
+        const loginPrompt = document.querySelector('.login-prompt');
+        if (loginPrompt) {
+          loginPrompt.remove();
+        }
+        resolve();
+      } else {
+        chrome.storage.local.remove(['cutup_session']);
+        currentSession = null;
+        showLoginButton();
+        resolve();
+      }
+    })
+    .catch(error => {
+      console.error('Error verifying session:', error);
       chrome.storage.local.remove(['cutup_session']);
       currentSession = null;
       showLoginButton();
-    }
-  } catch (error) {
-    console.error('Error verifying session:', error);
-    showLoginButton();
-  }
+      resolve();
+    });
+  });
 }
 
 function showLoginButton() {
-  if (loginBtnExtension) loginBtnExtension.style.display = 'block';
-  if (userProfileExtension) userProfileExtension.style.display = 'none';
+  // This function shows login button if not logged in, or hides it if logged in
+  if (!currentSession) {
+    if (loginBtnExtension) loginBtnExtension.style.display = 'block';
+    if (userProfileExtension) userProfileExtension.style.display = 'none';
+  } else {
+    if (loginBtnExtension) loginBtnExtension.style.display = 'none';
+    if (userProfileExtension) userProfileExtension.style.display = 'flex';
+  }
 }
 
 function showUserProfile(user) {
@@ -1970,6 +2262,51 @@ function showUserProfile(user) {
     userAvatarExtension.src = user.picture || '';
     userAvatarExtension.alt = user.name || 'User';
   }
+  
+  // Show welcome message
+  showWelcomeMessage(user);
+  
+  // Update quality dropdown based on subscription
+  updateVideoQualityDropdown();
+}
+
+function showWelcomeMessage(user) {
+  // Remove existing welcome message if any
+  const existingWelcome = document.querySelector('.welcome-message-extension');
+  if (existingWelcome) {
+    existingWelcome.remove();
+  }
+  
+  // Create welcome message
+  const welcomeDiv = document.createElement('div');
+  welcomeDiv.className = 'welcome-message-extension';
+  welcomeDiv.innerHTML = `
+    <div class="welcome-content">
+      <span class="welcome-icon">👋</span>
+      <span class="welcome-text">خوش آمدید ${user.name || user.email}!</span>
+    </div>
+  `;
+  
+  // Insert after header
+  const header = document.querySelector('.header');
+  if (header && header.nextSibling) {
+    header.parentNode.insertBefore(welcomeDiv, header.nextSibling);
+  } else if (header) {
+    header.parentNode.appendChild(welcomeDiv);
+  }
+  
+  // Auto-hide after 5 seconds
+  setTimeout(() => {
+    if (welcomeDiv && welcomeDiv.parentNode) {
+      welcomeDiv.style.opacity = '0';
+      welcomeDiv.style.transform = 'translateY(-10px)';
+      setTimeout(() => {
+        if (welcomeDiv && welcomeDiv.parentNode) {
+          welcomeDiv.remove();
+        }
+      }, 300);
+    }
+  }, 5000);
 }
 
 async function handleLogin() {
@@ -1978,7 +2315,87 @@ async function handleLogin() {
     const data = await response.json();
     if (data.authUrl) {
       // Open Google OAuth in a new tab
+      // After login, user will be redirected to dashboard
       chrome.tabs.create({ url: data.authUrl });
+      
+      // Listen for tab updates to detect when user returns from OAuth
+      let listenerAdded = false;
+      const listener = function(tabId, changeInfo, tab) {
+        if (changeInfo.status === 'complete' && tab.url) {
+          // Check if it's dashboard with session
+          if (tab.url.includes('dashboard.html')) {
+            const url = new URL(tab.url);
+            const session = url.searchParams.get('session');
+            if (session) {
+              // Save session and verify
+              currentSession = session;
+              chrome.storage.local.set({ cutup_session: session }, () => {
+                verifySession(session);
+                // Close login prompt if exists
+                const loginPrompt = document.querySelector('.login-prompt');
+                if (loginPrompt) {
+                  loginPrompt.remove();
+                }
+              });
+            }
+            if (listenerAdded) {
+              chrome.tabs.onUpdated.removeListener(listener);
+              listenerAdded = false;
+            }
+          }
+          // Also check for auth=success in URL
+          else if (tab.url.includes('auth=success')) {
+            const url = new URL(tab.url);
+            const session = url.searchParams.get('session');
+            if (session) {
+              currentSession = session;
+              chrome.storage.local.set({ cutup_session: session }, () => {
+                verifySession(session);
+                const loginPrompt = document.querySelector('.login-prompt');
+                if (loginPrompt) {
+                  loginPrompt.remove();
+                }
+              });
+            }
+            if (listenerAdded) {
+              chrome.tabs.onUpdated.removeListener(listener);
+              listenerAdded = false;
+            }
+          }
+        }
+      };
+      
+      chrome.tabs.onUpdated.addListener(listener);
+      listenerAdded = true;
+      
+      // Also poll for session in case listener doesn't catch it
+      let pollCount = 0;
+      const pollInterval = setInterval(() => {
+        pollCount++;
+        if (pollCount > 30) { // Stop after 30 seconds
+          clearInterval(pollInterval);
+          if (listenerAdded) {
+            chrome.tabs.onUpdated.removeListener(listener);
+          }
+          return;
+        }
+        
+        chrome.storage.local.get(['cutup_session'], (result) => {
+          if (result.cutup_session && result.cutup_session !== currentSession) {
+            currentSession = result.cutup_session;
+            verifySession(result.cutup_session);
+            const loginPrompt = document.querySelector('.login-prompt');
+            if (loginPrompt) {
+              loginPrompt.remove();
+            }
+            clearInterval(pollInterval);
+            if (listenerAdded) {
+              chrome.tabs.onUpdated.removeListener(listener);
+            }
+          }
+        });
+      }, 1000); // Check every second
+      
     } else {
       alert('خطا در دریافت لینک ورود. لطفاً دوباره تلاش کنید.');
     }
@@ -2007,14 +2424,510 @@ async function handleLogout() {
   chrome.storage.local.remove(['cutup_session']);
   currentSession = null;
   showLoginButton();
+  // Show login prompt after logout
+  showLoginPrompt();
 }
 
 // Listen for auth callback from website
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'auth_success' && message.session) {
     currentSession = message.session;
-    chrome.storage.local.set({ cutup_session: message.session });
-    verifySession(message.session);
+    chrome.storage.local.set({ cutup_session: message.session }, () => {
+      verifySession(message.session);
+      // Close login prompt if exists
+      const loginPrompt = document.querySelector('.login-prompt');
+      if (loginPrompt) {
+        loginPrompt.remove();
+      }
+    });
+    sendResponse({ success: true });
+  }
+  return true; // Keep channel open for async response
+});
+
+// Also check for session on popup open
+chrome.storage.local.get(['cutup_session'], (result) => {
+  if (result.cutup_session && result.cutup_session !== currentSession) {
+    currentSession = result.cutup_session;
+    verifySession(result.cutup_session);
   }
 });
+
+// Download Functions
+function toggleAudioQualityDropdown() {
+  const isOpen = audioQualityDropdown.style.display === 'block';
+  audioQualityDropdown.style.display = isOpen ? 'none' : 'block';
+  downloadAudioBtn.classList.toggle('active', !isOpen);
+  
+  // Close video dropdown if open
+  if (videoQualityDropdown.style.display === 'block') {
+    videoQualityDropdown.style.display = 'none';
+    downloadVideoBtn.classList.remove('active');
+  }
+}
+
+function toggleVideoQualityDropdown() {
+  const isOpen = videoQualityDropdown.style.display === 'block';
+  videoQualityDropdown.style.display = isOpen ? 'none' : 'block';
+  downloadVideoBtn.classList.toggle('active', !isOpen);
+  
+  // Close audio dropdown if open
+  if (audioQualityDropdown.style.display === 'block') {
+    audioQualityDropdown.style.display = 'none';
+    downloadAudioBtn.classList.remove('active');
+  }
+}
+
+async function downloadAudio(quality) {
+  // Check if user is logged in
+  if (!currentSession) {
+    alert('لطفاً ابتدا وارد حساب کاربری خود شوید');
+    handleLogin();
+    return;
+  }
+  
+  const url = youtubeUrlInput.value.trim();
+  if (!url || !isYouTubeUrl(url)) {
+    alert('لطفاً یک لینک یوتیوب معتبر وارد کنید');
+    return;
+  }
+  
+  const videoId = extractVideoId(url);
+  if (!videoId) {
+    alert('لینک یوتیوب معتبر نیست');
+    return;
+  }
+  
+  // Check download feature
+  try {
+    const canDownload = await checkSubscriptionLimit('downloadAudio', 0);
+    if (!canDownload.allowed) {
+      alert(canDownload.reason);
+      return;
+    }
+  } catch (error) {
+    console.error('Error checking subscription:', error);
+    // Continue anyway if check fails
+  }
+  
+  try {
+    // Close dropdown
+    audioQualityDropdown.style.display = 'none';
+    downloadAudioBtn.classList.remove('active');
+    
+    // Show progress
+    progressSection.style.display = 'block';
+    updateProgress(0, 'در حال دانلود موزیک...', '');
+    
+    // Disable button
+    downloadAudioBtn.disabled = true;
+    downloadAudioBtn.innerHTML = '<span>⏳ در حال دانلود...</span>';
+    
+    // Get video title for history
+    let videoTitle = `ویدئو یوتیوب ${videoId}`;
+    try {
+      const titleResponse = await fetch(`${API_BASE_URL}/api/youtube-title`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoId, url })
+      });
+      if (titleResponse.ok) {
+        const titleData = await titleResponse.json();
+        if (titleData.title) {
+          videoTitle = titleData.title;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not get video title:', e);
+    }
+    
+    updateProgress(10, 'در حال دانلود موزیک...', 'در حال اتصال به سرور...');
+    
+    // Get download URL
+    const response = await fetch(`${API_BASE_URL}/api/youtube-download`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        videoId: videoId,
+        url: url,
+        type: 'audio',
+        quality: quality
+      })
+    });
+    
+    updateProgress(30, 'در حال دانلود موزیک...', 'در حال دریافت فایل...');
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || 'دانلود ناموفق بود');
+    }
+    
+    // Get content length for progress
+    const contentLength = response.headers.get('content-length');
+    let loaded = 0;
+    
+    if (!contentLength) {
+      updateProgress(50, 'در حال دانلود موزیک...', 'در حال دریافت فایل...');
+    }
+    
+    // Get blob and download with progress
+    const reader = response.body.getReader();
+    const chunks = [];
+    let receivedLength = 0;
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      chunks.push(value);
+      receivedLength += value.length;
+      
+      if (contentLength) {
+        const percent = Math.min(90, 30 + (receivedLength / contentLength) * 60);
+        updateProgress(percent, 'در حال دانلود موزیک...', `دریافت شده: ${(receivedLength / 1024 / 1024).toFixed(2)} MB`);
+      }
+    }
+    
+    updateProgress(95, 'در حال آماده‌سازی فایل...', '');
+    
+    // Combine chunks
+    const allChunks = new Uint8Array(receivedLength);
+    let position = 0;
+    for (const chunk of chunks) {
+      allChunks.set(chunk, position);
+      position += chunk.length;
+    }
+    
+    const blob = new Blob([allChunks], { type: 'audio/mpeg' });
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = `youtube_${videoId}_${quality}.mp3`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+    
+    updateProgress(100, 'دانلود کامل شد!', '');
+    
+    // Record download
+    try {
+      await fetch(`${API_BASE_URL}/api/subscription?action=recordDownload`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Session-Id': currentSession
+        },
+        body: JSON.stringify({ type: 'audio' })
+      });
+    } catch (e) {
+      console.error('Error recording download:', e);
+    }
+    
+    // Save to history
+    saveToHistory(videoTitle, null, null, null, 'downloadAudio', { quality, videoId, url });
+    
+    // Hide progress after 1 second
+    setTimeout(() => {
+      progressSection.style.display = 'none';
+    }, 1000);
+    
+    // Reset button
+    downloadAudioBtn.disabled = false;
+    downloadAudioBtn.innerHTML = '<span>🎵 دانلود موزیک</span><span class="dropdown-arrow">▼</span>';
+    
+  } catch (error) {
+    console.error('Download audio error:', error);
+    progressSection.style.display = 'none';
+    alert(`خطا در دانلود: ${error.message}`);
+    downloadAudioBtn.disabled = false;
+    downloadAudioBtn.innerHTML = '<span>🎵 دانلود موزیک</span><span class="dropdown-arrow">▼</span>';
+  }
+}
+
+async function downloadVideo(quality) {
+  // Check if user is logged in
+  if (!currentSession) {
+    alert('لطفاً ابتدا وارد حساب کاربری خود شوید');
+    handleLogin();
+    return;
+  }
+  
+  const url = youtubeUrlInput.value.trim();
+  if (!url || !isYouTubeUrl(url)) {
+    alert('لطفاً یک لینک یوتیوب معتبر وارد کنید');
+    return;
+  }
+  
+  const videoId = extractVideoId(url);
+  if (!videoId) {
+    alert('لینک یوتیوب معتبر نیست');
+    return;
+  }
+  
+  // Check subscription and quality limits
+  try {
+    const subscriptionInfo = await getSubscriptionInfo();
+    if (!subscriptionInfo) {
+      alert('خطا در دریافت اطلاعات اشتراک');
+      return;
+    }
+    
+    // Check if quality is allowed for this plan
+    const highQualities = ['2160p', '1440p', '1080p', '720p'];
+    if (highQualities.includes(quality) && subscriptionInfo.plan === 'free') {
+      alert('این کیفیت فقط برای کاربران Pro در دسترس است. لطفاً پلن خود را ارتقا دهید.');
+      window.open(`${API_BASE_URL}/dashboard.html?session=${currentSession}`, '_blank');
+      return;
+    }
+    
+    // Check download feature
+    const canDownload = await checkSubscriptionLimit('downloadVideo', 0);
+    if (!canDownload.allowed) {
+      alert(canDownload.reason);
+      return;
+    }
+  } catch (error) {
+    console.error('Error checking subscription:', error);
+    // Continue anyway if check fails
+  }
+  
+  try {
+    // Close dropdown
+    videoQualityDropdown.style.display = 'none';
+    downloadVideoBtn.classList.remove('active');
+    
+    // Show progress
+    progressSection.style.display = 'block';
+    updateProgress(0, 'در حال دانلود ویدئو...', '');
+    
+    // Disable button
+    downloadVideoBtn.disabled = true;
+    downloadVideoBtn.innerHTML = '<span>⏳ در حال دانلود...</span>';
+    
+    // Get video title for history
+    let videoTitle = `ویدئو یوتیوب ${videoId}`;
+    try {
+      const titleResponse = await fetch(`${API_BASE_URL}/api/youtube-title`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoId, url })
+      });
+      if (titleResponse.ok) {
+        const titleData = await titleResponse.json();
+        if (titleData.title) {
+          videoTitle = titleData.title;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not get video title:', e);
+    }
+    
+    updateProgress(10, 'در حال دانلود ویدئو...', 'در حال اتصال به سرور...');
+    
+    // Get download URL
+    const response = await fetch(`${API_BASE_URL}/api/youtube-download`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        videoId: videoId,
+        url: url,
+        type: 'video',
+        quality: quality
+      })
+    });
+    
+    updateProgress(30, 'در حال دانلود ویدئو...', 'در حال دریافت فایل...');
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || 'دانلود ناموفق بود');
+    }
+    
+    // Get content length for progress
+    const contentLength = response.headers.get('content-length');
+    
+    if (!contentLength) {
+      updateProgress(50, 'در حال دانلود ویدئو...', 'در حال دریافت فایل...');
+    }
+    
+    // Get blob and download with progress
+    const reader = response.body.getReader();
+    const chunks = [];
+    let receivedLength = 0;
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      chunks.push(value);
+      receivedLength += value.length;
+      
+      if (contentLength) {
+        const percent = Math.min(90, 30 + (receivedLength / contentLength) * 60);
+        updateProgress(percent, 'در حال دانلود ویدئو...', `دریافت شده: ${(receivedLength / 1024 / 1024).toFixed(2)} MB`);
+      }
+    }
+    
+    updateProgress(95, 'در حال آماده‌سازی فایل...', '');
+    
+    // Combine chunks
+    const allChunks = new Uint8Array(receivedLength);
+    let position = 0;
+    for (const chunk of chunks) {
+      allChunks.set(chunk, position);
+      position += chunk.length;
+    }
+    
+    const blob = new Blob([allChunks], { type: 'video/mp4' });
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = `youtube_${videoId}_${quality}.mp4`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+    
+    updateProgress(100, 'دانلود کامل شد!', '');
+    
+    // Record download
+    try {
+      await fetch(`${API_BASE_URL}/api/subscription?action=recordDownload`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Session-Id': currentSession
+        },
+        body: JSON.stringify({ type: 'video' })
+      });
+    } catch (e) {
+      console.error('Error recording download:', e);
+    }
+    
+    // Save to history
+    saveToHistory(videoTitle, null, null, null, 'downloadVideo', { quality, videoId, url });
+    
+    // Hide progress after 1 second
+    setTimeout(() => {
+      progressSection.style.display = 'none';
+    }, 1000);
+    
+    // Reset button
+    downloadVideoBtn.disabled = false;
+    downloadVideoBtn.innerHTML = '<span>🎬 دانلود ویدئو</span><span class="dropdown-arrow">▼</span>';
+    
+  } catch (error) {
+    console.error('Download video error:', error);
+    progressSection.style.display = 'none';
+    alert(`خطا در دانلود: ${error.message}`);
+    downloadVideoBtn.disabled = false;
+    downloadVideoBtn.innerHTML = '<span>🎬 دانلود ویدئو</span><span class="dropdown-arrow">▼</span>';
+  }
+}
+
+// Subscription helper functions
+async function getSubscriptionInfo() {
+  if (!currentSession) return null;
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/subscription?action=info&session=${currentSession}`, {
+      headers: {
+        'X-Session-Id': currentSession
+      }
+    });
+    
+    if (response.ok) {
+      return await response.json();
+    }
+  } catch (error) {
+    console.error('Error getting subscription info:', error);
+  }
+  return null;
+}
+
+async function checkSubscriptionLimit(feature, videoDurationMinutes = 0) {
+  if (!currentSession) {
+    return { allowed: false, reason: 'لطفاً ابتدا وارد حساب کاربری خود شوید' };
+  }
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/subscription?action=check`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': currentSession
+      },
+      body: JSON.stringify({
+        feature: feature,
+        videoDurationMinutes: videoDurationMinutes
+      })
+    });
+    
+    if (response.ok) {
+      return await response.json();
+    } else {
+      return { allowed: false, reason: 'خطا در بررسی محدودیت' };
+    }
+  } catch (error) {
+    console.error('Error checking subscription limit:', error);
+    return { allowed: false, reason: 'خطا در بررسی محدودیت' };
+  }
+}
+
+async function recordUsage(minutes) {
+  if (!currentSession || !minutes || minutes <= 0) return;
+  
+  try {
+    await fetch(`${API_BASE_URL}/api/subscription?action=record`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': currentSession
+      },
+      body: JSON.stringify({
+        minutes: minutes
+      })
+    });
+  } catch (error) {
+    console.error('Error recording usage:', error);
+  }
+}
+
+// Update video quality dropdown based on subscription
+async function updateVideoQualityDropdown() {
+  if (!currentSession) {
+    // Lock all high qualities if not logged in
+    document.querySelectorAll('#videoQualityDropdown .quality-option').forEach(option => {
+      const quality = option.dataset.quality;
+      const highQualities = ['2160p', '1440p', '1080p', '720p'];
+      if (highQualities.includes(quality)) {
+        option.classList.add('pro-locked');
+      }
+    });
+    return;
+  }
+  
+  try {
+    const subscriptionInfo = await getSubscriptionInfo();
+    if (subscriptionInfo) {
+      document.querySelectorAll('#videoQualityDropdown .quality-option').forEach(option => {
+        const quality = option.dataset.quality;
+        const highQualities = ['2160p', '1440p', '1080p', '720p'];
+        
+        if (highQualities.includes(quality) && subscriptionInfo.plan === 'free') {
+          option.classList.add('pro-locked');
+        } else {
+          option.classList.remove('pro-locked');
+        }
+      });
+    }
+  } catch (error) {
+    console.error('Error updating video quality dropdown:', error);
+  }
+}
 

@@ -59,6 +59,41 @@
         </div>
       </div>
 
+      <!-- Download buttons (only shown for YouTube URLs) -->
+      <div class="download-buttons" id="downloadButtons" style="display: none;">
+        <div class="download-btn-wrapper">
+          <button class="download-btn download-audio-btn" id="downloadAudioBtn">
+            <span>🎵 دانلود موزیک</span>
+            <span class="dropdown-arrow">▼</span>
+          </button>
+          <div class="quality-dropdown" id="audioQualityDropdown" style="display: none;">
+            <button class="quality-option" data-quality="best">بهترین کیفیت</button>
+            <button class="quality-option" data-quality="320k">320 kbps</button>
+            <button class="quality-option" data-quality="256k">256 kbps</button>
+            <button class="quality-option" data-quality="192k">192 kbps</button>
+            <button class="quality-option" data-quality="128k">128 kbps</button>
+            <button class="quality-option" data-quality="96k">96 kbps</button>
+            <button class="quality-option" data-quality="64k">64 kbps</button>
+          </div>
+        </div>
+        <div class="download-btn-wrapper">
+          <button class="download-btn download-video-btn" id="downloadVideoBtn">
+            <span>🎬 دانلود ویدئو</span>
+            <span class="dropdown-arrow">▼</span>
+          </button>
+          <div class="quality-dropdown" id="videoQualityDropdown" style="display: none;">
+            <button class="quality-option pro-locked" data-quality="2160p">2160p <span class="pro-badge">Pro</span></button>
+            <button class="quality-option pro-locked" data-quality="1440p">1440p <span class="pro-badge">Pro</span></button>
+            <button class="quality-option pro-locked" data-quality="1080p">1080p <span class="pro-badge">Pro</span></button>
+            <button class="quality-option pro-locked" data-quality="720p">720p <span class="pro-badge">Pro</span></button>
+            <button class="quality-option" data-quality="480p">480p</button>
+            <button class="quality-option" data-quality="360p">360p</button>
+            <button class="quality-option" data-quality="240p">240p</button>
+            <button class="quality-option" data-quality="144p">144p</button>
+          </div>
+        </div>
+      </div>
+
       <button class="summarize-btn" id="summarizeBtn" disabled>
         <span class="btn-text">خلاصه‌سازی</span>
         <span class="btn-loader" style="display: none;">⏳</span>

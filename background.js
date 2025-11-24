@@ -1,54 +1,33 @@
 // Background service worker for Cutup extension
+// Handles session sync from website
 
-// Keep service worker alive
-let keepAliveInterval;
-
-function keepAlive() {
-  chrome.runtime.getPlatformInfo(() => {
-    // This keeps the service worker alive
-  });
-}
-
-// Install event
-chrome.runtime.onInstalled.addListener((details) => {
-  if (details.reason === 'install') {
-    console.log('Cutup extension installed');
-    // Set default theme
-    chrome.storage.local.set({ theme: 'light' });
+// Single message listener for all message types
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'sync_session') {
+    if (message.session) {
+      // Save session to extension storage
+      chrome.storage.local.set({ cutup_session: message.session }, () => {
+        console.log('Background: Session synced from website:', message.session);
+        // Storage change will automatically trigger popup listener
+      });
+    } else {
+      // Session was removed (logout)
+      chrome.storage.local.remove(['cutup_session'], () => {
+        console.log('Background: Session removed (logout)');
+        // Storage change will automatically trigger popup listener
+      });
+    }
+    sendResponse({ success: true });
+    return true;
   }
   
-  // Start keep-alive
-  keepAliveInterval = setInterval(keepAlive, 20000); // Every 20 seconds
-});
-
-// Startup event
-chrome.runtime.onStartup.addListener(() => {
-  console.log('Cutup extension started');
-  keepAliveInterval = setInterval(keepAlive, 20000);
-});
-
-// Handle messages from popup or content scripts
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'getActiveTab') {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]) {
-        sendResponse({ url: tabs[0].url });
-      }
+  if (message.type === 'auth_success' && message.session) {
+    chrome.storage.local.set({ cutup_session: message.session }, () => {
+      console.log('Background: Session saved from auth:', message.session);
+      sendResponse({ success: true });
     });
-    return true; // Keep channel open for async response
+    return true;
   }
   
-  // Keep service worker alive on any message
-  if (keepAliveInterval) {
-    clearInterval(keepAliveInterval);
-  }
-  keepAliveInterval = setInterval(keepAlive, 20000);
+  return false;
 });
-
-// Cleanup on shutdown
-chrome.runtime.onSuspend.addListener(() => {
-  if (keepAliveInterval) {
-    clearInterval(keepAliveInterval);
-  }
-});
-

@@ -85,7 +85,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Import and use API routes
-let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler;
+let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler;
 
 async function loadRoutes() {
   try {
@@ -116,6 +116,18 @@ async function loadRoutes() {
     // Auth endpoint
     const authModule = await import('./api/auth.js');
     authHandler = authModule.default;
+    
+    // YouTube Download endpoint
+    const youtubeDownloadModule = await import('./api/youtube-download.js');
+    youtubeDownloadHandler = youtubeDownloadModule.default;
+    
+    // YouTube Formats endpoint
+    const youtubeFormatsModule = await import('./api/youtube-formats.js');
+    youtubeFormatsHandler = youtubeFormatsModule.default;
+    
+    // Subscription endpoint
+    const subscriptionModule = await import('./api/subscription.js');
+    subscriptionHandler = subscriptionModule.default;
     
     console.log('All routes loaded successfully');
   } catch (err) {
@@ -191,6 +203,36 @@ app.get('/api/auth/callback', async (req, res) => {
   return authHandler(req, res);
 });
 
+// YouTube Download routes
+app.post('/api/youtube-download', async (req, res) => {
+  if (!youtubeDownloadHandler) {
+    return res.status(500).json({ error: 'YouTube Download handler not loaded' });
+  }
+  return youtubeDownloadHandler(req, res);
+});
+
+app.post('/api/youtube-formats', async (req, res) => {
+  if (!youtubeFormatsHandler) {
+    return res.status(500).json({ error: 'YouTube Formats handler not loaded' });
+  }
+  return youtubeFormatsHandler(req, res);
+});
+
+// Subscription routes
+app.get('/api/subscription', async (req, res) => {
+  if (!subscriptionHandler) {
+    return res.status(500).json({ error: 'Subscription handler not loaded' });
+  }
+  return subscriptionHandler(req, res);
+});
+
+app.post('/api/subscription', async (req, res) => {
+  if (!subscriptionHandler) {
+    return res.status(500).json({ error: 'Subscription handler not loaded' });
+  }
+  return subscriptionHandler(req, res);
+});
+
 // Error handler
 app.use((err, req, res, next) => {
   console.error('Error:', err);
@@ -224,6 +266,11 @@ loadRoutes().then(() => {
     console.log(`   GET  /api/auth/callback`);
     console.log(`   GET  /api/auth?action=me`);
     console.log(`   POST /api/auth?action=logout`);
+    console.log(`   POST /api/youtube-download`);
+    console.log(`   POST /api/youtube-formats`);
+    console.log(`   GET  /api/subscription?action=info`);
+    console.log(`   POST /api/subscription?action=check`);
+    console.log(`   POST /api/subscription?action=upgrade`);
   });
   
   server.on('error', (err) => {

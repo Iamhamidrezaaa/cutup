@@ -48,6 +48,19 @@ const authError = urlParams.get('error');
 if (authSuccess === 'success' && sessionId) {
   // Save session to localStorage
   localStorage.setItem('cutup_session', sessionId);
+  // Also notify extension if possible
+  try {
+    // Try to send message to extension
+    if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+      chrome.runtime.sendMessage({
+        type: 'auth_success',
+        session: sessionId
+      });
+    }
+  } catch (e) {
+    // Extension might not be available, that's okay
+    console.log('Could not notify extension:', e);
+  }
   // Remove query params from URL
   window.history.replaceState({}, document.title, window.location.pathname);
   // Load user profile
