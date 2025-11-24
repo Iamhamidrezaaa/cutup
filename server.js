@@ -186,6 +186,8 @@ app.get('/api/auth/callback', async (req, res) => {
   if (!authHandler) {
     return res.status(500).json({ error: 'Auth handler not loaded' });
   }
+  // Set action to 'callback' for this route
+  req.query.action = 'callback';
   return authHandler(req, res);
 });
 
