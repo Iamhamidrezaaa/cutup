@@ -267,8 +267,11 @@ downloadVideoBtnMain.addEventListener('click', async () => {
     const userPlan = subData.plan || 'free';
     const isPro = userPlan !== 'free';
     
+    // Use available formats from API or default
+    const availableFormats = formatsData.available?.video || ['2160p', '1440p', '1080p', '720p', '480p', '360p', '240p', '144p'];
+    
     // Show quality modal
-    showQualityModal(formatsData.videoFormats || [], url, sessionId, isPro, 'video');
+    showQualityModal(availableFormats, url, sessionId, isPro, 'video');
     
   } catch (error) {
     console.error('Error:', error);
@@ -304,8 +307,11 @@ downloadAudioBtnMain.addEventListener('click', async () => {
     
     const formatsData = await formatsResponse.json();
     
+    // Use available formats from API or default
+    const availableFormats = formatsData.available?.audio || ['best', '320k', '256k', '192k', '128k', '96k', '64k'];
+    
     // Show quality modal for audio
-    showQualityModal(formatsData.audioFormats || [], url, sessionId, true, 'audio');
+    showQualityModal(availableFormats, url, sessionId, true, 'audio');
     
   } catch (error) {
     console.error('Error:', error);
@@ -363,23 +369,12 @@ downloadSubtitleBtnMain.addEventListener('click', async () => {
     // Generate SRT from subtitles
     const srtContent = generateSRTFromSubtitles(youtubeData.subtitles, youtubeData.subtitleLanguage);
     
-    // Download SRT file
-    const blob = new Blob([srtContent], { type: 'text/plain;charset=utf-8' });
-    const downloadUrl = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    link.download = `subtitles_${videoId}.srt`;
-    link.click();
-    URL.revokeObjectURL(downloadUrl);
-    
-    showMessage('زیرنویس با موفقیت دانلود شد!', 'success');
-    
-    // Record usage
-    await recordUsage(sessionId, 'srt', 0);
+    // Show subtitle modal like extension
+    showSubtitleModal(srtContent, youtubeData.subtitleLanguage || 'en', videoId, sessionId);
     
   } catch (error) {
     console.error('Error:', error);
-    showMessage('خطا در دانلود زیرنویس: ' + error.message, 'error');
+    showMessage('خطا در دریافت زیرنویس: ' + error.message, 'error');
   }
 });
 
@@ -473,11 +468,16 @@ async function processSummarize(url, sessionId) {
     });
     
     if (!youtubeResponse.ok) {
-      throw new Error('خطا در دریافت ویدئو');
+      const errorData = await youtubeResponse.json().catch(() => ({}));
+      throw new Error(errorData.error || errorData.message || 'خطا در دریافت ویدئو');
     }
     
     const youtubeData = await youtubeResponse.json();
     const audioUrl = youtubeData.audioUrl;
+    
+    if (!audioUrl) {
+      throw new Error('خطا در استخراج صوت از ویدئو');
+    }
     
     // Transcribe
     showMessage('در حال تبدیل به متن...', 'info');
@@ -491,13 +491,18 @@ async function processSummarize(url, sessionId) {
     });
     
     if (!transcribeResponse.ok) {
-      throw new Error('خطا در تبدیل به متن');
+      const errorData = await transcribeResponse.json().catch(() => ({}));
+      throw new Error(errorData.error || errorData.message || 'خطا در تبدیل به متن');
     }
     
     const transcribeData = await transcribeResponse.json();
-    const transcription = transcribeData.text;
+    const transcription = transcribeData.text || transcribeData.transcription;
     
-    // Summarize
+    if (!transcription) {
+      throw new Error('متن دریافت نشد');
+    }
+    
+    // Summarize (unlimited for all tiers)
     showMessage('در حال خلاصه‌سازی...', 'info');
     const summarizeResponse = await fetch(`${API_BASE_URL}/api/summarize`, {
       method: 'POST',
@@ -505,30 +510,34 @@ async function processSummarize(url, sessionId) {
         'Content-Type': 'application/json',
         'X-Session-Id': sessionId
       },
-      body: JSON.stringify({ text: transcription, language: transcribeData.language })
+      body: JSON.stringify({ text: transcription, language: transcribeData.language || 'en' })
     });
     
     if (!summarizeResponse.ok) {
-      throw new Error('خطا در خلاصه‌سازی');
+      const errorData = await summarizeResponse.json().catch(() => ({}));
+      throw new Error(errorData.error || errorData.message || 'خطا در خلاصه‌سازی');
     }
     
     const summarizeData = await summarizeResponse.json();
+    const summary = summarizeData.summary || summarizeData;
+    const keyPoints = summarizeData.keyPoints || [];
+    
+    // Show summary modal
+    showSummaryModal(summary, keyPoints, transcription, youtubeData.title || 'ویدئو یوتیوب', sessionId, transcribeData.language || 'en');
+    
+    // Record usage
+    const duration = youtubeData.duration ? Math.ceil(youtubeData.duration / 60) : 0;
+    await recordUsage(sessionId, 'transcription', duration);
     
     // Save to dashboard
-    const title = youtubeData.title || 'ویدئو یوتیوب';
     await saveToDashboard(sessionId, {
-      title,
+      title: youtubeData.title || 'ویدئو یوتیوب',
       type: 'summarize',
       transcription,
-      summary: summarizeData.summary || summarizeData,
-      keyPoints: summarizeData.keyPoints || [],
+      summary,
+      keyPoints,
       duration: youtubeData.duration || 0
     });
-    
-    showMessage('خلاصه‌سازی با موفقیت انجام شد! به داشبورد مراجعه کنید.', 'success');
-    setTimeout(() => {
-      window.open(`dashboard.html?session=${sessionId}`, '_blank');
-    }, 2000);
     
   } catch (error) {
     console.error('Error:', error);
@@ -553,11 +562,16 @@ async function processFullText(url, sessionId) {
     });
     
     if (!youtubeResponse.ok) {
-      throw new Error('خطا در دریافت ویدئو');
+      const errorData = await youtubeResponse.json().catch(() => ({}));
+      throw new Error(errorData.error || errorData.message || 'خطا در دریافت ویدئو');
     }
     
     const youtubeData = await youtubeResponse.json();
     const audioUrl = youtubeData.audioUrl;
+    
+    if (!audioUrl) {
+      throw new Error('خطا در استخراج صوت از ویدئو');
+    }
     
     // Transcribe
     showMessage('در حال تبدیل به متن...', 'info');
@@ -571,25 +585,32 @@ async function processFullText(url, sessionId) {
     });
     
     if (!transcribeResponse.ok) {
-      throw new Error('خطا در تبدیل به متن');
+      const errorData = await transcribeResponse.json().catch(() => ({}));
+      throw new Error(errorData.error || errorData.message || 'خطا در تبدیل به متن');
     }
     
     const transcribeData = await transcribeResponse.json();
+    const transcription = transcribeData.text || transcribeData.transcription;
+    
+    if (!transcription) {
+      throw new Error('متن دریافت نشد');
+    }
+    
+    // Show full text modal
+    showFullTextModal(transcription, youtubeData.title || 'ویدئو یوتیوب', sessionId, transcribeData.language || 'en');
+    
+    // Record usage
+    const duration = youtubeData.duration ? Math.ceil(youtubeData.duration / 60) : 0;
+    await recordUsage(sessionId, 'transcription', duration);
     
     // Save to dashboard
-    const title = youtubeData.title || 'ویدئو یوتیوب';
     await saveToDashboard(sessionId, {
-      title,
+      title: youtubeData.title || 'ویدئو یوتیوب',
       type: 'transcription',
-      transcription: transcribeData.text,
+      transcription,
       segments: transcribeData.segments || [],
       duration: youtubeData.duration || 0
     });
-    
-    showMessage('تبدیل به متن با موفقیت انجام شد! به داشبورد مراجعه کنید.', 'success');
-    setTimeout(() => {
-      window.open(`dashboard.html?session=${sessionId}`, '_blank');
-    }, 2000);
     
   } catch (error) {
     console.error('Error:', error);
@@ -597,12 +618,276 @@ async function processFullText(url, sessionId) {
   }
 }
 
+// Show summary modal
+function showSummaryModal(summary, keyPoints, fullText, title, sessionId, originalLanguage) {
+  let modal = document.getElementById('summaryModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'summaryModal';
+    modal.className = 'quality-modal';
+    modal.innerHTML = `
+      <div class="quality-modal-content" style="max-width: 900px;">
+        <div class="quality-modal-header">
+          <h3 class="quality-modal-title">خلاصه</h3>
+          <button class="quality-modal-close">×</button>
+        </div>
+        <div class="summary-modal-body">
+          <div class="srt-controls">
+            <label for="summaryLanguageSelect" class="srt-language-label">زبان ترجمه:</label>
+            <select id="summaryLanguageSelect" class="srt-language-select">
+              <option value="original">زبان اصلی</option>
+              <option value="fa">فارسی</option>
+              <option value="en">English</option>
+              <option value="ar">العربية</option>
+              <option value="es">Español</option>
+              <option value="fr">Français</option>
+              <option value="de">Deutsch</option>
+              <option value="it">Italiano</option>
+              <option value="ru">Русский</option>
+              <option value="tr">Türkçe</option>
+              <option value="zh">中文</option>
+              <option value="ja">日本語</option>
+              <option value="ko">한국어</option>
+            </select>
+            <button class="translate-srt-btn" id="translateSummaryBtnMain">🔄 ترجمه</button>
+          </div>
+          <div class="summary-content">
+            <div class="key-points-section" style="margin-bottom: 20px;">
+              <h4 style="margin-bottom: 10px;">نکات کلیدی:</h4>
+              <ul id="keyPointsList" style="list-style: none; padding: 0;"></ul>
+            </div>
+            <div class="summary-text-section">
+              <h4 style="margin-bottom: 10px;">خلاصه:</h4>
+              <div id="summaryTextMain" style="line-height: 1.8; text-align: right;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    
+    // Close modal
+    modal.querySelector('.quality-modal-close').addEventListener('click', () => {
+      modal.classList.remove('active');
+    });
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.classList.remove('active');
+      }
+    });
+    
+    // Translate button
+    document.getElementById('translateSummaryBtnMain').addEventListener('click', async () => {
+      await translateSummary(sessionId, originalLanguage);
+    });
+  }
+  
+  // Set initial content
+  window.originalSummary = summary;
+  window.originalKeyPoints = keyPoints;
+  window.originalSummaryLanguage = originalLanguage;
+  
+  // Display key points
+  const keyPointsList = document.getElementById('keyPointsList');
+  keyPointsList.innerHTML = '';
+  if (Array.isArray(keyPoints) && keyPoints.length > 0) {
+    keyPoints.forEach(point => {
+      const li = document.createElement('li');
+      li.textContent = `• ${point}`;
+      li.style.padding = '8px 0';
+      keyPointsList.appendChild(li);
+    });
+  } else {
+    keyPointsList.innerHTML = '<li>نکات کلیدی در دسترس نیست</li>';
+  }
+  
+  // Display summary
+  document.getElementById('summaryTextMain').textContent = typeof summary === 'string' ? summary : (summary.summary || 'خلاصه در دسترس نیست');
+  
+  modal.classList.add('active');
+}
+
+// Translate summary
+async function translateSummary(sessionId, originalLanguage) {
+  const targetLanguage = document.getElementById('summaryLanguageSelect').value;
+  if (targetLanguage === 'original') {
+    document.getElementById('summaryTextMain').textContent = typeof window.originalSummary === 'string' ? window.originalSummary : (window.originalSummary.summary || '');
+    return;
+  }
+  
+  const btn = document.getElementById('translateSummaryBtnMain');
+  btn.disabled = true;
+  btn.textContent = '⏳ در حال ترجمه...';
+  
+  try {
+    const summaryText = typeof window.originalSummary === 'string' ? window.originalSummary : (window.originalSummary.summary || '');
+    const response = await fetch(`${API_BASE_URL}/api/translate-srt`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': sessionId
+      },
+      body: JSON.stringify({
+        srtContent: `1\n00:00:00,000 --> 00:00:10,000\n${summaryText}\n\n`,
+        targetLanguage: targetLanguage,
+        sourceLanguage: originalLanguage || 'en'
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error('خطا در ترجمه');
+    }
+    
+    const data = await response.json();
+    // Extract text from SRT
+    const translatedText = data.srtContent.split('\n').slice(2).join('\n').trim();
+    document.getElementById('summaryTextMain').textContent = translatedText;
+    
+  } catch (error) {
+    console.error('Error:', error);
+    showMessage('خطا در ترجمه: ' + error.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔄 ترجمه';
+  }
+}
+
+// Show full text modal
+function showFullTextModal(fullText, title, sessionId, originalLanguage) {
+  let modal = document.getElementById('fullTextModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'fullTextModal';
+    modal.className = 'quality-modal';
+    modal.innerHTML = `
+      <div class="quality-modal-content" style="max-width: 900px;">
+        <div class="quality-modal-header">
+          <h3 class="quality-modal-title">متن کامل</h3>
+          <button class="quality-modal-close">×</button>
+        </div>
+        <div class="summary-modal-body">
+          <div class="srt-controls">
+            <label for="fullTextLanguageSelect" class="srt-language-label">زبان ترجمه:</label>
+            <select id="fullTextLanguageSelect" class="srt-language-select">
+              <option value="original">زبان اصلی</option>
+              <option value="fa">فارسی</option>
+              <option value="en">English</option>
+              <option value="ar">العربية</option>
+              <option value="es">Español</option>
+              <option value="fr">Français</option>
+              <option value="de">Deutsch</option>
+              <option value="it">Italiano</option>
+              <option value="ru">Русский</option>
+              <option value="tr">Türkçe</option>
+              <option value="zh">中文</option>
+              <option value="ja">日本語</option>
+              <option value="ko">한국어</option>
+            </select>
+            <button class="translate-srt-btn" id="translateFullTextBtnMain">🔄 ترجمه</button>
+          </div>
+          <div class="fulltext-content" id="fullTextMain" style="max-height: 500px; overflow-y: auto; margin-top: 20px; padding: 16px; background: #f5f5f5; border-radius: 8px; line-height: 1.8; text-align: right;"></div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    
+    // Close modal
+    modal.querySelector('.quality-modal-close').addEventListener('click', () => {
+      modal.classList.remove('active');
+    });
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.classList.remove('active');
+      }
+    });
+    
+    // Translate button
+    document.getElementById('translateFullTextBtnMain').addEventListener('click', async () => {
+      await translateFullText(sessionId, originalLanguage);
+    });
+  }
+  
+  // Set initial content
+  window.originalFullText = fullText;
+  window.originalFullTextLanguage = originalLanguage;
+  document.getElementById('fullTextMain').textContent = fullText;
+  
+  modal.classList.add('active');
+}
+
+// Translate full text
+async function translateFullText(sessionId, originalLanguage) {
+  const targetLanguage = document.getElementById('fullTextLanguageSelect').value;
+  if (targetLanguage === 'original') {
+    document.getElementById('fullTextMain').textContent = window.originalFullText;
+    return;
+  }
+  
+  const btn = document.getElementById('translateFullTextBtnMain');
+  btn.disabled = true;
+  btn.textContent = '⏳ در حال ترجمه...';
+  
+  try {
+    // Split text into chunks for translation (SRT format)
+    const chunks = window.originalFullText.split(/\n\n+/);
+    let translatedChunks = [];
+    
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i].trim();
+      if (!chunk) continue;
+      
+      const response = await fetch(`${API_BASE_URL}/api/translate-srt`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Session-Id': sessionId
+        },
+        body: JSON.stringify({
+          srtContent: `1\n00:00:00,000 --> 00:00:10,000\n${chunk}\n\n`,
+          targetLanguage: targetLanguage,
+          sourceLanguage: originalLanguage || 'en'
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const translatedChunk = data.srtContent.split('\n').slice(2).join('\n').trim();
+        translatedChunks.push(translatedChunk);
+      } else {
+        translatedChunks.push(chunk); // Keep original if translation fails
+      }
+    }
+    
+    document.getElementById('fullTextMain').textContent = translatedChunks.join('\n\n');
+    
+  } catch (error) {
+    console.error('Error:', error);
+    showMessage('خطا در ترجمه: ' + error.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔄 ترجمه';
+  }
+}
+
 // Save to dashboard
 async function saveToDashboard(sessionId, data) {
   try {
-    // This will be handled by dashboard - we just redirect
-    // The dashboard will fetch and display the data
-    localStorage.setItem(`cutup_result_${Date.now()}`, JSON.stringify(data));
+    // Save to localStorage for dashboard to pick up
+    const resultId = Date.now();
+    const resultData = {
+      id: resultId,
+      ...data,
+      date: new Date().toISOString(),
+      sessionId: sessionId
+    };
+    localStorage.setItem(`cutup_result_${resultId}`, JSON.stringify(resultData));
+    
+    // Also save to a list
+    const resultsList = JSON.parse(localStorage.getItem('cutup_results_list') || '[]');
+    resultsList.push(resultId);
+    localStorage.setItem('cutup_results_list', JSON.stringify(resultsList));
+    
+    console.log('Saved to dashboard:', resultData);
   } catch (error) {
     console.error('Error saving to dashboard:', error);
   }
@@ -657,29 +942,28 @@ function showQualityModal(formats, url, sessionId, isPro, type) {
   const qualityList = modal.querySelector('#qualityList');
   qualityList.innerHTML = '';
   
-  // Sort formats by quality (highest first)
-  const sortedFormats = formats.sort((a, b) => {
-    const qualityA = parseInt(a.quality || a.height || '0');
-    const qualityB = parseInt(b.quality || b.height || '0');
-    return qualityB - qualityA;
-  });
+  // Formats is now an array of quality strings
+  if (!Array.isArray(formats) || formats.length === 0) {
+    qualityList.innerHTML = '<p style="text-align: center; padding: 20px;">کیفیت در دسترس نیست</p>';
+    modal.classList.add('active');
+    return;
+  }
   
-  sortedFormats.forEach(format => {
-    const quality = format.quality || format.height || format.abr || 'unknown';
+  formats.forEach(quality => {
+    // Check if quality is locked for free users
     const isLocked = !isPro && (quality === '720p' || quality === '1080p' || quality === '1440p' || quality === '2160p' || quality === '4K');
     
     const item = document.createElement('div');
     item.className = `quality-item ${isLocked ? 'locked' : ''}`;
     item.innerHTML = `
       ${isLocked ? '<span class="pro-badge">Pro</span>' : ''}
-      ${type === 'video' ? quality : quality + ' kbps'}
-      ${format.filesize ? `(${(format.filesize / 1024 / 1024).toFixed(2)} MB)` : ''}
+      ${type === 'video' ? quality : quality === 'best' ? 'بهترین کیفیت' : quality + ' kbps'}
     `;
     
     if (!isLocked) {
       item.addEventListener('click', async () => {
         modal.classList.remove('active');
-        await downloadFile(url, format, sessionId, type);
+        await downloadFile(url, { quality: quality }, sessionId, type);
       });
     } else {
       item.addEventListener('click', () => {
@@ -707,7 +991,7 @@ async function downloadFile(url, format, sessionId, type) {
       },
       body: JSON.stringify({
         url,
-        formatId: format.format_id || format.itag,
+        quality: format.quality || format.format_id || format.itag,
         type: type
       })
     });
@@ -729,8 +1013,14 @@ async function downloadFile(url, format, sessionId, type) {
       link.click();
       showMessage('دانلود با موفقیت شروع شد!', 'success');
       
-      // Record usage
+      // Record usage and save to dashboard
       await recordUsage(sessionId, type === 'video' ? 'downloadVideo' : 'downloadAudio', 0);
+      await saveToDashboard(sessionId, {
+        title: data.title || 'ویدئو یوتیوب',
+        type: type === 'video' ? 'downloadVideo' : 'downloadAudio',
+        quality: format.quality,
+        url: url
+      });
     } else {
       throw new Error('لینک دانلود دریافت نشد');
     }
@@ -747,6 +1037,132 @@ youtubeUrlInput.addEventListener('keypress', (e) => {
     downloadBtnMain.click();
   }
 });
+
+// Show subtitle modal (like extension)
+function showSubtitleModal(srtContent, originalLanguage, videoId, sessionId) {
+  let modal = document.getElementById('subtitleModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'subtitleModal';
+    modal.className = 'quality-modal';
+    modal.innerHTML = `
+      <div class="quality-modal-content" style="max-width: 800px;">
+        <div class="quality-modal-header">
+          <h3 class="quality-modal-title">زیرنویس</h3>
+          <button class="quality-modal-close">×</button>
+        </div>
+        <div class="subtitle-modal-body">
+          <div class="srt-controls">
+            <label for="srtLanguageSelect" class="srt-language-label">زبان زیرنویس:</label>
+            <select id="srtLanguageSelect" class="srt-language-select">
+              <option value="original">زبان اصلی</option>
+              <option value="fa">فارسی</option>
+              <option value="en">English</option>
+              <option value="ar">العربية</option>
+              <option value="es">Español</option>
+              <option value="fr">Français</option>
+              <option value="de">Deutsch</option>
+              <option value="it">Italiano</option>
+              <option value="ru">Русский</option>
+              <option value="tr">Türkçe</option>
+              <option value="zh">中文</option>
+              <option value="ja">日本語</option>
+              <option value="ko">한국어</option>
+            </select>
+            <button class="translate-srt-btn" id="translateSrtBtnMain">🔄 ترجمه</button>
+          </div>
+          <button class="download-srt-btn" id="downloadSrtBtnMain">📥 دانلود فایل SRT</button>
+          <div class="srt-preview" id="srtPreviewMain" style="max-height: 400px; overflow-y: auto; margin-top: 20px; padding: 16px; background: #f5f5f5; border-radius: 8px; font-family: monospace; font-size: 12px; white-space: pre-wrap; text-align: right;"></div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    
+    // Close modal
+    modal.querySelector('.quality-modal-close').addEventListener('click', () => {
+      modal.classList.remove('active');
+    });
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.classList.remove('active');
+      }
+    });
+    
+    // Translate button
+    document.getElementById('translateSrtBtnMain').addEventListener('click', async () => {
+      await translateSRT(sessionId);
+    });
+    
+    // Download button
+    document.getElementById('downloadSrtBtnMain').addEventListener('click', () => {
+      downloadSRTFile(window.currentSrtContent || srtContent, videoId);
+    });
+  }
+  
+  // Set initial content
+  window.currentSrtContent = srtContent;
+  window.originalSrtContent = srtContent;
+  window.originalSrtLanguage = originalLanguage;
+  document.getElementById('srtPreviewMain').textContent = srtContent;
+  
+  modal.classList.add('active');
+}
+
+// Translate SRT
+async function translateSRT(sessionId) {
+  const targetLanguage = document.getElementById('srtLanguageSelect').value;
+  if (targetLanguage === 'original') {
+    document.getElementById('srtPreviewMain').textContent = window.originalSrtContent;
+    window.currentSrtContent = window.originalSrtContent;
+    return;
+  }
+  
+  const btn = document.getElementById('translateSrtBtnMain');
+  btn.disabled = true;
+  btn.textContent = '⏳ در حال ترجمه...';
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/translate-srt`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': sessionId
+      },
+      body: JSON.stringify({
+        srtContent: window.originalSrtContent,
+        targetLanguage: targetLanguage,
+        sourceLanguage: window.originalSrtLanguage || 'en'
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error('خطا در ترجمه');
+    }
+    
+    const data = await response.json();
+    window.currentSrtContent = data.srtContent;
+    document.getElementById('srtPreviewMain').textContent = data.srtContent;
+    
+  } catch (error) {
+    console.error('Error:', error);
+    showMessage('خطا در ترجمه: ' + error.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔄 ترجمه';
+  }
+}
+
+// Download SRT file
+function downloadSRTFile(srtContent, videoId) {
+  const blob = new Blob([srtContent], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `subtitles_${videoId || Date.now()}.srt`;
+  link.click();
+  URL.revokeObjectURL(url);
+  showMessage('زیرنویس با موفقیت دانلود شد!', 'success');
+}
 
 // Features slider for mobile
 let currentFeatureIndex = 0;

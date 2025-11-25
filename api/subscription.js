@@ -18,7 +18,7 @@ const PLANS = {
     downloadVideoLimit: 3, // 3 video downloads per month
     features: {
       transcription: true,
-      summarization: false, // No summarization for free
+      summarization: true, // Unlimited for all tiers
       srt: false, // No SRT for free
       downloadAudio: true,
       downloadVideo: true,

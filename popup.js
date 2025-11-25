@@ -22,6 +22,10 @@ const srtPreview = document.getElementById('srtPreview');
 const downloadSrtBtn = document.getElementById('downloadSrtBtn');
 const srtLanguageSelect = document.getElementById('srtLanguage');
 const translateSrtBtn = document.getElementById('translateSrtBtn');
+const translateFulltextBtn = document.getElementById('translateFulltextBtn');
+const translateSummaryBtn = document.getElementById('translateSummaryBtn');
+const fulltextLanguageSelect = document.getElementById('fulltextLanguage');
+const summaryLanguageSelect = document.getElementById('summaryLanguage');
 const saveHistoryBtn = document.getElementById('saveHistoryBtn');
 const deleteHistoryBtn = document.getElementById('deleteHistoryBtn');
 const historyControls = document.getElementById('historyControls');
@@ -168,6 +172,12 @@ function setupEventListeners() {
   copyBtn.addEventListener('click', copyResult);
   downloadSrtBtn.addEventListener('click', downloadSrtFile);
   translateSrtBtn.addEventListener('click', handleTranslateSRT);
+  if (translateFulltextBtn) {
+    translateFulltextBtn.addEventListener('click', () => handleTranslateText('fulltext'));
+  }
+  if (translateSummaryBtn) {
+    translateSummaryBtn.addEventListener('click', () => handleTranslateText('summary'));
+  }
   saveHistoryBtn.addEventListener('click', toggleSaveMode);
   deleteHistoryBtn.addEventListener('click', toggleDeleteMode);
   selectAllHistory.addEventListener('change', handleSelectAll);
@@ -451,29 +461,20 @@ async function handleSummarize() {
       // Check if summarization is allowed
       let summary = null;
       try {
-        const canSummarize = await checkSubscriptionLimit('summarization', 0);
-        if (canSummarize.allowed) {
-          // Summarize text with detected language (75-95% of total)
-          updateProgress(80, 'در حال خلاصه‌سازی متن...', '');
-          
-          // Simulate smooth progress during summarization
-          const summaryProgressInterval = setInterval(() => {
-            if (targetProgress < 95) {
-              updateProgress(targetProgress + 1, 'در حال خلاصه‌سازی متن...', '');
-            }
-          }, 300);
-          
-          summary = await summarizeText(transcription.text, transcription.language);
-          clearInterval(summaryProgressInterval);
-          updateProgress(95, 'خلاصه‌سازی انجام شد', '');
-        } else {
-          // User doesn't have summarization feature
-          updateProgress(95, 'تبدیل به متن انجام شد', '');
-          summary = {
-            keyPoints: ['خلاصه‌سازی در پلن رایگان در دسترس نیست. لطفاً پلن خود را ارتقا دهید.'],
-            summary: 'برای استفاده از خلاصه‌سازی هوشمند، لطفاً پلن خود را ارتقا دهید.'
-          };
-        }
+        // Summarize text (unlimited for all tiers)
+        // Summarize text with detected language (75-95% of total)
+        updateProgress(80, 'در حال خلاصه‌سازی متن...', '');
+        
+        // Simulate smooth progress during summarization
+        const summaryProgressInterval = setInterval(() => {
+          if (targetProgress < 95) {
+            updateProgress(targetProgress + 1, 'در حال خلاصه‌سازی متن...', '');
+          }
+        }, 300);
+        
+        summary = await summarizeText(transcription.text, transcription.language);
+        clearInterval(summaryProgressInterval);
+        updateProgress(95, 'خلاصه‌سازی انجام شد', '');
       } catch (error) {
         console.error('Error checking summarization limit:', error);
         // Continue without summary if check fails
@@ -584,29 +585,20 @@ async function handleSummarize() {
       // Check if summarization is allowed
       let summary = null;
       try {
-        const canSummarize = await checkSubscriptionLimit('summarization', 0);
-        if (canSummarize.allowed) {
-          // Summarize text with detected language (75-95% of total)
-          updateProgress(80, 'در حال خلاصه‌سازی متن...', '');
-          
-          // Simulate smooth progress during summarization
-          const summaryProgressInterval = setInterval(() => {
-            if (targetProgress < 95) {
-              updateProgress(targetProgress + 1, 'در حال خلاصه‌سازی متن...', '');
-            }
-          }, 300);
-          
-          summary = await summarizeText(transcription.text, transcription.language);
-          clearInterval(summaryProgressInterval);
-          updateProgress(95, 'خلاصه‌سازی انجام شد', '');
-        } else {
-          // User doesn't have summarization feature
-          updateProgress(95, 'تبدیل به متن انجام شد', '');
-          summary = {
-            keyPoints: ['خلاصه‌سازی در پلن رایگان در دسترس نیست. لطفاً پلن خود را ارتقا دهید.'],
-            summary: 'برای استفاده از خلاصه‌سازی هوشمند، لطفاً پلن خود را ارتقا دهید.'
-          };
-        }
+        // Summarize text (unlimited for all tiers)
+        // Summarize text with detected language (75-95% of total)
+        updateProgress(80, 'در حال خلاصه‌سازی متن...', '');
+        
+        // Simulate smooth progress during summarization
+        const summaryProgressInterval = setInterval(() => {
+          if (targetProgress < 95) {
+            updateProgress(targetProgress + 1, 'در حال خلاصه‌سازی متن...', '');
+          }
+        }, 300);
+        
+        summary = await summarizeText(transcription.text, transcription.language);
+        clearInterval(summaryProgressInterval);
+        updateProgress(95, 'خلاصه‌سازی انجام شد', '');
       } catch (error) {
         console.error('Error checking summarization limit:', error);
         // Continue without summary if check fails
@@ -1344,6 +1336,11 @@ function displayResults(summary, fullText, segments = null, options = {}) {
   }
   summaryText.textContent = summaryTextContent;
 
+  // Store original texts for translation
+  window.originalFullText = fullText;
+  window.originalSummary = typeof summary === 'string' ? summary : (summary?.summary || summaryTextContent);
+  window.originalTextLanguage = (options && options.originalLanguage) || 'en';
+
   // Display full text
   fulltext.textContent = fullText;
 
@@ -1572,6 +1569,58 @@ async function handleTranslateSRT() {
   } finally {
     translateSrtBtn.disabled = false;
     translateSrtBtn.textContent = '🔄 ترجمه';
+  }
+}
+
+// Handle translate text (fulltext or summary)
+async function handleTranslateText(type) {
+  const targetLanguage = type === 'fulltext' ? fulltextLanguageSelect.value : summaryLanguageSelect.value;
+  const btn = type === 'fulltext' ? translateFulltextBtn : translateSummaryBtn;
+  const element = type === 'fulltext' ? fulltext : summaryText;
+  const originalText = type === 'fulltext' ? window.originalFullText : window.originalSummary;
+  
+  if (targetLanguage === 'original') {
+    element.textContent = originalText;
+    return;
+  }
+  
+  if (!originalText) {
+    alert('متن اصلی در دسترس نیست');
+    return;
+  }
+  
+  btn.disabled = true;
+  btn.textContent = '⏳ در حال ترجمه...';
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/translate-srt`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        srtContent: `1\n00:00:00,000 --> 00:00:10,000\n${originalText}\n\n`,
+        targetLanguage: targetLanguage,
+        sourceLanguage: window.originalTextLanguage || 'en'
+      }),
+      signal: AbortSignal.timeout(300000)
+    });
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.details || error.message || `ترجمه ناموفق بود (${response.status})`);
+    }
+    
+    const result = await response.json();
+    const translatedText = result.srtContent.split('\n').slice(2).join('\n').trim();
+    element.textContent = translatedText;
+    
+  } catch (error) {
+    console.error('TRANSLATE_TEXT: Error:', error);
+    alert(`خطا در ترجمه: ${error.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔄 ترجمه';
   }
 }
 

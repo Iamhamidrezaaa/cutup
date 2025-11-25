@@ -147,10 +147,52 @@
 
         <div class="result-content">
           <div class="tab-content active" id="fulltext-tab">
-            <p class="fulltext" id="fulltext"></p>
+            <div class="srt-container">
+              <div class="srt-controls">
+                <label for="fulltextLanguage" class="srt-language-label">زبان ترجمه:</label>
+                <select id="fulltextLanguage" class="srt-language-select">
+                  <option value="original">زبان اصلی</option>
+                  <option value="fa">فارسی</option>
+                  <option value="en">English</option>
+                  <option value="ar">العربية</option>
+                  <option value="es">Español</option>
+                  <option value="fr">Français</option>
+                  <option value="de">Deutsch</option>
+                  <option value="it">Italiano</option>
+                  <option value="ru">Русский</option>
+                  <option value="tr">Türkçe</option>
+                  <option value="zh">中文</option>
+                  <option value="ja">日本語</option>
+                  <option value="ko">한국어</option>
+                </select>
+                <button class="translate-srt-btn" id="translateFulltextBtn">🔄 ترجمه</button>
+              </div>
+              <p class="fulltext" id="fulltext"></p>
+            </div>
           </div>
           <div class="tab-content" id="summary-tab">
-            <p class="summary-text" id="summaryText"></p>
+            <div class="srt-container">
+              <div class="srt-controls">
+                <label for="summaryLanguage" class="srt-language-label">زبان ترجمه:</label>
+                <select id="summaryLanguage" class="srt-language-select">
+                  <option value="original">زبان اصلی</option>
+                  <option value="fa">فارسی</option>
+                  <option value="en">English</option>
+                  <option value="ar">العربية</option>
+                  <option value="es">Español</option>
+                  <option value="fr">Français</option>
+                  <option value="de">Deutsch</option>
+                  <option value="it">Italiano</option>
+                  <option value="ru">Русский</option>
+                  <option value="tr">Türkçe</option>
+                  <option value="zh">中文</option>
+                  <option value="ja">日本語</option>
+                  <option value="ko">한국어</option>
+                </select>
+                <button class="translate-srt-btn" id="translateSummaryBtn">🔄 ترجمه</button>
+              </div>
+              <p class="summary-text" id="summaryText"></p>
+            </div>
           </div>
           <div class="tab-content" id="srt-tab">
             <div class="srt-container" id="srtContainer">
