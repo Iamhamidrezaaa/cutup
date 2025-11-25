@@ -165,7 +165,9 @@ const downloadBtnMain = document.getElementById('downloadBtnMain');
 const downloadOptions = document.getElementById('downloadOptions');
 const downloadVideoBtnMain = document.getElementById('downloadVideoBtnMain');
 const downloadAudioBtnMain = document.getElementById('downloadAudioBtnMain');
+const downloadSubtitleBtnMain = document.getElementById('downloadSubtitleBtnMain');
 const summarizeBtnMain = document.getElementById('summarizeBtnMain');
+const fullTextBtnMain = document.getElementById('fullTextBtnMain');
 const downloadMessage = document.getElementById('downloadMessage');
 
 // Check if YouTube URL is valid
@@ -311,6 +313,119 @@ downloadAudioBtnMain.addEventListener('click', async () => {
   }
 });
 
+// Handle subtitle download
+downloadSubtitleBtnMain.addEventListener('click', async () => {
+  const sessionId = checkLogin();
+  if (!sessionId) return;
+  
+  const url = youtubeUrlInput.value.trim();
+  if (!isYouTubeUrl(url)) {
+    showMessage('لینک یوتیوب معتبر نیست', 'error');
+    return;
+  }
+  
+  try {
+    // Check if user has SRT feature
+    const subResponse = await fetch(`${API_BASE_URL}/api/subscription?action=info&session=${sessionId}`);
+    const subData = await subResponse.ok ? await subResponse.json() : { plan: 'free' };
+    const userPlan = subData.plan || 'free';
+    
+    if (userPlan === 'free') {
+      showMessage('دانلود زیرنویس فقط برای کاربران Paid در دسترس است. لطفاً پلن خود را ارتقا دهید.', 'error');
+      window.open(`dashboard.html?session=${sessionId}`, '_blank');
+      return;
+    }
+    
+    showMessage('در حال دریافت ویدئو و استخراج زیرنویس...', 'info');
+    
+    // Extract video and get subtitles
+    const videoId = extractVideoId(url);
+    const youtubeResponse = await fetch(`${API_BASE_URL}/api/youtube`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': sessionId
+      },
+      body: JSON.stringify({ videoId, url })
+    });
+    
+    if (!youtubeResponse.ok) {
+      throw new Error('خطا در دریافت ویدئو');
+    }
+    
+    const youtubeData = await youtubeResponse.json();
+    
+    if (!youtubeData.subtitles) {
+      showMessage('زیرنویس برای این ویدئو در دسترس نیست.', 'error');
+      return;
+    }
+    
+    // Generate SRT from subtitles
+    const srtContent = generateSRTFromSubtitles(youtubeData.subtitles, youtubeData.subtitleLanguage);
+    
+    // Download SRT file
+    const blob = new Blob([srtContent], { type: 'text/plain;charset=utf-8' });
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = `subtitles_${videoId}.srt`;
+    link.click();
+    URL.revokeObjectURL(downloadUrl);
+    
+    showMessage('زیرنویس با موفقیت دانلود شد!', 'success');
+    
+    // Record usage
+    await recordUsage(sessionId, 'srt', 0);
+    
+  } catch (error) {
+    console.error('Error:', error);
+    showMessage('خطا در دانلود زیرنویس: ' + error.message, 'error');
+  }
+});
+
+// Extract video ID
+function extractVideoId(url) {
+  const patterns = [
+    /[?&]v=([^&]+)/,
+    /youtu\.be\/([^?]+)/,
+    /^([a-zA-Z0-9_-]{11})$/
+  ];
+  
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+// Generate SRT from subtitles
+function generateSRTFromSubtitles(subtitles, language) {
+  if (!subtitles || subtitles.length === 0) return '';
+  
+  let srtContent = '';
+  subtitles.forEach((sub, index) => {
+    const startTime = formatSRTTime(sub.start || sub.startTime || 0);
+    const endTime = formatSRTTime(sub.end || sub.endTime || sub.start + 5);
+    const text = sub.text || sub.content || '';
+    
+    srtContent += `${index + 1}\n`;
+    srtContent += `${startTime} --> ${endTime}\n`;
+    srtContent += `${text}\n\n`;
+  });
+  
+  return srtContent;
+}
+
+// Format time for SRT
+function formatSRTTime(seconds) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  const milliseconds = Math.floor((seconds % 1) * 1000);
+  
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')},${String(milliseconds).padStart(3, '0')}`;
+}
+
 // Handle summarize
 summarizeBtnMain.addEventListener('click', async () => {
   const sessionId = checkLogin();
@@ -322,10 +437,192 @@ summarizeBtnMain.addEventListener('click', async () => {
     return;
   }
   
-  // Redirect to dashboard or show message
-  showMessage('در حال انتقال به صفحه خلاصه‌سازی...', 'info');
-  window.location.href = `dashboard.html?action=summarize&url=${encodeURIComponent(url)}&session=${sessionId}`;
+  // Process summarize and save to dashboard
+  await processSummarize(url, sessionId);
 });
+
+// Handle full text
+fullTextBtnMain.addEventListener('click', async () => {
+  const sessionId = checkLogin();
+  if (!sessionId) return;
+  
+  const url = youtubeUrlInput.value.trim();
+  if (!isYouTubeUrl(url)) {
+    showMessage('لینک یوتیوب معتبر نیست', 'error');
+    return;
+  }
+  
+  // Process transcription and save to dashboard
+  await processFullText(url, sessionId);
+});
+
+// Process summarize
+async function processSummarize(url, sessionId) {
+  try {
+    showMessage('در حال پردازش...', 'info');
+    
+    // Extract video
+    const videoId = extractVideoId(url);
+    const youtubeResponse = await fetch(`${API_BASE_URL}/api/youtube`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': sessionId
+      },
+      body: JSON.stringify({ videoId, url })
+    });
+    
+    if (!youtubeResponse.ok) {
+      throw new Error('خطا در دریافت ویدئو');
+    }
+    
+    const youtubeData = await youtubeResponse.json();
+    const audioUrl = youtubeData.audioUrl;
+    
+    // Transcribe
+    showMessage('در حال تبدیل به متن...', 'info');
+    const transcribeResponse = await fetch(`${API_BASE_URL}/api/transcribe`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': sessionId
+      },
+      body: JSON.stringify({ audioUrl, language: youtubeData.language })
+    });
+    
+    if (!transcribeResponse.ok) {
+      throw new Error('خطا در تبدیل به متن');
+    }
+    
+    const transcribeData = await transcribeResponse.json();
+    const transcription = transcribeData.text;
+    
+    // Summarize
+    showMessage('در حال خلاصه‌سازی...', 'info');
+    const summarizeResponse = await fetch(`${API_BASE_URL}/api/summarize`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': sessionId
+      },
+      body: JSON.stringify({ text: transcription, language: transcribeData.language })
+    });
+    
+    if (!summarizeResponse.ok) {
+      throw new Error('خطا در خلاصه‌سازی');
+    }
+    
+    const summarizeData = await summarizeResponse.json();
+    
+    // Save to dashboard
+    const title = youtubeData.title || 'ویدئو یوتیوب';
+    await saveToDashboard(sessionId, {
+      title,
+      type: 'summarize',
+      transcription,
+      summary: summarizeData.summary || summarizeData,
+      keyPoints: summarizeData.keyPoints || [],
+      duration: youtubeData.duration || 0
+    });
+    
+    showMessage('خلاصه‌سازی با موفقیت انجام شد! به داشبورد مراجعه کنید.', 'success');
+    setTimeout(() => {
+      window.open(`dashboard.html?session=${sessionId}`, '_blank');
+    }, 2000);
+    
+  } catch (error) {
+    console.error('Error:', error);
+    showMessage('خطا: ' + error.message, 'error');
+  }
+}
+
+// Process full text
+async function processFullText(url, sessionId) {
+  try {
+    showMessage('در حال پردازش...', 'info');
+    
+    // Extract video
+    const videoId = extractVideoId(url);
+    const youtubeResponse = await fetch(`${API_BASE_URL}/api/youtube`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': sessionId
+      },
+      body: JSON.stringify({ videoId, url })
+    });
+    
+    if (!youtubeResponse.ok) {
+      throw new Error('خطا در دریافت ویدئو');
+    }
+    
+    const youtubeData = await youtubeResponse.json();
+    const audioUrl = youtubeData.audioUrl;
+    
+    // Transcribe
+    showMessage('در حال تبدیل به متن...', 'info');
+    const transcribeResponse = await fetch(`${API_BASE_URL}/api/transcribe`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': sessionId
+      },
+      body: JSON.stringify({ audioUrl, language: youtubeData.language })
+    });
+    
+    if (!transcribeResponse.ok) {
+      throw new Error('خطا در تبدیل به متن');
+    }
+    
+    const transcribeData = await transcribeResponse.json();
+    
+    // Save to dashboard
+    const title = youtubeData.title || 'ویدئو یوتیوب';
+    await saveToDashboard(sessionId, {
+      title,
+      type: 'transcription',
+      transcription: transcribeData.text,
+      segments: transcribeData.segments || [],
+      duration: youtubeData.duration || 0
+    });
+    
+    showMessage('تبدیل به متن با موفقیت انجام شد! به داشبورد مراجعه کنید.', 'success');
+    setTimeout(() => {
+      window.open(`dashboard.html?session=${sessionId}`, '_blank');
+    }, 2000);
+    
+  } catch (error) {
+    console.error('Error:', error);
+    showMessage('خطا: ' + error.message, 'error');
+  }
+}
+
+// Save to dashboard
+async function saveToDashboard(sessionId, data) {
+  try {
+    // This will be handled by dashboard - we just redirect
+    // The dashboard will fetch and display the data
+    localStorage.setItem(`cutup_result_${Date.now()}`, JSON.stringify(data));
+  } catch (error) {
+    console.error('Error saving to dashboard:', error);
+  }
+}
+
+// Record usage
+async function recordUsage(sessionId, type, duration) {
+  try {
+    await fetch(`${API_BASE_URL}/api/subscription?action=check`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': sessionId
+      },
+      body: JSON.stringify({ type, duration })
+    });
+  } catch (error) {
+    console.error('Error recording usage:', error);
+  }
+}
 
 // Show quality modal
 function showQualityModal(formats, url, sessionId, isPro, type) {
@@ -431,6 +728,9 @@ async function downloadFile(url, format, sessionId, type) {
       link.download = data.filename || 'download';
       link.click();
       showMessage('دانلود با موفقیت شروع شد!', 'success');
+      
+      // Record usage
+      await recordUsage(sessionId, type === 'video' ? 'downloadVideo' : 'downloadAudio', 0);
     } else {
       throw new Error('لینک دانلود دریافت نشد');
     }
@@ -445,6 +745,109 @@ async function downloadFile(url, format, sessionId, type) {
 youtubeUrlInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter') {
     downloadBtnMain.click();
+  }
+});
+
+// Features slider for mobile
+let currentFeatureIndex = 0;
+let featureSliderInterval = null;
+
+function initFeaturesSlider() {
+  if (window.innerWidth > 768) return; // Only on mobile
+  
+  const featuresGrid = document.querySelector('.features-grid');
+  if (!featuresGrid) return;
+  
+  // Wrap features in slider
+  const features = Array.from(featuresGrid.children);
+  if (features.length === 0) return;
+  
+  const slider = document.createElement('div');
+  slider.className = 'features-slider';
+  features.forEach(feature => {
+    slider.appendChild(feature);
+  });
+  
+  featuresGrid.innerHTML = '';
+  featuresGrid.appendChild(slider);
+  
+  // Create dots
+  const dotsContainer = document.createElement('div');
+  dotsContainer.className = 'features-dots';
+  for (let i = 0; i < features.length; i++) {
+    const dot = document.createElement('div');
+    dot.className = `features-dot ${i === 0 ? 'active' : ''}`;
+    dot.addEventListener('click', () => goToFeature(i));
+    dotsContainer.appendChild(dot);
+  }
+  featuresGrid.appendChild(dotsContainer);
+  
+  // Auto-play
+  featureSliderInterval = setInterval(() => {
+    currentFeatureIndex = (currentFeatureIndex + 1) % features.length;
+    goToFeature(currentFeatureIndex);
+  }, 2000);
+  
+  // Touch swipe
+  let touchStartX = 0;
+  let touchEndX = 0;
+  
+  slider.addEventListener('touchstart', (e) => {
+    touchStartX = e.changedTouches[0].screenX;
+  });
+  
+  slider.addEventListener('touchend', (e) => {
+    touchEndX = e.changedTouches[0].screenX;
+    handleSwipe();
+  });
+  
+  function handleSwipe() {
+    if (touchEndX < touchStartX - 50) {
+      // Swipe left
+      currentFeatureIndex = (currentFeatureIndex + 1) % features.length;
+      goToFeature(currentFeatureIndex);
+    }
+    if (touchEndX > touchStartX + 50) {
+      // Swipe right
+      currentFeatureIndex = (currentFeatureIndex - 1 + features.length) % features.length;
+      goToFeature(currentFeatureIndex);
+    }
+  }
+}
+
+function goToFeature(index) {
+  const slider = document.querySelector('.features-slider');
+  const dots = document.querySelectorAll('.features-dot');
+  
+  if (slider) {
+    slider.style.transform = `translateX(-${index * 100}%)`;
+  }
+  
+  dots.forEach((dot, i) => {
+    dot.classList.toggle('active', i === index);
+  });
+  
+  currentFeatureIndex = index;
+  
+  // Reset auto-play timer
+  if (featureSliderInterval) {
+    clearInterval(featureSliderInterval);
+    featureSliderInterval = setInterval(() => {
+      currentFeatureIndex = (currentFeatureIndex + 1) % dots.length;
+      goToFeature(currentFeatureIndex);
+    }, 2000);
+  }
+}
+
+// Initialize on load
+window.addEventListener('DOMContentLoaded', () => {
+  initFeaturesSlider();
+});
+
+// Reinitialize on resize
+window.addEventListener('resize', () => {
+  if (window.innerWidth <= 768) {
+    initFeaturesSlider();
   }
 });
 
