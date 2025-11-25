@@ -161,7 +161,7 @@ document.getElementById('logoutBtn').addEventListener('click', async () => {
 
 // Download functionality
 const youtubeUrlInput = document.getElementById('youtubeUrlInput');
-const downloadBtnMain = document.getElementById('downloadBtnMain');
+// Removed downloadBtnMain - using pasteBtnMain instead
 const downloadOptions = document.getElementById('downloadOptions');
 const downloadVideoBtnMain = document.getElementById('downloadVideoBtnMain');
 const downloadAudioBtnMain = document.getElementById('downloadAudioBtnMain');
@@ -213,23 +213,35 @@ function checkLogin() {
   return sessionId;
 }
 
-// Handle main download button
-downloadBtnMain.addEventListener('click', async () => {
+// Handle paste button
+const pasteBtnMain = document.getElementById('pasteBtnMain');
+pasteBtnMain.addEventListener('click', async () => {
+  try {
+    // Read from clipboard
+    const text = await navigator.clipboard.readText();
+    if (text && isYouTubeUrl(text)) {
+      youtubeUrlInput.value = text;
+      // Show options
+      downloadOptions.style.display = 'block';
+      showMessage('لطفاً یکی از گزینه‌های زیر را انتخاب کنید', 'info');
+    } else {
+      showMessage('محتوای کلیپ‌بورد لینک یوتیوب معتبری نیست', 'error');
+    }
+  } catch (error) {
+    console.error('Error reading clipboard:', error);
+    showMessage('خطا در خواندن کلیپ‌بورد. لطفاً لینک را دستی وارد کنید.', 'error');
+  }
+});
+
+// Also check input when URL is entered manually
+youtubeUrlInput.addEventListener('input', () => {
   const url = youtubeUrlInput.value.trim();
-  
-  if (!url) {
-    showMessage('لطفاً لینک یوتیوب را وارد کنید', 'error');
-    return;
+  if (url && isYouTubeUrl(url)) {
+    downloadOptions.style.display = 'block';
+    showMessage('لطفاً یکی از گزینه‌های زیر را انتخاب کنید', 'info');
+  } else {
+    downloadOptions.style.display = 'none';
   }
-  
-  if (!isYouTubeUrl(url)) {
-    showMessage('لینک یوتیوب معتبر نیست. لطفاً لینک صحیح را وارد کنید.', 'error');
-    return;
-  }
-  
-  // Show options
-  downloadOptions.style.display = 'block';
-  showMessage('لطفاً یکی از گزینه‌های زیر را انتخاب کنید', 'info');
 });
 
 // Handle video download
@@ -491,15 +503,28 @@ async function processSummarize(url, sessionId) {
     });
     
     if (!transcribeResponse.ok) {
-      const errorData = await transcribeResponse.json().catch(() => ({}));
-      throw new Error(errorData.error || errorData.message || 'خطا در تبدیل به متن');
+      let errorMessage = 'خطا در تبدیل به متن';
+      try {
+        const errorData = await transcribeResponse.json();
+        errorMessage = errorData.message || errorData.details || errorData.error || errorMessage;
+      } catch (e) {
+        const errorText = await transcribeResponse.text().catch(() => '');
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
     }
     
     const transcribeData = await transcribeResponse.json();
+    
+    // Check for error in response
+    if (transcribeData.error) {
+      throw new Error(transcribeData.message || transcribeData.details || transcribeData.error || 'خطا در تبدیل به متن');
+    }
+    
     const transcription = transcribeData.text || transcribeData.transcription;
     
     if (!transcription) {
-      throw new Error('متن دریافت نشد');
+      throw new Error('متن دریافت نشد. پاسخ API: ' + JSON.stringify(transcribeData).substring(0, 200));
     }
     
     // Summarize (unlimited for all tiers)
@@ -514,11 +539,24 @@ async function processSummarize(url, sessionId) {
     });
     
     if (!summarizeResponse.ok) {
-      const errorData = await summarizeResponse.json().catch(() => ({}));
-      throw new Error(errorData.error || errorData.message || 'خطا در خلاصه‌سازی');
+      let errorMessage = 'خطا در خلاصه‌سازی';
+      try {
+        const errorData = await summarizeResponse.json();
+        errorMessage = errorData.message || errorData.details || errorData.error || errorMessage;
+      } catch (e) {
+        const errorText = await summarizeResponse.text().catch(() => '');
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
     }
     
     const summarizeData = await summarizeResponse.json();
+    
+    // Check for error in response
+    if (summarizeData.error) {
+      throw new Error(summarizeData.message || summarizeData.details || summarizeData.error || 'خطا در خلاصه‌سازی');
+    }
+    
     const summary = summarizeData.summary || summarizeData;
     const keyPoints = summarizeData.keyPoints || [];
     
@@ -585,15 +623,28 @@ async function processFullText(url, sessionId) {
     });
     
     if (!transcribeResponse.ok) {
-      const errorData = await transcribeResponse.json().catch(() => ({}));
-      throw new Error(errorData.error || errorData.message || 'خطا در تبدیل به متن');
+      let errorMessage = 'خطا در تبدیل به متن';
+      try {
+        const errorData = await transcribeResponse.json();
+        errorMessage = errorData.message || errorData.details || errorData.error || errorMessage;
+      } catch (e) {
+        const errorText = await transcribeResponse.text().catch(() => '');
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
     }
     
     const transcribeData = await transcribeResponse.json();
+    
+    // Check for error in response
+    if (transcribeData.error) {
+      throw new Error(transcribeData.message || transcribeData.details || transcribeData.error || 'خطا در تبدیل به متن');
+    }
+    
     const transcription = transcribeData.text || transcribeData.transcription;
     
     if (!transcription) {
-      throw new Error('متن دریافت نشد');
+      throw new Error('متن دریافت نشد. پاسخ API: ' + JSON.stringify(transcribeData).substring(0, 200));
     }
     
     // Show full text modal
@@ -983,6 +1034,9 @@ async function downloadFile(url, format, sessionId, type) {
   try {
     showMessage('در حال آماده‌سازی دانلود...', 'info');
     
+    const videoId = extractVideoId(url);
+    const quality = format.quality || format.format_id || format.itag;
+    
     const response = await fetch(`${API_BASE_URL}/api/youtube-download`, {
       method: 'POST',
       headers: {
@@ -991,39 +1045,49 @@ async function downloadFile(url, format, sessionId, type) {
       },
       body: JSON.stringify({
         url,
-        quality: format.quality || format.format_id || format.itag,
+        videoId: videoId,
+        quality: quality,
         type: type
       })
     });
     
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || 'خطا در دانلود');
+      // Try to get error message
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || errorData.message || 'خطا در دانلود');
+      } else {
+        const errorText = await response.text();
+        throw new Error(errorText || 'خطا در دانلود');
+      }
     }
     
-    // Get download URL from response
-    const data = await response.json();
-    const downloadUrl = data.downloadUrl || data.url;
+    // API returns file directly, not JSON
+    const blob = await response.blob();
+    const downloadUrl = URL.createObjectURL(blob);
     
-    if (downloadUrl) {
-      // Create download link
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = data.filename || 'download';
-      link.click();
-      showMessage('دانلود با موفقیت شروع شد!', 'success');
-      
-      // Record usage and save to dashboard
-      await recordUsage(sessionId, type === 'video' ? 'downloadVideo' : 'downloadAudio', 0);
-      await saveToDashboard(sessionId, {
-        title: data.title || 'ویدئو یوتیوب',
-        type: type === 'video' ? 'downloadVideo' : 'downloadAudio',
-        quality: format.quality,
-        url: url
-      });
-    } else {
-      throw new Error('لینک دانلود دریافت نشد');
-    }
+    // Create download link
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    const extension = type === 'video' ? 'mp4' : 'mp3';
+    link.download = `youtube_${videoId}_${quality}.${extension}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(downloadUrl);
+    
+    showMessage('دانلود با موفقیت شروع شد!', 'success');
+    
+    // Record usage and save to dashboard
+    await recordUsage(sessionId, type === 'video' ? 'downloadVideo' : 'downloadAudio', 0);
+    await saveToDashboard(sessionId, {
+      title: `ویدئو یوتیوب - ${quality}`,
+      type: type === 'video' ? 'downloadVideo' : 'downloadAudio',
+      quality: quality,
+      url: url,
+      videoId: videoId
+    });
     
   } catch (error) {
     console.error('Download error:', error);
@@ -1031,10 +1095,16 @@ async function downloadFile(url, format, sessionId, type) {
   }
 }
 
-// Allow Enter key to trigger download
+// Allow Enter key to check URL
 youtubeUrlInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter') {
-    downloadBtnMain.click();
+    const url = youtubeUrlInput.value.trim();
+    if (url && isYouTubeUrl(url)) {
+      downloadOptions.style.display = 'block';
+      showMessage('لطفاً یکی از گزینه‌های زیر را انتخاب کنید', 'info');
+    } else {
+      showMessage('لینک یوتیوب معتبر نیست', 'error');
+    }
   }
 });
 
