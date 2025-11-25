@@ -267,11 +267,19 @@ body {
 }
 
 .mockup-content {
-  padding: 24px;
-  min-height: 300px;
+  padding: 0;
+  min-height: 400px;
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+}
+
+.extension-screenshot {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: cover;
 }
 
 .demo-text {

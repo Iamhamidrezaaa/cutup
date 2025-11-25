@@ -243,23 +243,21 @@ function displayPlans(plans) {
   
   plansGrid.innerHTML = '';
   
-  // Display free plan info first
+  // Display free plan info first (just text, no card)
   if (freePlan) {
     const freeInfo = document.createElement('div');
-    freeInfo.className = 'free-plan-info';
+    freeInfo.className = 'free-plan-text';
     freeInfo.innerHTML = `
-      <div class="free-plan-content">
-        <h3>💎 پلن رایگان</h3>
-        <p class="free-plan-description">
-          در حالت عادی یا همان عضویت رایگان، شما محدودیت‌های زیر را دارید:
-        </p>
-        <ul class="free-plan-limits">
-          <li>✅ حداکثر 3 دقیقه خلاصه‌سازی در روز یا 20 دقیقه در ماه</li>
-          <li>✅ دانلود موزیک: 3 دانلود در ماه</li>
-          <li>✅ دانلود ویدئو: 3 دانلود در ماه (فقط تا کیفیت 480p)</li>
-          <li>❌ بدون ویژگی‌های پیشرفته مثل زیرنویس‌سازی و خلاصه</li>
-        </ul>
-      </div>
+      <h3 class="free-plan-title">💎 پلن رایگان</h3>
+      <p class="free-plan-description">
+        در حالت عادی یا همان عضویت رایگان، شما محدودیت‌های زیر را دارید:
+      </p>
+      <ul class="free-plan-limits">
+        <li>✅ حداکثر 3 دقیقه خلاصه‌سازی در روز یا 20 دقیقه در ماه</li>
+        <li>✅ دانلود موزیک: 3 دانلود در ماه</li>
+        <li>✅ دانلود ویدئو: 3 دانلود در ماه (فقط تا کیفیت 480p)</li>
+        <li>❌ بدون ویژگی‌های پیشرفته مثل زیرنویس‌سازی و خلاصه</li>
+      </ul>
     `;
     plansGrid.appendChild(freeInfo);
   }
@@ -267,7 +265,6 @@ function displayPlans(plans) {
   // Display paid plans in a special grid
   const paidPlansContainer = document.createElement('div');
   paidPlansContainer.className = 'paid-plans-container';
-  paidPlansContainer.innerHTML = '<h3 class="paid-plans-title">پلن‌های پولی</h3>';
   
   const paidPlansGrid = document.createElement('div');
   paidPlansGrid.className = 'paid-plans-grid';
@@ -325,13 +322,6 @@ function displayPlans(plans) {
       </button>
     `;
     
-    // Add click handler to bring card forward
-    planCard.addEventListener('click', (e) => {
-      if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'OPTION') {
-        bringCardForward(planCard);
-      }
-    });
-    
     paidPlansGrid.appendChild(planCard);
   });
   
@@ -339,37 +329,6 @@ function displayPlans(plans) {
   plansGrid.appendChild(paidPlansContainer);
 }
 
-function bringCardForward(card) {
-  // Remove featured from all cards
-  document.querySelectorAll('.paid-plan-card').forEach(c => {
-    c.classList.remove('featured');
-  });
-  
-  // Add featured to clicked card
-  card.classList.add('featured');
-  
-  // Reorder cards: featured in middle
-  const cards = Array.from(document.querySelectorAll('.paid-plan-card'));
-  const featuredIndex = cards.indexOf(card);
-  const planIds = cards.map(c => c.dataset.planId);
-  
-  // Reorder: starter, pro, business -> keep order but move featured to middle
-  const reordered = [];
-  const starter = cards.find(c => c.dataset.planId === 'starter');
-  const pro = cards.find(c => c.dataset.planId === 'pro');
-  const business = cards.find(c => c.dataset.planId === 'business');
-  
-  if (card.dataset.planId === 'starter') {
-    reordered.push(pro, card, business);
-  } else if (card.dataset.planId === 'pro') {
-    reordered.push(starter, card, business);
-  } else {
-    reordered.push(starter, pro, card);
-  }
-  
-  const grid = card.parentElement;
-  reordered.forEach(c => grid.appendChild(c));
-}
 
 function calculatePlanPriceHTML(plan, billingPeriod) {
   const price = plan.price[billingPeriod] || plan.price.monthly;
