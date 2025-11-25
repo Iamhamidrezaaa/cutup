@@ -57,32 +57,40 @@
             با Cutup، ویدئو و موزیک را از یوتیوب دانلود کنید، به متن تبدیل کنید و خلاصه هوشمند دریافت کنید.
             پشتیبانی کامل از یوتیوب با کیفیت‌های مختلف و فایل‌های صوتی با استفاده از AI.
           </p>
-          <div class="hero-cta">
-            <a href="https://chrome.google.com/webstore" class="btn btn-primary" target="_blank">
-              نصب افزونه
-            </a>
-            <a href="#how-it-works" class="btn btn-secondary">
-              نحوه کار
-            </a>
-          </div>
         </div>
-        <div class="hero-image">
-          <div class="mockup">
-            <div class="mockup-header">
-              <div class="mockup-dots">
-                <span></span>
-                <span></span>
-                <span></span>
-              </div>
-            </div>
-            <div class="mockup-content">
-              <img src="extension-screenshot.png" alt="اسکرین‌شات افزونه Cutup" class="extension-screenshot" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-              <div class="demo-text" style="display: none; padding: 24px;">
-                <p>اسکرین‌شات افزونه</p>
-                <p style="font-size: 12px; margin-top: 8px; opacity: 0.7;">لطفاً فایل extension-screenshot.png را در پوشه website قرار دهید</p>
-              </div>
+      </div>
+    </section>
+
+    <!-- Download Section -->
+    <section class="download-section">
+      <div class="container">
+        <div class="download-box">
+          <h2 class="download-title">لینک یوتیوب را وارد کنید</h2>
+          <div class="download-input-group">
+            <input 
+              type="text" 
+              id="youtubeUrlInput" 
+              class="download-input" 
+              placeholder="https://youtube.com/watch?v=..."
+            >
+            <button class="download-btn-main" id="downloadBtnMain">
+              دانلود
+            </button>
+          </div>
+          <div class="download-options" id="downloadOptions" style="display: none;">
+            <div class="download-option-group">
+              <button class="download-option-btn" id="downloadVideoBtnMain">
+                🎬 دانلود ویدئو
+              </button>
+              <button class="download-option-btn" id="downloadAudioBtnMain">
+                🎵 دانلود موزیک
+              </button>
+              <button class="download-option-btn" id="summarizeBtnMain">
+                📝 خلاصه‌سازی
+              </button>
             </div>
           </div>
+          <div class="download-message" id="downloadMessage"></div>
         </div>
       </div>
     </section>
@@ -201,15 +209,6 @@
               <a href="https://chrome.google.com/webstore" class="btn btn-primary" target="_blank">
                 مشاهده در Store
               </a>
-            </div>
-            <div class="install-step">
-              <h3>نصب دستی (Developer Mode)</h3>
-              <ol>
-                <li>Chrome را باز کنید و به <code>chrome://extensions/</code> بروید</li>
-                <li>Developer mode را فعال کنید</li>
-                <li>روی "Load unpacked" کلیک کنید</li>
-                <li>پوشه افزونه را انتخاب کنید</li>
-              </ol>
             </div>
           </div>
         </div>
