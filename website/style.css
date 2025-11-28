@@ -54,6 +54,12 @@ body {
   font-size: 20px;
   font-weight: 600;
   color: var(--primary);
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.logo:hover {
+  opacity: 0.8;
 }
 
 .logo svg {
@@ -663,6 +669,32 @@ code, pre {
   display: flex;
   gap: 12px;
   margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.file-input-label {
+  display: inline-block;
+}
+
+.file-input-btn {
+  display: inline-block;
+  padding: 16px 24px;
+  background: var(--secondary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-family: 'Vazirmatn', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.file-input-btn:hover {
+  background: #7c3aed;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px var(--shadow);
 }
 
 .download-input {

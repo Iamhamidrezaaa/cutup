@@ -15,14 +15,14 @@
     <nav class="nav">
       <div class="container">
         <div class="nav-content">
-          <div class="logo">
+          <a href="index.html" class="logo" style="text-decoration: none; color: inherit;">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            <span class="logo-text">Cutup</span>
-          </div>
+            <span class="logo-text">کات‌آپ</span>
+          </a>
           <div class="nav-links">
             <a href="#features" class="nav-link">ویژگی‌ها</a>
             <a href="#how-it-works" class="nav-link">نحوه کار</a>
@@ -77,8 +77,8 @@
             <span class="gradient-text">ویدئو و موزیک</span>
           </h1>
           <p class="hero-description">
-            با Cutup، ویدئو و موزیک را از یوتیوب دانلود کنید، به متن تبدیل کنید و خلاصه هوشمند دریافت کنید.
-            پشتیبانی کامل از یوتیوب با کیفیت‌های مختلف و فایل‌های صوتی با استفاده از AI.
+            با کات‌آپ، ویدئو و موزیک را از یوتیوب دانلود کنید، به متن تبدیل کنید و خلاصه هوشمند دریافت کنید.
+            پشتیبانی کامل از یوتیوب با کیفیت‌های مختلف، فایل‌های صوتی و زیرنویس به تمام زبان‌های دنیا با استفاده از هوش مصنوعی.
           </p>
         </div>
       </div>
@@ -88,7 +88,7 @@
     <section class="download-section">
       <div class="container">
         <div class="download-box">
-          <h2 class="download-title">لینک یوتیوب را وارد کنید</h2>
+          <h2 class="download-title">لینک یوتیوب را وارد کنید یا فایل صوتی انتخاب کنید</h2>
           <div class="download-input-group">
             <input 
               type="text" 
@@ -99,6 +99,15 @@
             <button class="download-btn-main" id="pasteBtnMain">
               📋 چسباندن
             </button>
+            <label for="audioFileInput" class="file-input-label">
+              <input 
+                type="file" 
+                id="audioFileInput" 
+                accept="audio/*,video/*" 
+                style="display: none;"
+              >
+              <span class="file-input-btn">📁 انتخاب فایل</span>
+            </label>
           </div>
           <div class="download-options" id="downloadOptions" style="display: none;">
             <div class="download-option-group">
@@ -171,14 +180,21 @@
           </div>
           <div class="feature-card">
             <div class="feature-icon">📝</div>
-            <h3 class="feature-title">خلاصه‌سازی AI</h3>
+            <h3 class="feature-title">خلاصه‌سازی هوش مصنوعی</h3>
             <p class="feature-description">
               خلاصه هوشمند با GPT شامل نکات کلیدی و خلاصه یک‌پاراگرافی.
             </p>
           </div>
           <div class="feature-card">
+            <div class="feature-icon">🌍</div>
+            <h3 class="feature-title">زیرنویس چندزبانه</h3>
+            <p class="feature-description">
+              دانلود و ترجمه زیرنویس به تمام زبان‌های دنیا با دقت بالا.
+            </p>
+          </div>
+          <div class="feature-card">
             <div class="feature-icon">🌓</div>
-            <h3 class="feature-title">حالت Dark/Light</h3>
+            <h3 class="feature-title">حالت تاریک/روشن</h3>
             <p class="feature-description">
               رابط کاربری زیبا با پشتیبانی از حالت تاریک و روشن.
             </p>
@@ -254,16 +270,23 @@
     <div class="container">
       <div class="footer-content">
         <div class="footer-logo">
-          <span class="logo-text">Cutup</span>
+          <a href="index.html" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 8px;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="logo-text">کات‌آپ</span>
+          </a>
         </div>
         <div class="footer-links">
-          <a href="#" class="footer-link">درباره ما</a>
-          <a href="#" class="footer-link">حریم خصوصی</a>
-          <a href="#" class="footer-link">تماس با ما</a>
+          <a href="about.html" class="footer-link">درباره ما</a>
+          <a href="privacy.html" class="footer-link">حریم خصوصی</a>
+          <a href="contact.html" class="footer-link">تماس با ما</a>
         </div>
       </div>
       <div class="footer-bottom">
-        <p>&copy; 2024 Cutup. تمام حقوق محفوظ است.</p>
+        <p>&copy; 2026 کات‌آپ. تمامی حقوق برای کات‌آپ محفوظ است.</p>
       </div>
     </div>
   </footer>

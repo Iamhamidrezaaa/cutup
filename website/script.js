@@ -117,8 +117,52 @@ function showLoginButton() {
 function showUserProfile(user) {
   document.getElementById('loginBtn').style.display = 'none';
   document.getElementById('userProfile').style.display = 'flex';
-  document.getElementById('userAvatar').src = user.picture || '';
-  document.getElementById('userName').textContent = user.name || user.email;
+  
+  const avatar = document.getElementById('userAvatar');
+  const userName = document.getElementById('userName');
+  
+  // Set avatar - use user picture or generate avatar
+  if (user.picture) {
+    avatar.src = user.picture;
+    avatar.onerror = () => {
+      // If image fails to load, use generated avatar
+      avatar.src = generateAvatar(user.name || user.email);
+    };
+  } else {
+    avatar.src = generateAvatar(user.name || user.email);
+  }
+  
+  userName.textContent = user.name || user.email;
+  
+  // Make avatar and name clickable to go to dashboard
+  const sessionId = localStorage.getItem('cutup_session');
+  if (sessionId) {
+    avatar.style.cursor = 'pointer';
+    userName.style.cursor = 'pointer';
+    avatar.onclick = () => {
+      window.location.href = `dashboard.html?session=${sessionId}`;
+    };
+    userName.onclick = () => {
+      window.location.href = `dashboard.html?session=${sessionId}`;
+    };
+  }
+}
+
+// Generate avatar from name/email
+function generateAvatar(text) {
+  // Use a simple avatar generator service or create initials
+  const initials = text
+    .split(' ')
+    .map(word => word[0])
+    .join('')
+    .substring(0, 2)
+    .toUpperCase();
+  
+  // Use UI Avatars or similar service
+  const colors = ['6366f1', '8b5cf6', 'ec4899', 'f59e0b', '10b981', '3b82f6'];
+  const color = colors[text.length % colors.length];
+  
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&background=${color}&color=fff&size=128&bold=true&font-size=0.5`;
 }
 
 // Login button click
@@ -1106,6 +1150,34 @@ youtubeUrlInput.addEventListener('keypress', (e) => {
       showMessage('لینک یوتیوب معتبر نیست', 'error');
     }
   }
+});
+
+// Handle audio file input
+const audioFileInput = document.getElementById('audioFileInput');
+audioFileInput.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  // Check if it's audio or video file
+  const isAudio = file.type.startsWith('audio/');
+  const isVideo = file.type.startsWith('video/');
+  
+  if (!isAudio && !isVideo) {
+    showMessage('لطفاً فایل صوتی یا ویدئویی انتخاب کنید', 'error');
+    return;
+  }
+  
+  // Show options for file processing
+  downloadOptions.style.display = 'block';
+  showMessage('فایل انتخاب شد. لطفاً یکی از گزینه‌های زیر را انتخاب کنید', 'info');
+  
+  // Store file for later use
+  window.selectedFile = file;
+  
+  // Hide YouTube-specific options, show file-specific options
+  downloadVideoBtnMain.style.display = 'none';
+  downloadAudioBtnMain.style.display = 'none';
+  downloadSubtitleBtnMain.style.display = 'none';
 });
 
 // Show subtitle modal (like extension)
