@@ -1411,22 +1411,43 @@ async function translateFullText(sessionId, originalLanguage) {
 // Save to dashboard
 async function saveToDashboard(sessionId, data) {
   try {
-    // Save to localStorage for dashboard to pick up
+    // Save to localStorage history for dashboard to pick up
     const resultId = Date.now();
     const resultData = {
       id: resultId,
       ...data,
       date: new Date().toISOString(),
-      sessionId: sessionId
+      sessionId: sessionId,
+      // Add minutes if it's a usage type
+      minutes: data.duration ? Math.ceil(data.duration / 60) : (data.minutes || 0)
     };
-    localStorage.setItem(`cutup_result_${resultId}`, JSON.stringify(resultData));
     
-    // Also save to a list
-    const resultsList = JSON.parse(localStorage.getItem('cutup_results_list') || '[]');
-    resultsList.push(resultId);
-    localStorage.setItem('cutup_results_list', JSON.stringify(resultsList));
+    // Get existing history
+    const raw = localStorage.getItem('cutup_dashboard_history');
+    const history = raw ? JSON.parse(raw) : [];
+    
+    // Add new item to beginning
+    history.unshift(resultData);
+    
+    // Limit to 1000 items
+    if (history.length > 1000) {
+      history.pop();
+    }
+    
+    // Save back to localStorage
+    localStorage.setItem('cutup_dashboard_history', JSON.stringify(history));
     
     console.log('Saved to dashboard:', resultData);
+    
+    // Dispatch event for dashboard to listen
+    window.dispatchEvent(new CustomEvent('cutupDownloadRecorded', { detail: resultData }));
+    
+    // Also trigger storage event for cross-tab sync
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: 'cutup_dashboard_history',
+      newValue: JSON.stringify(history),
+      oldValue: raw
+    }));
   } catch (error) {
     console.error('Error saving to dashboard:', error);
   }

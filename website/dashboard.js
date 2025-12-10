@@ -80,6 +80,20 @@ async function initDashboard() {
     }
   }, 2000); // Check every 2 seconds
   
+  // Listen for cutupDownloadRecorded event (from main page)
+  window.addEventListener('cutupDownloadRecorded', async (event) => {
+    console.log('[dashboard] Received cutupDownloadRecorded event:', event.detail);
+    await loadSubscriptionInfo();
+  });
+  
+  // Listen for storage events (cross-tab sync)
+  window.addEventListener('storage', async (event) => {
+    if (event.key === 'cutup_dashboard_history') {
+      console.log('[dashboard] Storage event detected for cutup_dashboard_history');
+      await loadSubscriptionInfo();
+    }
+  });
+  
   // Refresh when navigating to overview section
   const overviewNav = document.querySelector('[data-section="overview"]');
   if (overviewNav) {
@@ -120,8 +134,56 @@ function showUserProfile(user) {
   document.getElementById('welcomeMessage').textContent = `خوش آمدید ${user.name || user.email}!`;
 }
 
+// Get usage statistics from localStorage history
+function getUsageFromLocalHistory() {
+  try {
+    const raw = localStorage.getItem('cutup_dashboard_history');
+    if (!raw) {
+      return {
+        audioDownloads: 0,
+        videoDownloads: 0,
+        usedMinutes: 0,
+      };
+    }
+
+    const history = JSON.parse(raw);
+    let audio = 0;
+    let video = 0;
+    let minutes = 0;
+
+    for (const item of history) {
+      if (!item || !item.type) continue;
+
+      if (item.type === 'downloadAudio') audio += 1;
+      if (item.type === 'downloadVideo') video += 1;
+
+      // If it's a usage type (summary, transcription), add minutes
+      if (
+        (item.type === 'summary' || item.type === 'summarization' || item.type === 'transcription') &&
+        typeof item.minutes === 'number'
+      ) {
+        minutes += item.minutes;
+      }
+    }
+
+    return {
+      audioDownloads: audio,
+      videoDownloads: video,
+      usedMinutes: minutes,
+    };
+  } catch (e) {
+    console.error('[dashboard] getUsageFromLocalHistory error', e);
+    return {
+      audioDownloads: 0,
+      videoDownloads: 0,
+      usedMinutes: 0,
+    };
+  }
+}
+
 async function loadSubscriptionInfo() {
   try {
+    // Try to load from API first (for plan info, limits, etc.)
     const response = await fetch(`${API_BASE_URL}/api/subscription?action=info&session=${currentSession}`, {
       headers: {
         'X-Session-Id': currentSession
@@ -130,16 +192,73 @@ async function loadSubscriptionInfo() {
     
     if (response.ok) {
       subscriptionInfo = await response.json();
-      console.log('[dashboard] Subscription info loaded:', subscriptionInfo);
-      console.log('[dashboard] Usage downloads:', subscriptionInfo.usage?.downloads);
-      updateDashboard();
-      loadPlans();
+      console.log('[dashboard] Subscription info loaded from API:', subscriptionInfo);
     } else {
       const errorText = await response.text().catch(() => '');
-      console.error('[dashboard] Failed to load subscription info:', response.status, errorText);
+      console.error('[dashboard] Failed to load subscription info from API:', response.status, errorText);
+      // Create a default subscriptionInfo structure if API fails
+      subscriptionInfo = {
+        plan: 'free',
+        planName: 'رایگان',
+        usage: {
+          monthly: { minutes: 0 },
+          monthlyLimit: 20,
+          downloads: {
+            audio: { count: 0, limit: 3 },
+            video: { count: 0, limit: 3 }
+          }
+        }
+      };
     }
+    
+    // Get local usage from history (this is the source of truth for counts)
+    const localUsage = getUsageFromLocalHistory();
+    console.log('[dashboard] Local usage from history:', localUsage);
+    
+    // Merge local usage into subscriptionInfo
+    if (subscriptionInfo && subscriptionInfo.usage) {
+      // Update download counts from localStorage
+      if (!subscriptionInfo.usage.downloads) {
+        subscriptionInfo.usage.downloads = {};
+      }
+      if (!subscriptionInfo.usage.downloads.audio) {
+        subscriptionInfo.usage.downloads.audio = { count: 0, limit: 3 };
+      }
+      if (!subscriptionInfo.usage.downloads.video) {
+        subscriptionInfo.usage.downloads.video = { count: 0, limit: 3 };
+      }
+      
+      subscriptionInfo.usage.downloads.audio.count = localUsage.audioDownloads;
+      subscriptionInfo.usage.downloads.video.count = localUsage.videoDownloads;
+      
+      // Update minutes from localStorage
+      subscriptionInfo.usage.monthly.minutes = localUsage.usedMinutes;
+      
+      // Recalculate remaining minutes
+      const limit = subscriptionInfo.usage.monthlyLimit || 20;
+      subscriptionInfo.usage.monthly.remaining = Math.max(0, limit - localUsage.usedMinutes);
+    }
+    
+    console.log('[dashboard] Final subscription info with local usage:', subscriptionInfo);
+    updateDashboard();
+    loadPlans();
   } catch (error) {
     console.error('[dashboard] Error loading subscription info:', error);
+    // Fallback to local usage only
+    const localUsage = getUsageFromLocalHistory();
+    subscriptionInfo = {
+      plan: 'free',
+      planName: 'رایگان',
+      usage: {
+        monthly: { minutes: localUsage.usedMinutes, remaining: Math.max(0, 20 - localUsage.usedMinutes) },
+        monthlyLimit: 20,
+        downloads: {
+          audio: { count: localUsage.audioDownloads, limit: 3 },
+          video: { count: localUsage.videoDownloads, limit: 3 }
+        }
+      }
+    };
+    updateDashboard();
   }
 }
 
