@@ -190,6 +190,7 @@ function generateAvatar(text) {
 
 // Get usage statistics from localStorage history
 // Reads from cutup_result_* keys (current structure) instead of cutup_dashboard_history
+// Only counts items from the current month
 function getUsageFromLocalHistory() {
   try {
     const origin = window.location.origin;
@@ -202,9 +203,19 @@ function getUsageFromLocalHistory() {
     const resultKeys = keys.filter(k => k.startsWith('cutup_result_'));
     console.log('[dashboard] Result keys found:', resultKeys.length, resultKeys);
 
+    // Get current month boundaries
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    currentMonthStart.setHours(0, 0, 0, 0);
+    const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    currentMonthEnd.setHours(23, 59, 59, 999);
+    
+    console.log('[dashboard] Current month range:', currentMonthStart.toISOString(), 'to', currentMonthEnd.toISOString());
+
     let audio = 0;
     let video = 0;
     let minutes = 0;
+    let skippedOld = 0;
 
     for (const key of resultKeys) {
       const raw = localStorage.getItem(key);
@@ -215,14 +226,32 @@ function getUsageFromLocalHistory() {
 
       try {
         const item = JSON.parse(raw);
-        console.log('[dashboard] Processing result item:', key, 'type:', item.type);
+        
+        // Check if item is from current month
+        let itemDate = null;
+        if (item.date) {
+          itemDate = new Date(item.date);
+        } else if (item.id) {
+          // If no date, use id (timestamp) as fallback
+          itemDate = new Date(parseInt(item.id));
+        }
+        
+        if (itemDate) {
+          if (itemDate < currentMonthStart || itemDate > currentMonthEnd) {
+            skippedOld++;
+            console.log('[dashboard] Skipping old item:', key, 'date:', itemDate.toISOString());
+            continue;
+          }
+        }
+        
+        console.log('[dashboard] Processing result item:', key, 'type:', item.type, 'date:', itemDate ? itemDate.toISOString() : 'no date');
 
         if (item.type === 'downloadAudio') {
           audio += 1;
-          console.log('[dashboard] Found downloadAudio, count now:', audio);
+          console.log('[dashboard] Found downloadAudio (this month), count now:', audio);
         } else if (item.type === 'downloadVideo') {
           video += 1;
-          console.log('[dashboard] Found downloadVideo, count now:', video);
+          console.log('[dashboard] Found downloadVideo (this month), count now:', video);
         }
 
         // If it's a usage type (summary, transcription), add minutes
@@ -244,7 +273,8 @@ function getUsageFromLocalHistory() {
       usedMinutes: minutes,
     };
 
-    console.log('[dashboard] Local usage from results:', usage);
+    console.log('[dashboard] Local usage from results (this month):', usage);
+    console.log('[dashboard] Skipped old items:', skippedOld);
     return usage;
   } catch (e) {
     console.error('[dashboard] getUsageFromLocalHistory error:', e);
