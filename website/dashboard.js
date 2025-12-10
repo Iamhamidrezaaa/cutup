@@ -189,71 +189,65 @@ function generateAvatar(text) {
 }
 
 // Get usage statistics from localStorage history
+// Reads from cutup_result_* keys (current structure) instead of cutup_dashboard_history
 function getUsageFromLocalHistory() {
   try {
-    console.log('[dashboard] Current origin:', window.location.origin);
-    console.log('[dashboard] Looking for key:', DASHBOARD_HISTORY_KEY);
-    
-    const raw = localStorage.getItem(DASHBOARD_HISTORY_KEY);
-    console.log('[dashboard] Raw localStorage (key: ' + DASHBOARD_HISTORY_KEY + '):', raw);
-    
-    // Debug: List all localStorage keys
-    console.log('[dashboard] All localStorage keys:', Object.keys(localStorage));
-    
-    if (!raw) {
-      console.log('[dashboard] No history found in localStorage');
-      return {
-        audioDownloads: 0,
-        videoDownloads: 0,
-        usedMinutes: 0,
-      };
-    }
+    const origin = window.location.origin;
+    console.log('[dashboard] Current origin:', origin);
 
-    const history = JSON.parse(raw);
-    console.log('[dashboard] Parsed history:', history);
-    console.log('[dashboard] History length:', history.length);
-    
+    const keys = Object.keys(localStorage);
+    console.log('[dashboard] All localStorage keys:', keys);
+
+    // Find all result keys (cutup_result_*)
+    const resultKeys = keys.filter(k => k.startsWith('cutup_result_'));
+    console.log('[dashboard] Result keys found:', resultKeys.length, resultKeys);
+
     let audio = 0;
     let video = 0;
     let minutes = 0;
 
-    for (const item of history) {
-      if (!item || !item.type) {
-        console.log('[dashboard] Skipping invalid item:', item);
+    for (const key of resultKeys) {
+      const raw = localStorage.getItem(key);
+      if (!raw) {
+        console.warn('[dashboard] Empty result for key:', key);
         continue;
       }
 
-      console.log('[dashboard] Processing item:', item.type, item);
+      try {
+        const item = JSON.parse(raw);
+        console.log('[dashboard] Processing result item:', key, 'type:', item.type);
 
-      if (item.type === 'downloadAudio') {
-        audio += 1;
-        console.log('[dashboard] Found downloadAudio, count now:', audio);
-      }
-      if (item.type === 'downloadVideo') {
-        video += 1;
-        console.log('[dashboard] Found downloadVideo, count now:', video);
-      }
+        if (item.type === 'downloadAudio') {
+          audio += 1;
+          console.log('[dashboard] Found downloadAudio, count now:', audio);
+        } else if (item.type === 'downloadVideo') {
+          video += 1;
+          console.log('[dashboard] Found downloadVideo, count now:', video);
+        }
 
-      // If it's a usage type (summary, transcription), add minutes
-      if (
-        (item.type === 'summary' || item.type === 'summarization' || item.type === 'transcription') &&
-        typeof item.minutes === 'number'
-      ) {
-        minutes += item.minutes;
-        console.log('[dashboard] Found usage type, minutes now:', minutes);
+        // If it's a usage type (summary, transcription), add minutes
+        if (
+          (item.type === 'summary' || item.type === 'summarization' || item.type === 'transcription') &&
+          typeof item.minutes === 'number'
+        ) {
+          minutes += item.minutes;
+          console.log('[dashboard] Found usage type, minutes now:', minutes);
+        }
+      } catch (e) {
+        console.warn('[dashboard] Failed to parse result item for key:', key, e);
       }
     }
 
-    const result = {
+    const usage = {
       audioDownloads: audio,
       videoDownloads: video,
       usedMinutes: minutes,
     };
-    
-    console.log('[dashboard] Final usage stats:', result);
-    return result;
+
+    console.log('[dashboard] Local usage from results:', usage);
+    return usage;
   } catch (e) {
-    console.error('[dashboard] getUsageFromLocalHistory error', e);
+    console.error('[dashboard] getUsageFromLocalHistory error:', e);
     return {
       audioDownloads: 0,
       videoDownloads: 0,
@@ -273,7 +267,11 @@ function updateDashboardFromLocalStorage() {
   const videoCount = localUsage.videoDownloads;
   const usedMinutes = localUsage.usedMinutes;
   
-  console.log('[dashboard] Updating UI with:', { audioCount, videoCount, usedMinutes });
+  console.log('[dashboard] Updating UI with:', {
+    audioCount: audioCount,
+    videoCount: videoCount,
+    usedMinutes: usedMinutes,
+  });
   
   // Update download count element
   let downloadCountEl = document.getElementById('downloadCount');
@@ -301,8 +299,8 @@ function updateDashboardFromLocalStorage() {
   }
   
   if (downloadCountEl) {
-    downloadCountEl.textContent = audioCount + videoCount;
-    console.log('[dashboard] Updated downloadCount to:', audioCount + videoCount);
+    downloadCountEl.textContent = (audioCount + videoCount).toString();
+    console.log('[dashboard] Updated downloadCount to:', downloadCountEl.textContent);
   } else {
     console.error('[dashboard] downloadCount element not found!');
   }
@@ -317,16 +315,16 @@ function updateDashboardFromLocalStorage() {
   // Update minutes if elements exist
   const usedMinutesEl = document.getElementById('usedMinutes');
   if (usedMinutesEl) {
-    usedMinutesEl.textContent = usedMinutes;
-    console.log('[dashboard] Updated usedMinutes to:', usedMinutes);
+    usedMinutesEl.textContent = usedMinutes.toString();
+    console.log('[dashboard] Updated usedMinutes to:', usedMinutesEl.textContent);
   }
   
   const remainingMinutesEl = document.getElementById('remainingMinutes');
   if (remainingMinutesEl) {
-    const limit = 20; // Free plan limit
-    const remaining = Math.max(0, limit - usedMinutes);
-    remainingMinutesEl.textContent = remaining;
-    console.log('[dashboard] Updated remainingMinutes to:', remaining);
+    const total = 20; // Free plan limit
+    const remaining = Math.max(0, total - usedMinutes);
+    remainingMinutesEl.textContent = remaining.toString();
+    console.log('[dashboard] Updated remainingMinutes to:', remainingMinutesEl.textContent);
   }
   
   console.log('[dashboard] updateDashboardFromLocalStorage completed');
