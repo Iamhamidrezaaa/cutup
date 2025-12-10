@@ -394,6 +394,17 @@ async function loadSubscriptionInfo() {
     const localUsage = getUsageFromLocalHistory();
     console.log('[dashboard] Local usage from history:', localUsage);
     
+    // Get plan limits based on user's plan
+    const plan = subscriptionInfo?.plan || 'free';
+    const planLimits = {
+      free: { audio: 3, video: 3, minutes: 20 },
+      starter: { audio: 20, video: 20, minutes: 120 },
+      pro: { audio: 100, video: 100, minutes: 300 },
+      business: { audio: null, video: null, minutes: 600 } // null = unlimited
+    };
+    
+    const limits = planLimits[plan] || planLimits.free;
+    
     // Merge local usage into subscriptionInfo
     if (subscriptionInfo && subscriptionInfo.usage) {
       // Update download counts from localStorage
@@ -401,21 +412,26 @@ async function loadSubscriptionInfo() {
         subscriptionInfo.usage.downloads = {};
       }
       if (!subscriptionInfo.usage.downloads.audio) {
-        subscriptionInfo.usage.downloads.audio = { count: 0, limit: 3 };
+        subscriptionInfo.usage.downloads.audio = { count: 0, limit: limits.audio };
       }
       if (!subscriptionInfo.usage.downloads.video) {
-        subscriptionInfo.usage.downloads.video = { count: 0, limit: 3 };
+        subscriptionInfo.usage.downloads.video = { count: 0, limit: limits.video };
       }
       
+      // Set limits based on plan
+      subscriptionInfo.usage.downloads.audio.limit = limits.audio;
+      subscriptionInfo.usage.downloads.video.limit = limits.video;
+      
+      // Update counts from localStorage
       subscriptionInfo.usage.downloads.audio.count = localUsage.audioDownloads;
       subscriptionInfo.usage.downloads.video.count = localUsage.videoDownloads;
       
       // Update minutes from localStorage
       subscriptionInfo.usage.monthly.minutes = localUsage.usedMinutes;
+      subscriptionInfo.usage.monthlyLimit = limits.minutes;
       
       // Recalculate remaining minutes
-      const limit = subscriptionInfo.usage.monthlyLimit || 20;
-      subscriptionInfo.usage.monthly.remaining = Math.max(0, limit - localUsage.usedMinutes);
+      subscriptionInfo.usage.monthly.remaining = Math.max(0, limits.minutes - localUsage.usedMinutes);
     }
     
     console.log('[dashboard] Final subscription info with local usage:', subscriptionInfo);
@@ -1531,6 +1547,37 @@ window.closeTicketModal = closeTicketModal;
 window.submitTicket = submitTicket;
 window.updateDashboardFromLocalStorage = updateDashboardFromLocalStorage;
 window.getUsageFromLocalHistory = getUsageFromLocalHistory;
+
+// Function to clear all download history for a specific email (admin function)
+window.clearUserDownloads = function(email) {
+  if (!email || email !== 'h.asgarizade@gmail.com') {
+    console.error('Only allowed for h.asgarizade@gmail.com');
+    return;
+  }
+  
+  const keys = Object.keys(localStorage);
+  const resultKeys = keys.filter(k => k.startsWith('cutup_result_'));
+  
+  let cleared = 0;
+  resultKeys.forEach(key => {
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      try {
+        const item = JSON.parse(raw);
+        if (item.type === 'downloadAudio' || item.type === 'downloadVideo') {
+          localStorage.removeItem(key);
+          cleared++;
+        }
+      } catch (e) {
+        // Skip invalid items
+      }
+    }
+  });
+  
+  console.log(`Cleared ${cleared} download items for ${email}`);
+  updateDashboardFromLocalStorage();
+  loadSubscriptionInfo();
+};
 
 // Debug function - can be called from console
 window.debugDashboard = function() {

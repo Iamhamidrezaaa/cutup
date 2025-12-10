@@ -138,6 +138,58 @@ async function loadUserProfile() {
 }
 
 // Update buttons based on subscription plan
+// Get usage from localStorage (same logic as dashboard)
+function getLocalUsage() {
+  try {
+    const keys = Object.keys(localStorage);
+    const resultKeys = keys.filter(k => k.startsWith('cutup_result_'));
+    
+    // Get current month boundaries
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    currentMonthStart.setHours(0, 0, 0, 0);
+    const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    currentMonthEnd.setHours(23, 59, 59, 999);
+    
+    let audio = 0;
+    let video = 0;
+    let minutes = 0;
+    
+    for (const key of resultKeys) {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      
+      try {
+        const item = JSON.parse(raw);
+        
+        // Check if item is from current month
+        let itemDate = null;
+        if (item.date) {
+          itemDate = new Date(item.date);
+        } else if (item.id) {
+          itemDate = new Date(parseInt(item.id));
+        }
+        
+        if (itemDate && (itemDate < currentMonthStart || itemDate > currentMonthEnd)) {
+          continue;
+        }
+        
+        if (item.type === 'downloadAudio') audio += 1;
+        if (item.type === 'downloadVideo') video += 1;
+        if ((item.type === 'summary' || item.type === 'summarization' || item.type === 'transcription') && typeof item.minutes === 'number') {
+          minutes += item.minutes;
+        }
+      } catch (e) {
+        // Skip invalid items
+      }
+    }
+    
+    return { audioDownloads: audio, videoDownloads: video, usedMinutes: minutes };
+  } catch (e) {
+    return { audioDownloads: 0, videoDownloads: 0, usedMinutes: 0 };
+  }
+}
+
 async function updateButtonsBasedOnSubscription(sessionId) {
   try {
     const subResponse = await fetch(`${API_BASE_URL}/api/subscription?action=info&session=${sessionId}`);
@@ -151,17 +203,42 @@ async function updateButtonsBasedOnSubscription(sessionId) {
     const userPlan = subData.plan || 'free';
     const features = subData.features || {};
     
+    // Get local usage
+    const localUsage = getLocalUsage();
+    
+    // Get plan limits
+    const planLimits = {
+      free: { audio: 3, video: 3, minutes: 20 },
+      starter: { audio: 20, video: 20, minutes: 120 },
+      pro: { audio: 100, video: 100, minutes: 300 },
+      business: { audio: null, video: null, minutes: 600 }
+    };
+    
+    const limits = planLimits[userPlan] || planLimits.free;
+    
     // Store subscription info globally
     window.userSubscription = {
       plan: userPlan,
       features: features,
-      usage: subData.usage || {}
+      usage: {
+        ...subData.usage,
+        downloads: {
+          audio: { count: localUsage.audioDownloads, limit: limits.audio },
+          video: { count: localUsage.videoDownloads, limit: limits.video }
+        },
+        monthly: { minutes: localUsage.usedMinutes, limit: limits.minutes }
+      }
     };
     
+    // Check if limits are exceeded
+    const audioExceeded = limits.audio !== null && localUsage.audioDownloads >= limits.audio;
+    const videoExceeded = limits.video !== null && localUsage.videoDownloads >= limits.video;
+    const minutesExceeded = localUsage.usedMinutes >= limits.minutes;
+    
     if (userPlan === 'free') {
-      setButtonsForFreePlan();
+      setButtonsForFreePlan(audioExceeded, videoExceeded, minutesExceeded);
     } else {
-      setButtonsForPaidPlan();
+      setButtonsForPaidPlan(audioExceeded, videoExceeded, minutesExceeded, limits);
     }
   } catch (error) {
     console.error('Error loading subscription info:', error);
@@ -171,7 +248,7 @@ async function updateButtonsBasedOnSubscription(sessionId) {
 }
 
 // Set buttons state for free plan
-function setButtonsForFreePlan() {
+function setButtonsForFreePlan(audioExceeded = false, videoExceeded = false, minutesExceeded = false) {
   // Subtitle button should be disabled/hidden for free users
   if (downloadSubtitleBtnMain) {
     downloadSubtitleBtnMain.style.opacity = '0.5';
@@ -180,36 +257,69 @@ function setButtonsForFreePlan() {
     downloadSubtitleBtnMain.disabled = true;
   }
   
-  // Video and audio buttons should be enabled but with limits
-  if (downloadVideoBtnMain) {
-    downloadVideoBtnMain.style.opacity = '1';
-    downloadVideoBtnMain.style.cursor = 'pointer';
-    downloadVideoBtnMain.disabled = false;
-  }
-  
+  // Audio button - check limit
   if (downloadAudioBtnMain) {
-    downloadAudioBtnMain.style.opacity = '1';
-    downloadAudioBtnMain.style.cursor = 'pointer';
-    downloadAudioBtnMain.disabled = false;
+    if (audioExceeded) {
+      downloadAudioBtnMain.style.opacity = '0.5';
+      downloadAudioBtnMain.style.cursor = 'not-allowed';
+      downloadAudioBtnMain.title = 'حد مجاز دانلود موزیک شما تمام شده است. برای دانلود نامحدود، لطفاً پلن خود را ارتقا دهید.';
+      downloadAudioBtnMain.disabled = true;
+    } else {
+      downloadAudioBtnMain.style.opacity = '1';
+      downloadAudioBtnMain.style.cursor = 'pointer';
+      downloadAudioBtnMain.title = '';
+      downloadAudioBtnMain.disabled = false;
+    }
   }
   
-  // Summarize and full text should be enabled but with time limits
+  // Video button - check limit
+  if (downloadVideoBtnMain) {
+    if (videoExceeded) {
+      downloadVideoBtnMain.style.opacity = '0.5';
+      downloadVideoBtnMain.style.cursor = 'not-allowed';
+      downloadVideoBtnMain.title = 'حد مجاز دانلود ویدئو شما تمام شده است. برای دانلود نامحدود، لطفاً پلن خود را ارتقا دهید.';
+      downloadVideoBtnMain.disabled = true;
+    } else {
+      downloadVideoBtnMain.style.opacity = '1';
+      downloadVideoBtnMain.style.cursor = 'pointer';
+      downloadVideoBtnMain.title = '';
+      downloadVideoBtnMain.disabled = false;
+    }
+  }
+  
+  // Summarize and full text - check minutes limit
   if (summarizeBtnMain) {
-    summarizeBtnMain.style.opacity = '1';
-    summarizeBtnMain.style.cursor = 'pointer';
-    summarizeBtnMain.disabled = false;
+    if (minutesExceeded) {
+      summarizeBtnMain.style.opacity = '0.5';
+      summarizeBtnMain.style.cursor = 'not-allowed';
+      summarizeBtnMain.title = 'حد مجاز استفاده شما تمام شده است. برای استفاده نامحدود، لطفاً پلن خود را ارتقا دهید.';
+      summarizeBtnMain.disabled = true;
+    } else {
+      summarizeBtnMain.style.opacity = '1';
+      summarizeBtnMain.style.cursor = 'pointer';
+      summarizeBtnMain.title = '';
+      summarizeBtnMain.disabled = false;
+    }
   }
   
   if (fullTextBtnMain) {
-    fullTextBtnMain.style.opacity = '1';
-    fullTextBtnMain.style.cursor = 'pointer';
-    fullTextBtnMain.disabled = false;
+    if (minutesExceeded) {
+      fullTextBtnMain.style.opacity = '0.5';
+      fullTextBtnMain.style.cursor = 'not-allowed';
+      fullTextBtnMain.title = 'حد مجاز استفاده شما تمام شده است. برای استفاده نامحدود، لطفاً پلن خود را ارتقا دهید.';
+      fullTextBtnMain.disabled = true;
+    } else {
+      fullTextBtnMain.style.opacity = '1';
+      fullTextBtnMain.style.cursor = 'pointer';
+      fullTextBtnMain.title = '';
+      fullTextBtnMain.disabled = false;
+    }
   }
 }
 
 // Set buttons state for paid plan
-function setButtonsForPaidPlan() {
-  // All buttons enabled for paid users
+function setButtonsForPaidPlan(audioExceeded = false, videoExceeded = false, minutesExceeded = false, limits = null) {
+  // All buttons enabled for paid users, but check limits
   if (downloadSubtitleBtnMain) {
     downloadSubtitleBtnMain.style.opacity = '1';
     downloadSubtitleBtnMain.style.cursor = 'pointer';
@@ -217,28 +327,63 @@ function setButtonsForPaidPlan() {
     downloadSubtitleBtnMain.title = '';
   }
   
-  if (downloadVideoBtnMain) {
-    downloadVideoBtnMain.style.opacity = '1';
-    downloadVideoBtnMain.style.cursor = 'pointer';
-    downloadVideoBtnMain.disabled = false;
-  }
-  
+  // Audio button - check limit (null = unlimited)
   if (downloadAudioBtnMain) {
-    downloadAudioBtnMain.style.opacity = '1';
-    downloadAudioBtnMain.style.cursor = 'pointer';
-    downloadAudioBtnMain.disabled = false;
+    if (limits && limits.audio !== null && audioExceeded) {
+      downloadAudioBtnMain.style.opacity = '0.5';
+      downloadAudioBtnMain.style.cursor = 'not-allowed';
+      downloadAudioBtnMain.title = 'حد مجاز دانلود موزیک شما تمام شده است. برای دانلود نامحدود، لطفاً پلن خود را ارتقا دهید.';
+      downloadAudioBtnMain.disabled = true;
+    } else {
+      downloadAudioBtnMain.style.opacity = '1';
+      downloadAudioBtnMain.style.cursor = 'pointer';
+      downloadAudioBtnMain.title = '';
+      downloadAudioBtnMain.disabled = false;
+    }
   }
   
+  // Video button - check limit (null = unlimited)
+  if (downloadVideoBtnMain) {
+    if (limits && limits.video !== null && videoExceeded) {
+      downloadVideoBtnMain.style.opacity = '0.5';
+      downloadVideoBtnMain.style.cursor = 'not-allowed';
+      downloadVideoBtnMain.title = 'حد مجاز دانلود ویدئو شما تمام شده است. برای دانلود نامحدود، لطفاً پلن خود را ارتقا دهید.';
+      downloadVideoBtnMain.disabled = true;
+    } else {
+      downloadVideoBtnMain.style.opacity = '1';
+      downloadVideoBtnMain.style.cursor = 'pointer';
+      downloadVideoBtnMain.title = '';
+      downloadVideoBtnMain.disabled = false;
+    }
+  }
+  
+  // Summarize and full text - check minutes limit
   if (summarizeBtnMain) {
-    summarizeBtnMain.style.opacity = '1';
-    summarizeBtnMain.style.cursor = 'pointer';
-    summarizeBtnMain.disabled = false;
+    if (minutesExceeded) {
+      summarizeBtnMain.style.opacity = '0.5';
+      summarizeBtnMain.style.cursor = 'not-allowed';
+      summarizeBtnMain.title = 'حد مجاز استفاده شما تمام شده است. برای استفاده نامحدود، لطفاً پلن خود را ارتقا دهید.';
+      summarizeBtnMain.disabled = true;
+    } else {
+      summarizeBtnMain.style.opacity = '1';
+      summarizeBtnMain.style.cursor = 'pointer';
+      summarizeBtnMain.title = '';
+      summarizeBtnMain.disabled = false;
+    }
   }
   
   if (fullTextBtnMain) {
-    fullTextBtnMain.style.opacity = '1';
-    fullTextBtnMain.style.cursor = 'pointer';
-    fullTextBtnMain.disabled = false;
+    if (minutesExceeded) {
+      fullTextBtnMain.style.opacity = '0.5';
+      fullTextBtnMain.style.cursor = 'not-allowed';
+      fullTextBtnMain.title = 'حد مجاز استفاده شما تمام شده است. برای استفاده نامحدود، لطفاً پلن خود را ارتقا دهید.';
+      fullTextBtnMain.disabled = true;
+    } else {
+      fullTextBtnMain.style.opacity = '1';
+      fullTextBtnMain.style.cursor = 'pointer';
+      fullTextBtnMain.title = '';
+      fullTextBtnMain.disabled = false;
+    }
   }
 }
 
@@ -445,6 +590,23 @@ downloadVideoBtnMain.addEventListener('click', async () => {
   const sessionId = checkLogin();
   if (!sessionId) return;
   
+  // Check local usage first
+  const localUsage = getLocalUsage();
+  const userPlan = window.userSubscription?.plan || 'free';
+  const planLimits = {
+    free: { audio: 3, video: 3, minutes: 20 },
+    starter: { audio: 20, video: 20, minutes: 120 },
+    pro: { audio: 100, video: 100, minutes: 300 },
+    business: { audio: null, video: null, minutes: 600 }
+  };
+  const limits = planLimits[userPlan] || planLimits.free;
+  
+  if (limits.video !== null && localUsage.videoDownloads >= limits.video) {
+    showMessage(`حد مجاز دانلود ویدئو شما (${limits.video} مورد در ماه) تمام شده است. برای دانلود نامحدود، لطفاً پلن خود را ارتقا دهید.`, 'error');
+    window.open(`dashboard.html?session=${sessionId}`, '_blank');
+    return;
+  }
+  
   const url = youtubeUrlInput.value.trim();
   if (!isYouTubeUrl(url)) {
     showMessage('لینک یوتیوب معتبر نیست', 'error');
@@ -508,6 +670,23 @@ downloadVideoBtnMain.addEventListener('click', async () => {
 downloadAudioBtnMain.addEventListener('click', async () => {
   const sessionId = checkLogin();
   if (!sessionId) return;
+  
+  // Check local usage first
+  const localUsage = getLocalUsage();
+  const userPlan = window.userSubscription?.plan || 'free';
+  const planLimits = {
+    free: { audio: 3, video: 3, minutes: 20 },
+    starter: { audio: 20, video: 20, minutes: 120 },
+    pro: { audio: 100, video: 100, minutes: 300 },
+    business: { audio: null, video: null, minutes: 600 }
+  };
+  const limits = planLimits[userPlan] || planLimits.free;
+  
+  if (limits.audio !== null && localUsage.audioDownloads >= limits.audio) {
+    showMessage(`حد مجاز دانلود موزیک شما (${limits.audio} مورد در ماه) تمام شده است. برای دانلود نامحدود، لطفاً پلن خود را ارتقا دهید.`, 'error');
+    window.open(`dashboard.html?session=${sessionId}`, '_blank');
+    return;
+  }
   
   const url = youtubeUrlInput.value.trim();
   if (!isYouTubeUrl(url)) {
@@ -879,6 +1058,9 @@ async function processSummarizeFile(file, sessionId) {
       duration: estimatedDurationMinutes * 60
     });
     
+    // Update buttons after usage
+    await updateButtonsBasedOnSubscription(sessionId);
+    
   } catch (error) {
     console.error('Error:', error);
     showMessage('خطا: ' + error.message, 'error');
@@ -953,6 +1135,9 @@ async function processFullTextFile(file, sessionId) {
       segments: transcribeData.segments || [],
       duration: estimatedDurationMinutes * 60
     });
+    
+    // Update buttons after usage
+    await updateButtonsBasedOnSubscription(sessionId);
     
   } catch (error) {
     console.error('Error:', error);
@@ -1090,6 +1275,9 @@ async function processSummarize(url, sessionId) {
       duration: youtubeData.duration || 0
     });
     
+    // Update buttons after usage
+    await updateButtonsBasedOnSubscription(sessionId);
+    
   } catch (error) {
     console.error('Error:', error);
     showMessage('خطا: ' + error.message, 'error');
@@ -1191,6 +1379,9 @@ async function processFullText(url, sessionId) {
       segments: transcribeData.segments || [],
       duration: youtubeData.duration || 0
     });
+    
+    // Update buttons after usage
+    await updateButtonsBasedOnSubscription(sessionId);
     
   } catch (error) {
     console.error('Error:', error);
@@ -1742,6 +1933,9 @@ async function downloadFile(url, format, sessionId, type) {
       url: url,
       videoId: videoId
     });
+    
+    // Update buttons after download
+    await updateButtonsBasedOnSubscription(sessionId);
     
   } catch (error) {
     console.error('Download error:', error);
