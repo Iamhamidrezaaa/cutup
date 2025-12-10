@@ -1,5 +1,6 @@
 // Dashboard JavaScript
 const API_BASE_URL = 'https://cutup.shop';
+const DASHBOARD_HISTORY_KEY = 'cutup_dashboard_history'; // Shared key for localStorage
 let currentSession = null;
 let currentUser = null;
 let subscriptionInfo = null;
@@ -102,8 +103,8 @@ async function initDashboard() {
   
   // Listen for storage events (cross-tab sync)
   window.addEventListener('storage', async (event) => {
-    if (event.key === 'cutup_dashboard_history') {
-      console.log('[dashboard] Storage event detected for cutup_dashboard_history');
+    if (event.key === DASHBOARD_HISTORY_KEY) {
+      console.log('[dashboard] Storage event detected for', DASHBOARD_HISTORY_KEY);
       // Update immediately from localStorage
       updateDashboardFromLocalStorage();
       // Also refresh from API
@@ -190,8 +191,14 @@ function generateAvatar(text) {
 // Get usage statistics from localStorage history
 function getUsageFromLocalHistory() {
   try {
-    const raw = localStorage.getItem('cutup_dashboard_history');
-    console.log('[dashboard] Raw localStorage:', raw);
+    console.log('[dashboard] Current origin:', window.location.origin);
+    console.log('[dashboard] Looking for key:', DASHBOARD_HISTORY_KEY);
+    
+    const raw = localStorage.getItem(DASHBOARD_HISTORY_KEY);
+    console.log('[dashboard] Raw localStorage (key: ' + DASHBOARD_HISTORY_KEY + '):', raw);
+    
+    // Debug: List all localStorage keys
+    console.log('[dashboard] All localStorage keys:', Object.keys(localStorage));
     
     if (!raw) {
       console.log('[dashboard] No history found in localStorage');
@@ -1500,7 +1507,10 @@ window.getUsageFromLocalHistory = getUsageFromLocalHistory;
 // Debug function - can be called from console
 window.debugDashboard = function() {
   console.log('=== Dashboard Debug ===');
-  const raw = localStorage.getItem('cutup_dashboard_history');
+  console.log('Current origin:', window.location.origin);
+  console.log('Looking for key:', DASHBOARD_HISTORY_KEY);
+  console.log('All localStorage keys:', Object.keys(localStorage));
+  const raw = localStorage.getItem(DASHBOARD_HISTORY_KEY);
   console.log('localStorage raw:', raw);
   if (raw) {
     const history = JSON.parse(raw);
@@ -1510,6 +1520,7 @@ window.debugDashboard = function() {
     console.log('Calculated usage:', usage);
   } else {
     console.log('No history in localStorage!');
+    console.log('Available keys:', Object.keys(localStorage));
   }
   console.log('======================');
 };

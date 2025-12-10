@@ -37,6 +37,7 @@ document.querySelectorAll('.feature-card, .step').forEach(el => {
 
 // Auth functionality
 const API_BASE_URL = 'https://cutup.shop';
+const DASHBOARD_HISTORY_KEY = 'cutup_dashboard_history'; // Shared key for localStorage
 let currentSession = null;
 
 // Check for auth callback
@@ -1467,8 +1468,9 @@ async function saveToDashboard(sessionId, data) {
     console.log('[script] Prepared resultData:', resultData);
     
     // Get existing history
-    const raw = localStorage.getItem('cutup_dashboard_history');
-    console.log('[script] Existing history raw:', raw);
+    const raw = localStorage.getItem(DASHBOARD_HISTORY_KEY);
+    console.log('[script] Existing history raw (key: ' + DASHBOARD_HISTORY_KEY + '):', raw);
+    console.log('[script] Current origin:', window.location.origin);
     
     let history = [];
     if (raw) {
@@ -1492,18 +1494,22 @@ async function saveToDashboard(sessionId, data) {
     
     // Save back to localStorage
     const historyString = JSON.stringify(history);
-    localStorage.setItem('cutup_dashboard_history', historyString);
-    console.log('[script] Saved to localStorage, key: cutup_dashboard_history');
+    localStorage.setItem(DASHBOARD_HISTORY_KEY, historyString);
+    console.log('[script] Saved to localStorage, key:', DASHBOARD_HISTORY_KEY);
+    console.log('[script] Current origin:', window.location.origin);
+    console.log('[script] History length:', history.length);
     console.log('[script] Saved to dashboard:', resultData);
     
     // Verify it was saved
-    const verify = localStorage.getItem('cutup_dashboard_history');
+    const verify = localStorage.getItem(DASHBOARD_HISTORY_KEY);
     if (verify) {
       const verifyParsed = JSON.parse(verify);
-      console.log('[script] Verification: localStorage contains', verifyParsed.length, 'items');
+      console.log('[script] ✅ Verification: localStorage contains', verifyParsed.length, 'items');
       console.log('[script] First item type:', verifyParsed[0]?.type);
+      console.log('[script] All localStorage keys:', Object.keys(localStorage));
     } else {
-      console.error('[script] ERROR: Could not verify save!');
+      console.error('[script] ❌ ERROR: Could not verify save!');
+      console.error('[script] All localStorage keys:', Object.keys(localStorage));
     }
     
     // Signal activity
