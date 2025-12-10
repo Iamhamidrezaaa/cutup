@@ -150,9 +150,25 @@ function updateDashboard() {
   loadUsageHistory();
 }
 
-function drawUsageChart() {
+async function drawUsageChart() {
   const canvas = document.getElementById('usageChart');
   if (!canvas || !subscriptionInfo) return;
+  
+  // Load history for chart
+  let history = [];
+  try {
+    const historyResponse = await fetch(`${API_BASE_URL}/api/subscription?action=history&session=${currentSession}&limit=30`, {
+      headers: {
+        'X-Session-Id': currentSession
+      }
+    });
+    if (historyResponse.ok) {
+      const historyData = await historyResponse.json();
+      history = historyData.history || [];
+    }
+  } catch (error) {
+    console.error('Error loading history for chart:', error);
+  }
   
   const ctx = canvas.getContext('2d');
   const width = canvas.width = canvas.offsetWidth;
@@ -168,17 +184,60 @@ function drawUsageChart() {
   ctx.fillStyle = '#f5f5f5';
   ctx.fillRect(0, 0, width, height);
   
-  // Draw used bar
-  ctx.fillStyle = subscriptionInfo.plan === 'free' ? '#ef4444' : '#6366f1';
-  const barWidth = (width - 40) * Math.min(percentage / 100, 1);
-  ctx.fillRect(20, 50, barWidth, 200);
+  // Group history by date (last 7 days)
+  const last7Days = [];
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    date.setHours(0, 0, 0, 0);
+    last7Days.push({
+      date: date.toDateString(),
+      minutes: 0
+    });
+  }
   
-  // Draw text
+  history.forEach(item => {
+    const itemDate = new Date(item.date).toDateString();
+    const dayData = last7Days.find(d => d.date === itemDate);
+    if (dayData) {
+      dayData.minutes += item.minutes || 0;
+    }
+  });
+  
+  // Draw daily usage bars
+  const barWidth = (width - 60) / 7;
+  const maxMinutes = Math.max(...last7Days.map(d => d.minutes), 1);
+  const barHeight = 200;
+  
+  last7Days.forEach((day, index) => {
+    const x = 30 + index * barWidth;
+    const barH = maxMinutes > 0 ? (day.minutes / maxMinutes) * barHeight : 0;
+    const y = 50 + barHeight - barH;
+    
+    // Draw bar
+    ctx.fillStyle = subscriptionInfo.plan === 'free' ? '#ef4444' : '#6366f1';
+    ctx.fillRect(x, y, barWidth - 5, barH);
+    
+    // Draw day label
+    const dayName = new Date(day.date).toLocaleDateString('fa-IR', { weekday: 'short' });
+    ctx.fillStyle = '#666';
+    ctx.font = '12px Vazirmatn';
+    ctx.textAlign = 'center';
+    ctx.fillText(dayName, x + barWidth / 2 - 2.5, height - 10);
+    
+    // Draw minutes label
+    if (day.minutes > 0) {
+      ctx.fillStyle = '#1a1a1a';
+      ctx.font = '10px Vazirmatn';
+      ctx.fillText(`${day.minutes}د`, x + barWidth / 2 - 2.5, y - 5);
+    }
+  });
+  
+  // Draw summary text
   ctx.fillStyle = '#1a1a1a';
   ctx.font = '16px Vazirmatn';
   ctx.textAlign = 'right';
-  ctx.fillText(`${used} / ${limit} دقیقه`, width - 20, 40);
-  ctx.fillText(`${percentage.toFixed(1)}%`, width - 20, 280);
+  ctx.fillText(`مجموع: ${used} / ${limit} دقیقه (${percentage.toFixed(1)}%)`, width - 20, 30);
 }
 
 async function loadPlans() {
@@ -429,45 +488,132 @@ async function loadUsageHistory() {
   const usageDetails = document.getElementById('usageDetails');
   if (!usageDetails) return;
   
-  if (!subscriptionInfo || !subscriptionInfo.usage) {
-    usageDetails.innerHTML = '<p>در حال بارگذاری...</p>';
-    return;
-  }
+  usageDetails.innerHTML = '<p>در حال بارگذاری...</p>';
   
-  const usage = subscriptionInfo.usage;
-  
-  let historyHTML = `
-    <div class="usage-summary">
-      <h3>خلاصه استفاده این ماه</h3>
-      <div class="usage-stats">
-        <div class="usage-stat-item">
-          <span class="usage-stat-label">دقیقه استفاده شده:</span>
-          <span class="usage-stat-value">${usage.monthly.minutes || 0} دقیقه</span>
+  try {
+    // Load usage history from API
+    const historyResponse = await fetch(`${API_BASE_URL}/api/subscription?action=history&session=${currentSession}&limit=100`, {
+      headers: {
+        'X-Session-Id': currentSession
+      }
+    });
+    
+    let history = [];
+    if (historyResponse.ok) {
+      const historyData = await historyResponse.json();
+      history = historyData.history || [];
+    }
+    
+    if (!subscriptionInfo || !subscriptionInfo.usage) {
+      usageDetails.innerHTML = '<p>در حال بارگذاری...</p>';
+      return;
+    }
+    
+    const usage = subscriptionInfo.usage;
+    
+    // Group history by type
+    const historyByType = {
+      transcription: history.filter(h => h.type === 'transcription'),
+      summarization: history.filter(h => h.type === 'summarization'),
+      downloadAudio: history.filter(h => h.type === 'downloadAudio'),
+      downloadVideo: history.filter(h => h.type === 'downloadVideo')
+    };
+    
+    // Format history items
+    const formatHistoryItem = (item) => {
+      const date = new Date(item.date);
+      const dateStr = date.toLocaleDateString('fa-IR', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      
+      let typeLabel = '';
+      let icon = '';
+      switch(item.type) {
+        case 'transcription':
+          typeLabel = 'تبدیل به متن';
+          icon = '📋';
+          break;
+        case 'summarization':
+          typeLabel = 'خلاصه‌سازی';
+          icon = '📝';
+          break;
+        case 'downloadAudio':
+          typeLabel = 'دانلود موزیک';
+          icon = '🎵';
+          break;
+        case 'downloadVideo':
+          typeLabel = 'دانلود ویدئو';
+          icon = '🎬';
+          break;
+        default:
+          typeLabel = item.type;
+          icon = '📄';
+      }
+      
+      const title = item.metadata?.title || 'بدون عنوان';
+      const quality = item.metadata?.quality ? ` (${item.metadata.quality})` : '';
+      const minutes = item.minutes > 0 ? ` - ${item.minutes} دقیقه` : '';
+      
+      return `
+        <div class="history-item">
+          <div class="history-icon">${icon}</div>
+          <div class="history-content">
+            <div class="history-title">${title}${quality}</div>
+            <div class="history-meta">
+              <span class="history-type">${typeLabel}</span>
+              ${minutes ? `<span class="history-duration">${minutes}</span>` : ''}
+              <span class="history-date">${dateStr}</span>
+            </div>
+          </div>
         </div>
-        <div class="usage-stat-item">
-          <span class="usage-stat-label">حد مجاز:</span>
-          <span class="usage-stat-value">${subscriptionInfo.usage.monthlyLimit || 0} دقیقه</span>
+      `;
+    };
+    
+    let historyHTML = `
+      <div class="usage-summary">
+        <h3>خلاصه استفاده این ماه</h3>
+        <div class="usage-stats">
+          <div class="usage-stat-item">
+            <span class="usage-stat-label">دقیقه استفاده شده:</span>
+            <span class="usage-stat-value">${usage.monthly.minutes || 0} دقیقه</span>
+          </div>
+          <div class="usage-stat-item">
+            <span class="usage-stat-label">حد مجاز:</span>
+            <span class="usage-stat-value">${subscriptionInfo.usage.monthlyLimit || 0} دقیقه</span>
+          </div>
+          ${usage.downloads ? `
+          <div class="usage-stat-item">
+            <span class="usage-stat-label">دانلود موزیک:</span>
+            <span class="usage-stat-value">${usage.downloads.audio?.count || 0}${usage.downloads.audio?.limit ? ` / ${usage.downloads.audio.limit}` : ''}</span>
+          </div>
+          <div class="usage-stat-item">
+            <span class="usage-stat-label">دانلود ویدئو:</span>
+            <span class="usage-stat-value">${usage.downloads.video?.count || 0}${usage.downloads.video?.limit ? ` / ${usage.downloads.video.limit}` : ''}</span>
+          </div>
+          ` : ''}
         </div>
-        ${usage.downloads ? `
-        <div class="usage-stat-item">
-          <span class="usage-stat-label">دانلود موزیک:</span>
-          <span class="usage-stat-value">${usage.downloads.audio?.count || 0}${usage.downloads.audio?.limit ? ` / ${usage.downloads.audio.limit}` : ''}</span>
-        </div>
-        <div class="usage-stat-item">
-          <span class="usage-stat-label">دانلود ویدئو:</span>
-          <span class="usage-stat-value">${usage.downloads.video?.count || 0}${usage.downloads.video?.limit ? ` / ${usage.downloads.video.limit}` : ''}</span>
-        </div>
-        ` : ''}
       </div>
-    </div>
-    <div class="usage-history">
-      <h3>تاریخچه استفاده</h3>
-      <p class="info-text">تاریخچه استفاده شما از سرویس Cutup در اینجا نمایش داده می‌شود.</p>
-      <p class="info-text">این بخش به زودی تکمیل خواهد شد.</p>
-    </div>
-  `;
-  
-  usageDetails.innerHTML = historyHTML;
+      <div class="usage-history">
+        <h3>تاریخچه استفاده</h3>
+        ${history.length > 0 ? `
+          <div class="history-list">
+            ${history.map(formatHistoryItem).join('')}
+          </div>
+        ` : `
+          <p class="info-text">هنوز فعالیتی ثبت نشده است.</p>
+        `}
+      </div>
+    `;
+    
+    usageDetails.innerHTML = historyHTML;
+  } catch (error) {
+    console.error('Error loading usage history:', error);
+    usageDetails.innerHTML = '<p>خطا در بارگذاری تاریخچه استفاده</p>';
+  }
 }
 
 // Shopping Cart Functions

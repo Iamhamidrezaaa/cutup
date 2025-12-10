@@ -95,6 +95,8 @@ async function loadUserProfile() {
       if (data.user) {
         showUserProfile(data.user);
         currentSession = sessionId;
+        // Load subscription info and update UI
+        await updateButtonsBasedOnSubscription(sessionId);
       } else {
         showLoginButton();
       }
@@ -106,6 +108,111 @@ async function loadUserProfile() {
   } catch (error) {
     console.error('Error loading user profile:', error);
     showLoginButton();
+  }
+}
+
+// Update buttons based on subscription plan
+async function updateButtonsBasedOnSubscription(sessionId) {
+  try {
+    const subResponse = await fetch(`${API_BASE_URL}/api/subscription?action=info&session=${sessionId}`);
+    if (!subResponse.ok) {
+      // Default to free plan if can't fetch
+      setButtonsForFreePlan();
+      return;
+    }
+    
+    const subData = await subResponse.json();
+    const userPlan = subData.plan || 'free';
+    const features = subData.features || {};
+    
+    // Store subscription info globally
+    window.userSubscription = {
+      plan: userPlan,
+      features: features,
+      usage: subData.usage || {}
+    };
+    
+    if (userPlan === 'free') {
+      setButtonsForFreePlan();
+    } else {
+      setButtonsForPaidPlan();
+    }
+  } catch (error) {
+    console.error('Error loading subscription info:', error);
+    // Default to free plan on error
+    setButtonsForFreePlan();
+  }
+}
+
+// Set buttons state for free plan
+function setButtonsForFreePlan() {
+  // Subtitle button should be disabled/hidden for free users
+  if (downloadSubtitleBtnMain) {
+    downloadSubtitleBtnMain.style.opacity = '0.5';
+    downloadSubtitleBtnMain.style.cursor = 'not-allowed';
+    downloadSubtitleBtnMain.title = 'این ویژگی فقط برای کاربران Paid در دسترس است';
+    downloadSubtitleBtnMain.disabled = true;
+  }
+  
+  // Video and audio buttons should be enabled but with limits
+  if (downloadVideoBtnMain) {
+    downloadVideoBtnMain.style.opacity = '1';
+    downloadVideoBtnMain.style.cursor = 'pointer';
+    downloadVideoBtnMain.disabled = false;
+  }
+  
+  if (downloadAudioBtnMain) {
+    downloadAudioBtnMain.style.opacity = '1';
+    downloadAudioBtnMain.style.cursor = 'pointer';
+    downloadAudioBtnMain.disabled = false;
+  }
+  
+  // Summarize and full text should be enabled but with time limits
+  if (summarizeBtnMain) {
+    summarizeBtnMain.style.opacity = '1';
+    summarizeBtnMain.style.cursor = 'pointer';
+    summarizeBtnMain.disabled = false;
+  }
+  
+  if (fullTextBtnMain) {
+    fullTextBtnMain.style.opacity = '1';
+    fullTextBtnMain.style.cursor = 'pointer';
+    fullTextBtnMain.disabled = false;
+  }
+}
+
+// Set buttons state for paid plan
+function setButtonsForPaidPlan() {
+  // All buttons enabled for paid users
+  if (downloadSubtitleBtnMain) {
+    downloadSubtitleBtnMain.style.opacity = '1';
+    downloadSubtitleBtnMain.style.cursor = 'pointer';
+    downloadSubtitleBtnMain.disabled = false;
+    downloadSubtitleBtnMain.title = '';
+  }
+  
+  if (downloadVideoBtnMain) {
+    downloadVideoBtnMain.style.opacity = '1';
+    downloadVideoBtnMain.style.cursor = 'pointer';
+    downloadVideoBtnMain.disabled = false;
+  }
+  
+  if (downloadAudioBtnMain) {
+    downloadAudioBtnMain.style.opacity = '1';
+    downloadAudioBtnMain.style.cursor = 'pointer';
+    downloadAudioBtnMain.disabled = false;
+  }
+  
+  if (summarizeBtnMain) {
+    summarizeBtnMain.style.opacity = '1';
+    summarizeBtnMain.style.cursor = 'pointer';
+    summarizeBtnMain.disabled = false;
+  }
+  
+  if (fullTextBtnMain) {
+    fullTextBtnMain.style.opacity = '1';
+    fullTextBtnMain.style.cursor = 'pointer';
+    fullTextBtnMain.disabled = false;
   }
 }
 
@@ -304,7 +411,78 @@ downloadVideoBtnMain.addEventListener('click', async () => {
   }
   
   try {
+    // Check download limit for free users
+    const limitCheck = await checkSubscriptionLimit(sessionId, 'downloadVideo', 0);
+    if (!limitCheck.allowed) {
+      showMessage(limitCheck.reason || 'حد مجاز دانلود ویدئو شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
+      window.open(`dashboard.html?session=${sessionId}`, '_blank');
+      return;
+    }
+    
     // Get available formats
+    showMessage('در حال دریافت کیفیت‌های موجود...', 'info');
+    const formatsResponse = await fetch(`${API_BASE_URL}/api/youtube-formats`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': sessionId
+      },
+      body: JSON.stringify({ url })
+    });
+    
+    if (!formatsResponse.ok) {
+      throw new Error('خطا در دریافت کیفیت‌ها');
+    }
+    
+    const formatsData = await formatsResponse.json();
+    
+    // Get user subscription info
+    const subResponse = await fetch(`${API_BASE_URL}/api/subscription?action=info&session=${sessionId}`);
+    const subData = await subResponse.ok ? await subResponse.json() : { plan: 'free' };
+    const userPlan = subData.plan || 'free';
+    const isPro = userPlan !== 'free';
+    const maxQuality = subData.features?.maxVideoQuality || '480p';
+    
+    // Use available formats from API or default
+    let availableFormats = formatsData.available?.video || ['2160p', '1440p', '1080p', '720p', '480p', '360p', '240p', '144p'];
+    
+    // Filter formats for free users (max 480p)
+    if (!isPro && maxQuality === '480p') {
+      availableFormats = availableFormats.filter(q => {
+        const qualityNum = parseInt(q.replace('p', ''));
+        return qualityNum <= 480 || q === '480p';
+      });
+    }
+    
+    // Show quality modal
+    showQualityModal(availableFormats, url, sessionId, isPro, 'video');
+    
+  } catch (error) {
+    console.error('Error:', error);
+    showMessage('خطا در دریافت کیفیت‌ها: ' + error.message, 'error');
+  }
+});
+
+// Handle audio download
+downloadAudioBtnMain.addEventListener('click', async () => {
+  const sessionId = checkLogin();
+  if (!sessionId) return;
+  
+  const url = youtubeUrlInput.value.trim();
+  if (!isYouTubeUrl(url)) {
+    showMessage('لینک یوتیوب معتبر نیست', 'error');
+    return;
+  }
+  
+  try {
+    // Check download limit for free users
+    const limitCheck = await checkSubscriptionLimit(sessionId, 'downloadAudio', 0);
+    if (!limitCheck.allowed) {
+      showMessage(limitCheck.reason || 'حد مجاز دانلود موزیک شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
+      window.open(`dashboard.html?session=${sessionId}`, '_blank');
+      return;
+    }
+    
     showMessage('در حال دریافت کیفیت‌های موجود...', 'info');
     const formatsResponse = await fetch(`${API_BASE_URL}/api/youtube-formats`, {
       method: 'POST',
@@ -328,50 +506,10 @@ downloadVideoBtnMain.addEventListener('click', async () => {
     const isPro = userPlan !== 'free';
     
     // Use available formats from API or default
-    const availableFormats = formatsData.available?.video || ['2160p', '1440p', '1080p', '720p', '480p', '360p', '240p', '144p'];
-    
-    // Show quality modal
-    showQualityModal(availableFormats, url, sessionId, isPro, 'video');
-    
-  } catch (error) {
-    console.error('Error:', error);
-    showMessage('خطا در دریافت کیفیت‌ها: ' + error.message, 'error');
-  }
-});
-
-// Handle audio download
-downloadAudioBtnMain.addEventListener('click', async () => {
-  const sessionId = checkLogin();
-  if (!sessionId) return;
-  
-  const url = youtubeUrlInput.value.trim();
-  if (!isYouTubeUrl(url)) {
-    showMessage('لینک یوتیوب معتبر نیست', 'error');
-    return;
-  }
-  
-  try {
-    showMessage('در حال دریافت کیفیت‌های موجود...', 'info');
-    const formatsResponse = await fetch(`${API_BASE_URL}/api/youtube-formats`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Session-Id': sessionId
-      },
-      body: JSON.stringify({ url })
-    });
-    
-    if (!formatsResponse.ok) {
-      throw new Error('خطا در دریافت کیفیت‌ها');
-    }
-    
-    const formatsData = await formatsResponse.json();
-    
-    // Use available formats from API or default
     const availableFormats = formatsData.available?.audio || ['best', '320k', '256k', '192k', '128k', '96k', '64k'];
     
     // Show quality modal for audio
-    showQualityModal(availableFormats, url, sessionId, true, 'audio');
+    showQualityModal(availableFormats, url, sessionId, isPro, 'audio');
     
   } catch (error) {
     console.error('Error:', error);
@@ -481,6 +619,30 @@ function formatSRTTime(seconds) {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')},${String(milliseconds).padStart(3, '0')}`;
 }
 
+// Check subscription limit before processing
+async function checkSubscriptionLimit(sessionId, feature, videoDurationMinutes = 0) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/subscription?action=check`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': sessionId
+      },
+      body: JSON.stringify({ feature, videoDurationMinutes })
+    });
+    
+    if (!response.ok) {
+      return { allowed: false, reason: 'خطا در بررسی محدودیت' };
+    }
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error checking subscription limit:', error);
+    return { allowed: false, reason: 'خطا در بررسی محدودیت' };
+  }
+}
+
 // Handle summarize
 summarizeBtnMain.addEventListener('click', async () => {
   const sessionId = checkLogin();
@@ -491,6 +653,24 @@ summarizeBtnMain.addEventListener('click', async () => {
   
   if (!url && !file) {
     showMessage('لطفاً لینک یوتیوب یا فایل صوتی را وارد کنید', 'error');
+    return;
+  }
+  
+  // Estimate duration for limit check
+  let estimatedDurationMinutes = 0;
+  if (file) {
+    // Estimate from file size: ~1MB per minute
+    estimatedDurationMinutes = Math.ceil((file.size / 1024 / 1024) * 1.2);
+  } else if (isYouTubeUrl(url)) {
+    // We'll get actual duration from YouTube API, but estimate 5 minutes for now
+    estimatedDurationMinutes = 5;
+  }
+  
+  // Check subscription limit for free users
+  const limitCheck = await checkSubscriptionLimit(sessionId, 'summarization', estimatedDurationMinutes);
+  if (!limitCheck.allowed) {
+    showMessage(limitCheck.reason || 'حد مجاز شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
+    window.open(`dashboard.html?session=${sessionId}`, '_blank');
     return;
   }
   
@@ -516,6 +696,24 @@ fullTextBtnMain.addEventListener('click', async () => {
   
   if (!url && !file) {
     showMessage('لطفاً لینک یوتیوب یا فایل صوتی را وارد کنید', 'error');
+    return;
+  }
+  
+  // Estimate duration for limit check
+  let estimatedDurationMinutes = 0;
+  if (file) {
+    // Estimate from file size: ~1MB per minute
+    estimatedDurationMinutes = Math.ceil((file.size / 1024 / 1024) * 1.2);
+  } else if (isYouTubeUrl(url)) {
+    // We'll get actual duration from YouTube API, but estimate 5 minutes for now
+    estimatedDurationMinutes = 5;
+  }
+  
+  // Check subscription limit for free users
+  const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', estimatedDurationMinutes);
+  if (!limitCheck.allowed) {
+    showMessage(limitCheck.reason || 'حد مجاز شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
+    window.open(`dashboard.html?session=${sessionId}`, '_blank');
     return;
   }
   
@@ -618,7 +816,11 @@ async function processSummarizeFile(file, sessionId) {
     
     // Record usage (estimate from file size: ~1MB per minute)
     const estimatedDurationMinutes = Math.ceil((file.size / 1024 / 1024) * 1.2);
-    await recordUsage(sessionId, 'transcription', estimatedDurationMinutes);
+    await recordUsage(sessionId, 'summarization', estimatedDurationMinutes, {
+      title: file.name,
+      fileName: file.name,
+      fileSize: file.size
+    });
     
     // Save to dashboard
     await saveToDashboard(sessionId, {
@@ -690,7 +892,11 @@ async function processFullTextFile(file, sessionId) {
     
     // Record usage (estimate from file size: ~1MB per minute)
     const estimatedDurationMinutes = Math.ceil((file.size / 1024 / 1024) * 1.2);
-    await recordUsage(sessionId, 'transcription', estimatedDurationMinutes);
+    await recordUsage(sessionId, 'transcription', estimatedDurationMinutes, {
+      title: file.name,
+      fileName: file.name,
+      fileSize: file.size
+    });
     
     // Save to dashboard
     await saveToDashboard(sessionId, {
@@ -733,6 +939,18 @@ async function processSummarize(url, sessionId) {
     
     if (!audioUrl) {
       throw new Error('خطا در استخراج صوت از ویدئو');
+    }
+    
+    // Get actual duration and check limit
+    const durationSeconds = youtubeData.duration || 0;
+    const durationMinutes = Math.ceil(durationSeconds / 60);
+    
+    // Check subscription limit with actual duration
+    const limitCheck = await checkSubscriptionLimit(sessionId, 'summarization', durationMinutes);
+    if (!limitCheck.allowed) {
+      showMessage(limitCheck.reason || 'حد مجاز شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
+      window.open(`dashboard.html?session=${sessionId}`, '_blank');
+      return;
     }
     
     // Transcribe
@@ -809,7 +1027,11 @@ async function processSummarize(url, sessionId) {
     
     // Record usage
     const duration = youtubeData.duration ? Math.ceil(youtubeData.duration / 60) : 0;
-    await recordUsage(sessionId, 'transcription', duration);
+    await recordUsage(sessionId, 'summarization', duration, {
+      title: youtubeData.title || 'ویدئو یوتیوب',
+      videoId: videoId,
+      url: url
+    });
     
     // Save to dashboard
     await saveToDashboard(sessionId, {
@@ -855,6 +1077,18 @@ async function processFullText(url, sessionId) {
       throw new Error('خطا در استخراج صوت از ویدئو');
     }
     
+    // Get actual duration and check limit
+    const durationSeconds = youtubeData.duration || 0;
+    const durationMinutes = Math.ceil(durationSeconds / 60);
+    
+    // Check subscription limit with actual duration
+    const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', durationMinutes);
+    if (!limitCheck.allowed) {
+      showMessage(limitCheck.reason || 'حد مجاز شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
+      window.open(`dashboard.html?session=${sessionId}`, '_blank');
+      return;
+    }
+    
     // Transcribe
     showMessage('در حال تبدیل به متن...', 'info');
     const transcribeResponse = await fetch(`${API_BASE_URL}/api/transcribe`, {
@@ -896,7 +1130,11 @@ async function processFullText(url, sessionId) {
     
     // Record usage
     const duration = youtubeData.duration ? Math.ceil(youtubeData.duration / 60) : 0;
-    await recordUsage(sessionId, 'transcription', duration);
+    await recordUsage(sessionId, 'transcription', duration, {
+      title: youtubeData.title || 'ویدئو یوتیوب',
+      videoId: videoId,
+      url: url
+    });
     
     // Save to dashboard
     await saveToDashboard(sessionId, {
@@ -1189,15 +1427,19 @@ async function saveToDashboard(sessionId, data) {
 }
 
 // Record usage
-async function recordUsage(sessionId, type, duration) {
+async function recordUsage(sessionId, type, duration, metadata = {}) {
   try {
-    await fetch(`${API_BASE_URL}/api/subscription?action=check`, {
+    await fetch(`${API_BASE_URL}/api/subscription?action=record`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Session-Id': sessionId
       },
-      body: JSON.stringify({ type, duration })
+      body: JSON.stringify({ 
+        minutes: duration,
+        type: type,
+        metadata: metadata
+      })
     });
   } catch (error) {
     console.error('Error recording usage:', error);
@@ -1246,7 +1488,20 @@ function showQualityModal(formats, url, sessionId, isPro, type) {
   
   formats.forEach(quality => {
     // Check if quality is locked for free users
-    const isLocked = !isPro && (quality === '720p' || quality === '1080p' || quality === '1440p' || quality === '2160p' || quality === '4K');
+    // For video: lock anything above 480p
+    // For audio: all qualities are available
+    let isLocked = false;
+    if (type === 'video' && !isPro) {
+      // Extract numeric quality (e.g., "720p" -> 720)
+      const qualityMatch = quality.match(/(\d+)p/);
+      if (qualityMatch) {
+        const qualityNum = parseInt(qualityMatch[1]);
+        isLocked = qualityNum > 480;
+      } else {
+        // Lock 4K, 1440p, 1080p, 720p explicitly
+        isLocked = quality === '720p' || quality === '1080p' || quality === '1440p' || quality === '2160p' || quality === '4K';
+      }
+    }
     
     const item = document.createElement('div');
     item.className = `quality-item ${isLocked ? 'locked' : ''}`;
@@ -1262,7 +1517,7 @@ function showQualityModal(formats, url, sessionId, isPro, type) {
       });
     } else {
       item.addEventListener('click', () => {
-        showMessage('این کیفیت فقط برای کاربران Pro در دسترس است. لطفاً پلن خود را ارتقا دهید.', 'error');
+        showMessage('این کیفیت فقط برای کاربران Pro در دسترس است. کاربران رایگان فقط تا 480p می‌توانند دانلود کنند. لطفاً پلن خود را ارتقا دهید.', 'error');
         window.open(`dashboard.html?session=${sessionId}`, '_blank');
       });
     }
@@ -1323,10 +1578,49 @@ async function downloadFile(url, format, sessionId, type) {
     
     showMessage('دانلود با موفقیت شروع شد!', 'success');
     
-    // Record usage and save to dashboard
-    await recordUsage(sessionId, type === 'video' ? 'downloadVideo' : 'downloadAudio', 0);
+    // Get video title for metadata
+    let videoTitle = `ویدئو یوتیوب ${videoId}`;
+    try {
+      const titleResponse = await fetch(`${API_BASE_URL}/api/youtube-title`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoId, url })
+      });
+      if (titleResponse.ok) {
+        const titleData = await titleResponse.json();
+        if (titleData.title) {
+          videoTitle = titleData.title;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not get video title:', e);
+    }
+    
+    // Record download count
+    try {
+      await fetch(`${API_BASE_URL}/api/subscription?action=recordDownload`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Session-Id': sessionId
+        },
+        body: JSON.stringify({ 
+          type: type === 'video' ? 'video' : 'audio',
+          metadata: {
+            title: videoTitle,
+            quality: quality,
+            url: url,
+            videoId: videoId
+          }
+        })
+      });
+    } catch (error) {
+      console.error('Error recording download:', error);
+    }
+    
+    // Save to dashboard
     await saveToDashboard(sessionId, {
-      title: `ویدئو یوتیوب - ${quality}`,
+      title: videoTitle,
       type: type === 'video' ? 'downloadVideo' : 'downloadAudio',
       quality: quality,
       url: url,

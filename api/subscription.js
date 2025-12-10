@@ -6,6 +6,7 @@ import { handleCORS, setCORSHeaders } from './cors.js';
 // In-memory storage (in production, use database)
 const userSubscriptions = new Map();
 const userUsage = new Map();
+const userUsageHistory = new Map(); // Store detailed usage history
 
 // Subscription plans
 const PLANS = {
@@ -247,7 +248,7 @@ function canUseFeature(userId, feature, videoDurationMinutes = 0) {
 }
 
 // Record usage
-function recordUsage(userId, minutes) {
+function recordUsage(userId, minutes, type = 'transcription', metadata = {}) {
   const usage = getUserUsage(userId);
   const today = new Date().toDateString();
   const currentMonth = new Date().getMonth();
@@ -266,10 +267,29 @@ function recordUsage(userId, minutes) {
   } else {
     usage.monthly = { month: currentMonth, year: currentYear, minutes };
   }
+  
+  // Add to history
+  if (!userUsageHistory.has(userId)) {
+    userUsageHistory.set(userId, []);
+  }
+  
+  const history = userUsageHistory.get(userId);
+  history.push({
+    id: Date.now().toString(),
+    type: type, // 'transcription', 'summarization', 'downloadAudio', 'downloadVideo'
+    minutes: minutes,
+    date: new Date().toISOString(),
+    metadata: metadata // { title, url, videoId, quality, etc. }
+  });
+  
+  // Keep only last 1000 records per user
+  if (history.length > 1000) {
+    history.shift();
+  }
 }
 
 // Record download
-function recordDownload(userId, type) {
+function recordDownload(userId, type, metadata = {}) {
   const usage = getUserUsage(userId);
   const currentMonth = new Date().getMonth();
   const currentYear = new Date().getFullYear();
@@ -280,6 +300,25 @@ function recordDownload(userId, type) {
   }
   
   usage.downloads[type].count += 1;
+  
+  // Add to history
+  if (!userUsageHistory.has(userId)) {
+    userUsageHistory.set(userId, []);
+  }
+  
+  const history = userUsageHistory.get(userId);
+  history.push({
+    id: Date.now().toString(),
+    type: type === 'audio' ? 'downloadAudio' : 'downloadVideo',
+    minutes: 0, // Downloads don't count as minutes
+    date: new Date().toISOString(),
+    metadata: metadata // { title, url, videoId, quality, etc. }
+  });
+  
+  // Keep only last 1000 records per user
+  if (history.length > 1000) {
+    history.shift();
+  }
 }
 
 export default async function handler(req, res) {
@@ -359,26 +398,43 @@ export default async function handler(req, res) {
 
     // Record usage
     if (method === 'POST' && action === 'record') {
-      const { minutes } = body;
+      const { minutes, type = 'transcription', metadata = {} } = body;
       
       if (!minutes || minutes <= 0) {
         return res.status(400).json({ error: 'Valid minutes is required' });
       }
       
-      recordUsage(userId, minutes);
+      recordUsage(userId, minutes, type, metadata);
       return res.json({ success: true });
     }
 
     // Record download
     if (method === 'POST' && action === 'recordDownload') {
-      const { type } = body; // 'audio' or 'video'
+      const { type, metadata = {} } = body; // 'audio' or 'video'
       
       if (!type || !['audio', 'video'].includes(type)) {
         return res.status(400).json({ error: 'Valid type (audio/video) is required' });
       }
       
-      recordDownload(userId, type);
+      recordDownload(userId, type, metadata);
       return res.json({ success: true });
+    }
+
+    // Get usage history
+    if (method === 'GET' && action === 'history') {
+      const history = userUsageHistory.get(userId) || [];
+      
+      // Sort by date (newest first)
+      const sortedHistory = [...history].sort((a, b) => new Date(b.date) - new Date(a.date));
+      
+      // Get limit from query (default 100)
+      const limit = parseInt(query.limit) || 100;
+      const limitedHistory = sortedHistory.slice(0, limit);
+      
+      return res.json({
+        history: limitedHistory,
+        total: history.length
+      });
     }
 
     // Upgrade subscription (simplified - in production, integrate with payment gateway)

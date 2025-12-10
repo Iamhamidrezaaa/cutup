@@ -2275,6 +2275,8 @@ async function verifySession(sessionId) {
         if (loginPrompt) {
           loginPrompt.remove();
         }
+        // Load subscription info and update UI
+        getSubscriptionInfo();
         resolve();
       } else {
         chrome.storage.local.remove(['cutup_session']);
@@ -2891,12 +2893,41 @@ async function getSubscriptionInfo() {
     });
     
     if (response.ok) {
-      return await response.json();
+      const data = await response.json();
+      // Update UI based on subscription
+      updateUIForSubscription(data);
+      return data;
     }
   } catch (error) {
     console.error('Error getting subscription info:', error);
   }
   return null;
+}
+
+// Update UI based on subscription plan
+function updateUIForSubscription(subscriptionInfo) {
+  if (!subscriptionInfo) return;
+  
+  const userPlan = subscriptionInfo.plan || 'free';
+  const features = subscriptionInfo.features || {};
+  
+  // Find SRT tab button
+  const srtTabBtn = document.querySelector('[data-tab="srt"]');
+  if (srtTabBtn) {
+    if (userPlan === 'free' || !features.srt) {
+      // Disable SRT tab for free users
+      srtTabBtn.style.opacity = '0.5';
+      srtTabBtn.style.cursor = 'not-allowed';
+      srtTabBtn.title = 'این ویژگی فقط برای کاربران Paid در دسترس است';
+      srtTabBtn.disabled = true;
+    } else {
+      // Enable SRT tab for paid users
+      srtTabBtn.style.opacity = '1';
+      srtTabBtn.style.cursor = 'pointer';
+      srtTabBtn.title = '';
+      srtTabBtn.disabled = false;
+    }
+  }
 }
 
 async function checkSubscriptionLimit(feature, videoDurationMinutes = 0) {
