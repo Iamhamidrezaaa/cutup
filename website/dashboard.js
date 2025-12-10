@@ -84,10 +84,12 @@ async function initDashboard() {
       const activityTime = parseInt(lastActivity);
       if (activityTime > lastCheckTime) {
         lastCheckTime = activityTime;
+        console.log('[dashboard] Activity detected, updating from localStorage');
+        updateDashboardFromLocalStorage();
         loadSubscriptionInfo();
       }
     }
-  }, 2000); // Check every 2 seconds
+  }, 1000); // Check every 1 second
   
   // Listen for cutupDownloadRecorded event (from main page)
   window.addEventListener('cutupDownloadRecorded', async (event) => {
@@ -108,20 +110,6 @@ async function initDashboard() {
       await loadSubscriptionInfo();
     }
   });
-  
-  // Also listen for cutup_last_activity changes
-  let lastCheckTime = Date.now();
-  setInterval(() => {
-    const lastActivity = localStorage.getItem('cutup_last_activity');
-    if (lastActivity) {
-      const activityTime = parseInt(lastActivity);
-      if (activityTime > lastCheckTime) {
-        lastCheckTime = activityTime;
-        console.log('[dashboard] Activity detected, updating from localStorage');
-        updateDashboardFromLocalStorage();
-      }
-    }
-  }, 1000); // Check every 1 second
   
   // Refresh when navigating to overview section
   const overviewNav = document.querySelector('[data-section="overview"]');
@@ -158,9 +146,45 @@ async function loadUserProfile() {
 }
 
 function showUserProfile(user) {
-  document.getElementById('userAvatarHeader').src = user.picture || '';
-  document.getElementById('userNameHeader').textContent = user.name || user.email;
-  document.getElementById('welcomeMessage').textContent = `خوش آمدید ${user.name || user.email}!`;
+  console.log('[dashboard] showUserProfile called with:', user);
+  
+  const userAvatarHeader = document.getElementById('userAvatarHeader');
+  const userNameHeader = document.getElementById('userNameHeader');
+  const welcomeMessage = document.getElementById('welcomeMessage');
+  
+  if (!userAvatarHeader || !userNameHeader) {
+    console.error('[dashboard] User profile elements not found!');
+    // Retry after a short delay
+    setTimeout(() => {
+      showUserProfile(user);
+    }, 100);
+    return;
+  }
+  
+  if (user.picture) {
+    userAvatarHeader.src = user.picture;
+    userAvatarHeader.style.display = 'block';
+  } else {
+    // Generate avatar if no picture
+    const avatarUrl = generateAvatar(user.name || user.email);
+    userAvatarHeader.src = avatarUrl;
+    userAvatarHeader.style.display = 'block';
+  }
+  
+  userNameHeader.textContent = user.name || user.email;
+  
+  if (welcomeMessage) {
+    welcomeMessage.textContent = `خوش آمدید ${user.name || user.email}!`;
+  }
+  
+  console.log('[dashboard] User profile updated successfully');
+}
+
+// Generate avatar URL for users without profile picture
+function generateAvatar(text) {
+  const name = text || 'User';
+  const encodedName = encodeURIComponent(name);
+  return `https://ui-avatars.com/api/?name=${encodedName}&size=128&background=6366f1&color=fff&bold=true`;
 }
 
 // Get usage statistics from localStorage history

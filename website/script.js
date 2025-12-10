@@ -72,41 +72,66 @@ if (authSuccess === 'success' && sessionId) {
 
 // Load user profile on page load
 window.addEventListener('DOMContentLoaded', () => {
+  console.log('[script] DOMContentLoaded event fired');
   const savedSession = localStorage.getItem('cutup_session');
+  console.log('[script] Saved session from localStorage:', savedSession);
+  
   if (savedSession) {
     currentSession = savedSession;
-    loadUserProfile();
+    // Wait a bit to ensure DOM is fully ready
+    setTimeout(() => {
+      loadUserProfile();
+    }, 100);
   } else {
+    console.log('[script] No saved session, showing login button');
     showLoginButton();
   }
 });
 
 async function loadUserProfile() {
   const sessionId = localStorage.getItem('cutup_session');
+  console.log('[script] loadUserProfile called, sessionId:', sessionId);
+  
   if (!sessionId) {
+    console.log('[script] No session found, showing login button');
     showLoginButton();
     return;
   }
 
   try {
+    console.log('[script] Fetching user profile from API...');
     const response = await fetch(`${API_BASE_URL}/api/auth?action=me&session=${sessionId}`);
+    console.log('[script] Response status:', response.status);
+    
     if (response.ok) {
       const data = await response.json();
+      console.log('[script] User data received:', data);
+      
       if (data.user) {
+        console.log('[script] User found, showing profile');
         showUserProfile(data.user);
         currentSession = sessionId;
         // Load subscription info and update UI
         await updateButtonsBasedOnSubscription(sessionId);
       } else {
+        console.warn('[script] No user in response, showing login button');
         showLoginButton();
       }
     } else {
-      // Session expired or invalid
-      localStorage.removeItem('cutup_session');
+      // Session expired or invalid - but don't remove it immediately
+      const errorText = await response.text().catch(() => '');
+      console.error('[script] Failed to load user profile:', response.status, errorText);
+      
+      // Only remove session if it's a 401 (unauthorized) or 403 (forbidden)
+      if (response.status === 401 || response.status === 403) {
+        console.log('[script] Session expired, removing from localStorage');
+        localStorage.removeItem('cutup_session');
+      }
       showLoginButton();
     }
   } catch (error) {
-    console.error('Error loading user profile:', error);
+    console.error('[script] Error loading user profile:', error);
+    // Don't remove session on network errors
     showLoginButton();
   }
 }
@@ -222,11 +247,24 @@ function showLoginButton() {
 }
 
 function showUserProfile(user) {
-  document.getElementById('loginBtn').style.display = 'none';
-  document.getElementById('userProfile').style.display = 'flex';
+  console.log('[script] showUserProfile called with:', user);
   
+  const loginBtn = document.getElementById('loginBtn');
+  const userProfile = document.getElementById('userProfile');
   const avatar = document.getElementById('userAvatar');
   const userName = document.getElementById('userName');
+  
+  if (!loginBtn || !userProfile || !avatar || !userName) {
+    console.error('[script] User profile elements not found!');
+    // Retry after a short delay
+    setTimeout(() => {
+      showUserProfile(user);
+    }, 100);
+    return;
+  }
+  
+  loginBtn.style.display = 'none';
+  userProfile.style.display = 'flex';
   
   // Set avatar - use user picture or generate avatar
   if (user.picture) {
@@ -253,6 +291,8 @@ function showUserProfile(user) {
       window.location.href = `dashboard.html?session=${sessionId}`;
     };
   }
+  
+  console.log('[script] User profile displayed successfully');
 }
 
 // Generate avatar from name/email
