@@ -39,6 +39,9 @@ async function initDashboard() {
   // Load subscription info
   await loadSubscriptionInfo();
   
+  // Update dashboard from localStorage immediately
+  updateDashboardFromLocalStorage();
+  
   // Setup navigation
   setupNavigation();
   
@@ -50,9 +53,15 @@ async function initDashboard() {
   loadFinancialSection();
   loadSupportSection();
   
+  // Auto-refresh from localStorage every 2 seconds (fast polling)
+  setInterval(() => {
+    updateDashboardFromLocalStorage();
+  }, 2000);
+  
   // Auto-refresh subscription info every 5 seconds (aggressive polling)
   setInterval(async () => {
     await loadSubscriptionInfo();
+    updateDashboardFromLocalStorage();
   }, 5000);
   
   // Refresh when page becomes visible (user switches back to tab)
@@ -83,6 +92,9 @@ async function initDashboard() {
   // Listen for cutupDownloadRecorded event (from main page)
   window.addEventListener('cutupDownloadRecorded', async (event) => {
     console.log('[dashboard] Received cutupDownloadRecorded event:', event.detail);
+    // Update immediately from localStorage
+    updateDashboardFromLocalStorage();
+    // Also refresh from API
     await loadSubscriptionInfo();
   });
   
@@ -90,9 +102,26 @@ async function initDashboard() {
   window.addEventListener('storage', async (event) => {
     if (event.key === 'cutup_dashboard_history') {
       console.log('[dashboard] Storage event detected for cutup_dashboard_history');
+      // Update immediately from localStorage
+      updateDashboardFromLocalStorage();
+      // Also refresh from API
       await loadSubscriptionInfo();
     }
   });
+  
+  // Also listen for cutup_last_activity changes
+  let lastCheckTime = Date.now();
+  setInterval(() => {
+    const lastActivity = localStorage.getItem('cutup_last_activity');
+    if (lastActivity) {
+      const activityTime = parseInt(lastActivity);
+      if (activityTime > lastCheckTime) {
+        lastCheckTime = activityTime;
+        console.log('[dashboard] Activity detected, updating from localStorage');
+        updateDashboardFromLocalStorage();
+      }
+    }
+  }, 1000); // Check every 1 second
   
   // Refresh when navigating to overview section
   const overviewNav = document.querySelector('[data-section="overview"]');
@@ -138,7 +167,10 @@ function showUserProfile(user) {
 function getUsageFromLocalHistory() {
   try {
     const raw = localStorage.getItem('cutup_dashboard_history');
+    console.log('[dashboard] Raw localStorage:', raw);
+    
     if (!raw) {
+      console.log('[dashboard] No history found in localStorage');
       return {
         audioDownloads: 0,
         videoDownloads: 0,
@@ -147,15 +179,29 @@ function getUsageFromLocalHistory() {
     }
 
     const history = JSON.parse(raw);
+    console.log('[dashboard] Parsed history:', history);
+    console.log('[dashboard] History length:', history.length);
+    
     let audio = 0;
     let video = 0;
     let minutes = 0;
 
     for (const item of history) {
-      if (!item || !item.type) continue;
+      if (!item || !item.type) {
+        console.log('[dashboard] Skipping invalid item:', item);
+        continue;
+      }
 
-      if (item.type === 'downloadAudio') audio += 1;
-      if (item.type === 'downloadVideo') video += 1;
+      console.log('[dashboard] Processing item:', item.type, item);
+
+      if (item.type === 'downloadAudio') {
+        audio += 1;
+        console.log('[dashboard] Found downloadAudio, count now:', audio);
+      }
+      if (item.type === 'downloadVideo') {
+        video += 1;
+        console.log('[dashboard] Found downloadVideo, count now:', video);
+      }
 
       // If it's a usage type (summary, transcription), add minutes
       if (
@@ -163,14 +209,18 @@ function getUsageFromLocalHistory() {
         typeof item.minutes === 'number'
       ) {
         minutes += item.minutes;
+        console.log('[dashboard] Found usage type, minutes now:', minutes);
       }
     }
 
-    return {
+    const result = {
       audioDownloads: audio,
       videoDownloads: video,
       usedMinutes: minutes,
     };
+    
+    console.log('[dashboard] Final usage stats:', result);
+    return result;
   } catch (e) {
     console.error('[dashboard] getUsageFromLocalHistory error', e);
     return {
@@ -179,6 +229,76 @@ function getUsageFromLocalHistory() {
       usedMinutes: 0,
     };
   }
+}
+
+// Direct UI update function - updates dashboard immediately from localStorage
+function updateDashboardFromLocalStorage() {
+  console.log('[dashboard] updateDashboardFromLocalStorage called');
+  
+  const localUsage = getUsageFromLocalHistory();
+  
+  // Update download stats directly
+  const audioCount = localUsage.audioDownloads;
+  const videoCount = localUsage.videoDownloads;
+  const usedMinutes = localUsage.usedMinutes;
+  
+  console.log('[dashboard] Updating UI with:', { audioCount, videoCount, usedMinutes });
+  
+  // Update download count element
+  let downloadCountEl = document.getElementById('downloadCount');
+  if (!downloadCountEl) {
+    // Try to find or create downloadStats card
+    let downloadStats = document.getElementById('downloadStats');
+    if (!downloadStats) {
+      const statsGrid = document.querySelector('.stats-grid');
+      if (statsGrid) {
+        downloadStats = document.createElement('div');
+        downloadStats.className = 'stat-card';
+        downloadStats.id = 'downloadStats';
+        downloadStats.innerHTML = `
+          <div class="stat-icon">📥</div>
+          <div class="stat-content">
+            <div class="stat-value" id="downloadCount">${audioCount + videoCount}</div>
+            <div class="stat-label" id="downloadLabel">دانلود (موزیک: ${audioCount}/3 | ویدئو: ${videoCount}/3)</div>
+          </div>
+        `;
+        statsGrid.appendChild(downloadStats);
+        console.log('[dashboard] Created downloadStats card');
+      }
+    }
+    downloadCountEl = document.getElementById('downloadCount');
+  }
+  
+  if (downloadCountEl) {
+    downloadCountEl.textContent = audioCount + videoCount;
+    console.log('[dashboard] Updated downloadCount to:', audioCount + videoCount);
+  } else {
+    console.error('[dashboard] downloadCount element not found!');
+  }
+  
+  // Update download label
+  const downloadLabel = document.getElementById('downloadLabel');
+  if (downloadLabel) {
+    downloadLabel.textContent = `دانلود (موزیک: ${audioCount}/3 | ویدئو: ${videoCount}/3)`;
+    console.log('[dashboard] Updated downloadLabel');
+  }
+  
+  // Update minutes if elements exist
+  const usedMinutesEl = document.getElementById('usedMinutes');
+  if (usedMinutesEl) {
+    usedMinutesEl.textContent = usedMinutes;
+    console.log('[dashboard] Updated usedMinutes to:', usedMinutes);
+  }
+  
+  const remainingMinutesEl = document.getElementById('remainingMinutes');
+  if (remainingMinutesEl) {
+    const limit = 20; // Free plan limit
+    const remaining = Math.max(0, limit - usedMinutes);
+    remainingMinutesEl.textContent = remaining;
+    console.log('[dashboard] Updated remainingMinutes to:', remaining);
+  }
+  
+  console.log('[dashboard] updateDashboardFromLocalStorage completed');
 }
 
 async function loadSubscriptionInfo() {
@@ -241,6 +361,8 @@ async function loadSubscriptionInfo() {
     
     console.log('[dashboard] Final subscription info with local usage:', subscriptionInfo);
     updateDashboard();
+    // Also update directly from localStorage to ensure UI is updated
+    updateDashboardFromLocalStorage();
     loadPlans();
   } catch (error) {
     console.error('[dashboard] Error loading subscription info:', error);
@@ -259,6 +381,8 @@ async function loadSubscriptionInfo() {
       }
     };
     updateDashboard();
+    // Also update directly from localStorage
+    updateDashboardFromLocalStorage();
   }
 }
 
@@ -1346,3 +1470,22 @@ window.deleteInvoice = deleteInvoice;
 window.showNewTicketModal = showNewTicketModal;
 window.closeTicketModal = closeTicketModal;
 window.submitTicket = submitTicket;
+window.updateDashboardFromLocalStorage = updateDashboardFromLocalStorage;
+window.getUsageFromLocalHistory = getUsageFromLocalHistory;
+
+// Debug function - can be called from console
+window.debugDashboard = function() {
+  console.log('=== Dashboard Debug ===');
+  const raw = localStorage.getItem('cutup_dashboard_history');
+  console.log('localStorage raw:', raw);
+  if (raw) {
+    const history = JSON.parse(raw);
+    console.log('History length:', history.length);
+    console.log('History items:', history);
+    const usage = getUsageFromLocalHistory();
+    console.log('Calculated usage:', usage);
+  } else {
+    console.log('No history in localStorage!');
+  }
+  console.log('======================');
+};

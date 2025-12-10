@@ -1411,6 +1411,8 @@ async function translateFullText(sessionId, originalLanguage) {
 // Save to dashboard
 async function saveToDashboard(sessionId, data) {
   try {
+    console.log('[script] saveToDashboard called with:', data);
+    
     // Save to localStorage history for dashboard to pick up
     const resultId = Date.now();
     const resultData = {
@@ -1422,12 +1424,26 @@ async function saveToDashboard(sessionId, data) {
       minutes: data.duration ? Math.ceil(data.duration / 60) : (data.minutes || 0)
     };
     
+    console.log('[script] Prepared resultData:', resultData);
+    
     // Get existing history
     const raw = localStorage.getItem('cutup_dashboard_history');
-    const history = raw ? JSON.parse(raw) : [];
+    console.log('[script] Existing history raw:', raw);
+    
+    let history = [];
+    if (raw) {
+      try {
+        history = JSON.parse(raw);
+        console.log('[script] Parsed existing history, length:', history.length);
+      } catch (e) {
+        console.error('[script] Error parsing existing history:', e);
+        history = [];
+      }
+    }
     
     // Add new item to beginning
     history.unshift(resultData);
+    console.log('[script] Added new item, history length now:', history.length);
     
     // Limit to 1000 items
     if (history.length > 1000) {
@@ -1435,21 +1451,32 @@ async function saveToDashboard(sessionId, data) {
     }
     
     // Save back to localStorage
-    localStorage.setItem('cutup_dashboard_history', JSON.stringify(history));
+    const historyString = JSON.stringify(history);
+    localStorage.setItem('cutup_dashboard_history', historyString);
+    console.log('[script] Saved to localStorage, key: cutup_dashboard_history');
+    console.log('[script] Saved to dashboard:', resultData);
     
-    console.log('Saved to dashboard:', resultData);
+    // Verify it was saved
+    const verify = localStorage.getItem('cutup_dashboard_history');
+    if (verify) {
+      const verifyParsed = JSON.parse(verify);
+      console.log('[script] Verification: localStorage contains', verifyParsed.length, 'items');
+      console.log('[script] First item type:', verifyParsed[0]?.type);
+    } else {
+      console.error('[script] ERROR: Could not verify save!');
+    }
+    
+    // Signal activity
+    localStorage.setItem('cutup_last_activity', Date.now().toString());
     
     // Dispatch event for dashboard to listen
-    window.dispatchEvent(new CustomEvent('cutupDownloadRecorded', { detail: resultData }));
+    const customEvent = new CustomEvent('cutupDownloadRecorded', { detail: resultData });
+    window.dispatchEvent(customEvent);
+    console.log('[script] Dispatched cutupDownloadRecorded event');
     
-    // Also trigger storage event for cross-tab sync
-    window.dispatchEvent(new StorageEvent('storage', {
-      key: 'cutup_dashboard_history',
-      newValue: JSON.stringify(history),
-      oldValue: raw
-    }));
   } catch (error) {
-    console.error('Error saving to dashboard:', error);
+    console.error('[script] Error saving to dashboard:', error);
+    console.error('[script] Error stack:', error.stack);
   }
 }
 
