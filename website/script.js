@@ -411,9 +411,9 @@ downloadVideoBtnMain.addEventListener('click', async () => {
   }
   
   try {
-    // Check download limit for free users
+    // Check download limit for free users (non-blocking)
     const limitCheck = await checkSubscriptionLimit(sessionId, 'downloadVideo', 0);
-    if (!limitCheck.allowed) {
+    if (limitCheck && !limitCheck.allowed && limitCheck.reason && !limitCheck.reason.includes('proceeding anyway')) {
       showMessage(limitCheck.reason || 'حد مجاز دانلود ویدئو شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
       window.open(`dashboard.html?session=${sessionId}`, '_blank');
       return;
@@ -475,9 +475,9 @@ downloadAudioBtnMain.addEventListener('click', async () => {
   }
   
   try {
-    // Check download limit for free users
+    // Check download limit for free users (non-blocking)
     const limitCheck = await checkSubscriptionLimit(sessionId, 'downloadAudio', 0);
-    if (!limitCheck.allowed) {
+    if (limitCheck && !limitCheck.allowed && limitCheck.reason && !limitCheck.reason.includes('proceeding anyway')) {
       showMessage(limitCheck.reason || 'حد مجاز دانلود موزیک شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
       window.open(`dashboard.html?session=${sessionId}`, '_blank');
       return;
@@ -632,14 +632,20 @@ async function checkSubscriptionLimit(sessionId, feature, videoDurationMinutes =
     });
     
     if (!response.ok) {
-      return { allowed: false, reason: 'خطا در بررسی محدودیت' };
+      // If check fails, log but don't block - allow the operation
+      console.warn('Subscription check failed with status:', response.status, 'Allowing operation to continue');
+      const errorText = await response.text().catch(() => '');
+      console.warn('Error response:', errorText);
+      // Return allowed: true to not block the operation
+      return { allowed: true, reason: 'Unable to verify limit, proceeding anyway' };
     }
     
     const data = await response.json();
     return data;
   } catch (error) {
     console.error('Error checking subscription limit:', error);
-    return { allowed: false, reason: 'خطا در بررسی محدودیت' };
+    // Don't block on network errors - allow operation to continue
+    return { allowed: true, reason: 'Network error checking limit, proceeding anyway' };
   }
 }
 
@@ -1621,12 +1627,17 @@ async function downloadFile(url, format, sessionId, type) {
       });
       
       if (recordResponse.ok) {
-        console.log('Download recorded successfully');
+        const recordData = await recordResponse.json();
+        console.log('Download recorded successfully', recordData);
         // Signal dashboard to refresh by updating localStorage
         localStorage.setItem('cutup_last_activity', Date.now().toString());
+      } else {
+        const errorText = await recordResponse.text().catch(() => '');
+        console.error('Failed to record download:', recordResponse.status, errorText);
       }
     } catch (error) {
       console.error('Error recording download:', error);
+      // Don't throw - download was successful, just recording failed
     }
     
     // Save to dashboard

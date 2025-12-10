@@ -400,20 +400,49 @@ export default async function handler(req, res) {
 
     // Check if user can use feature
     if (method === 'POST' && action === 'check') {
-      // Parse body if it's a string
+      // Parse body - handle all cases
       let requestBody = body;
       if (typeof body === 'string') {
-        try {
-          requestBody = JSON.parse(body);
-        } catch (e) {
-          return res.status(400).json({ error: 'Invalid JSON in request body' });
+        if (body.length > 0) {
+          try {
+            requestBody = JSON.parse(body);
+          } catch (e) {
+            console.warn('Failed to parse body in check action:', e.message, 'Body:', body.substring(0, 100));
+            requestBody = {};
+          }
+        } else {
+          requestBody = {};
         }
       }
+      if (!requestBody || typeof requestBody !== 'object') {
+        requestBody = {};
+      }
       
-      const { feature, videoDurationMinutes = 0 } = requestBody || {};
+      const { feature, videoDurationMinutes = 0 } = requestBody;
       
+      // If no feature provided, return basic usage info (don't fail)
       if (!feature) {
-        return res.status(400).json({ error: 'Feature is required' });
+        const usage = getUserUsage(userId);
+        const subscription = getUserSubscription(userId);
+        const plan = PLANS[subscription.plan];
+        
+        return res.json({
+          allowed: true,
+          usage: {
+            daily: usage.daily,
+            monthly: usage.monthly,
+            downloads: {
+              audio: {
+                count: usage.downloads.audio.count,
+                limit: plan.downloadAudioLimit !== undefined ? plan.downloadAudioLimit : null
+              },
+              video: {
+                count: usage.downloads.video.count,
+                limit: plan.downloadVideoLimit !== undefined ? plan.downloadVideoLimit : null
+              }
+            }
+          }
+        });
       }
       
       const check = canUseFeature(userId, feature, videoDurationMinutes);
@@ -468,17 +497,25 @@ export default async function handler(req, res) {
 
     // Record download
     if (method === 'POST' && action === 'recordDownload') {
-      // Parse body if it's a string
+      // Parse body - handle all cases
       let requestBody = body;
       if (typeof body === 'string') {
-        try {
-          requestBody = JSON.parse(body);
-        } catch (e) {
-          return res.status(400).json({ error: 'Invalid JSON in request body' });
+        if (body.length > 0) {
+          try {
+            requestBody = JSON.parse(body);
+          } catch (e) {
+            console.error('Failed to parse body in recordDownload action:', e.message, 'Body:', body.substring(0, 100));
+            return res.status(400).json({ error: 'Invalid JSON in request body' });
+          }
+        } else {
+          requestBody = {};
         }
       }
+      if (!requestBody || typeof requestBody !== 'object') {
+        requestBody = {};
+      }
       
-      const { type, metadata = {} } = requestBody || {}; // 'audio' or 'video'
+      const { type, metadata = {} } = requestBody; // 'audio' or 'video'
       
       if (!type || !['audio', 'video'].includes(type)) {
         return res.status(400).json({ error: 'Valid type (audio/video) is required' });
