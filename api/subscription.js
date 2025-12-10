@@ -307,14 +307,24 @@ function recordUsage(userId, minutes, type = 'transcription', metadata = {}) {
 }
 
 // Record download
-function recordDownload(userId, type, metadata = {}) {
-  const usage = getUserUsage(userId);
+function recordDownload(userId, type, metadata = {}, sessionId = null) {
+  // Get usage with reset logic for h.asgarizade@gmail.com
+  const usage = getUserUsage(userId, sessionId);
   const currentMonth = new Date().getMonth();
   const currentYear = new Date().getFullYear();
   
   // Reset if new month
   if (usage.downloads[type].month !== currentMonth || usage.downloads[type].year !== currentYear) {
     usage.downloads[type] = { month: currentMonth, year: currentYear, count: 0 };
+  }
+  
+  // For h.asgarizade@gmail.com, reset audio downloads to 0 before incrementing
+  if (sessionId) {
+    const session = sessions.get(sessionId);
+    if (session && session.user && session.user.email === 'h.asgarizade@gmail.com' && type === 'audio') {
+      usage.downloads.audio.count = 0;
+      console.log(`[recordDownload] Reset audio downloads for h.asgarizade@gmail.com before recording`);
+    }
   }
   
   const oldCount = usage.downloads[type].count;
@@ -546,9 +556,9 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'Valid type (audio/video) is required' });
       }
       
-      recordDownload(userId, type, metadata);
+      recordDownload(userId, type, metadata, sessionId);
       
-      // Return updated usage
+      // Return updated usage (with reset logic applied)
       const usage = getUserUsage(userId, sessionId);
       const subscription = getUserSubscription(userId);
       const plan = PLANS[subscription.plan];
@@ -592,6 +602,36 @@ export default async function handler(req, res) {
       return res.json({
         history: limitedHistory,
         total: history.length
+      });
+    }
+
+    // Reset audio downloads for h.asgarizade@gmail.com (admin action)
+    if (method === 'POST' && action === 'resetAudioDownloads') {
+      const session = sessions.get(sessionId);
+      if (!session || !session.user || session.user.email !== 'h.asgarizade@gmail.com') {
+        return res.status(403).json({ error: 'Unauthorized' });
+      }
+      
+      const usage = getUserUsage(userId, sessionId);
+      const currentMonth = new Date().getMonth();
+      const currentYear = new Date().getFullYear();
+      
+      // Reset audio downloads
+      usage.downloads.audio = { month: currentMonth, year: currentYear, count: 0 };
+      
+      console.log(`[resetAudioDownloads] Reset audio downloads for h.asgarizade@gmail.com`);
+      
+      return res.json({ 
+        success: true,
+        message: 'Audio downloads reset successfully',
+        usage: {
+          downloads: {
+            audio: {
+              count: 0,
+              limit: PLANS[getUserSubscription(userId).plan].downloadAudioLimit
+            }
+          }
+        }
       });
     }
 

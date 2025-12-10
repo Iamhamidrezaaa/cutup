@@ -203,8 +203,11 @@ async function updateButtonsBasedOnSubscription(sessionId) {
     const userPlan = subData.plan || 'free';
     const features = subData.features || {};
     
-    // Get local usage
-    const localUsage = getLocalUsage();
+    // Use API usage data (not localStorage) for button state
+    const apiUsage = subData.usage || {};
+    const apiDownloads = apiUsage.downloads || {};
+    const apiAudio = apiDownloads.audio || {};
+    const apiVideo = apiDownloads.video || {};
     
     // Get plan limits
     const planLimits = {
@@ -216,6 +219,11 @@ async function updateButtonsBasedOnSubscription(sessionId) {
     
     const limits = planLimits[userPlan] || planLimits.free;
     
+    // Use API counts (which are reset for h.asgarizade@gmail.com)
+    const audioCount = apiAudio.count || 0;
+    const videoCount = apiVideo.count || 0;
+    const minutesUsed = apiUsage.monthly?.minutes || 0;
+    
     // Store subscription info globally
     window.userSubscription = {
       plan: userPlan,
@@ -223,17 +231,26 @@ async function updateButtonsBasedOnSubscription(sessionId) {
       usage: {
         ...subData.usage,
         downloads: {
-          audio: { count: localUsage.audioDownloads, limit: limits.audio },
-          video: { count: localUsage.videoDownloads, limit: limits.video }
+          audio: { count: audioCount, limit: limits.audio },
+          video: { count: videoCount, limit: limits.video }
         },
-        monthly: { minutes: localUsage.usedMinutes, limit: limits.minutes }
+        monthly: { minutes: minutesUsed, limit: limits.minutes }
       }
     };
     
-    // Check if limits are exceeded
-    const audioExceeded = limits.audio !== null && localUsage.audioDownloads >= limits.audio;
-    const videoExceeded = limits.video !== null && localUsage.videoDownloads >= limits.video;
-    const minutesExceeded = localUsage.usedMinutes >= limits.minutes;
+    // Check if limits are exceeded (using API data)
+    const audioExceeded = limits.audio !== null && audioCount >= limits.audio;
+    const videoExceeded = limits.video !== null && videoCount >= limits.video;
+    const minutesExceeded = minutesUsed >= limits.minutes;
+    
+    console.log('[script] Button state update:', {
+      audioCount,
+      audioLimit: limits.audio,
+      audioExceeded,
+      videoCount,
+      videoLimit: limits.video,
+      videoExceeded
+    });
     
     if (userPlan === 'free') {
       setButtonsForFreePlan(audioExceeded, videoExceeded, minutesExceeded);

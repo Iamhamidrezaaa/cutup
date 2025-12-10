@@ -1548,6 +1548,88 @@ window.submitTicket = submitTicket;
 window.updateDashboardFromLocalStorage = updateDashboardFromLocalStorage;
 window.getUsageFromLocalHistory = getUsageFromLocalHistory;
 
+// Function to clear audio downloads from localStorage for h.asgarizade@gmail.com
+async function clearAudioDownloadsFromLocalStorage() {
+  try {
+    // Get user email from API
+    const userResponse = await fetch(`${API_BASE_URL}/api/auth?action=me&session=${currentSession}`);
+    if (!userResponse.ok) return;
+    
+    const userData = await userResponse.json();
+    if (!userData.user || userData.user.email !== 'h.asgarizade@gmail.com') return;
+    
+    // Clear audio downloads from localStorage
+    const keys = Object.keys(localStorage);
+    const resultKeys = keys.filter(k => k.startsWith('cutup_result_'));
+    
+    let cleared = 0;
+    resultKeys.forEach(key => {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        try {
+          const item = JSON.parse(raw);
+          if (item.type === 'downloadAudio') {
+            localStorage.removeItem(key);
+            cleared++;
+          }
+        } catch (e) {
+          // Skip invalid items
+        }
+      }
+    });
+    
+    console.log(`[dashboard] Cleared ${cleared} audio download items from localStorage`);
+    
+    // Also clear from cutup_dashboard_history if exists
+    const historyRaw = localStorage.getItem('cutup_dashboard_history');
+    if (historyRaw) {
+      try {
+        const history = JSON.parse(historyRaw);
+        const filtered = history.filter(item => item.type !== 'downloadAudio');
+        localStorage.setItem('cutup_dashboard_history', JSON.stringify(filtered));
+        console.log(`[dashboard] Cleared audio downloads from dashboard history`);
+      } catch (e) {
+        // Skip if invalid
+      }
+    }
+    
+    // Refresh dashboard
+    updateDashboardFromLocalStorage();
+    loadSubscriptionInfo();
+  } catch (error) {
+    console.error('[dashboard] Error clearing audio downloads:', error);
+  }
+}
+
+// Auto-clear on page load if user is h.asgarizade@gmail.com
+document.addEventListener('DOMContentLoaded', async () => {
+  // Wait a bit for session to load
+  setTimeout(async () => {
+    if (currentSession) {
+      try {
+        const userResponse = await fetch(`${API_BASE_URL}/api/auth?action=me&session=${currentSession}`);
+        if (userResponse.ok) {
+          const userData = await userResponse.json();
+          if (userData.user && userData.user.email === 'h.asgarizade@gmail.com') {
+            // Reset in backend
+            await fetch(`${API_BASE_URL}/api/subscription?action=resetAudioDownloads`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Session-Id': currentSession
+              }
+            });
+            // Clear from localStorage
+            await clearAudioDownloadsFromLocalStorage();
+          }
+        }
+      } catch (e) {
+        console.error('[dashboard] Error in auto-reset:', e);
+      }
+    }
+  }, 1000);
+});
+
 
 // Debug function - can be called from console
 window.debugDashboard = function() {
