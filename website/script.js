@@ -1429,7 +1429,7 @@ async function saveToDashboard(sessionId, data) {
 // Record usage
 async function recordUsage(sessionId, type, duration, metadata = {}) {
   try {
-    await fetch(`${API_BASE_URL}/api/subscription?action=record`, {
+    const response = await fetch(`${API_BASE_URL}/api/subscription?action=record`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1441,6 +1441,11 @@ async function recordUsage(sessionId, type, duration, metadata = {}) {
         metadata: metadata
       })
     });
+    
+    if (response.ok) {
+      // Signal dashboard to refresh by updating localStorage
+      localStorage.setItem('cutup_last_activity', Date.now().toString());
+    }
   } catch (error) {
     console.error('Error recording usage:', error);
   }
@@ -1598,7 +1603,7 @@ async function downloadFile(url, format, sessionId, type) {
     
     // Record download count
     try {
-      await fetch(`${API_BASE_URL}/api/subscription?action=recordDownload`, {
+      const recordResponse = await fetch(`${API_BASE_URL}/api/subscription?action=recordDownload`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1614,6 +1619,12 @@ async function downloadFile(url, format, sessionId, type) {
           }
         })
       });
+      
+      if (recordResponse.ok) {
+        console.log('Download recorded successfully');
+        // Signal dashboard to refresh by updating localStorage
+        localStorage.setItem('cutup_last_activity', Date.now().toString());
+      }
     } catch (error) {
       console.error('Error recording download:', error);
     }

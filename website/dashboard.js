@@ -49,6 +49,46 @@ async function initDashboard() {
   loadCartSection();
   loadFinancialSection();
   loadSupportSection();
+  
+  // Auto-refresh subscription info every 5 seconds (aggressive polling)
+  setInterval(async () => {
+    await loadSubscriptionInfo();
+  }, 5000);
+  
+  // Refresh when page becomes visible (user switches back to tab)
+  document.addEventListener('visibilitychange', async () => {
+    if (!document.hidden) {
+      await loadSubscriptionInfo();
+    }
+  });
+  
+  // Refresh when window gets focus
+  window.addEventListener('focus', async () => {
+    await loadSubscriptionInfo();
+  });
+  
+  // Check localStorage for activity signals (from main page)
+  let lastCheckTime = Date.now();
+  setInterval(() => {
+    const lastActivity = localStorage.getItem('cutup_last_activity');
+    if (lastActivity) {
+      const activityTime = parseInt(lastActivity);
+      if (activityTime > lastCheckTime) {
+        lastCheckTime = activityTime;
+        loadSubscriptionInfo();
+      }
+    }
+  }, 2000); // Check every 2 seconds
+  
+  // Refresh when navigating to overview section
+  const overviewNav = document.querySelector('[data-section="overview"]');
+  if (overviewNav) {
+    overviewNav.addEventListener('click', async () => {
+      setTimeout(async () => {
+        await loadSubscriptionInfo();
+      }, 100);
+    });
+  }
 }
 
 async function loadUserProfile() {
@@ -105,15 +145,23 @@ function updateDashboard() {
   const limit = subscriptionInfo.usage.monthlyLimit || 0;
   const remaining = Math.max(0, limit - usedMinutes);
   
-  document.getElementById('usedMinutes').textContent = usedMinutes;
-  document.getElementById('remainingMinutes').textContent = remaining;
-  document.getElementById('currentPlan').textContent = subscriptionInfo.planName;
+  // Update stats with null checks
+  const usedMinutesEl = document.getElementById('usedMinutes');
+  const remainingMinutesEl = document.getElementById('remainingMinutes');
+  const currentPlanEl = document.getElementById('currentPlan');
+  const expiryDateEl = document.getElementById('expiryDate');
   
-  if (subscriptionInfo.subscription.endDate) {
-    const endDate = new Date(subscriptionInfo.subscription.endDate);
-    document.getElementById('expiryDate').textContent = endDate.toLocaleDateString('fa-IR');
-  } else {
-    document.getElementById('expiryDate').textContent = 'نامحدود';
+  if (usedMinutesEl) usedMinutesEl.textContent = usedMinutes;
+  if (remainingMinutesEl) remainingMinutesEl.textContent = remaining;
+  if (currentPlanEl) currentPlanEl.textContent = subscriptionInfo.planName;
+  
+  if (expiryDateEl) {
+    if (subscriptionInfo.subscription.endDate) {
+      const endDate = new Date(subscriptionInfo.subscription.endDate);
+      expiryDateEl.textContent = endDate.toLocaleDateString('fa-IR');
+    } else {
+      expiryDateEl.textContent = 'نامحدود';
+    }
   }
   
   // Update download stats
@@ -140,9 +188,14 @@ function updateDashboard() {
         statsGrid.appendChild(downloadStats);
       }
     } else {
-      document.getElementById('downloadCount').textContent = audioCount + videoCount;
-      downloadStats.querySelector('.stat-label').textContent = 
-        `دانلود (موزیک: ${audioCount}${audioLimit ? `/${audioLimit}` : ''} | ویدئو: ${videoCount}${videoLimit ? `/${videoLimit}` : ''})`;
+      const downloadCountEl = document.getElementById('downloadCount');
+      if (downloadCountEl) {
+        downloadCountEl.textContent = audioCount + videoCount;
+      }
+      const labelEl = downloadStats.querySelector('.stat-label');
+      if (labelEl) {
+        labelEl.textContent = `دانلود (موزیک: ${audioCount}${audioLimit ? `/${audioLimit}` : ''} | ویدئو: ${videoCount}${videoLimit ? `/${videoLimit}` : ''})`;
+      }
     }
   }
   
