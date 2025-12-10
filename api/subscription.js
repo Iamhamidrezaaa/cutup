@@ -325,7 +325,21 @@ export default async function handler(req, res) {
   // Handle CORS
   setCORSHeaders(res);
 
-  const { method, query, body } = req;
+  const { method, query } = req;
+  
+  // Parse body properly - handle both parsed and string body
+  let body = req.body;
+  if (typeof body === 'string' && body.length > 0) {
+    try {
+      body = JSON.parse(body);
+    } catch (e) {
+      console.warn('Failed to parse body as JSON, using as-is:', e.message);
+    }
+  }
+  if (!body) {
+    body = {};
+  }
+  
   const action = query.action || body?.action;
   const sessionId = req.headers['x-session-id'] || query.session || body?.session;
 
@@ -386,7 +400,17 @@ export default async function handler(req, res) {
 
     // Check if user can use feature
     if (method === 'POST' && action === 'check') {
-      const { feature, videoDurationMinutes = 0 } = body;
+      // Parse body if it's a string
+      let requestBody = body;
+      if (typeof body === 'string') {
+        try {
+          requestBody = JSON.parse(body);
+        } catch (e) {
+          return res.status(400).json({ error: 'Invalid JSON in request body' });
+        }
+      }
+      
+      const { feature, videoDurationMinutes = 0 } = requestBody || {};
       
       if (!feature) {
         return res.status(400).json({ error: 'Feature is required' });
@@ -398,26 +422,94 @@ export default async function handler(req, res) {
 
     // Record usage
     if (method === 'POST' && action === 'record') {
-      const { minutes, type = 'transcription', metadata = {} } = body;
+      // Parse body if it's a string
+      let requestBody = body;
+      if (typeof body === 'string') {
+        try {
+          requestBody = JSON.parse(body);
+        } catch (e) {
+          return res.status(400).json({ error: 'Invalid JSON in request body' });
+        }
+      }
+      
+      const { minutes, type = 'transcription', metadata = {} } = requestBody || {};
       
       if (!minutes || minutes <= 0) {
         return res.status(400).json({ error: 'Valid minutes is required' });
       }
       
       recordUsage(userId, minutes, type, metadata);
-      return res.json({ success: true });
+      
+      // Return updated usage
+      const usage = getUserUsage(userId);
+      const subscription = getUserSubscription(userId);
+      const plan = PLANS[subscription.plan];
+      
+      return res.json({ 
+        success: true,
+        usage: {
+          daily: usage.daily,
+          monthly: usage.monthly,
+          dailyLimit: plan.dailyLimit || null,
+          monthlyLimit: plan.monthlyLimit,
+          downloads: {
+            audio: {
+              count: usage.downloads.audio.count,
+              limit: plan.downloadAudioLimit !== undefined ? plan.downloadAudioLimit : null
+            },
+            video: {
+              count: usage.downloads.video.count,
+              limit: plan.downloadVideoLimit !== undefined ? plan.downloadVideoLimit : null
+            }
+          }
+        }
+      });
     }
 
     // Record download
     if (method === 'POST' && action === 'recordDownload') {
-      const { type, metadata = {} } = body; // 'audio' or 'video'
+      // Parse body if it's a string
+      let requestBody = body;
+      if (typeof body === 'string') {
+        try {
+          requestBody = JSON.parse(body);
+        } catch (e) {
+          return res.status(400).json({ error: 'Invalid JSON in request body' });
+        }
+      }
+      
+      const { type, metadata = {} } = requestBody || {}; // 'audio' or 'video'
       
       if (!type || !['audio', 'video'].includes(type)) {
         return res.status(400).json({ error: 'Valid type (audio/video) is required' });
       }
       
       recordDownload(userId, type, metadata);
-      return res.json({ success: true });
+      
+      // Return updated usage
+      const usage = getUserUsage(userId);
+      const subscription = getUserSubscription(userId);
+      const plan = PLANS[subscription.plan];
+      
+      return res.json({ 
+        success: true,
+        usage: {
+          daily: usage.daily,
+          monthly: usage.monthly,
+          dailyLimit: plan.dailyLimit || null,
+          monthlyLimit: plan.monthlyLimit,
+          downloads: {
+            audio: {
+              count: usage.downloads.audio.count,
+              limit: plan.downloadAudioLimit !== undefined ? plan.downloadAudioLimit : null
+            },
+            video: {
+              count: usage.downloads.video.count,
+              limit: plan.downloadVideoLimit !== undefined ? plan.downloadVideoLimit : null
+            }
+          }
+        }
+      });
     }
 
     // Get usage history
