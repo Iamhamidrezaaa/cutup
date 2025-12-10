@@ -2,6 +2,7 @@
 // This is a simplified in-memory version. In production, use a database.
 
 import { handleCORS, setCORSHeaders } from './cors.js';
+import { sessions } from './auth.js';
 
 // In-memory storage (in production, use database)
 const userSubscriptions = new Map();
@@ -140,9 +141,26 @@ function getUserSubscription(userId) {
 }
 
 // Get user usage
-function getUserUsage(userId) {
+function getUserUsage(userId, sessionId = null) {
   initializeUser(userId);
-  return userUsage.get(userId);
+  const usage = userUsage.get(userId);
+  
+  // Reset audio downloads for h.asgarizade@gmail.com
+  if (sessionId) {
+    const session = sessions.get(sessionId);
+    if (session && session.user && session.user.email === 'h.asgarizade@gmail.com') {
+      const currentMonth = new Date().getMonth();
+      const currentYear = new Date().getFullYear();
+      
+      // Reset audio downloads count to 0
+      if (usage.downloads.audio.month === currentMonth && usage.downloads.audio.year === currentYear) {
+        usage.downloads.audio.count = 0;
+        console.log(`[getUserUsage] Reset audio downloads for h.asgarizade@gmail.com`);
+      }
+    }
+  }
+  
+  return usage;
 }
 
 // Check if user can use feature
@@ -369,7 +387,7 @@ export default async function handler(req, res) {
     // Get subscription info
     if (method === 'GET' && action === 'info') {
       const subscription = getUserSubscription(userId);
-      const usage = getUserUsage(userId);
+      const usage = getUserUsage(userId, sessionId);
       const plan = PLANS[subscription.plan];
       
       const responseData = {
@@ -429,7 +447,7 @@ export default async function handler(req, res) {
       
       // If no feature provided, return basic usage info (don't fail)
       if (!feature) {
-        const usage = getUserUsage(userId);
+        const usage = getUserUsage(userId, sessionId);
         const subscription = getUserSubscription(userId);
         const plan = PLANS[subscription.plan];
         
@@ -477,7 +495,7 @@ export default async function handler(req, res) {
       recordUsage(userId, minutes, type, metadata);
       
       // Return updated usage
-      const usage = getUserUsage(userId);
+      const usage = getUserUsage(userId, sessionId);
       const subscription = getUserSubscription(userId);
       const plan = PLANS[subscription.plan];
       
@@ -531,7 +549,7 @@ export default async function handler(req, res) {
       recordDownload(userId, type, metadata);
       
       // Return updated usage
-      const usage = getUserUsage(userId);
+      const usage = getUserUsage(userId, sessionId);
       const subscription = getUserSubscription(userId);
       const plan = PLANS[subscription.plan];
       

@@ -10,6 +10,9 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'https://cutup.shop';
 // In-memory session store (in production, use Redis or database)
 const sessions = new Map();
 
+// Export sessions for use in other modules
+export { sessions };
+
 export default async function handler(req, res) {
   const { method, query, body } = req;
   const action = query.action || body?.action;

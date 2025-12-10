@@ -1548,36 +1548,6 @@ window.submitTicket = submitTicket;
 window.updateDashboardFromLocalStorage = updateDashboardFromLocalStorage;
 window.getUsageFromLocalHistory = getUsageFromLocalHistory;
 
-// Function to clear all download history for a specific email (admin function)
-window.clearUserDownloads = function(email) {
-  if (!email || email !== 'h.asgarizade@gmail.com') {
-    console.error('Only allowed for h.asgarizade@gmail.com');
-    return;
-  }
-  
-  const keys = Object.keys(localStorage);
-  const resultKeys = keys.filter(k => k.startsWith('cutup_result_'));
-  
-  let cleared = 0;
-  resultKeys.forEach(key => {
-    const raw = localStorage.getItem(key);
-    if (raw) {
-      try {
-        const item = JSON.parse(raw);
-        if (item.type === 'downloadAudio' || item.type === 'downloadVideo') {
-          localStorage.removeItem(key);
-          cleared++;
-        }
-      } catch (e) {
-        // Skip invalid items
-      }
-    }
-  });
-  
-  console.log(`Cleared ${cleared} download items for ${email}`);
-  updateDashboardFromLocalStorage();
-  loadSubscriptionInfo();
-};
 
 // Debug function - can be called from console
 window.debugDashboard = function() {
