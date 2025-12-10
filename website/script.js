@@ -205,6 +205,7 @@ document.getElementById('logoutBtn').addEventListener('click', async () => {
 
 // Download functionality
 const youtubeUrlInput = document.getElementById('youtubeUrlInput');
+const audioFileInput = document.getElementById('audioFileInput');
 // Removed downloadBtnMain - using pasteBtnMain instead
 const downloadOptions = document.getElementById('downloadOptions');
 const downloadVideoBtnMain = document.getElementById('downloadVideoBtnMain');
@@ -263,13 +264,18 @@ pasteBtnMain.addEventListener('click', async () => {
   try {
     // Read from clipboard
     const text = await navigator.clipboard.readText();
-    if (text && isYouTubeUrl(text)) {
+    if (text) {
+      // Clear file selection if pasting URL
+      if (audioFileInput) {
+        audioFileInput.value = '';
+      }
       youtubeUrlInput.value = text;
-      // Show options
-      downloadOptions.style.display = 'block';
-      showMessage('لطفاً یکی از گزینه‌های زیر را انتخاب کنید', 'info');
+      checkInput();
+      if (isYouTubeUrl(text)) {
+        showMessage('لطفاً یکی از گزینه‌های زیر را انتخاب کنید', 'info');
+      }
     } else {
-      showMessage('محتوای کلیپ‌بورد لینک یوتیوب معتبری نیست', 'error');
+      showMessage('کلیپ‌بورد خالی است', 'error');
     }
   } catch (error) {
     console.error('Error reading clipboard:', error);
@@ -279,13 +285,11 @@ pasteBtnMain.addEventListener('click', async () => {
 
 // Also check input when URL is entered manually
 youtubeUrlInput.addEventListener('input', () => {
-  const url = youtubeUrlInput.value.trim();
-  if (url && isYouTubeUrl(url)) {
-    downloadOptions.style.display = 'block';
-    showMessage('لطفاً یکی از گزینه‌های زیر را انتخاب کنید', 'info');
-  } else {
-    downloadOptions.style.display = 'none';
+  // Clear file selection if typing URL
+  if (audioFileInput) {
+    audioFileInput.value = '';
   }
+  checkInput();
 });
 
 // Handle video download
@@ -483,13 +487,23 @@ summarizeBtnMain.addEventListener('click', async () => {
   if (!sessionId) return;
   
   const url = youtubeUrlInput.value.trim();
-  if (!isYouTubeUrl(url)) {
-    showMessage('لینک یوتیوب معتبر نیست', 'error');
+  const file = audioFileInput && audioFileInput.files[0];
+  
+  if (!url && !file) {
+    showMessage('لطفاً لینک یوتیوب یا فایل صوتی را وارد کنید', 'error');
     return;
   }
   
   // Process summarize and save to dashboard
-  await processSummarize(url, sessionId);
+  if (file && url.startsWith('📁')) {
+    // File selected
+    await processSummarizeFile(file, sessionId);
+  } else if (isYouTubeUrl(url)) {
+    // YouTube URL
+    await processSummarize(url, sessionId);
+  } else {
+    showMessage('لینک یوتیوب معتبر نیست', 'error');
+  }
 });
 
 // Handle full text
@@ -498,14 +512,200 @@ fullTextBtnMain.addEventListener('click', async () => {
   if (!sessionId) return;
   
   const url = youtubeUrlInput.value.trim();
-  if (!isYouTubeUrl(url)) {
-    showMessage('لینک یوتیوب معتبر نیست', 'error');
+  const file = audioFileInput && audioFileInput.files[0];
+  
+  if (!url && !file) {
+    showMessage('لطفاً لینک یوتیوب یا فایل صوتی را وارد کنید', 'error');
     return;
   }
   
   // Process transcription and save to dashboard
-  await processFullText(url, sessionId);
+  if (file && url.startsWith('📁')) {
+    // File selected
+    await processFullTextFile(file, sessionId);
+  } else if (isYouTubeUrl(url)) {
+    // YouTube URL
+    await processFullText(url, sessionId);
+  } else {
+    showMessage('لینک یوتیوب معتبر نیست', 'error');
+  }
 });
+
+// Process summarize for file
+async function processSummarizeFile(file, sessionId) {
+  try {
+    showMessage('در حال پردازش فایل...', 'info');
+    
+    // Convert file to data URL (like extension)
+    const fileDataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    
+    // Transcribe
+    showMessage('در حال تبدیل به متن...', 'info');
+    const transcribeResponse = await fetch(`${API_BASE_URL}/api/transcribe`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': sessionId
+      },
+      body: JSON.stringify({ audioUrl: fileDataUrl })
+    });
+    
+    if (!transcribeResponse.ok) {
+      let errorMessage = 'خطا در تبدیل به متن';
+      try {
+        const errorData = await transcribeResponse.json();
+        errorMessage = errorData.message || errorData.details || errorData.error || errorMessage;
+      } catch (e) {
+        const errorText = await transcribeResponse.text().catch(() => '');
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+    
+    const transcribeData = await transcribeResponse.json();
+    
+    // Check for error in response
+    if (transcribeData.error) {
+      throw new Error(transcribeData.message || transcribeData.details || transcribeData.error || 'خطا در تبدیل به متن');
+    }
+    
+    const transcription = transcribeData.text || transcribeData.transcription;
+    
+    if (!transcription) {
+      throw new Error('متن دریافت نشد. پاسخ API: ' + JSON.stringify(transcribeData).substring(0, 200));
+    }
+    
+    // Summarize (unlimited for all tiers)
+    showMessage('در حال خلاصه‌سازی...', 'info');
+    const summarizeResponse = await fetch(`${API_BASE_URL}/api/summarize`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': sessionId
+      },
+      body: JSON.stringify({ text: transcription, language: transcribeData.language || 'en' })
+    });
+    
+    if (!summarizeResponse.ok) {
+      let errorMessage = 'خطا در خلاصه‌سازی';
+      try {
+        const errorData = await summarizeResponse.json();
+        errorMessage = errorData.message || errorData.details || errorData.error || errorMessage;
+      } catch (e) {
+        const errorText = await summarizeResponse.text().catch(() => '');
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+    
+    const summarizeData = await summarizeResponse.json();
+    
+    // Check for error in response
+    if (summarizeData.error) {
+      throw new Error(summarizeData.message || summarizeData.details || summarizeData.error || 'خطا در خلاصه‌سازی');
+    }
+    
+    const summary = summarizeData.summary || summarizeData;
+    const keyPoints = summarizeData.keyPoints || [];
+    
+    // Show summary modal
+    showSummaryModal(summary, keyPoints, transcription, file.name, sessionId, transcribeData.language || 'en');
+    
+    // Record usage (estimate from file size: ~1MB per minute)
+    const estimatedDurationMinutes = Math.ceil((file.size / 1024 / 1024) * 1.2);
+    await recordUsage(sessionId, 'transcription', estimatedDurationMinutes);
+    
+    // Save to dashboard
+    await saveToDashboard(sessionId, {
+      title: file.name,
+      type: 'summarize',
+      transcription,
+      summary,
+      keyPoints,
+      duration: estimatedDurationMinutes * 60
+    });
+    
+  } catch (error) {
+    console.error('Error:', error);
+    showMessage('خطا: ' + error.message, 'error');
+  }
+}
+
+// Process full text for file
+async function processFullTextFile(file, sessionId) {
+  try {
+    showMessage('در حال پردازش فایل...', 'info');
+    
+    // Convert file to data URL (like extension)
+    const fileDataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => resolve(e.target.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    
+    // Transcribe
+    showMessage('در حال تبدیل به متن...', 'info');
+    const transcribeResponse = await fetch(`${API_BASE_URL}/api/transcribe`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': sessionId
+      },
+      body: JSON.stringify({ audioUrl: fileDataUrl })
+    });
+    
+    if (!transcribeResponse.ok) {
+      let errorMessage = 'خطا در تبدیل به متن';
+      try {
+        const errorData = await transcribeResponse.json();
+        errorMessage = errorData.message || errorData.details || errorData.error || errorMessage;
+      } catch (e) {
+        const errorText = await transcribeResponse.text().catch(() => '');
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+    
+    const transcribeData = await transcribeResponse.json();
+    
+    // Check for error in response
+    if (transcribeData.error) {
+      throw new Error(transcribeData.message || transcribeData.details || transcribeData.error || 'خطا در تبدیل به متن');
+    }
+    
+    const transcription = transcribeData.text || transcribeData.transcription;
+    
+    if (!transcription) {
+      throw new Error('متن دریافت نشد. پاسخ API: ' + JSON.stringify(transcribeData).substring(0, 200));
+    }
+    
+    // Show full text modal
+    showFullTextModal(transcription, file.name, sessionId, transcribeData.language || 'en');
+    
+    // Record usage (estimate from file size: ~1MB per minute)
+    const estimatedDurationMinutes = Math.ceil((file.size / 1024 / 1024) * 1.2);
+    await recordUsage(sessionId, 'transcription', estimatedDurationMinutes);
+    
+    // Save to dashboard
+    await saveToDashboard(sessionId, {
+      title: file.name,
+      type: 'transcription',
+      transcription,
+      segments: transcribeData.segments || [],
+      duration: estimatedDurationMinutes * 60
+    });
+    
+  } catch (error) {
+    console.error('Error:', error);
+    showMessage('خطا: ' + error.message, 'error');
+  }
+}
 
 // Process summarize
 async function processSummarize(url, sessionId) {
@@ -1152,11 +1352,25 @@ youtubeUrlInput.addEventListener('keypress', (e) => {
   }
 });
 
-// Handle audio file input
-const audioFileInput = document.getElementById('audioFileInput');
-audioFileInput.addEventListener('change', async (e) => {
+// Handle audio file input (like extension)
+function handleFileSelect(e) {
   const file = e.target.files[0];
-  if (!file) return;
+  if (!file) {
+    // If no file selected, clear input and reset
+    youtubeUrlInput.value = '';
+    checkInput();
+    return;
+  }
+  
+  // Check file size (max 100MB)
+  const maxSize = 100 * 1024 * 1024; // 100MB
+  if (file.size > maxSize) {
+    showMessage(`فایل خیلی بزرگ است (${(file.size / 1024 / 1024).toFixed(2)}MB). حداکثر حجم مجاز ${maxSize / 1024 / 1024}MB است.`, 'error');
+    audioFileInput.value = ''; // Clear selection
+    youtubeUrlInput.value = '';
+    checkInput();
+    return;
+  }
   
   // Check if it's audio or video file
   const isAudio = file.type.startsWith('audio/');
@@ -1164,21 +1378,67 @@ audioFileInput.addEventListener('change', async (e) => {
   
   if (!isAudio && !isVideo) {
     showMessage('لطفاً فایل صوتی یا ویدئویی انتخاب کنید', 'error');
+    audioFileInput.value = ''; // Clear selection
+    youtubeUrlInput.value = '';
+    checkInput();
     return;
   }
   
-  // Show options for file processing
-  downloadOptions.style.display = 'block';
-  showMessage('فایل انتخاب شد. لطفاً یکی از گزینه‌های زیر را انتخاب کنید', 'info');
+  // Show file name in input (like extension)
+  youtubeUrlInput.value = `📁 ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`;
   
   // Store file for later use
   window.selectedFile = file;
   
-  // Hide YouTube-specific options, show file-specific options
-  downloadVideoBtnMain.style.display = 'none';
-  downloadAudioBtnMain.style.display = 'none';
-  downloadSubtitleBtnMain.style.display = 'none';
-});
+  // Check input to show/hide buttons
+  checkInput();
+}
+
+// Check input and show/hide appropriate buttons
+function checkInput() {
+  const url = youtubeUrlInput.value.trim();
+  const hasFile = audioFileInput && audioFileInput.files.length > 0;
+  const isYouTube = url && isYouTubeUrl(url);
+  const isFile = hasFile && url.startsWith('📁');
+  
+  // Show download options if we have URL or file
+  if (url || hasFile) {
+    downloadOptions.style.display = 'block';
+  } else {
+    downloadOptions.style.display = 'none';
+    return;
+  }
+  
+  // For YouTube URLs: show all buttons
+  if (isYouTube) {
+    downloadVideoBtnMain.style.display = 'flex';
+    downloadAudioBtnMain.style.display = 'flex';
+    downloadSubtitleBtnMain.style.display = 'flex';
+    summarizeBtnMain.disabled = false;
+    fullTextBtnMain.disabled = false;
+  } 
+  // For files: hide YouTube-specific buttons, show only summarize and full text
+  else if (isFile) {
+    downloadVideoBtnMain.style.display = 'none';
+    downloadAudioBtnMain.style.display = 'none';
+    downloadSubtitleBtnMain.style.display = 'none';
+    summarizeBtnMain.disabled = false;
+    fullTextBtnMain.disabled = false;
+  }
+  // For other URLs: show only summarize and full text
+  else {
+    downloadVideoBtnMain.style.display = 'none';
+    downloadAudioBtnMain.style.display = 'none';
+    downloadSubtitleBtnMain.style.display = 'none';
+    summarizeBtnMain.disabled = false;
+    fullTextBtnMain.disabled = false;
+  }
+}
+
+// Handle audio file input (event listener already set up above)
+if (audioFileInput) {
+  audioFileInput.addEventListener('change', handleFileSelect);
+}
 
 // Show subtitle modal (like extension)
 function showSubtitleModal(srtContent, originalLanguage, videoId, sessionId) {
