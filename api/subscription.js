@@ -299,7 +299,10 @@ function recordDownload(userId, type, metadata = {}) {
     usage.downloads[type] = { month: currentMonth, year: currentYear, count: 0 };
   }
   
+  const oldCount = usage.downloads[type].count;
   usage.downloads[type].count += 1;
+  
+  console.log(`[recordDownload] userId: ${userId}, type: ${type}, count: ${oldCount} -> ${usage.downloads[type].count}`);
   
   // Add to history
   if (!userUsageHistory.has(userId)) {
@@ -369,7 +372,7 @@ export default async function handler(req, res) {
       const usage = getUserUsage(userId);
       const plan = PLANS[subscription.plan];
       
-      return res.json({
+      const responseData = {
         plan: subscription.plan,
         planName: plan.name,
         planNameEn: plan.nameEn,
@@ -395,7 +398,11 @@ export default async function handler(req, res) {
           endDate: subscription.endDate,
           billingPeriod: subscription.billingPeriod
         }
-      });
+      };
+      
+      console.log(`[action=info] userId: ${userId}, usage:`, JSON.stringify(responseData.usage.downloads));
+      
+      return res.json(responseData);
     }
 
     // Check if user can use feature
@@ -528,7 +535,7 @@ export default async function handler(req, res) {
       const subscription = getUserSubscription(userId);
       const plan = PLANS[subscription.plan];
       
-      return res.json({ 
+      const responseData = { 
         success: true,
         usage: {
           daily: usage.daily,
@@ -546,7 +553,11 @@ export default async function handler(req, res) {
             }
           }
         }
-      });
+      };
+      
+      console.log(`[recordDownload response] userId: ${userId}, usage:`, JSON.stringify(responseData.usage.downloads));
+      
+      return res.json(responseData);
     }
 
     // Get usage history

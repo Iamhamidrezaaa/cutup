@@ -130,11 +130,16 @@ async function loadSubscriptionInfo() {
     
     if (response.ok) {
       subscriptionInfo = await response.json();
+      console.log('[dashboard] Subscription info loaded:', subscriptionInfo);
+      console.log('[dashboard] Usage downloads:', subscriptionInfo.usage?.downloads);
       updateDashboard();
       loadPlans();
+    } else {
+      const errorText = await response.text().catch(() => '');
+      console.error('[dashboard] Failed to load subscription info:', response.status, errorText);
     }
   } catch (error) {
-    console.error('Error loading subscription info:', error);
+    console.error('[dashboard] Error loading subscription info:', error);
   }
 }
 
@@ -165,11 +170,13 @@ function updateDashboard() {
   }
   
   // Update download stats
-  if (subscriptionInfo.usage.downloads) {
+  if (subscriptionInfo.usage && subscriptionInfo.usage.downloads) {
     const audioCount = subscriptionInfo.usage.downloads.audio?.count || 0;
     const videoCount = subscriptionInfo.usage.downloads.video?.count || 0;
     const audioLimit = subscriptionInfo.usage.downloads.audio?.limit || null;
     const videoLimit = subscriptionInfo.usage.downloads.video?.limit || null;
+    
+    console.log('[dashboard] Updating download stats:', { audioCount, videoCount, audioLimit, videoLimit });
     
     let downloadStats = document.getElementById('downloadStats');
     if (!downloadStats) {
@@ -191,12 +198,16 @@ function updateDashboard() {
       const downloadCountEl = document.getElementById('downloadCount');
       if (downloadCountEl) {
         downloadCountEl.textContent = audioCount + videoCount;
+        console.log('[dashboard] Updated downloadCount element:', audioCount + videoCount);
       }
       const labelEl = downloadStats.querySelector('.stat-label');
       if (labelEl) {
         labelEl.textContent = `دانلود (موزیک: ${audioCount}${audioLimit ? `/${audioLimit}` : ''} | ویدئو: ${videoCount}${videoLimit ? `/${videoLimit}` : ''})`;
+        console.log('[dashboard] Updated download label');
       }
     }
+  } else {
+    console.warn('[dashboard] No downloads data in usage:', subscriptionInfo.usage);
   }
   
   drawUsageChart();
