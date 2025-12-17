@@ -134,6 +134,102 @@
             </div>
           </div>
           <div class="download-message" id="downloadMessage"></div>
+          
+          <!-- Result Section (like extension) -->
+          <div class="result-section" id="resultSection" style="display: none;">
+            <div class="result-header">
+              <h2>نتیجه</h2>
+              <button class="copy-btn" id="copyBtn" title="کپی">
+                📋
+              </button>
+            </div>
+            
+            <div class="result-tabs">
+              <button class="tab-btn active" data-tab="fulltext">متن کامل</button>
+              <button class="tab-btn" data-tab="summary">خلاصه</button>
+              <button class="tab-btn" data-tab="srt">زیرنویس SRT</button>
+            </div>
+
+            <div class="result-content">
+              <div class="tab-content active" id="fulltext-tab">
+                <div class="srt-container">
+                  <div class="srt-controls">
+                    <label for="fulltextLanguage" class="srt-language-label">زبان ترجمه:</label>
+                    <select id="fulltextLanguage" class="srt-language-select">
+                      <option value="original">زبان اصلی</option>
+                      <option value="fa">فارسی</option>
+                      <option value="en">English</option>
+                      <option value="ar">العربية</option>
+                      <option value="es">Español</option>
+                      <option value="fr">Français</option>
+                      <option value="de">Deutsch</option>
+                      <option value="it">Italiano</option>
+                      <option value="ru">Русский</option>
+                      <option value="tr">Türkçe</option>
+                      <option value="zh">中文</option>
+                      <option value="ja">日本語</option>
+                      <option value="ko">한국어</option>
+                    </select>
+                    <button class="translate-srt-btn" id="translateFulltextBtn">🔄 ترجمه</button>
+                    <button class="download-btn" id="downloadFulltextTxtBtn">📥 دانلود TXT</button>
+                    <button class="download-btn" id="downloadFulltextDocxBtn">📄 دانلود DOCX</button>
+                  </div>
+                  <p class="fulltext" id="fulltext" style="line-height: 1.8; text-align: right; padding: 16px; background: #f5f5f5; border-radius: 8px; max-height: 500px; overflow-y: auto;"></p>
+                </div>
+              </div>
+              <div class="tab-content" id="summary-tab">
+                <div class="srt-container">
+                  <div class="srt-controls">
+                    <label for="summaryLanguage" class="srt-language-label">زبان ترجمه:</label>
+                    <select id="summaryLanguage" class="srt-language-select">
+                      <option value="original">زبان اصلی</option>
+                      <option value="fa">فارسی</option>
+                      <option value="en">English</option>
+                      <option value="ar">العربية</option>
+                      <option value="es">Español</option>
+                      <option value="fr">Français</option>
+                      <option value="de">Deutsch</option>
+                      <option value="it">Italiano</option>
+                      <option value="ru">Русский</option>
+                      <option value="tr">Türkçe</option>
+                      <option value="zh">中文</option>
+                      <option value="ja">日本語</option>
+                      <option value="ko">한국어</option>
+                    </select>
+                    <button class="translate-srt-btn" id="translateSummaryBtn">🔄 ترجمه</button>
+                    <button class="download-btn" id="downloadSummaryTxtBtn">📥 دانلود TXT</button>
+                    <button class="download-btn" id="downloadSummaryDocxBtn">📄 دانلود DOCX</button>
+                  </div>
+                  <p class="summary-text" id="summaryText" style="line-height: 1.8; text-align: right; padding: 16px; background: #f5f5f5; border-radius: 8px; max-height: 500px; overflow-y: auto;"></p>
+                </div>
+              </div>
+              <div class="tab-content" id="srt-tab">
+                <div class="srt-container" id="srtContainer">
+                  <div class="srt-controls">
+                    <label for="srtLanguage" class="srt-language-label">زبان زیرنویس:</label>
+                    <select id="srtLanguage" class="srt-language-select">
+                      <option value="original">زبان اصلی</option>
+                      <option value="fa">فارسی</option>
+                      <option value="en">English</option>
+                      <option value="ar">العربية</option>
+                      <option value="es">Español</option>
+                      <option value="fr">Français</option>
+                      <option value="de">Deutsch</option>
+                      <option value="it">Italiano</option>
+                      <option value="ru">Русский</option>
+                      <option value="tr">Türkçe</option>
+                      <option value="zh">中文</option>
+                      <option value="ja">日本語</option>
+                      <option value="ko">한국어</option>
+                    </select>
+                    <button class="translate-srt-btn" id="translateSrtBtn">🔄 ترجمه</button>
+                  </div>
+                  <button class="download-btn" id="downloadSrtBtn">📥 دانلود فایل SRT</button>
+                  <div class="srt-preview" id="srtPreview" style="padding: 16px; background: #f5f5f5; border-radius: 8px; max-height: 500px; overflow-y: auto; font-family: monospace; white-space: pre-wrap;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>

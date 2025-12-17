@@ -1102,8 +1102,10 @@ async function processSummarizeFile(file, sessionId) {
     const summary = summarizeData.summary || summarizeData;
     const keyPoints = summarizeData.keyPoints || [];
     
-    // Show summary modal
-    showSummaryModal(summary, keyPoints, transcription, file.name, sessionId, transcribeData.language || 'en');
+    // Display results in result section (like extension)
+    displayResults(summary, transcription, transcribeData.segments || [], {
+      originalLanguage: transcribeData.language || 'en'
+    });
     
     // Record usage (estimate from file size: ~1MB per minute)
     const estimatedDurationMinutes = Math.ceil((file.size / 1024 / 1024) * 1.2);
@@ -1181,8 +1183,10 @@ async function processFullTextFile(file, sessionId) {
       throw new Error('متن دریافت نشد. پاسخ API: ' + JSON.stringify(transcribeData).substring(0, 200));
     }
     
-    // Show full text modal
-    showFullTextModal(transcription, file.name, sessionId, transcribeData.language || 'en');
+    // Display results in result section (like extension)
+    displayResults(null, transcription, transcribeData.segments || [], {
+      originalLanguage: transcribeData.language || 'en'
+    });
     
     // Record usage (estimate from file size: ~1MB per minute)
     const estimatedDurationMinutes = Math.ceil((file.size / 1024 / 1024) * 1.2);
@@ -1319,8 +1323,10 @@ async function processSummarize(url, sessionId) {
     const summary = summarizeData.summary || summarizeData;
     const keyPoints = summarizeData.keyPoints || [];
     
-    // Show summary modal
-    showSummaryModal(summary, keyPoints, transcription, youtubeData.title || 'ویدئو یوتیوب', sessionId, transcribeData.language || 'en');
+    // Display results in result section (like extension)
+    displayResults(summary, transcription, transcribeData.segments || [], {
+      originalLanguage: transcribeData.language || 'en'
+    });
     
     // Record usage
     const duration = youtubeData.duration ? Math.ceil(youtubeData.duration / 60) : 0;
@@ -1430,8 +1436,10 @@ async function processFullText(url, sessionId) {
       throw new Error('متن دریافت نشد. پاسخ API: ' + JSON.stringify(transcribeData).substring(0, 200));
     }
     
-    // Show full text modal
-    showFullTextModal(transcription, youtubeData.title || 'ویدئو یوتیوب', sessionId, transcribeData.language || 'en');
+    // Display results in result section (like extension)
+    displayResults(null, transcription, transcribeData.segments || [], {
+      originalLanguage: transcribeData.language || 'en'
+    });
     
     // Record usage
     const duration = youtubeData.duration ? Math.ceil(youtubeData.duration / 60) : 0;
@@ -1459,7 +1467,262 @@ async function processFullText(url, sessionId) {
   }
 }
 
-// Show summary modal
+// Display Results (like extension) - replaces modal approach
+function displayResults(summary, fullText, segments = null, options = {}) {
+  const resultSection = document.getElementById('resultSection');
+  if (!resultSection) {
+    console.error('resultSection not found in DOM');
+    return;
+  }
+  
+  // Display summary - handle both object and string formats
+  let summaryTextContent = 'خلاصه در دسترس نیست';
+  if (summary) {
+    if (typeof summary === 'string') {
+      summaryTextContent = summary;
+    } else if (typeof summary === 'object' && summary.summary) {
+      summaryTextContent = summary.summary;
+    } else if (typeof summary === 'object' && summary.keyPoints) {
+      // If it's an object with keyPoints, format it nicely
+      const keyPoints = Array.isArray(summary.keyPoints) ? summary.keyPoints : [];
+      const summaryPart = summary.summary || '';
+      if (keyPoints.length > 0) {
+        summaryTextContent = summaryPart + '\n\n' + keyPoints.map((kp, i) => `${i + 1}. ${kp}`).join('\n');
+      } else {
+        summaryTextContent = summaryPart || JSON.stringify(summary);
+      }
+    } else {
+      summaryTextContent = JSON.stringify(summary);
+    }
+  }
+  
+  const summaryTextEl = document.getElementById('summaryText');
+  if (summaryTextEl) {
+    summaryTextEl.textContent = summaryTextContent;
+  }
+
+  // Store original texts for translation
+  window.originalFullText = fullText;
+  window.originalSummary = typeof summary === 'string' ? summary : (summary?.summary || summaryTextContent);
+  window.originalTextLanguage = (options && options.originalLanguage) || 'en';
+
+  // Display full text
+  const fulltextEl = document.getElementById('fulltext');
+  if (fulltextEl) {
+    fulltextEl.textContent = fullText;
+  }
+
+  // Generate and display SRT
+  if (segments && Array.isArray(segments) && segments.length > 0) {
+    const validSegments = segments.filter(s => 
+      s && 
+      typeof s.start === 'number' && 
+      typeof s.end === 'number' && 
+      s.start >= 0 && 
+      s.end > s.start &&
+      s.text && 
+      s.text.trim().length > 0
+    );
+    
+    if (validSegments.length > 0) {
+      const srtContent = generateSRT(validSegments);
+      const srtPreviewEl = document.getElementById('srtPreview');
+      if (srtPreviewEl) {
+        srtPreviewEl.textContent = srtContent;
+      }
+      window.currentSrtContent = srtContent;
+    } else {
+      // Create simple SRT with full text
+      const wordCount = fullText.split(/\s+/).length;
+      const estimatedDuration = Math.max(wordCount / 2.5, 10);
+      const simpleSrt = `1\n00:00:00,000 --> ${formatSRTTime(estimatedDuration)}\n${fullText}\n\n`;
+      const srtPreviewEl = document.getElementById('srtPreview');
+      if (srtPreviewEl) {
+        srtPreviewEl.textContent = simpleSrt;
+      }
+      window.currentSrtContent = simpleSrt;
+    }
+  } else {
+    // If no segments, create a simple SRT with full text
+    const wordCount = fullText.split(/\s+/).length;
+    const estimatedDuration = Math.max(wordCount / 2.5, 10);
+    const simpleSrt = `1\n00:00:00,000 --> ${formatSRTTime(estimatedDuration)}\n${fullText}\n\n`;
+    const srtPreviewEl = document.getElementById('srtPreview');
+    if (srtPreviewEl) {
+      srtPreviewEl.textContent = simpleSrt;
+    }
+    window.currentSrtContent = simpleSrt;
+  }
+
+  // Store original SRT for translation
+  window.originalSrtContent = window.currentSrtContent;
+  window.originalSrtSegments = segments;
+  window.originalSrtLanguage = (options && options.originalLanguage) || 'en';
+  window.availableLanguages = (options && options.availableLanguages) || [];
+
+  // Show result section
+  resultSection.style.display = 'block';
+  
+  // Switch to fulltext tab (first tab)
+  switchTab('fulltext');
+  
+  // Scroll result section into view
+  setTimeout(() => {
+    resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 100);
+}
+
+// Switch tab function (like extension)
+function switchTab(tabName) {
+  // Remove active class from all tabs and contents
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+  
+  // Add active class to selected tab and content
+  const tabBtn = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
+  const tabContent = document.getElementById(`${tabName}-tab`);
+  
+  if (tabBtn) tabBtn.classList.add('active');
+  if (tabContent) tabContent.classList.add('active');
+}
+
+// Format SRT time
+function formatSRTTime(seconds) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  const ms = Math.floor((seconds % 1) * 1000);
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
+}
+
+// Generate SRT from segments
+function generateSRT(segments) {
+  return segments.map((segment, index) => {
+    const start = formatSRTTime(segment.start);
+    const end = formatSRTTime(segment.end);
+    return `${index + 1}\n${start} --> ${end}\n${segment.text}\n\n`;
+  }).join('');
+}
+
+// Setup tab switching
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tabName = btn.dataset.tab;
+      switchTab(tabName);
+    });
+  });
+  
+  // Copy button
+  const copyBtn = document.getElementById('copyBtn');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', () => {
+      const activeTab = document.querySelector('.tab-content.active');
+      if (activeTab) {
+        const text = activeTab.querySelector('p, div')?.textContent || '';
+        navigator.clipboard.writeText(text).then(() => {
+          showMessage('متن کپی شد!', 'success');
+        }).catch(() => {
+          showMessage('خطا در کپی کردن', 'error');
+        });
+      }
+    });
+  }
+  
+  // Download buttons
+  setupDownloadButtons();
+});
+
+// Setup download buttons for TXT and DOCX
+function setupDownloadButtons() {
+  // Download fulltext as TXT
+  const downloadFulltextTxtBtn = document.getElementById('downloadFulltextTxtBtn');
+  if (downloadFulltextTxtBtn) {
+    downloadFulltextTxtBtn.addEventListener('click', () => {
+      const fulltext = document.getElementById('fulltext')?.textContent || '';
+      if (fulltext) {
+        downloadAsTxt(fulltext, 'متن_کامل');
+      }
+    });
+  }
+  
+  // Download fulltext as DOCX
+  const downloadFulltextDocxBtn = document.getElementById('downloadFulltextDocxBtn');
+  if (downloadFulltextDocxBtn) {
+    downloadFulltextDocxBtn.addEventListener('click', () => {
+      const fulltext = document.getElementById('fulltext')?.textContent || '';
+      if (fulltext) {
+        downloadAsDocx(fulltext, 'متن_کامل');
+      }
+    });
+  }
+  
+  // Download summary as TXT
+  const downloadSummaryTxtBtn = document.getElementById('downloadSummaryTxtBtn');
+  if (downloadSummaryTxtBtn) {
+    downloadSummaryTxtBtn.addEventListener('click', () => {
+      const summary = document.getElementById('summaryText')?.textContent || '';
+      if (summary) {
+        downloadAsTxt(summary, 'خلاصه');
+      }
+    });
+  }
+  
+  // Download summary as DOCX
+  const downloadSummaryDocxBtn = document.getElementById('downloadSummaryDocxBtn');
+  if (downloadSummaryDocxBtn) {
+    downloadSummaryDocxBtn.addEventListener('click', () => {
+      const summary = document.getElementById('summaryText')?.textContent || '';
+      if (summary) {
+        downloadAsDocx(summary, 'خلاصه');
+      }
+    });
+  }
+  
+  // Download SRT
+  const downloadSrtBtn = document.getElementById('downloadSrtBtn');
+  if (downloadSrtBtn) {
+    downloadSrtBtn.addEventListener('click', () => {
+      const srtContent = window.currentSrtContent || '';
+      if (srtContent) {
+        downloadAsTxt(srtContent, 'زیرنویس', 'srt');
+      }
+    });
+  }
+}
+
+// Download as TXT
+function downloadAsTxt(content, filename, extension = 'txt') {
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${filename}.${extension}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Download as DOCX (simple implementation - creates a basic DOCX)
+function downloadAsDocx(content, filename) {
+  // For now, create a simple DOCX-like file
+  // In production, use a proper DOCX library or API endpoint
+  const blob = new Blob([content], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${filename}.docx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  
+  // Note: This creates a basic file. For proper DOCX, use a library like docx.js or create an API endpoint
+  showMessage('توجه: این فایل DOCX ساده است. برای فایل DOCX کامل، از API استفاده کنید.', 'info');
+}
+
+// OLD: Show summary modal (kept for backward compatibility but not used)
 function showSummaryModal(summary, keyPoints, fullText, title, sessionId, originalLanguage) {
   let modal = document.getElementById('summaryModal');
   if (!modal) {
