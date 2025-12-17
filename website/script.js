@@ -1844,10 +1844,29 @@ function showQualityModal(formats, url, sessionId, isPro, type) {
 // Download file
 async function downloadFile(url, format, sessionId, type) {
   try {
-    showMessage('در حال آماده‌سازی دانلود...', 'info');
+    showMessage('در حال دانلود...', 'info');
     
     const videoId = extractVideoId(url);
     const quality = format.quality || format.format_id || format.itag;
+    
+    // Get video title first for better filename
+    let videoTitle = `youtube_${videoId}`;
+    try {
+      const titleResponse = await fetch(`${API_BASE_URL}/api/youtube-title`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoId, url })
+      });
+      if (titleResponse.ok) {
+        const titleData = await titleResponse.json();
+        if (titleData.title) {
+          // Clean title for filename (remove invalid characters)
+          videoTitle = titleData.title.replace(/[<>:"/\\|?*]/g, '_').substring(0, 50);
+        }
+      }
+    } catch (e) {
+      console.warn('Could not get video title:', e);
+    }
     
     const response = await fetch(`${API_BASE_URL}/api/youtube-download`, {
       method: 'POST',
@@ -1875,39 +1894,36 @@ async function downloadFile(url, format, sessionId, type) {
       }
     }
     
-    // API returns file directly, not JSON
-    const blob = await response.blob();
-    const downloadUrl = URL.createObjectURL(blob);
+    // Get filename from Content-Disposition header if available
+    const contentDisposition = response.headers.get('content-disposition');
+    let filename = `${videoTitle}_${quality}`;
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+      if (filenameMatch && filenameMatch[1]) {
+        filename = filenameMatch[1].replace(/['"]/g, '');
+      }
+    }
     
-    // Create download link
-    const link = document.createElement('a');
-    link.href = downloadUrl;
+    // Download file directly (not blob URL) for proper browser download history
+    const blob = await response.blob();
     const extension = type === 'video' ? 'mp4' : 'mp3';
-    link.download = `youtube_${videoId}_${quality}.${extension}`;
+    const fullFilename = filename.endsWith(extension) ? filename : `${filename}.${extension}`;
+    
+    // Create download link with proper attributes
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = fullFilename;
+    link.style.display = 'none';
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(downloadUrl);
     
-    showMessage('دانلود با موفقیت شروع شد!', 'success');
+    // Clean up after a delay
+    setTimeout(() => {
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+    }, 100);
     
-    // Get video title for metadata
-    let videoTitle = `ویدئو یوتیوب ${videoId}`;
-    try {
-      const titleResponse = await fetch(`${API_BASE_URL}/api/youtube-title`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoId, url })
-      });
-      if (titleResponse.ok) {
-        const titleData = await titleResponse.json();
-        if (titleData.title) {
-          videoTitle = titleData.title;
-        }
-      }
-    } catch (e) {
-      console.warn('Could not get video title:', e);
-    }
+    // videoTitle already fetched above
     
     // NOTE: Download recording is now done atomically in /api/youtube-download endpoint
     // No need to call recordDownload separately - it's already recorded before download started
