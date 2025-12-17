@@ -22,14 +22,22 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function initDashboard() {
-  const savedSession = localStorage.getItem('cutup_session');
+  // Check for session in URL first (from OAuth callback), then localStorage
+  const urlParams = new URLSearchParams(window.location.search);
+  const sessionFromUrl = urlParams.get('session');
+  
+  let savedSession = sessionFromUrl || localStorage.getItem('cutup_session');
+  
   if (!savedSession) {
     window.location.href = '/';
     return;
   }
   
   currentSession = savedSession;
-  localStorage.setItem('cutup_session', savedSession);
+  // Save to localStorage for future use
+  if (sessionFromUrl) {
+    localStorage.setItem('cutup_session', savedSession);
+  }
   
   // Load cart
   loadCart();
@@ -40,8 +48,7 @@ async function initDashboard() {
   // Load subscription info
   await loadSubscriptionInfo();
   
-  // Update dashboard from localStorage immediately
-  updateDashboardFromLocalStorage();
+  // Dashboard is now backend-driven, no need for localStorage update
   
   // Setup navigation
   setupNavigation();
@@ -54,15 +61,9 @@ async function initDashboard() {
   loadFinancialSection();
   loadSupportSection();
   
-  // Auto-refresh from localStorage every 2 seconds (fast polling)
-  setInterval(() => {
-    updateDashboardFromLocalStorage();
-  }, 2000);
-  
-  // Auto-refresh subscription info every 5 seconds (aggressive polling)
+  // Auto-refresh subscription info every 5 seconds (backend-driven)
   setInterval(async () => {
     await loadSubscriptionInfo();
-    updateDashboardFromLocalStorage();
   }, 5000);
   
   // Refresh when page becomes visible (user switches back to tab)
@@ -85,8 +86,8 @@ async function initDashboard() {
       const activityTime = parseInt(lastActivity);
       if (activityTime > lastCheckTime) {
         lastCheckTime = activityTime;
-        console.log('[dashboard] Activity detected, updating from localStorage');
-        updateDashboardFromLocalStorage();
+        console.log('[dashboard] Activity detected, refreshing from API');
+        // Refresh from API (backend-driven)
         loadSubscriptionInfo();
       }
     }
@@ -95,9 +96,7 @@ async function initDashboard() {
   // Listen for cutupDownloadRecorded event (from main page)
   window.addEventListener('cutupDownloadRecorded', async (event) => {
     console.log('[dashboard] Received cutupDownloadRecorded event:', event.detail);
-    // Update immediately from localStorage
-    updateDashboardFromLocalStorage();
-    // Also refresh from API
+    // Refresh from API (backend-driven)
     await loadSubscriptionInfo();
   });
   
@@ -362,7 +361,7 @@ function updateDashboardFromLocalStorage() {
 
 async function loadSubscriptionInfo() {
   try {
-    // Try to load from API first (for plan info, limits, etc.)
+    // **BACKEND-DRIVEN**: Load everything from API (single source of truth)
     const response = await fetch(`${API_BASE_URL}/api/subscription?action=info&session=${currentSession}`, {
       headers: {
         'X-Session-Id': currentSession
@@ -371,16 +370,45 @@ async function loadSubscriptionInfo() {
     
     if (response.ok) {
       subscriptionInfo = await response.json();
-      console.log('[dashboard] Subscription info loaded from API:', subscriptionInfo);
+      console.log('[dashboard] Subscription info loaded from API (backend-driven):', subscriptionInfo);
+      
+      // Ensure usage structure exists
+      if (!subscriptionInfo.usage) {
+        subscriptionInfo.usage = {
+          daily: { date: new Date().toDateString(), minutes: 0 },
+          monthly: { month: new Date().getMonth(), year: new Date().getFullYear(), minutes: 0 },
+          downloads: {
+            audio: { count: 0, limit: 3 },
+            video: { count: 0, limit: 3 }
+          }
+        };
+      }
+      
+      // Calculate remaining minutes
+      const monthlyLimit = subscriptionInfo.usage.monthlyLimit || 20;
+      const usedMinutes = subscriptionInfo.usage.monthly?.minutes || 0;
+      subscriptionInfo.usage.monthly.remaining = Math.max(0, monthlyLimit - usedMinutes);
+      
+      console.log('[dashboard] Usage from API:', {
+        audioDownloads: subscriptionInfo.usage.downloads?.audio?.count || 0,
+        videoDownloads: subscriptionInfo.usage.downloads?.video?.count || 0,
+        usedMinutes: usedMinutes,
+        remainingMinutes: subscriptionInfo.usage.monthly.remaining
+      });
+      
+      // Update dashboard UI from API data (backend-driven)
+      updateDashboard();
+      loadPlans();
     } else {
       const errorText = await response.text().catch(() => '');
       console.error('[dashboard] Failed to load subscription info from API:', response.status, errorText);
-      // Create a default subscriptionInfo structure if API fails
+      
+      // Fallback: Create default structure (but don't use localStorage)
       subscriptionInfo = {
         plan: 'free',
         planName: 'رایگان',
         usage: {
-          monthly: { minutes: 0 },
+          monthly: { minutes: 0, remaining: 20 },
           monthlyLimit: 20,
           downloads: {
             audio: { count: 0, limit: 3 },
@@ -388,76 +416,25 @@ async function loadSubscriptionInfo() {
           }
         }
       };
+      updateDashboard();
+      loadPlans();
     }
-    
-    // Get local usage from history (this is the source of truth for counts)
-    const localUsage = getUsageFromLocalHistory();
-    console.log('[dashboard] Local usage from history:', localUsage);
-    
-    // Get plan limits based on user's plan
-    const plan = subscriptionInfo?.plan || 'free';
-    const planLimits = {
-      free: { audio: 3, video: 3, minutes: 20 },
-      starter: { audio: 20, video: 20, minutes: 120 },
-      pro: { audio: 100, video: 100, minutes: 300 },
-      business: { audio: null, video: null, minutes: 600 } // null = unlimited
-    };
-    
-    const limits = planLimits[plan] || planLimits.free;
-    
-    // Merge local usage into subscriptionInfo
-    if (subscriptionInfo && subscriptionInfo.usage) {
-      // Update download counts from localStorage
-      if (!subscriptionInfo.usage.downloads) {
-        subscriptionInfo.usage.downloads = {};
-      }
-      if (!subscriptionInfo.usage.downloads.audio) {
-        subscriptionInfo.usage.downloads.audio = { count: 0, limit: limits.audio };
-      }
-      if (!subscriptionInfo.usage.downloads.video) {
-        subscriptionInfo.usage.downloads.video = { count: 0, limit: limits.video };
-      }
-      
-      // Set limits based on plan
-      subscriptionInfo.usage.downloads.audio.limit = limits.audio;
-      subscriptionInfo.usage.downloads.video.limit = limits.video;
-      
-      // Update counts from localStorage
-      subscriptionInfo.usage.downloads.audio.count = localUsage.audioDownloads;
-      subscriptionInfo.usage.downloads.video.count = localUsage.videoDownloads;
-      
-      // Update minutes from localStorage
-      subscriptionInfo.usage.monthly.minutes = localUsage.usedMinutes;
-      subscriptionInfo.usage.monthlyLimit = limits.minutes;
-      
-      // Recalculate remaining minutes
-      subscriptionInfo.usage.monthly.remaining = Math.max(0, limits.minutes - localUsage.usedMinutes);
-    }
-    
-    console.log('[dashboard] Final subscription info with local usage:', subscriptionInfo);
-    updateDashboard();
-    // Also update directly from localStorage to ensure UI is updated
-    updateDashboardFromLocalStorage();
-    loadPlans();
   } catch (error) {
     console.error('[dashboard] Error loading subscription info:', error);
-    // Fallback to local usage only
-    const localUsage = getUsageFromLocalHistory();
+    // Fallback: Create default structure
     subscriptionInfo = {
       plan: 'free',
       planName: 'رایگان',
       usage: {
-        monthly: { minutes: localUsage.usedMinutes, remaining: Math.max(0, 20 - localUsage.usedMinutes) },
+        monthly: { minutes: 0, remaining: 20 },
         monthlyLimit: 20,
         downloads: {
-          audio: { count: localUsage.audioDownloads, limit: 3 },
-          video: { count: localUsage.videoDownloads, limit: 3 }
+          audio: { count: 0, limit: 3 },
+          video: { count: 0, limit: 3 }
         }
       }
     };
     updateDashboard();
-    // Also update directly from localStorage
-    updateDashboardFromLocalStorage();
   }
 }
 

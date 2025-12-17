@@ -164,7 +164,7 @@ function getUserUsage(userId, sessionId = null) {
 }
 
 // Check if user can use feature
-function canUseFeature(userId, feature, videoDurationMinutes = 0) {
+export function canUseFeature(userId, feature, videoDurationMinutes = 0) {
   const subscription = getUserSubscription(userId);
   const usage = getUserUsage(userId);
   const plan = PLANS[subscription.plan];
@@ -307,7 +307,7 @@ function recordUsage(userId, minutes, type = 'transcription', metadata = {}) {
 }
 
 // Record download
-function recordDownload(userId, type, metadata = {}, sessionId = null) {
+export function recordDownload(userId, type, metadata = {}, sessionId = null) {
   // Get usage with reset logic for h.asgarizade@gmail.com
   const usage = getUserUsage(userId, sessionId);
   const currentMonth = new Date().getMonth();

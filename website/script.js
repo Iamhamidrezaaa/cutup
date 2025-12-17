@@ -1909,40 +1909,48 @@ async function downloadFile(url, format, sessionId, type) {
       console.warn('Could not get video title:', e);
     }
     
-    // Record download count
+    // NOTE: Download recording is now done atomically in /api/youtube-download endpoint
+    // No need to call recordDownload separately - it's already recorded before download started
+    
+    // Get updated usage from API to show toast message
     try {
-      const recordResponse = await fetch(`${API_BASE_URL}/api/subscription?action=recordDownload`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Session-Id': sessionId
-        },
-        body: JSON.stringify({ 
-          type: type === 'video' ? 'video' : 'audio',
-          metadata: {
-            title: videoTitle,
-            quality: quality,
-            url: url,
-            videoId: videoId
-          }
-        })
+      const usageResponse = await fetch(`${API_BASE_URL}/api/subscription?action=info&session=${sessionId}`, {
+        headers: { 'X-Session-Id': sessionId }
       });
-      
-      if (recordResponse.ok) {
-        const recordData = await recordResponse.json();
-        console.log('Download recorded successfully', recordData);
-        // Signal dashboard to refresh by updating localStorage
-        localStorage.setItem('cutup_last_activity', Date.now().toString());
-      } else {
-        const errorText = await recordResponse.text().catch(() => '');
-        console.error('Failed to record download:', recordResponse.status, errorText);
+      if (usageResponse.ok) {
+        const usageData = await usageResponse.json();
+        const downloadType = type === 'audio' ? 'موزیک' : 'ویدئو';
+        const audioCount = usageData.usage?.downloads?.audio?.count || 0;
+        const audioLimit = usageData.usage?.downloads?.audio?.limit || null;
+        const videoCount = usageData.usage?.downloads?.video?.count || 0;
+        const videoLimit = usageData.usage?.downloads?.video?.limit || null;
+        
+        // Show toast with usage info
+        if (type === 'audio' && audioLimit !== null) {
+          showMessage(`دانلود ${downloadType} ثبت شد: ${audioCount} از ${audioLimit}`, 'success');
+        } else if (type === 'video' && videoLimit !== null) {
+          showMessage(`دانلود ${downloadType} ثبت شد: ${videoCount} از ${videoLimit}`, 'success');
+        } else {
+          showMessage(`دانلود ${downloadType} ثبت شد!`, 'success');
+        }
       }
-    } catch (error) {
-      console.error('Error recording download:', error);
-      // Don't throw - download was successful, just recording failed
+    } catch (e) {
+      console.warn('Could not get usage info for toast:', e);
     }
     
-    // Save to dashboard
+    // Signal dashboard to refresh by updating localStorage
+    localStorage.setItem('cutup_last_activity', Date.now().toString());
+    
+    // Dispatch event for dashboard refresh (if dashboard is open in another tab)
+    window.dispatchEvent(new CustomEvent('cutupDownloadRecorded', {
+      detail: {
+        type: type === 'video' ? 'downloadVideo' : 'downloadAudio',
+        videoId: videoId,
+        url: url
+      }
+    }));
+    
+    // Save to dashboard (for history display)
     await saveToDashboard(sessionId, {
       title: videoTitle,
       type: type === 'video' ? 'downloadVideo' : 'downloadAudio',

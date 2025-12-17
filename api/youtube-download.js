@@ -1,5 +1,6 @@
 // API endpoint for downloading YouTube video/audio in different qualities
 // Uses yt-dlp to extract video/audio from YouTube videos
+// **ENFORCEMENT POINT**: All download limits are enforced here atomically
 
 import { handleCORS, setCORSHeaders } from './cors.js';
 import { exec } from 'child_process';
@@ -7,8 +8,28 @@ import { promisify } from 'util';
 import { unlinkSync, existsSync, readFileSync, statSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { sessions } from './auth.js';
+
+// Import subscription functions for atomic check + record
+// We'll need to access these functions - for now, we'll duplicate the logic
+// In production, refactor to a shared module
 
 const execAsync = promisify(exec);
+
+// Helper to get userId from session
+function getUserIdFromSession(sessionId) {
+  if (!sessionId) return null;
+  const session = sessions.get(sessionId);
+  if (!session || !session.user) return null;
+  
+  // Check if session expired
+  if (session.expiresAt && Date.now() > session.expiresAt) {
+    sessions.delete(sessionId);
+    return null;
+  }
+  
+  return session.user.id;
+}
 
 export default async function handler(req, res) {
   // Handle CORS
@@ -20,15 +41,61 @@ export default async function handler(req, res) {
   }
 
   try {
+    // **STEP 1: Verify Session**
+    const sessionId = req.headers['x-session-id'] || req.body?.session;
+    if (!sessionId) {
+      setCORSHeaders(res);
+      return res.status(401).json({ error: 'No session provided. Please log in first.' });
+    }
+
+    const userId = getUserIdFromSession(sessionId);
+    if (!userId) {
+      setCORSHeaders(res);
+      return res.status(401).json({ error: 'Invalid or expired session. Please log in again.' });
+    }
+
+    // **STEP 2: Parse request body**
     const { videoId, url, type, quality } = req.body;
 
     if (!videoId && !url) {
+      setCORSHeaders(res);
       return res.status(400).json({ error: 'videoId or url is required' });
     }
 
     if (!type || !['audio', 'video'].includes(type)) {
+      setCORSHeaders(res);
       return res.status(400).json({ error: 'type must be "audio" or "video"' });
     }
+
+    // **STEP 3: Check subscription limits ATOMICALLY (before download)**
+    // Import subscription functions (atomic enforcement)
+    const { canUseFeature, recordDownload } = await import('./subscription.js');
+    
+    // Map type to feature name
+    const feature = type === 'audio' ? 'downloadAudio' : 'downloadVideo';
+    
+    // Check if user can download (atomic check)
+    const canDownload = canUseFeature(userId, feature, 0);
+    if (!canDownload.allowed) {
+      setCORSHeaders(res);
+      return res.status(403).json({ 
+        error: 'Download limit exceeded',
+        message: canDownload.reason || 'حد مجاز دانلود شما تمام شده است'
+      });
+    }
+
+    // **STEP 4: Record download ATOMICALLY (before actual download)**
+    // This ensures usage is recorded even if download fails later
+    const metadata = {
+      title: `YouTube ${type}`,
+      quality: quality,
+      url: url,
+      videoId: videoId
+    };
+    
+    recordDownload(userId, type, metadata, sessionId);
+    
+    console.log(`[youtube-download] User ${userId} authorized for ${type} download, usage recorded atomically`);
 
     // Extract video ID from URL if provided
     let finalVideoId = videoId;
