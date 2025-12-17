@@ -100,6 +100,13 @@ async function initDashboard() {
     await loadSubscriptionInfo();
   });
   
+  // Listen for cutupUsageRecorded event (from main page - for transcription/summarization)
+  window.addEventListener('cutupUsageRecorded', async (event) => {
+    console.log('[dashboard] Received cutupUsageRecorded event:', event.detail);
+    // Refresh from API (backend-driven)
+    await loadSubscriptionInfo();
+  });
+  
   // Listen for storage events (cross-tab sync) - ONLY refresh from API (backend-driven)
   window.addEventListener('storage', async (event) => {
     if (event.key === 'cutup_last_activity') {

@@ -889,7 +889,10 @@ async function checkSubscriptionLimit(sessionId, feature, videoDurationMinutes =
 // Handle summarize
 summarizeBtnMain.addEventListener('click', async () => {
   const sessionId = checkLogin();
-  if (!sessionId) return;
+  if (!sessionId) {
+    showMessage('لطفاً ابتدا وارد حساب کاربری خود شوید', 'error');
+    return;
+  }
   
   const url = youtubeUrlInput.value.trim();
   const file = audioFileInput && audioFileInput.files[0];
@@ -899,22 +902,43 @@ summarizeBtnMain.addEventListener('click', async () => {
     return;
   }
   
-  // Estimate duration for limit check
+  // Estimate duration for limit check (like extension)
   let estimatedDurationMinutes = 0;
-  if (file) {
-    // Estimate from file size: ~1MB per minute
-    estimatedDurationMinutes = Math.ceil((file.size / 1024 / 1024) * 1.2);
-  } else if (isYouTubeUrl(url)) {
-    // We'll get actual duration from YouTube API, but estimate 5 minutes for now
-    estimatedDurationMinutes = 5;
+  if (url && isYouTubeUrl(url)) {
+    // Try to get actual duration from YouTube (like extension)
+    try {
+      const videoId = extractVideoId(url);
+      const response = await fetch(`${API_BASE_URL}/api/youtube-title`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoId, url })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.duration) {
+          estimatedDurationMinutes = Math.ceil(data.duration / 60); // Convert seconds to minutes
+        }
+      }
+    } catch (e) {
+      console.warn('Could not get video duration:', e);
+      estimatedDurationMinutes = 5; // Fallback estimate
+    }
+  } else if (file) {
+    // Estimate from file size (like extension)
+    estimatedDurationMinutes = Math.ceil((file.size / 1024 / 1024) * 1.2); // Add 20% buffer
   }
   
-  // Check subscription limit for free users
-  const limitCheck = await checkSubscriptionLimit(sessionId, 'summarization', estimatedDurationMinutes);
-  if (!limitCheck.allowed) {
-    showMessage(limitCheck.reason || 'حد مجاز شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
-    window.open(`dashboard.html?session=${sessionId}`, '_blank');
-    return;
+  // Check subscription limit (like extension - only block if explicitly not allowed)
+  try {
+    const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', estimatedDurationMinutes);
+    if (limitCheck && !limitCheck.allowed && limitCheck.reason && !limitCheck.reason.includes('proceeding anyway')) {
+      showMessage(limitCheck.reason + '\n\nلطفاً پلن خود را ارتقا دهید یا بعداً تلاش کنید.', 'error');
+      window.open(`dashboard.html?session=${sessionId}`, '_blank');
+      return;
+    }
+  } catch (error) {
+    console.error('Error checking subscription limit:', error);
+    // Continue anyway if check fails (like extension)
   }
   
   // Process summarize and save to dashboard
@@ -932,7 +956,10 @@ summarizeBtnMain.addEventListener('click', async () => {
 // Handle full text
 fullTextBtnMain.addEventListener('click', async () => {
   const sessionId = checkLogin();
-  if (!sessionId) return;
+  if (!sessionId) {
+    showMessage('لطفاً ابتدا وارد حساب کاربری خود شوید', 'error');
+    return;
+  }
   
   const url = youtubeUrlInput.value.trim();
   const file = audioFileInput && audioFileInput.files[0];
@@ -942,22 +969,43 @@ fullTextBtnMain.addEventListener('click', async () => {
     return;
   }
   
-  // Estimate duration for limit check
+  // Estimate duration for limit check (like extension)
   let estimatedDurationMinutes = 0;
-  if (file) {
-    // Estimate from file size: ~1MB per minute
-    estimatedDurationMinutes = Math.ceil((file.size / 1024 / 1024) * 1.2);
-  } else if (isYouTubeUrl(url)) {
-    // We'll get actual duration from YouTube API, but estimate 5 minutes for now
-    estimatedDurationMinutes = 5;
+  if (url && isYouTubeUrl(url)) {
+    // Try to get actual duration from YouTube (like extension)
+    try {
+      const videoId = extractVideoId(url);
+      const response = await fetch(`${API_BASE_URL}/api/youtube-title`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoId, url })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.duration) {
+          estimatedDurationMinutes = Math.ceil(data.duration / 60); // Convert seconds to minutes
+        }
+      }
+    } catch (e) {
+      console.warn('Could not get video duration:', e);
+      estimatedDurationMinutes = 5; // Fallback estimate
+    }
+  } else if (file) {
+    // Estimate from file size (like extension)
+    estimatedDurationMinutes = Math.ceil((file.size / 1024 / 1024) * 1.2); // Add 20% buffer
   }
   
-  // Check subscription limit for free users
-  const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', estimatedDurationMinutes);
-  if (!limitCheck.allowed) {
-    showMessage(limitCheck.reason || 'حد مجاز شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
-    window.open(`dashboard.html?session=${sessionId}`, '_blank');
-    return;
+  // Check subscription limit (like extension - only block if explicitly not allowed)
+  try {
+    const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', estimatedDurationMinutes);
+    if (limitCheck && !limitCheck.allowed && limitCheck.reason && !limitCheck.reason.includes('proceeding anyway')) {
+      showMessage(limitCheck.reason + '\n\nلطفاً پلن خود را ارتقا دهید یا بعداً تلاش کنید.', 'error');
+      window.open(`dashboard.html?session=${sessionId}`, '_blank');
+      return;
+    }
+  } catch (error) {
+    console.error('Error checking subscription limit:', error);
+    // Continue anyway if check fails (like extension)
   }
   
   // Process transcription and save to dashboard
@@ -1329,16 +1377,21 @@ async function processFullText(url, sessionId) {
       throw new Error('خطا در استخراج صوت از ویدئو');
     }
     
-    // Get actual duration and check limit
+    // Get actual duration and check limit (like extension - continue if check fails)
     const durationSeconds = youtubeData.duration || 0;
     const durationMinutes = Math.ceil(durationSeconds / 60);
     
-    // Check subscription limit with actual duration
-    const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', durationMinutes);
-    if (!limitCheck.allowed) {
-      showMessage(limitCheck.reason || 'حد مجاز شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
-      window.open(`dashboard.html?session=${sessionId}`, '_blank');
-      return;
+    // Check subscription limit with actual duration (like extension)
+    try {
+      const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', durationMinutes);
+      if (limitCheck && !limitCheck.allowed && limitCheck.reason && !limitCheck.reason.includes('proceeding anyway')) {
+        showMessage(limitCheck.reason + '\n\nلطفاً پلن خود را ارتقا دهید یا بعداً تلاش کنید.', 'error');
+        window.open(`dashboard.html?session=${sessionId}`, '_blank');
+        return;
+      }
+    } catch (error) {
+      console.error('Error checking subscription limit:', error);
+      // Continue anyway if check fails (like extension)
     }
     
     // Transcribe
@@ -1751,11 +1804,26 @@ async function recordUsage(sessionId, type, duration, metadata = {}) {
     });
     
     if (response.ok) {
+      const data = await response.json();
+      console.log('[script] Usage recorded successfully:', data);
+      
       // Signal dashboard to refresh by updating localStorage
       localStorage.setItem('cutup_last_activity', Date.now().toString());
+      
+      // Dispatch event for dashboard refresh (if dashboard is open in another tab)
+      window.dispatchEvent(new CustomEvent('cutupUsageRecorded', {
+        detail: {
+          type: type,
+          duration: duration,
+          metadata: metadata
+        }
+      }));
+    } else {
+      const errorText = await response.text().catch(() => '');
+      console.error('[script] Failed to record usage:', response.status, errorText);
     }
   } catch (error) {
-    console.error('Error recording usage:', error);
+    console.error('[script] Error recording usage:', error);
   }
 }
 
