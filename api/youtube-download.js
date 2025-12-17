@@ -16,11 +16,11 @@ import { sessions } from './auth.js';
 
 const execAsync = promisify(exec);
 
-// Helper to get userId from session
+// Helper to get userId from session - use email as userId (consistent with subscription.js)
 function getUserIdFromSession(sessionId) {
   if (!sessionId) return null;
   const session = sessions.get(sessionId);
-  if (!session || !session.user) return null;
+  if (!session || !session.user || !session.user.email) return null;
   
   // Check if session expired
   if (session.expiresAt && Date.now() > session.expiresAt) {
@@ -28,7 +28,8 @@ function getUserIdFromSession(sessionId) {
     return null;
   }
   
-  return session.user.id;
+  // Use email as userId (consistent with subscription.js)
+  return session.user.email;
 }
 
 export default async function handler(req, res) {
@@ -41,8 +42,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    // **STEP 1: Verify Session**
-    const sessionId = req.headers['x-session-id'] || req.body?.session;
+    // **STEP 1: Verify Session** - Get sessionId from query OR header OR body
+    const sessionId = req.query?.session || req.headers['x-session-id'] || req.body?.session;
     if (!sessionId) {
       setCORSHeaders(res);
       return res.status(401).json({ error: 'No session provided. Please log in first.' });
@@ -53,6 +54,8 @@ export default async function handler(req, res) {
       setCORSHeaders(res);
       return res.status(401).json({ error: 'Invalid or expired session. Please log in again.' });
     }
+    
+    console.log(`[youtube-download] Session verified: userId=${userId}, sessionId=${sessionId.substring(0, 8)}...`);
 
     // **STEP 2: Parse request body**
     const { videoId, url, type, quality } = req.body;

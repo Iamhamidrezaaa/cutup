@@ -100,13 +100,11 @@ async function initDashboard() {
     await loadSubscriptionInfo();
   });
   
-  // Listen for storage events (cross-tab sync)
+  // Listen for storage events (cross-tab sync) - ONLY refresh from API (backend-driven)
   window.addEventListener('storage', async (event) => {
-    if (event.key === DASHBOARD_HISTORY_KEY) {
-      console.log('[dashboard] Storage event detected for', DASHBOARD_HISTORY_KEY);
-      // Update immediately from localStorage
-      updateDashboardFromLocalStorage();
-      // Also refresh from API
+    if (event.key === 'cutup_last_activity') {
+      console.log('[dashboard] Activity detected, refreshing from API');
+      // Only refresh from API (backend-driven)
       await loadSubscriptionInfo();
     }
   });
@@ -286,77 +284,12 @@ function getUsageFromLocalHistory() {
 }
 
 // Direct UI update function - updates dashboard immediately from localStorage
+// DISABLED: updateDashboardFromLocalStorage() - Dashboard is now backend-driven
+// All usage data comes from API, not localStorage
 function updateDashboardFromLocalStorage() {
-  console.log('[dashboard] updateDashboardFromLocalStorage called');
-  
-  const localUsage = getUsageFromLocalHistory();
-  
-  // Update download stats directly
-  const audioCount = localUsage.audioDownloads;
-  const videoCount = localUsage.videoDownloads;
-  const usedMinutes = localUsage.usedMinutes;
-  
-  console.log('[dashboard] Updating UI with:', {
-    audioCount: audioCount,
-    videoCount: videoCount,
-    usedMinutes: usedMinutes,
-  });
-  
-  // Update download count element
-  let downloadCountEl = document.getElementById('downloadCount');
-  if (!downloadCountEl) {
-    // Try to find or create downloadStats card
-    let downloadStats = document.getElementById('downloadStats');
-    if (!downloadStats) {
-      const statsGrid = document.querySelector('.stats-grid');
-      if (statsGrid) {
-        downloadStats = document.createElement('div');
-        downloadStats.className = 'stat-card';
-        downloadStats.id = 'downloadStats';
-        downloadStats.innerHTML = `
-          <div class="stat-icon">📥</div>
-          <div class="stat-content">
-            <div class="stat-value" id="downloadCount">${audioCount + videoCount}</div>
-            <div class="stat-label" id="downloadLabel">دانلود (موزیک: ${audioCount}/3 | ویدئو: ${videoCount}/3)</div>
-          </div>
-        `;
-        statsGrid.appendChild(downloadStats);
-        console.log('[dashboard] Created downloadStats card');
-      }
-    }
-    downloadCountEl = document.getElementById('downloadCount');
-  }
-  
-  if (downloadCountEl) {
-    downloadCountEl.textContent = (audioCount + videoCount).toString();
-    console.log('[dashboard] Updated downloadCount to:', downloadCountEl.textContent);
-  } else {
-    console.error('[dashboard] downloadCount element not found!');
-  }
-  
-  // Update download label
-  const downloadLabel = document.getElementById('downloadLabel');
-  if (downloadLabel) {
-    downloadLabel.textContent = `دانلود (موزیک: ${audioCount}/3 | ویدئو: ${videoCount}/3)`;
-    console.log('[dashboard] Updated downloadLabel');
-  }
-  
-  // Update minutes if elements exist
-  const usedMinutesEl = document.getElementById('usedMinutes');
-  if (usedMinutesEl) {
-    usedMinutesEl.textContent = usedMinutes.toString();
-    console.log('[dashboard] Updated usedMinutes to:', usedMinutesEl.textContent);
-  }
-  
-  const remainingMinutesEl = document.getElementById('remainingMinutes');
-  if (remainingMinutesEl) {
-    const total = 20; // Free plan limit
-    const remaining = Math.max(0, total - usedMinutes);
-    remainingMinutesEl.textContent = remaining.toString();
-    console.log('[dashboard] Updated remainingMinutes to:', remainingMinutesEl.textContent);
-  }
-  
-  console.log('[dashboard] updateDashboardFromLocalStorage completed');
+  console.log('[dashboard] updateDashboardFromLocalStorage called but DISABLED - using backend-driven approach');
+  // Do nothing - dashboard is now backend-driven via loadSubscriptionInfo() -> updateDashboard()
+  // This function is kept for backward compatibility but does nothing
 }
 
 async function loadSubscriptionInfo() {
@@ -1570,8 +1503,7 @@ async function clearAudioDownloadsFromLocalStorage() {
       }
     }
     
-    // Refresh dashboard
-    updateDashboardFromLocalStorage();
+    // Refresh dashboard from API only (backend-driven)
     loadSubscriptionInfo();
   } catch (error) {
     console.error('[dashboard] Error clearing audio downloads:', error);

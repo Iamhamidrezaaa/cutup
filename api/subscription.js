@@ -385,14 +385,25 @@ export default async function handler(req, res) {
       });
     }
 
-    // Get user from session (simplified - in production, verify session properly)
+    // Get user from session - use email as userId (consistent across all endpoints)
     if (!sessionId) {
       return res.status(401).json({ error: 'No session provided' });
     }
 
-    // In production, verify session and get userId
-    // For now, use sessionId as userId (simplified)
-    const userId = sessionId; // TODO: Get actual userId from session
+    // Verify session and get userId from email (consistent with auth system)
+    const session = sessions.get(sessionId);
+    if (!session || !session.user || !session.user.email) {
+      return res.status(401).json({ error: 'Invalid or expired session' });
+    }
+    
+    // Check if session expired
+    if (session.expiresAt && Date.now() > session.expiresAt) {
+      sessions.delete(sessionId);
+      return res.status(401).json({ error: 'Session expired' });
+    }
+    
+    // Use email as userId (consistent across all endpoints)
+    const userId = session.user.email;
 
     // Get subscription info
     if (method === 'GET' && action === 'info') {
