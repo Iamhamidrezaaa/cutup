@@ -186,110 +186,25 @@ function generateAvatar(text) {
 }
 
 // Get usage statistics from localStorage history
-// Reads from cutup_result_* keys (current structure) instead of cutup_dashboard_history
-// Only counts items from the current month
+// DISABLED: getUsageFromLocalHistory() - Dashboard is now backend-driven
+// All usage data comes from API, not localStorage
 function getUsageFromLocalHistory() {
-  try {
-    const origin = window.location.origin;
-    console.log('[dashboard] Current origin:', origin);
-
-    const keys = Object.keys(localStorage);
-    console.log('[dashboard] All localStorage keys:', keys);
-
-    // Find all result keys (cutup_result_*)
-    const resultKeys = keys.filter(k => k.startsWith('cutup_result_'));
-    console.log('[dashboard] Result keys found:', resultKeys.length, resultKeys);
-
-    // Get current month boundaries
-    const now = new Date();
-    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    currentMonthStart.setHours(0, 0, 0, 0);
-    const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    currentMonthEnd.setHours(23, 59, 59, 999);
-    
-    console.log('[dashboard] Current month range:', currentMonthStart.toISOString(), 'to', currentMonthEnd.toISOString());
-
-    let audio = 0;
-    let video = 0;
-    let minutes = 0;
-    let skippedOld = 0;
-
-    for (const key of resultKeys) {
-      const raw = localStorage.getItem(key);
-      if (!raw) {
-        console.warn('[dashboard] Empty result for key:', key);
-        continue;
-      }
-
-      try {
-        const item = JSON.parse(raw);
-        
-        // Check if item is from current month
-        let itemDate = null;
-        if (item.date) {
-          itemDate = new Date(item.date);
-        } else if (item.id) {
-          // If no date, use id (timestamp) as fallback
-          itemDate = new Date(parseInt(item.id));
-        }
-        
-        if (itemDate) {
-          if (itemDate < currentMonthStart || itemDate > currentMonthEnd) {
-            skippedOld++;
-            console.log('[dashboard] Skipping old item:', key, 'date:', itemDate.toISOString());
-            continue;
-          }
-        }
-        
-        console.log('[dashboard] Processing result item:', key, 'type:', item.type, 'date:', itemDate ? itemDate.toISOString() : 'no date');
-
-        if (item.type === 'downloadAudio') {
-          audio += 1;
-          console.log('[dashboard] Found downloadAudio (this month), count now:', audio);
-        } else if (item.type === 'downloadVideo') {
-          video += 1;
-          console.log('[dashboard] Found downloadVideo (this month), count now:', video);
-        }
-
-        // If it's a usage type (summary, transcription), add minutes
-        if (
-          (item.type === 'summary' || item.type === 'summarization' || item.type === 'transcription') &&
-          typeof item.minutes === 'number'
-        ) {
-          minutes += item.minutes;
-          console.log('[dashboard] Found usage type, minutes now:', minutes);
-        }
-      } catch (e) {
-        console.warn('[dashboard] Failed to parse result item for key:', key, e);
-      }
-    }
-
-    const usage = {
-      audioDownloads: audio,
-      videoDownloads: video,
-      usedMinutes: minutes,
-    };
-
-    console.log('[dashboard] Local usage from results (this month):', usage);
-    console.log('[dashboard] Skipped old items:', skippedOld);
-    return usage;
-  } catch (e) {
-    console.error('[dashboard] getUsageFromLocalHistory error:', e);
-    return {
-      audioDownloads: 0,
-      videoDownloads: 0,
-      usedMinutes: 0,
-    };
-  }
+  console.log('[dashboard] getUsageFromLocalHistory called but DISABLED - using backend-driven approach');
+  // Return empty usage - dashboard should only use API data
+  return {
+    audioDownloads: 0,
+    videoDownloads: 0,
+    usedMinutes: 0,
+  };
 }
 
-// Direct UI update function - updates dashboard immediately from localStorage
 // DISABLED: updateDashboardFromLocalStorage() - Dashboard is now backend-driven
 // All usage data comes from API, not localStorage
+// This function is kept for backward compatibility but does nothing
 function updateDashboardFromLocalStorage() {
-  console.log('[dashboard] updateDashboardFromLocalStorage called but DISABLED - using backend-driven approach');
   // Do nothing - dashboard is now backend-driven via loadSubscriptionInfo() -> updateDashboard()
-  // This function is kept for backward compatibility but does nothing
+  // All UI updates should come from updateDashboard() which reads from subscriptionInfo.usage (from API)
+  return;
 }
 
 async function loadSubscriptionInfo() {
