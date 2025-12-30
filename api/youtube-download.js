@@ -6,7 +6,7 @@ import { handleCORS, setCORSHeaders } from './cors.js';
 import { exec } from 'child_process';
 import { spawn } from 'child_process';
 import { promisify } from 'util';
-import { unlinkSync, existsSync, readFileSync, statSync, readdirSync, mkdirSync, rmdirSync } from 'fs';
+import { unlinkSync, existsSync, readFileSync, statSync, readdirSync, mkdirSync, rmdirSync, createReadStream } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { sessions } from './auth.js';
@@ -293,8 +293,13 @@ export default async function handler(req, res) {
         p.on('close', (code) => {
           if (code !== 0) {
             console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: yt-dlp failed with code ${code}`);
+            console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: stdout:`, stdout);
             console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: stderr:`, stderr);
-            return reject(new Error(`yt-dlp failed (code=${code}). stderr:\n${stderr.substring(0, 1000)}`));
+            const err = new Error(`yt-dlp failed (code=${code})`);
+            err.stderr = stderr;
+            err.stdout = stdout;
+            err.code = code;
+            return reject(err);
           }
 
           // Fallback: if print didn't capture, look for out.* in jobDir
@@ -341,18 +346,28 @@ export default async function handler(req, res) {
         console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: stderr:`, stderr.substring(0, 1000));
       }
 
-      // Get file size
+      // Get file size and determine content type from extension
       const fileStats = statSync(outputFile);
       const fileSize = fileStats.size;
+      const fileExt = outputFile.split('.').pop().toLowerCase();
 
-      console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: File downloaded, size: ${fileSize} bytes`);
+      console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: File downloaded, size: ${fileSize} bytes, extension: ${fileExt}`);
 
-      // Read file and send as response
-      const fileBuffer = readFileSync(outputFile);
+      // Determine content type based on actual file extension
+      let contentType;
+      if (type === 'audio') {
+        contentType = fileExt === 'mp3' ? 'audio/mpeg' : 
+                     fileExt === 'm4a' ? 'audio/mp4' : 
+                     fileExt === 'opus' ? 'audio/opus' :
+                     'audio/mpeg';
+      } else {
+        contentType = fileExt === 'mp4' ? 'video/mp4' :
+                     fileExt === 'webm' ? 'video/webm' :
+                     fileExt === 'mkv' ? 'video/x-matroska' :
+                     'video/mp4';
+      }
       
-      // Set appropriate headers
-      const contentType = type === 'audio' ? 'audio/mpeg' : 'video/mp4';
-      const extension = type === 'audio' ? 'mp3' : 'mp4';
+      const extension = fileExt;
       const filenamePrefix = detectedPlatform === 'youtube' ? `youtube_${finalVideoId || 'video'}` :
                             detectedPlatform === 'tiktok' ? `tiktok_${timestamp}` :
                             `instagram_${timestamp}`;
@@ -361,11 +376,8 @@ export default async function handler(req, res) {
       res.setHeader('Content-Disposition', `attachment; filename="${filenamePrefix}_${quality}.${extension}"`);
       res.setHeader('Content-Length', fileSize);
       
-      // Send file
-      res.send(fileBuffer);
-
-      // Clean up file and job directory after sending
-      setTimeout(() => {
+      // Helper function to safely clean up job directory
+      function safeCleanup() {
         try {
           if (existsSync(outputFile)) {
             unlinkSync(outputFile);
@@ -380,9 +392,10 @@ export default async function handler(req, res) {
                 unlinkSync(filePath);
               }
             }
-            // Try to remove the directory (may fail if not empty, that's ok)
+            // Try to remove the directory
             try {
               rmdirSync(jobDir);
+              console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Cleaned up jobDir: ${jobDir}`);
             } catch (e) {
               // Ignore - directory may not be empty
             }
@@ -392,7 +405,30 @@ export default async function handler(req, res) {
         } catch (cleanupError) {
           console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Error cleaning up file:`, cleanupError);
         }
-      }, 1000);
+      }
+      
+      // Clean up only after response is fully sent
+      res.on('finish', safeCleanup);
+      res.on('close', safeCleanup);
+      
+      // Stream file instead of reading into memory
+      const fileStream = createReadStream(outputFile);
+      
+      fileStream.on('error', (streamError) => {
+        console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Stream error:`, streamError);
+        safeCleanup();
+        if (!res.headersSent) {
+          setCORSHeaders(res);
+          return res.status(500).json({
+            error: 'STREAM_ERROR',
+            message: streamError.message || 'Error streaming file'
+          });
+        } else {
+          res.destroy(streamError);
+        }
+      });
+      
+      fileStream.pipe(res);
 
     } catch (downloadError) {
       console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Download error:`, downloadError);
@@ -422,18 +458,24 @@ export default async function handler(req, res) {
         }
       }
       
-      // Check if error is related to ffmpeg
-      if (downloadError.message && downloadError.message.includes('ffmpeg')) {
-        throw new Error(`Failed to download ${type}: ffmpeg is required for video encoding. Please install ffmpeg on the server.`);
-      }
-      
-      // Provide more detailed error message
+      // Re-throw with stderr/stdout attached for better error reporting
       const errorMessage = downloadError.message || downloadError.toString();
-      throw new Error(`Failed to download ${type} from ${detectedPlatform}: ${errorMessage}`);
+      const enhancedError = new Error(`Failed to download ${type} from ${detectedPlatform}: ${errorMessage}`);
+      enhancedError.stderr = downloadError.stderr || '';
+      enhancedError.stdout = downloadError.stdout || '';
+      enhancedError.code = downloadError.code;
+      throw enhancedError;
     }
 
   } catch (error) {
     console.error('DOWNLOAD_ERROR:', error);
+    console.error('DOWNLOAD_ERROR stack:', error.stack);
+    if (error.stderr) {
+      console.error('DOWNLOAD_ERROR stderr:', error.stderr);
+    }
+    if (error.stdout) {
+      console.error('DOWNLOAD_ERROR stdout:', error.stdout);
+    }
     setCORSHeaders(res);
     
     // Determine platform for error message
@@ -453,9 +495,15 @@ export default async function handler(req, res) {
                          detectedPlatform === 'tiktok' ? 'TikTok' : 
                          detectedPlatform === 'instagram' ? 'Instagram' : 'platform';
     
+    // Return detailed error for debugging (include stderr/stdout)
     return res.status(500).json({
       error: 'DOWNLOAD_ERROR',
-      message: error.message || `Failed to download from ${platformName}`
+      message: error.message || `Failed to download from ${platformName}`,
+      stderr: error.stderr || null,
+      stdout: error.stdout || null,
+      code: error.code || null,
+      // Include stack only in development (you can remove this in production)
+      stack: process.env.NODE_ENV !== 'production' ? error.stack : undefined
     });
   }
 }

@@ -2530,13 +2530,23 @@ async function downloadFile(url, format, sessionId, type) {
     
     if (!response.ok) {
       hideProgressBar();
-      // Try to get error message
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        const errorData = await response.json();
+      // Get error response text first for logging
+      const errorText = await response.text();
+      console.error('[script] Download failed:', response.status, errorText);
+      
+      // Try to parse as JSON
+      try {
+        const errorData = JSON.parse(errorText);
+        console.error('[script] Error details:', {
+          error: errorData.error,
+          message: errorData.message,
+          stderr: errorData.stderr,
+          stdout: errorData.stdout,
+          code: errorData.code
+        });
         throw new Error(errorData.error || errorData.message || 'خطا در دانلود');
-      } else {
-        const errorText = await response.text();
+      } catch (parseError) {
+        // If not JSON, use text as error message
         throw new Error(errorText || 'خطا در دانلود');
       }
     }
