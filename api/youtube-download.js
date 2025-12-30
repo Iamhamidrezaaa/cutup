@@ -71,14 +71,16 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'type must be "audio" or "video"' });
     }
     
-    // Determine platform from URL if not provided
+    // Determine platform from URL if not provided (accepts any subdomain)
     let detectedPlatform = platform || 'youtube';
     if (url && !platform) {
       if (url.includes('youtube.com') || url.includes('youtu.be')) {
         detectedPlatform = 'youtube';
-      } else if (url.includes('tiktok.com') || url.includes('vm.tiktok.com')) {
+      } else if (url.includes('tiktok.com')) {
+        // Accepts any TikTok subdomain (vt.tiktok.com, vm.tiktok.com, www.tiktok.com, etc.)
         detectedPlatform = 'tiktok';
       } else if (url.includes('instagram.com')) {
+        // Accepts any Instagram subdomain
         detectedPlatform = 'instagram';
       }
     }
@@ -176,8 +178,8 @@ export default async function handler(req, res) {
     
     const outputTemplate = join(jobDir, 'out.%(ext)s');
     
-    // Function to run yt-dlp with spawn and capture filepath from --print after_move:filepath
-    async function runYtdlp() {
+    // Function to run yt-dlp once with a specific format selector
+    async function runYtdlpOnce(formatSelector, useMerge = true) {
       return new Promise((resolve, reject) => {
         const baseArgs = [
           '--no-playlist',
@@ -205,50 +207,17 @@ export default async function handler(req, res) {
             '--audio-quality', audioQuality
           ];
         } else {
-          // For video, different format selection for different platforms
-          if (detectedPlatform === 'tiktok' || detectedPlatform === 'instagram') {
-            // For TikTok and Instagram, use bv*+ba/b to merge video+audio
-            // This matches the DASH format that Instagram/TikTok use (separate video + audio streams)
-            // Map quality to height filter - use simpler format for non-best qualities
-            let formatSelector;
-            if (quality === 'best') {
-              formatSelector = 'bv*+ba/b';
-            } else {
-              // For specific qualities, filter by height
-              const height = quality.replace('p', '');
-              formatSelector = `bv[height<=${height}]*+ba/b[height<=${height}]`;
-            }
-            
-            formatArgs = [
-              '-f', formatSelector,
-              '--merge-output-format', 'mp4'
-            ];
-          } else {
-            // For YouTube, use complex format selection with merging
-            const videoFormats = {
-              '2160p': 'bestvideo[height<=2160]+bestaudio/best[height<=2160]',
-              '1440p': 'bestvideo[height<=1440]+bestaudio/best[height<=1440]',
-              '1080p': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
-              '720p': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
-              '480p': 'bestvideo[height<=480]+bestaudio/best[height<=480]',
-              '360p': 'bestvideo[height<=360]+bestaudio/best[height<=360]',
-              '240p': 'bestvideo[height<=240]+bestaudio/best[height<=240]',
-              '144p': 'bestvideo[height<=144]+bestaudio/best[height<=144]'
-            };
-            
-            const formatSelector = videoFormats[quality] || 'bestvideo+bestaudio/best';
-            
-            formatArgs = [
-              '-f', formatSelector,
-              '--merge-output-format', 'mp4'
-            ];
+          formatArgs = ['-f', formatSelector];
+          if (useMerge && (detectedPlatform === 'tiktok' || detectedPlatform === 'instagram')) {
+            formatArgs.push('--merge-output-format', 'mp4');
+          } else if (useMerge && detectedPlatform === 'youtube') {
+            formatArgs.push('--merge-output-format', 'mp4');
           }
         }
 
         const args = [...baseArgs, ...formatArgs, finalUrl];
         
-        console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Executing: ${ytDlpPath} ${args.join(' ')}`);
-        console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Output template: ${outputTemplate}`);
+        console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Trying format: ${formatSelector}`);
 
         const p = spawn(ytDlpPath, args, { 
           stdio: ['ignore', 'pipe', 'pipe'],
@@ -292,9 +261,6 @@ export default async function handler(req, res) {
 
         p.on('close', (code) => {
           if (code !== 0) {
-            console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: yt-dlp failed with code ${code}`);
-            console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: stdout:`, stdout);
-            console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: stderr:`, stderr);
             const err = new Error(`yt-dlp failed (code=${code})`);
             err.stderr = stderr;
             err.stdout = stdout;
@@ -316,10 +282,10 @@ export default async function handler(req, res) {
           }
 
           if (!printedPath || !existsSync(printedPath)) {
-            console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: File not found after download`);
-            console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: stdout:`, stdout.substring(0, 1000));
-            console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: stderr:`, stderr.substring(0, 1000));
-            return reject(new Error(`yt-dlp finished but output not found. stdout:\n${stdout.substring(0, 500)}\nstderr:\n${stderr.substring(0, 500)}`));
+            const err = new Error(`yt-dlp finished but output not found`);
+            err.stderr = stderr;
+            err.stdout = stdout;
+            return reject(err);
           }
 
           resolve({ filepath: printedPath, stdout, stderr });
@@ -331,9 +297,84 @@ export default async function handler(req, res) {
         });
       });
     }
+
+    // Function to run yt-dlp with format fallback chain for Instagram/TikTok
+    async function runYtdlpWithFallback() {
+      if (type === 'audio') {
+        // For audio, no fallback needed
+        return await runYtdlpOnce('bestaudio/best', false);
+      }
+
+      if (detectedPlatform === 'tiktok' || detectedPlatform === 'instagram') {
+        // Format fallback chain for Instagram/TikTok
+        const formatChains = [
+          // Stage A: Best quality with video+audio merge
+          'bv*+ba/b',
+          // Stage B: With height limit and container preference
+          'bv*[height<=1080][ext=mp4]+ba[ext=m4a]/bv*[height<=1080]+ba/b[height<=1080]/b',
+          // Stage C: Progressive format (may be lower quality or no audio)
+          'b[ext=mp4]/b',
+          // Stage D: Any best format
+          'b'
+        ];
+
+        // If quality is specified, add quality-specific formats at the beginning
+        if (quality !== 'best') {
+          const height = quality.replace('p', '');
+          formatChains.unshift(
+            `bv*[height<=${height}]+ba/b[height<=${height}]`,
+            `bv[height<=${height}]*+ba/b[height<=${height}]`
+          );
+        }
+
+        console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Trying format fallback chain:`, formatChains);
+
+        for (let i = 0; i < formatChains.length; i++) {
+          const formatSelector = formatChains[i];
+          try {
+            console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Attempt ${i + 1}/${formatChains.length}: ${formatSelector}`);
+            const result = await runYtdlpOnce(formatSelector, true);
+            console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Success with format: ${formatSelector}`);
+            return result;
+          } catch (e) {
+            const stderr = String(e?.stderr ?? e?.message ?? '');
+            const isFormatNotAvailable = stderr.includes('Requested format is not available') || 
+                                        stderr.includes('format is not available');
+            
+            if (isFormatNotAvailable && i < formatChains.length - 1) {
+              console.warn(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Format ${formatSelector} not available, trying next...`);
+              continue; // Try next format
+            }
+            
+            // If it's the last format or a different error, throw
+            console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Format ${formatSelector} failed:`, stderr.substring(0, 200));
+            if (i === formatChains.length - 1) {
+              throw e; // Last format failed
+            }
+          }
+        }
+        
+        throw new Error('No available formats found for this URL');
+      } else {
+        // For YouTube, use single format selector
+        const videoFormats = {
+          '2160p': 'bestvideo[height<=2160]+bestaudio/best[height<=2160]',
+          '1440p': 'bestvideo[height<=1440]+bestaudio/best[height<=1440]',
+          '1080p': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
+          '720p': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
+          '480p': 'bestvideo[height<=480]+bestaudio/best[height<=480]',
+          '360p': 'bestvideo[height<=360]+bestaudio/best[height<=360]',
+          '240p': 'bestvideo[height<=240]+bestaudio/best[height<=240]',
+          '144p': 'bestvideo[height<=144]+bestaudio/best[height<=144]'
+        };
+        
+        const formatSelector = videoFormats[quality] || 'bestvideo+bestaudio/best';
+        return await runYtdlpOnce(formatSelector, true);
+      }
+    }
     
     try {
-      const { filepath, stdout, stderr } = await runYtdlp();
+      const { filepath, stdout, stderr } = await runYtdlpWithFallback();
       
       const outputFile = filepath;
       

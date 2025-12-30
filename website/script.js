@@ -662,32 +662,25 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// Check if YouTube URL is valid
+// Check if YouTube URL is valid (accepts any subdomain)
 function isYouTubeUrl(url) {
-  const patterns = [
-    /^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\/.+/,
-    /^https?:\/\/youtube\.com\/watch\?v=.+/,
-    /^https?:\/\/youtu\.be\/.+/
-  ];
-  return patterns.some(pattern => pattern.test(url));
+  if (!url || !url.trim()) return false;
+  // Check if URL contains youtube.com or youtu.be (any subdomain)
+  return /youtube\.com|youtu\.be/.test(url);
 }
 
-// Check if TikTok URL is valid
+// Check if TikTok URL is valid (accepts any subdomain including short links)
 function isTikTokUrl(url) {
-  const patterns = [
-    /^https?:\/\/(www\.)?(tiktok\.com|vm\.tiktok\.com)\/.+/,
-    /^https?:\/\/tiktok\.com\/@.+\/video\/.+/
-  ];
-  return patterns.some(pattern => pattern.test(url));
+  if (!url || !url.trim()) return false;
+  // Check if URL contains tiktok.com (any subdomain like vt.tiktok.com, vm.tiktok.com, www.tiktok.com, etc.)
+  return /tiktok\.com/.test(url);
 }
 
-// Check if Instagram URL is valid
+// Check if Instagram URL is valid (accepts any subdomain)
 function isInstagramUrl(url) {
-  const patterns = [
-    /^https?:\/\/(www\.)?instagram\.com\/(p|reel|tv)\/.+/,
-    /^https?:\/\/instagram\.com\/p\/.+/
-  ];
-  return patterns.some(pattern => pattern.test(url));
+  if (!url || !url.trim()) return false;
+  // Check if URL contains instagram.com (any subdomain)
+  return /instagram\.com/.test(url);
 }
 
 // Check URL based on current platform - strict validation
