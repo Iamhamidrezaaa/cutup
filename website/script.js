@@ -992,6 +992,13 @@ async function handleVideoDownload() {
   } catch (error) {
     console.error('Error:', error);
     showMessage('خطا در دریافت کیفیت‌ها: ' + error.message, 'error');
+    // Hide the "در حال دریافت کیفیت‌های موجود..." message
+    setTimeout(() => {
+      const downloadMessage = document.getElementById('downloadMessage');
+      if (downloadMessage && downloadMessage.textContent.includes('در حال دریافت کیفیت')) {
+        downloadMessage.style.display = 'none';
+      }
+    }, 3000);
   }
 }
 
@@ -1048,6 +1055,13 @@ async function handleAudioDownload() {
   } catch (error) {
     console.error('Error:', error);
     showMessage('خطا در دریافت کیفیت‌ها: ' + error.message, 'error');
+    // Hide the "در حال دریافت کیفیت‌های موجود..." message
+    setTimeout(() => {
+      const downloadMessage = document.getElementById('downloadMessage');
+      if (downloadMessage && downloadMessage.textContent.includes('در حال دریافت کیفیت')) {
+        downloadMessage.style.display = 'none';
+      }
+    }, 3000);
   }
 }
 

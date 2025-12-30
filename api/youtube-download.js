@@ -4,8 +4,9 @@
 
 import { handleCORS, setCORSHeaders } from './cors.js';
 import { exec } from 'child_process';
+import { spawn } from 'child_process';
 import { promisify } from 'util';
-import { unlinkSync, existsSync, readFileSync, statSync, readdirSync } from 'fs';
+import { unlinkSync, existsSync, readFileSync, statSync, readdirSync, mkdirSync, rmdirSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { sessions } from './auth.js';
@@ -169,178 +170,176 @@ export default async function handler(req, res) {
     const tempDir = tmpdir();
     const timestamp = Date.now();
     
-    let outputFile;
-    let downloadCommand;
-    let baseOutputPath; // Declare in outer scope
+    // Create a job directory for this download
+    const jobDir = join(tempDir, `cutup_${timestamp}`);
+    mkdirSync(jobDir, { recursive: true });
+    
+    const outputTemplate = join(jobDir, 'out.%(ext)s');
+    
+    // Function to run yt-dlp with spawn and capture filepath from --print after_move:filepath
+    async function runYtdlp() {
+      return new Promise((resolve, reject) => {
+        const baseArgs = [
+          '--no-playlist',
+          '--no-warnings',
+          '--no-check-certificate',
+          '--print', 'after_move:filepath',
+          '-o', outputTemplate,
+        ];
 
-    if (type === 'audio') {
-      // For audio, extract audio and convert to mp3
-      const filePrefix = detectedPlatform === 'youtube' ? `youtube_${finalVideoId || 'video'}` :
-                         detectedPlatform === 'tiktok' ? `tiktok_${timestamp}` :
-                         `instagram_${timestamp}`;
-      baseOutputPath = join(tempDir, `${filePrefix}_audio_${timestamp}`);
-      outputFile = `${baseOutputPath}.mp3`;
-      
-      // Map quality to audio bitrate
-      let audioQuality = '192K'; // default
-      if (quality === 'best') {
-        audioQuality = '0'; // Best quality
-      } else if (quality && quality.includes('k')) {
-        audioQuality = quality.replace('k', 'K');
-      }
-      
-      // Download audio and convert to mp3
-      downloadCommand = `${ytDlpPath} -f "bestaudio/best" -x --audio-format mp3 --audio-quality ${audioQuality} -o "${baseOutputPath}.%(ext)s" --no-playlist --no-warnings "${finalUrl}"`;
-    } else {
-      // For video, download with specified quality and merge to mp4
-      const filePrefix = detectedPlatform === 'youtube' ? `youtube_${finalVideoId || 'video'}` :
-                         detectedPlatform === 'tiktok' ? `tiktok_${timestamp}` :
-                         `instagram_${timestamp}`;
-      baseOutputPath = join(tempDir, `${filePrefix}_video_${timestamp}`);
-      outputFile = `${baseOutputPath}.mp4`;
-      
-      // Video quality formats - different for different platforms
-      let formatSelector;
-      
-      if (detectedPlatform === 'tiktok' || detectedPlatform === 'instagram') {
-        // For TikTok and Instagram, use simpler format selection
-        const simpleFormats = {
-          'best': 'best',
-          '1080p': 'best[height<=1080]',
-          '720p': 'best[height<=720]',
-          '480p': 'best[height<=480]',
-          '360p': 'best[height<=360]'
-        };
-        formatSelector = simpleFormats[quality] || 'best';
+        let formatArgs = [];
         
-        // For TikTok and Instagram, use simpler command
-        // Use %(ext)s placeholder and let yt-dlp determine the extension
-        // Then we'll find the actual file
-        downloadCommand = `${ytDlpPath} -f "${formatSelector}" -o "${baseOutputPath}.%(ext)s" --no-playlist --no-warnings --no-check-certificate "${finalUrl}"`;
-      } else {
-        // For YouTube, use complex format selection with merging
-        const videoFormats = {
-          '2160p': 'bestvideo[height<=2160]+bestaudio/best[height<=2160]',
-          '1440p': 'bestvideo[height<=1440]+bestaudio/best[height<=1440]',
-          '1080p': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
-          '720p': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
-          '480p': 'bestvideo[height<=480]+bestaudio/best[height<=480]',
-          '360p': 'bestvideo[height<=360]+bestaudio/best[height<=360]',
-          '240p': 'bestvideo[height<=240]+bestaudio/best[height<=240]',
-          '144p': 'bestvideo[height<=144]+bestaudio/best[height<=144]'
-        };
+        if (type === 'audio') {
+          // Map quality to audio bitrate
+          let audioQuality = '192K'; // default
+          if (quality === 'best') {
+            audioQuality = '0'; // Best quality
+          } else if (quality && quality.includes('k')) {
+            audioQuality = quality.replace('k', 'K');
+          }
+          
+          formatArgs = [
+            '-f', 'bestaudio/best',
+            '-x',
+            '--audio-format', 'mp3',
+            '--audio-quality', audioQuality
+          ];
+        } else {
+          // For video, different format selection for different platforms
+          if (detectedPlatform === 'tiktok' || detectedPlatform === 'instagram') {
+            // For TikTok and Instagram, use bv*+ba/b to merge video+audio
+            // This matches the DASH format that Instagram/TikTok use (separate video + audio streams)
+            // Map quality to height filter - use simpler format for non-best qualities
+            let formatSelector;
+            if (quality === 'best') {
+              formatSelector = 'bv*+ba/b';
+            } else {
+              // For specific qualities, filter by height
+              const height = quality.replace('p', '');
+              formatSelector = `bv[height<=${height}]*+ba/b[height<=${height}]`;
+            }
+            
+            formatArgs = [
+              '-f', formatSelector,
+              '--merge-output-format', 'mp4'
+            ];
+          } else {
+            // For YouTube, use complex format selection with merging
+            const videoFormats = {
+              '2160p': 'bestvideo[height<=2160]+bestaudio/best[height<=2160]',
+              '1440p': 'bestvideo[height<=1440]+bestaudio/best[height<=1440]',
+              '1080p': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
+              '720p': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
+              '480p': 'bestvideo[height<=480]+bestaudio/best[height<=480]',
+              '360p': 'bestvideo[height<=360]+bestaudio/best[height<=360]',
+              '240p': 'bestvideo[height<=240]+bestaudio/best[height<=240]',
+              '144p': 'bestvideo[height<=144]+bestaudio/best[height<=144]'
+            };
+            
+            const formatSelector = videoFormats[quality] || 'bestvideo+bestaudio/best';
+            
+            formatArgs = [
+              '-f', formatSelector,
+              '--merge-output-format', 'mp4'
+            ];
+          }
+        }
+
+        const args = [...baseArgs, ...formatArgs, finalUrl];
         
-        formatSelector = videoFormats[quality] || 'bestvideo+bestaudio/best';
-        
-        // Download video and merge to mp4
-        // Use --merge-output-format mp4 for faster download (no recoding)
-        downloadCommand = `${ytDlpPath} -f "${formatSelector}" --merge-output-format mp4 -o "${baseOutputPath}.mp4" --no-playlist --no-warnings "${finalUrl}"`;
-      }
+        console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Executing: ${ytDlpPath} ${args.join(' ')}`);
+        console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Output template: ${outputTemplate}`);
+
+        const p = spawn(ytDlpPath, args, { 
+          stdio: ['ignore', 'pipe', 'pipe'],
+          cwd: jobDir
+        });
+
+        let stdout = '';
+        let stderr = '';
+        let printedPath = null;
+
+        p.stdout.on('data', (d) => {
+          const s = d.toString();
+          stdout += s;
+
+          // after_move:filepath prints the final file path as a line
+          for (const line of s.split(/\r?\n/)) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+
+            // yt-dlp prints exactly the filepath (no prefix) for after_move
+            // Check if it's a valid file path
+            if (trimmed.includes(join(jobDir, 'out.')) || 
+                (trimmed.includes('out.') && (trimmed.endsWith('.mp4') || trimmed.endsWith('.mp3') || 
+                 trimmed.endsWith('.mkv') || trimmed.endsWith('.webm') || trimmed.endsWith('.m4a'))) ||
+                (trimmed.startsWith(jobDir) && (trimmed.endsWith('.mp4') || trimmed.endsWith('.mp3') || 
+                 trimmed.endsWith('.mkv') || trimmed.endsWith('.webm') || trimmed.endsWith('.m4a')))) {
+              // If it's a relative path, make it absolute
+              if (!trimmed.startsWith('/') && !trimmed.startsWith('\\')) {
+                printedPath = join(jobDir, trimmed);
+              } else {
+                printedPath = trimmed;
+              }
+              console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Captured filepath from stdout: ${printedPath}`);
+            }
+          }
+        });
+
+        p.stderr.on('data', (d) => {
+          stderr += d.toString();
+        });
+
+        p.on('close', (code) => {
+          if (code !== 0) {
+            console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: yt-dlp failed with code ${code}`);
+            console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: stderr:`, stderr);
+            return reject(new Error(`yt-dlp failed (code=${code}). stderr:\n${stderr.substring(0, 1000)}`));
+          }
+
+          // Fallback: if print didn't capture, look for out.* in jobDir
+          if (!printedPath) {
+            try {
+              const files = readdirSync(jobDir).filter(f => f.startsWith('out.'));
+              if (files.length > 0) {
+                printedPath = join(jobDir, files[0]);
+                console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Fallback - found file: ${printedPath}`);
+              }
+            } catch (readError) {
+              console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Error reading jobDir:`, readError);
+            }
+          }
+
+          if (!printedPath || !existsSync(printedPath)) {
+            console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: File not found after download`);
+            console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: stdout:`, stdout.substring(0, 1000));
+            console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: stderr:`, stderr.substring(0, 1000));
+            return reject(new Error(`yt-dlp finished but output not found. stdout:\n${stdout.substring(0, 500)}\nstderr:\n${stderr.substring(0, 500)}`));
+          }
+
+          resolve({ filepath: printedPath, stdout, stderr });
+        });
+
+        p.on('error', (err) => {
+          console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: spawn error:`, err);
+          reject(new Error(`Failed to spawn yt-dlp: ${err.message}`));
+        });
+      });
     }
-
-    console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Executing: ${downloadCommand}`);
-    console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Expected output: ${outputFile}`);
     
     try {
-      const { stdout, stderr } = await execAsync(downloadCommand, {
-        timeout: 600000, // 10 minutes
-        maxBuffer: 10 * 1024 * 1024 // 10MB buffer
-      });
-
-      // Log stdout and stderr for debugging
+      const { filepath, stdout, stderr } = await runYtdlp();
+      
+      const outputFile = filepath;
+      
+      console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: File downloaded successfully: ${outputFile}`);
+      
       if (stdout) {
         console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: stdout (first 500 chars):`, stdout.substring(0, 500));
       }
       if (stderr) {
-        // Log stderr even if it's just warnings - might contain useful info
         console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: stderr:`, stderr.substring(0, 1000));
       }
-
-      // yt-dlp uses %(ext)s placeholder, so we need to find the actual file
-      // First check the expected output file
-      let foundFile = null;
-      
-      if (existsSync(outputFile)) {
-        foundFile = outputFile;
-        console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Found file at expected location: ${foundFile}`);
-      } else {
-        // Try to find file with different extensions
-        // For TikTok/Instagram, yt-dlp may use %(ext)s placeholder, so we need to check baseName without extension
-        let baseName;
-        if (detectedPlatform === 'tiktok' || detectedPlatform === 'instagram') {
-          // For TikTok/Instagram, baseOutputPath might not have extension yet
-          baseName = baseOutputPath;
-        } else {
-          baseName = outputFile.substring(0, outputFile.lastIndexOf('.'));
-        }
-        
-        const possibleExtensions = type === 'audio' 
-          ? ['.mp3', '.m4a', '.opus', '.ogg', '.webm', '.aac', '.mp4']
-          : ['.mp4', '.webm', '.mkv', '.flv', '.avi', '.mov', '.m4v'];
-        
-        for (const ext of possibleExtensions) {
-          const testFile = baseName + ext;
-          if (existsSync(testFile)) {
-            foundFile = testFile;
-            console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Found file with extension ${ext}: ${foundFile}`);
-            break;
-          }
-        }
-        
-        // If still not found, search in tempDir for files matching the pattern
-        if (!foundFile) {
-          try {
-            const files = readdirSync(tempDir);
-            let pattern;
-            if (detectedPlatform === 'youtube') {
-              pattern = `youtube_${finalVideoId}_${type === 'audio' ? 'audio' : 'video'}_${timestamp}`;
-            } else if (detectedPlatform === 'tiktok') {
-              pattern = `tiktok_${timestamp}_${type === 'audio' ? 'audio' : 'video'}_${timestamp}`;
-            } else {
-              pattern = `instagram_${timestamp}_${type === 'audio' ? 'audio' : 'video'}_${timestamp}`;
-            }
-            console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Searching for files matching pattern: ${pattern}`);
-            
-            for (const file of files) {
-              if (file.includes(pattern) || file.startsWith(pattern.split('_')[0])) {
-                foundFile = join(tempDir, file);
-                console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Found file by pattern: ${foundFile}`);
-                break;
-              }
-            }
-            
-            // If still not found, try to find any file with the timestamp
-            if (!foundFile) {
-              const timestampStr = timestamp.toString();
-              for (const file of files) {
-                if (file.includes(timestampStr) && (file.includes('audio') || file.includes('video') || file.endsWith('.mp4') || file.endsWith('.mp3'))) {
-                  foundFile = join(tempDir, file);
-                  console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Found file by timestamp: ${foundFile}`);
-                  break;
-                }
-              }
-            }
-          } catch (readError) {
-            console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Error reading temp directory:`, readError);
-          }
-        }
-      }
-      
-      if (!foundFile) {
-        console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Could not find downloaded file`);
-        console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Expected:`, outputFile);
-        console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Base output path:`, baseOutputPath);
-        console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: stdout length:`, stdout ? stdout.length : 0);
-        if (stdout) {
-          console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: stdout (last 500 chars):`, stdout.substring(Math.max(0, stdout.length - 500)));
-        }
-        if (stderr) {
-          console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: stderr:`, stderr);
-        }
-        throw new Error(`Downloaded file not found for ${detectedPlatform}. Please check server logs for details.`);
-      }
-      
-      outputFile = foundFile;
 
       // Get file size
       const fileStats = statSync(outputFile);
@@ -365,12 +364,30 @@ export default async function handler(req, res) {
       // Send file
       res.send(fileBuffer);
 
-      // Clean up file after sending
+      // Clean up file and job directory after sending
       setTimeout(() => {
         try {
           if (existsSync(outputFile)) {
             unlinkSync(outputFile);
             console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Cleaned up file: ${outputFile}`);
+          }
+          // Clean up job directory
+          try {
+            const files = readdirSync(jobDir);
+            for (const file of files) {
+              const filePath = join(jobDir, file);
+              if (existsSync(filePath)) {
+                unlinkSync(filePath);
+              }
+            }
+            // Try to remove the directory (may fail if not empty, that's ok)
+            try {
+              rmdirSync(jobDir);
+            } catch (e) {
+              // Ignore - directory may not be empty
+            }
+          } catch (cleanupDirError) {
+            console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Error cleaning up jobDir:`, cleanupDirError);
           }
         } catch (cleanupError) {
           console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Error cleaning up file:`, cleanupError);
@@ -380,24 +397,25 @@ export default async function handler(req, res) {
     } catch (downloadError) {
       console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Download error:`, downloadError);
       console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Error stack:`, downloadError.stack);
-      console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Command was:`, downloadCommand);
       console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: URL was:`, finalUrl);
-      console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Base output path:`, baseOutputPath);
+      console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Job directory:`, jobDir);
       
-      // Clean up on error - try to clean up any partial files
-      if (baseOutputPath) {
+      // Clean up on error - try to clean up job directory
+      if (jobDir) {
         try {
-          // Try to find and delete any files with the baseOutputPath
-          const files = readdirSync(tempDir);
-          const baseName = baseOutputPath.split('/').pop() || baseOutputPath.split('\\').pop();
+          const files = readdirSync(jobDir);
           for (const file of files) {
-            if (file.includes(baseName)) {
-              const filePath = join(tempDir, file);
-              if (existsSync(filePath)) {
-                unlinkSync(filePath);
-                console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Cleaned up partial file: ${filePath}`);
-              }
+            const filePath = join(jobDir, file);
+            if (existsSync(filePath)) {
+              unlinkSync(filePath);
+              console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Cleaned up partial file: ${filePath}`);
             }
+          }
+          // Try to remove the directory
+          try {
+            rmdirSync(jobDir);
+          } catch (e) {
+            // Ignore - directory may not be empty
           }
         } catch (cleanupError) {
           console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Error cleaning up on error:`, cleanupError);
