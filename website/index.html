@@ -88,7 +88,23 @@
     <section class="download-section">
       <div class="container">
         <div class="download-box">
-          <h2 class="download-title">لینک یوتیوب را وارد کنید یا فایل صوتی انتخاب کنید</h2>
+          <!-- Platform Tabs -->
+          <div class="platform-tabs">
+            <button class="platform-tab active" data-platform="youtube">
+              <span class="platform-icon">📺</span>
+              <span class="platform-name">YouTube</span>
+            </button>
+            <button class="platform-tab" data-platform="tiktok">
+              <span class="platform-icon">🎵</span>
+              <span class="platform-name">TikTok</span>
+            </button>
+            <button class="platform-tab" data-platform="instagram">
+              <span class="platform-icon">📷</span>
+              <span class="platform-name">Instagram</span>
+            </button>
+          </div>
+          
+          <h2 class="download-title" id="downloadTitle">لینک یوتیوب را وارد کنید یا فایل صوتی انتخاب کنید</h2>
           <div class="download-input-group">
             <input 
               type="text" 
@@ -134,6 +150,26 @@
             </div>
           </div>
           <div class="download-message" id="downloadMessage"></div>
+          
+          <!-- Progress Bar Section -->
+          <div class="download-progress-container" id="downloadProgressContainer" style="display: none;">
+            <div class="progress-header">
+              <span class="progress-title" id="progressTitle">در حال دانلود...</span>
+              <span class="progress-close" id="progressClose">×</span>
+            </div>
+            <div class="progress-info">
+              <span class="file-size" id="fileSize">حجم فایل: در حال محاسبه...</span>
+              <span class="progress-percent" id="progressPercent">0%</span>
+            </div>
+            <div class="progress-bar-wrapper">
+              <div class="progress-bar" id="progressBar">
+                <div class="progress-fill" id="progressFill"></div>
+              </div>
+            </div>
+            <div class="progress-details" id="progressDetails">
+              <span id="progressDownloaded">0 MB</span> / <span id="progressTotal">0 MB</span>
+            </div>
+          </div>
           
           <!-- Result Section (like extension) -->
           <div class="result-section" id="resultSection" style="display: none;">

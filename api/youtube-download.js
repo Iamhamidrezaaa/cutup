@@ -58,7 +58,7 @@ export default async function handler(req, res) {
     console.log(`[youtube-download] Session verified: userId=${userId}, sessionId=${sessionId.substring(0, 8)}...`);
 
     // **STEP 2: Parse request body**
-    const { videoId, url, type, quality } = req.body;
+    const { videoId, url, type, quality, platform } = req.body;
 
     if (!videoId && !url) {
       setCORSHeaders(res);
@@ -68,6 +68,18 @@ export default async function handler(req, res) {
     if (!type || !['audio', 'video'].includes(type)) {
       setCORSHeaders(res);
       return res.status(400).json({ error: 'type must be "audio" or "video"' });
+    }
+    
+    // Determine platform from URL if not provided
+    let detectedPlatform = platform || 'youtube';
+    if (url && !platform) {
+      if (url.includes('youtube.com') || url.includes('youtu.be')) {
+        detectedPlatform = 'youtube';
+      } else if (url.includes('tiktok.com') || url.includes('vm.tiktok.com')) {
+        detectedPlatform = 'tiktok';
+      } else if (url.includes('instagram.com')) {
+        detectedPlatform = 'instagram';
+      }
     }
 
     // **STEP 3: Check subscription limits ATOMICALLY (before download)**
@@ -89,40 +101,60 @@ export default async function handler(req, res) {
 
     // **STEP 4: Record download ATOMICALLY (before actual download)**
     // This ensures usage is recorded even if download fails later
+    const platformName = detectedPlatform === 'youtube' ? 'YouTube' : 
+                         detectedPlatform === 'tiktok' ? 'TikTok' : 'Instagram';
     const metadata = {
-      title: `YouTube ${type}`,
+      title: `${platformName} ${type}`,
       quality: quality,
       url: url,
-      videoId: videoId
+      videoId: videoId,
+      platform: detectedPlatform
     };
     
     recordDownload(userId, type, metadata, sessionId);
     
-    console.log(`[youtube-download] User ${userId} authorized for ${type} download, usage recorded atomically`);
+    console.log(`[youtube-download] User ${userId} authorized for ${type} download from ${detectedPlatform}, usage recorded atomically`);
 
-    // Extract video ID from URL if provided
+    // Extract video ID from URL if provided (only for YouTube)
     let finalVideoId = videoId;
-    if (url && !videoId) {
-      const patterns = [
-        /[?&]v=([^&]+)/,
-        /youtu\.be\/([^?]+)/,
-        /^([a-zA-Z0-9_-]{11})$/
-      ];
-      
-      for (const pattern of patterns) {
-        const match = url.match(pattern);
-        if (match) {
-          finalVideoId = match[1];
-          break;
+    let finalUrl = url;
+    
+    if (detectedPlatform === 'youtube') {
+      if (url && !videoId) {
+        const patterns = [
+          /[?&]v=([^&]+)/,
+          /youtu\.be\/([^?]+)/,
+          /^([a-zA-Z0-9_-]{11})$/
+        ];
+        
+        for (const pattern of patterns) {
+          const match = url.match(pattern);
+          if (match) {
+            finalVideoId = match[1];
+            break;
+          }
         }
       }
+
+      if (!finalVideoId && !url) {
+        setCORSHeaders(res);
+        return res.status(400).json({ error: 'Invalid YouTube URL or video ID' });
+      }
+      
+      // Construct YouTube URL if we have video ID
+      if (finalVideoId && !url) {
+        finalUrl = `https://www.youtube.com/watch?v=${finalVideoId}`;
+      }
+    } else {
+      // For TikTok and Instagram, use the URL directly
+      if (!url) {
+        setCORSHeaders(res);
+        return res.status(400).json({ error: `Invalid ${platformName} URL` });
+      }
+      finalUrl = url;
     }
 
-    if (!finalVideoId) {
-      return res.status(400).json({ error: 'Invalid YouTube URL or video ID' });
-    }
-
-    console.log(`YOUTUBE_DOWNLOAD: ${type} download for video ID: ${finalVideoId}, quality: ${quality}`);
+    console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: ${type} download for URL: ${finalUrl}, quality: ${quality}`);
 
     // Check if yt-dlp is installed
     let ytDlpPath = 'yt-dlp';
@@ -134,8 +166,6 @@ export default async function handler(req, res) {
     } catch (err) {
       console.warn('YOUTUBE_DOWNLOAD: yt-dlp not found in PATH, trying default');
     }
-
-    const youtubeUrl = `https://www.youtube.com/watch?v=${finalVideoId}`;
     const tempDir = tmpdir();
     const timestamp = Date.now();
     
@@ -144,7 +174,10 @@ export default async function handler(req, res) {
 
     if (type === 'audio') {
       // For audio, extract audio and convert to mp3
-      const baseOutputPath = join(tempDir, `youtube_${finalVideoId}_audio_${timestamp}`);
+      const filePrefix = detectedPlatform === 'youtube' ? `youtube_${finalVideoId || 'video'}` :
+                         detectedPlatform === 'tiktok' ? `tiktok_${timestamp}` :
+                         `instagram_${timestamp}`;
+      const baseOutputPath = join(tempDir, `${filePrefix}_audio_${timestamp}`);
       outputFile = `${baseOutputPath}.mp3`;
       
       // Map quality to audio bitrate
@@ -156,10 +189,13 @@ export default async function handler(req, res) {
       }
       
       // Download audio and convert to mp3
-      downloadCommand = `${ytDlpPath} -f "bestaudio/best" -x --audio-format mp3 --audio-quality ${audioQuality} -o "${baseOutputPath}.%(ext)s" --no-playlist --no-warnings "${youtubeUrl}"`;
+      downloadCommand = `${ytDlpPath} -f "bestaudio/best" -x --audio-format mp3 --audio-quality ${audioQuality} -o "${baseOutputPath}.%(ext)s" --no-playlist --no-warnings "${finalUrl}"`;
     } else {
       // For video, download with specified quality and merge to mp4
-      const baseOutputPath = join(tempDir, `youtube_${finalVideoId}_video_${timestamp}`);
+      const filePrefix = detectedPlatform === 'youtube' ? `youtube_${finalVideoId || 'video'}` :
+                         detectedPlatform === 'tiktok' ? `tiktok_${timestamp}` :
+                         `instagram_${timestamp}`;
+      const baseOutputPath = join(tempDir, `${filePrefix}_video_${timestamp}`);
       outputFile = `${baseOutputPath}.mp4`;
       
       // Video quality formats
@@ -179,7 +215,7 @@ export default async function handler(req, res) {
       // Download video and merge to mp4
       // Use --merge-output-format mp4 for faster download (no recoding)
       // If video is not playable, we can add --recode-video mp4 but it's slower
-      downloadCommand = `${ytDlpPath} -f "${formatSelector}" --merge-output-format mp4 -o "${baseOutputPath}.mp4" --no-playlist --no-warnings "${youtubeUrl}"`;
+      downloadCommand = `${ytDlpPath} -f "${formatSelector}" --merge-output-format mp4 -o "${baseOutputPath}.mp4" --no-playlist --no-warnings "${finalUrl}"`;
     }
 
     console.log(`YOUTUBE_DOWNLOAD: Executing: ${downloadCommand}`);
@@ -265,9 +301,12 @@ export default async function handler(req, res) {
       // Set appropriate headers
       const contentType = type === 'audio' ? 'audio/mpeg' : 'video/mp4';
       const extension = type === 'audio' ? 'mp3' : 'mp4';
+      const filenamePrefix = detectedPlatform === 'youtube' ? `youtube_${finalVideoId || 'video'}` :
+                            detectedPlatform === 'tiktok' ? `tiktok_${timestamp}` :
+                            `instagram_${timestamp}`;
       
       res.setHeader('Content-Type', contentType);
-      res.setHeader('Content-Disposition', `attachment; filename="youtube_${finalVideoId}_${quality}.${extension}"`);
+      res.setHeader('Content-Disposition', `attachment; filename="${filenamePrefix}_${quality}.${extension}"`);
       res.setHeader('Content-Length', fileSize);
       
       // Send file

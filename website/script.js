@@ -535,6 +535,36 @@ function isYouTubeUrl(url) {
   return patterns.some(pattern => pattern.test(url));
 }
 
+// Check if TikTok URL is valid
+function isTikTokUrl(url) {
+  const patterns = [
+    /^https?:\/\/(www\.)?(tiktok\.com|vm\.tiktok\.com)\/.+/,
+    /^https?:\/\/tiktok\.com\/@.+\/video\/.+/
+  ];
+  return patterns.some(pattern => pattern.test(url));
+}
+
+// Check if Instagram URL is valid
+function isInstagramUrl(url) {
+  const patterns = [
+    /^https?:\/\/(www\.)?instagram\.com\/(p|reel|tv)\/.+/,
+    /^https?:\/\/instagram\.com\/p\/.+/
+  ];
+  return patterns.some(pattern => pattern.test(url));
+}
+
+// Check URL based on current platform
+function isValidUrl(url) {
+  if (currentPlatform === 'youtube') {
+    return isYouTubeUrl(url);
+  } else if (currentPlatform === 'tiktok') {
+    return isTikTokUrl(url);
+  } else if (currentPlatform === 'instagram') {
+    return isInstagramUrl(url);
+  }
+  return false;
+}
+
 // Show message
 function showMessage(text, type = 'info') {
   downloadMessage.textContent = text;
@@ -581,8 +611,10 @@ pasteBtnMain.addEventListener('click', async () => {
       }
       youtubeUrlInput.value = text;
       checkInput();
-      if (isYouTubeUrl(text)) {
+      if (isValidUrl(text)) {
         showMessage('لطفاً یکی از گزینه‌های زیر را انتخاب کنید', 'info');
+      } else {
+        showMessage('لینک معتبر نیست. لطفاً لینک صحیح را وارد کنید.', 'error');
       }
     } else {
       showMessage('کلیپ‌بورد خالی است', 'error');
@@ -625,8 +657,10 @@ downloadVideoBtnMain.addEventListener('click', async () => {
   }
   
   const url = youtubeUrlInput.value.trim();
-  if (!isYouTubeUrl(url)) {
-    showMessage('لینک یوتیوب معتبر نیست', 'error');
+  if (!isValidUrl(url)) {
+    const platformName = currentPlatform === 'youtube' ? 'یوتیوب' : 
+                         currentPlatform === 'tiktok' ? 'TikTok' : 'Instagram';
+    showMessage(`لینک ${platformName} معتبر نیست`, 'error');
     return;
   }
   
@@ -706,8 +740,10 @@ downloadAudioBtnMain.addEventListener('click', async () => {
   }
   
   const url = youtubeUrlInput.value.trim();
-  if (!isYouTubeUrl(url)) {
-    showMessage('لینک یوتیوب معتبر نیست', 'error');
+  if (!isValidUrl(url)) {
+    const platformName = currentPlatform === 'youtube' ? 'یوتیوب' : 
+                         currentPlatform === 'tiktok' ? 'TikTok' : 'Instagram';
+    showMessage(`لینک ${platformName} معتبر نیست`, 'error');
     return;
   }
   
@@ -760,8 +796,10 @@ downloadSubtitleBtnMain.addEventListener('click', async () => {
   if (!sessionId) return;
   
   const url = youtubeUrlInput.value.trim();
-  if (!isYouTubeUrl(url)) {
-    showMessage('لینک یوتیوب معتبر نیست', 'error');
+  if (!isValidUrl(url)) {
+    const platformName = currentPlatform === 'youtube' ? 'یوتیوب' : 
+                         currentPlatform === 'tiktok' ? 'TikTok' : 'Instagram';
+    showMessage(`لینک ${platformName} معتبر نیست`, 'error');
     return;
   }
   
@@ -1633,6 +1671,60 @@ document.addEventListener('DOMContentLoaded', () => {
   setupDownloadButtons();
 });
 
+// Setup progress bar close button
+document.addEventListener('DOMContentLoaded', () => {
+  const progressClose = document.getElementById('progressClose');
+  if (progressClose) {
+    progressClose.addEventListener('click', () => {
+      hideProgressBar();
+    });
+  }
+});
+
+// Platform tabs functionality
+let currentPlatform = 'youtube';
+
+function switchPlatform(platform) {
+  currentPlatform = platform;
+  
+  // Update tab buttons
+  document.querySelectorAll('.platform-tab').forEach(tab => {
+    tab.classList.remove('active');
+    if (tab.dataset.platform === platform) {
+      tab.classList.add('active');
+    }
+  });
+  
+  // Update title and placeholder
+  const downloadTitle = document.getElementById('downloadTitle');
+  const youtubeUrlInput = document.getElementById('youtubeUrlInput');
+  
+  if (platform === 'youtube') {
+    downloadTitle.textContent = 'لینک یوتیوب را وارد کنید یا فایل صوتی انتخاب کنید';
+    youtubeUrlInput.placeholder = 'https://youtube.com/watch?v=...';
+  } else if (platform === 'tiktok') {
+    downloadTitle.textContent = 'لینک TikTok را وارد کنید';
+    youtubeUrlInput.placeholder = 'https://www.tiktok.com/...';
+  } else if (platform === 'instagram') {
+    downloadTitle.textContent = 'لینک Instagram را وارد کنید';
+    youtubeUrlInput.placeholder = 'https://www.instagram.com/...';
+  }
+  
+  // Clear input
+  youtubeUrlInput.value = '';
+  checkInput();
+}
+
+// Setup platform tabs
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.platform-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const platform = tab.dataset.platform;
+      switchPlatform(platform);
+    });
+  });
+});
+
 // Setup download buttons for TXT and DOCX
 function setupDownloadButtons() {
   // Download fulltext as TXT
@@ -2172,34 +2264,120 @@ function showQualityModal(formats, url, sessionId, isPro, type) {
   modal.classList.add('active');
 }
 
+// Show progress bar
+function showProgressBar(title = 'در حال دانلود...') {
+  const progressContainer = document.getElementById('downloadProgressContainer');
+  const progressTitle = document.getElementById('progressTitle');
+  const progressFill = document.getElementById('progressFill');
+  const progressPercent = document.getElementById('progressPercent');
+  const fileSize = document.getElementById('fileSize');
+  const progressDownloaded = document.getElementById('progressDownloaded');
+  const progressTotal = document.getElementById('progressTotal');
+  
+  if (progressContainer) {
+    progressContainer.style.display = 'block';
+    progressTitle.textContent = title;
+    progressFill.style.width = '0%';
+    progressPercent.textContent = '0%';
+    fileSize.textContent = 'حجم فایل: در حال محاسبه...';
+    progressDownloaded.textContent = '0 MB';
+    progressTotal.textContent = '0 MB';
+  }
+}
+
+// Update progress bar
+function updateProgressBar(downloaded, total, percent) {
+  const progressFill = document.getElementById('progressFill');
+  const progressPercent = document.getElementById('progressPercent');
+  const fileSize = document.getElementById('fileSize');
+  const progressDownloaded = document.getElementById('progressDownloaded');
+  const progressTotal = document.getElementById('progressTotal');
+  
+  if (progressFill) {
+    progressFill.style.width = `${percent}%`;
+  }
+  if (progressPercent) {
+    progressPercent.textContent = `${Math.round(percent)}%`;
+  }
+  if (fileSize) {
+    const totalMB = (total / 1024 / 1024).toFixed(2);
+    fileSize.textContent = `حجم فایل: ${totalMB} MB`;
+  }
+  if (progressDownloaded) {
+    const downloadedMB = (downloaded / 1024 / 1024).toFixed(2);
+    progressDownloaded.textContent = `${downloadedMB} MB`;
+  }
+  if (progressTotal) {
+    const totalMB = (total / 1024 / 1024).toFixed(2);
+    progressTotal.textContent = `${totalMB} MB`;
+  }
+}
+
+// Hide progress bar
+function hideProgressBar() {
+  const progressContainer = document.getElementById('downloadProgressContainer');
+  if (progressContainer) {
+    setTimeout(() => {
+      progressContainer.style.display = 'none';
+    }, 1000);
+  }
+}
+
 // Download file
 async function downloadFile(url, format, sessionId, type) {
   try {
-    showMessage('در حال دانلود...', 'info');
+    // Show progress bar
+    showProgressBar('در حال دانلود...');
     
-    const videoId = extractVideoId(url);
+    // Extract video ID based on platform
+    let videoId = null;
+    if (currentPlatform === 'youtube') {
+      videoId = extractVideoId(url);
+    } else if (currentPlatform === 'tiktok') {
+      // Extract TikTok video ID from URL
+      const tiktokMatch = url.match(/\/(video|@[\w.]+)\/(\d+)/);
+      if (tiktokMatch) {
+        videoId = tiktokMatch[2] || tiktokMatch[1];
+      }
+    } else if (currentPlatform === 'instagram') {
+      // Extract Instagram shortcode from URL
+      const instaMatch = url.match(/\/(p|reel|tv)\/([A-Za-z0-9_-]+)/);
+      if (instaMatch) {
+        videoId = instaMatch[2];
+      }
+    }
+    
     const quality = format.quality || format.format_id || format.itag;
     
     // Get video title first for better filename
-    let videoTitle = `youtube_${videoId}`;
+    let videoTitle = `${currentPlatform}_${videoId || 'video'}`;
     try {
-      const titleResponse = await fetch(`${API_BASE_URL}/api/youtube-title`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoId, url })
-      });
-      if (titleResponse.ok) {
-        const titleData = await titleResponse.json();
-        if (titleData.title) {
-          // Clean title for filename (remove invalid characters)
-          videoTitle = titleData.title.replace(/[<>:"/\\|?*]/g, '_').substring(0, 50);
+      // Try to get title (works for YouTube, may need separate endpoints for TikTok/Instagram)
+      if (currentPlatform === 'youtube' && videoId) {
+        const titleResponse = await fetch(`${API_BASE_URL}/api/youtube-title`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ videoId, url })
+        });
+        if (titleResponse.ok) {
+          const titleData = await titleResponse.json();
+          if (titleData.title) {
+            // Clean title for filename (remove invalid characters)
+            videoTitle = titleData.title.replace(/[<>:"/\\|?*]/g, '_').substring(0, 50);
+          }
         }
       }
     } catch (e) {
       console.warn('Could not get video title:', e);
     }
     
-    const response = await fetch(`${API_BASE_URL}/api/youtube-download`, {
+    updateProgressBar(0, 0, 5);
+    
+    // Use appropriate API endpoint based on platform
+    // For now, use youtube-download for all platforms (yt-dlp supports TikTok and Instagram)
+    const apiEndpoint = `${API_BASE_URL}/api/youtube-download`;
+    
+    const response = await fetch(apiEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -2209,11 +2387,13 @@ async function downloadFile(url, format, sessionId, type) {
         url,
         videoId: videoId,
         quality: quality,
-        type: type
+        type: type,
+        platform: currentPlatform // Pass platform info
       })
     });
     
     if (!response.ok) {
+      hideProgressBar();
       // Try to get error message
       const contentType = response.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
@@ -2223,6 +2403,14 @@ async function downloadFile(url, format, sessionId, type) {
         const errorText = await response.text();
         throw new Error(errorText || 'خطا در دانلود');
       }
+    }
+    
+    // Get content length for progress tracking
+    const contentLength = response.headers.get('content-length');
+    const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
+    
+    if (totalBytes > 0) {
+      updateProgressBar(0, totalBytes, 10);
     }
     
     // Get filename from Content-Disposition header if available
@@ -2235,8 +2423,40 @@ async function downloadFile(url, format, sessionId, type) {
       }
     }
     
-    // Download file directly (not blob URL) for proper browser download history
-    const blob = await response.blob();
+    // Download with progress tracking
+    const reader = response.body.getReader();
+    const chunks = [];
+    let receivedLength = 0;
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      chunks.push(value);
+      receivedLength += value.length;
+      
+      if (totalBytes > 0) {
+        const percent = Math.min(95, 10 + (receivedLength / totalBytes) * 85);
+        updateProgressBar(receivedLength, totalBytes, percent);
+      } else {
+        // If we don't know total size, show indeterminate progress
+        updateProgressBar(receivedLength, receivedLength * 1.2, Math.min(90, 10 + (receivedLength / 1024 / 1024) * 5));
+      }
+    }
+    
+    updateProgressBar(receivedLength, receivedLength, 100);
+    
+    // Combine chunks into blob
+    const allChunks = new Uint8Array(receivedLength);
+    let position = 0;
+    for (const chunk of chunks) {
+      allChunks.set(chunk, position);
+      position += chunk.length;
+    }
+    
+    const blob = new Blob([allChunks], { 
+      type: type === 'video' ? 'video/mp4' : 'audio/mpeg' 
+    });
     const extension = type === 'video' ? 'mp4' : 'mp3';
     const fullFilename = filename.endsWith(extension) ? filename : `${filename}.${extension}`;
     
@@ -2253,6 +2473,9 @@ async function downloadFile(url, format, sessionId, type) {
       document.body.removeChild(link);
       URL.revokeObjectURL(link.href);
     }, 100);
+    
+    // Hide progress bar after download completes
+    hideProgressBar();
     
     // videoTitle already fetched above
     
@@ -2319,11 +2542,13 @@ async function downloadFile(url, format, sessionId, type) {
 youtubeUrlInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter') {
     const url = youtubeUrlInput.value.trim();
-    if (url && isYouTubeUrl(url)) {
+    if (url && isValidUrl(url)) {
       downloadOptions.style.display = 'block';
       showMessage('لطفاً یکی از گزینه‌های زیر را انتخاب کنید', 'info');
     } else {
-      showMessage('لینک یوتیوب معتبر نیست', 'error');
+      const platformName = currentPlatform === 'youtube' ? 'یوتیوب' : 
+                           currentPlatform === 'tiktok' ? 'TikTok' : 'Instagram';
+      showMessage(`لینک ${platformName} معتبر نیست`, 'error');
     }
   }
 });
@@ -2374,7 +2599,7 @@ function handleFileSelect(e) {
 function checkInput() {
   const url = youtubeUrlInput.value.trim();
   const hasFile = audioFileInput && audioFileInput.files.length > 0;
-  const isYouTube = url && isYouTubeUrl(url);
+  const isValid = url && isValidUrl(url);
   const isFile = hasFile && url.startsWith('📁');
   
   // Show download options if we have URL or file
@@ -2386,14 +2611,22 @@ function checkInput() {
   }
   
   // For YouTube URLs: show all buttons
-  if (isYouTube) {
+  if (isValid && currentPlatform === 'youtube') {
     downloadVideoBtnMain.style.display = 'flex';
     downloadAudioBtnMain.style.display = 'flex';
     downloadSubtitleBtnMain.style.display = 'flex';
     summarizeBtnMain.disabled = false;
     fullTextBtnMain.disabled = false;
   } 
-  // For files: hide YouTube-specific buttons, show only summarize and full text
+  // For TikTok and Instagram: show only video and audio download
+  else if (isValid && (currentPlatform === 'tiktok' || currentPlatform === 'instagram')) {
+    downloadVideoBtnMain.style.display = 'flex';
+    downloadAudioBtnMain.style.display = 'flex';
+    downloadSubtitleBtnMain.style.display = 'none';
+    summarizeBtnMain.disabled = false;
+    fullTextBtnMain.disabled = false;
+  }
+  // For files: hide platform-specific buttons, show only summarize and full text
   else if (isFile) {
     downloadVideoBtnMain.style.display = 'none';
     downloadAudioBtnMain.style.display = 'none';
