@@ -122,6 +122,30 @@
                 📋 چسباندن
               </button>
             </div>
+            <div class="download-options" id="downloadOptionsYoutube" style="display: none;">
+              <div class="download-option-group">
+                <button class="download-option-btn" id="downloadVideoBtnMain">
+                  <span class="option-icon">🎬</span>
+                  <span class="option-text">دانلود ویدئو</span>
+                </button>
+                <button class="download-option-btn" id="downloadAudioBtnMain">
+                  <span class="option-icon">🎵</span>
+                  <span class="option-text">دانلود موزیک</span>
+                </button>
+                <button class="download-option-btn" id="downloadSubtitleBtnMain">
+                  <span class="option-icon">📄</span>
+                  <span class="option-text">دانلود زیرنویس</span>
+                </button>
+                <button class="download-option-btn" id="summarizeBtnMain">
+                  <span class="option-icon">📝</span>
+                  <span class="option-text">خلاصه‌سازی</span>
+                </button>
+                <button class="download-option-btn" id="fullTextBtnMain">
+                  <span class="option-icon">📋</span>
+                  <span class="option-text">متن کامل</span>
+                </button>
+              </div>
+            </div>
           </div>
           
           <!-- Instagram Tab Content -->
@@ -137,6 +161,26 @@
               <button class="download-btn-main" id="pasteInstagramBtn">
                 📋 چسباندن
               </button>
+            </div>
+            <div class="download-options" id="downloadOptionsInstagram" style="display: none;">
+              <div class="download-option-group">
+                <button class="download-option-btn" id="downloadVideoBtnInstagram">
+                  <span class="option-icon">🎬</span>
+                  <span class="option-text">دانلود ویدئو</span>
+                </button>
+                <button class="download-option-btn" id="downloadAudioBtnInstagram">
+                  <span class="option-icon">🎵</span>
+                  <span class="option-text">دانلود موزیک</span>
+                </button>
+                <button class="download-option-btn" id="summarizeBtnInstagram">
+                  <span class="option-icon">📝</span>
+                  <span class="option-text">خلاصه‌سازی</span>
+                </button>
+                <button class="download-option-btn" id="fullTextBtnInstagram">
+                  <span class="option-icon">📋</span>
+                  <span class="option-text">متن کامل</span>
+                </button>
+              </div>
             </div>
           </div>
           
@@ -154,6 +198,26 @@
                 📋 چسباندن
               </button>
             </div>
+            <div class="download-options" id="downloadOptionsTiktok" style="display: none;">
+              <div class="download-option-group">
+                <button class="download-option-btn" id="downloadVideoBtnTiktok">
+                  <span class="option-icon">🎬</span>
+                  <span class="option-text">دانلود ویدئو</span>
+                </button>
+                <button class="download-option-btn" id="downloadAudioBtnTiktok">
+                  <span class="option-icon">🎵</span>
+                  <span class="option-text">دانلود موزیک</span>
+                </button>
+                <button class="download-option-btn" id="summarizeBtnTiktok">
+                  <span class="option-icon">📝</span>
+                  <span class="option-text">خلاصه‌سازی</span>
+                </button>
+                <button class="download-option-btn" id="fullTextBtnTiktok">
+                  <span class="option-icon">📋</span>
+                  <span class="option-text">متن کامل</span>
+                </button>
+              </div>
+            </div>
           </div>
           
           <!-- Audio File Tab Content -->
@@ -170,35 +234,22 @@
                 <span class="file-input-btn-full">📁 انتخاب فایل صوتی</span>
               </label>
             </div>
+            <div class="download-options" id="downloadOptionsAudiofile" style="display: none;">
+              <div class="download-option-group">
+                <button class="download-option-btn" id="summarizeBtnAudiofile">
+                  <span class="option-icon">📝</span>
+                  <span class="option-text">خلاصه‌سازی</span>
+                </button>
+                <button class="download-option-btn" id="fullTextBtnAudiofile">
+                  <span class="option-icon">📋</span>
+                  <span class="option-text">متن کامل</span>
+                </button>
+              </div>
+            </div>
           </div>
           
           <!-- Shared Input (hidden, used for processing) -->
           <input type="text" id="currentUrlInput" style="display: none;">
-          <!-- Download Options (shown for all tabs except audiofile) -->
-          <div class="download-options" id="downloadOptions" style="display: none;">
-            <div class="download-option-group">
-              <button class="download-option-btn" id="downloadVideoBtnMain">
-                <span class="option-icon">🎬</span>
-                <span class="option-text">دانلود ویدئو</span>
-              </button>
-              <button class="download-option-btn" id="downloadAudioBtnMain">
-                <span class="option-icon">🎵</span>
-                <span class="option-text">دانلود موزیک</span>
-              </button>
-              <button class="download-option-btn" id="downloadSubtitleBtnMain">
-                <span class="option-icon">📄</span>
-                <span class="option-text">دانلود زیرنویس</span>
-              </button>
-              <button class="download-option-btn" id="summarizeBtnMain">
-                <span class="option-icon">📝</span>
-                <span class="option-text">خلاصه‌سازی</span>
-              </button>
-              <button class="download-option-btn" id="fullTextBtnMain">
-                <span class="option-icon">📋</span>
-                <span class="option-text">متن کامل</span>
-              </button>
-            </div>
-          </div>
           <div class="download-message" id="downloadMessage"></div>
           
           <!-- Progress Bar Section -->

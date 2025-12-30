@@ -517,7 +517,7 @@ document.getElementById('logoutBtn').addEventListener('click', async () => {
 const youtubeUrlInput = document.getElementById('youtubeUrlInput');
 const audioFileInput = document.getElementById('audioFileInput');
 // Removed downloadBtnMain - using pasteBtnMain instead
-const downloadOptions = document.getElementById('downloadOptions');
+// Note: downloadOptions are now per-tab, use getDownloadOptions() function
 const downloadVideoBtnMain = document.getElementById('downloadVideoBtnMain');
 const downloadAudioBtnMain = document.getElementById('downloadAudioBtnMain');
 const downloadSubtitleBtnMain = document.getElementById('downloadSubtitleBtnMain');
@@ -647,8 +647,283 @@ if (tiktokUrlInput) {
   });
 }
 
+// Setup event listeners for all platform buttons
+document.addEventListener('DOMContentLoaded', () => {
+  // YouTube buttons (already have listeners, but ensure they work)
+  
+  // Instagram buttons
+  const downloadVideoBtnInstagram = document.getElementById('downloadVideoBtnInstagram');
+  if (downloadVideoBtnInstagram) {
+    downloadVideoBtnInstagram.addEventListener('click', async () => {
+      const originalPlatform = currentPlatform;
+      currentPlatform = 'instagram';
+      await handleVideoDownload();
+      currentPlatform = originalPlatform;
+    });
+  }
+  
+  const downloadAudioBtnInstagram = document.getElementById('downloadAudioBtnInstagram');
+  if (downloadAudioBtnInstagram) {
+    downloadAudioBtnInstagram.addEventListener('click', async () => {
+      const originalPlatform = currentPlatform;
+      currentPlatform = 'instagram';
+      await handleAudioDownload();
+      currentPlatform = originalPlatform;
+    });
+  }
+  
+  const summarizeBtnInstagram = document.getElementById('summarizeBtnInstagram');
+  if (summarizeBtnInstagram) {
+    summarizeBtnInstagram.addEventListener('click', async () => {
+      const originalPlatform = currentPlatform;
+      currentPlatform = 'instagram';
+      await handleSummarize();
+      currentPlatform = originalPlatform;
+    });
+  }
+  
+  const fullTextBtnInstagram = document.getElementById('fullTextBtnInstagram');
+  if (fullTextBtnInstagram) {
+    fullTextBtnInstagram.addEventListener('click', async () => {
+      const originalPlatform = currentPlatform;
+      currentPlatform = 'instagram';
+      await handleFullText();
+      currentPlatform = originalPlatform;
+    });
+  }
+  
+  // TikTok buttons
+  const downloadVideoBtnTiktok = document.getElementById('downloadVideoBtnTiktok');
+  if (downloadVideoBtnTiktok) {
+    downloadVideoBtnTiktok.addEventListener('click', async () => {
+      const originalPlatform = currentPlatform;
+      currentPlatform = 'tiktok';
+      await handleVideoDownload();
+      currentPlatform = originalPlatform;
+    });
+  }
+  
+  const downloadAudioBtnTiktok = document.getElementById('downloadAudioBtnTiktok');
+  if (downloadAudioBtnTiktok) {
+    downloadAudioBtnTiktok.addEventListener('click', async () => {
+      const originalPlatform = currentPlatform;
+      currentPlatform = 'tiktok';
+      await handleAudioDownload();
+      currentPlatform = originalPlatform;
+    });
+  }
+  
+  const summarizeBtnTiktok = document.getElementById('summarizeBtnTiktok');
+  if (summarizeBtnTiktok) {
+    summarizeBtnTiktok.addEventListener('click', async () => {
+      const originalPlatform = currentPlatform;
+      currentPlatform = 'tiktok';
+      await handleSummarize();
+      currentPlatform = originalPlatform;
+    });
+  }
+  
+  const fullTextBtnTiktok = document.getElementById('fullTextBtnTiktok');
+  if (fullTextBtnTiktok) {
+    fullTextBtnTiktok.addEventListener('click', async () => {
+      const originalPlatform = currentPlatform;
+      currentPlatform = 'tiktok';
+      await handleFullText();
+      currentPlatform = originalPlatform;
+    });
+  }
+  
+  // Audio file buttons
+  const summarizeBtnAudiofile = document.getElementById('summarizeBtnAudiofile');
+  if (summarizeBtnAudiofile) {
+    summarizeBtnAudiofile.addEventListener('click', async () => {
+      const originalPlatform = currentPlatform;
+      currentPlatform = 'audiofile';
+      await handleSummarize();
+      currentPlatform = originalPlatform;
+    });
+  }
+  
+  const fullTextBtnAudiofile = document.getElementById('fullTextBtnAudiofile');
+  if (fullTextBtnAudiofile) {
+    fullTextBtnAudiofile.addEventListener('click', async () => {
+      const originalPlatform = currentPlatform;
+      currentPlatform = 'audiofile';
+      await handleFullText();
+      currentPlatform = originalPlatform;
+    });
+  }
+});
+
+// Extract common handlers
+async function handleVideoDownload() {
+  const sessionId = checkLogin();
+  if (!sessionId) return;
+  
+  const url = getCurrentUrl();
+  if (!isValidUrl(url)) {
+    const platformName = currentPlatform === 'youtube' ? 'یوتیوب' : 
+                         currentPlatform === 'tiktok' ? 'تیک‌تاک' : 
+                         currentPlatform === 'instagram' ? 'اینستاگرام' : '';
+    showMessage(`لینک ${platformName} معتبر نیست`, 'error');
+    return;
+  }
+  
+  try {
+    const limitCheck = await checkSubscriptionLimit(sessionId, 'downloadVideo', 0);
+    if (limitCheck && !limitCheck.allowed && limitCheck.reason && !limitCheck.reason.includes('proceeding anyway')) {
+      showMessage(limitCheck.reason || 'حد مجاز دانلود ویدئو شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
+      window.open(`dashboard.html?session=${sessionId}`, '_blank');
+      return;
+    }
+    
+    showMessage('در حال دریافت کیفیت‌های موجود...', 'info');
+    const formatsResponse = await fetch(`${API_BASE_URL}/api/youtube-formats`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': sessionId
+      },
+      body: JSON.stringify({ url })
+    });
+    
+    if (!formatsResponse.ok) {
+      throw new Error('خطا در دریافت کیفیت‌ها');
+    }
+    
+    const formatsData = await formatsResponse.json();
+    const subResponse = await fetch(`${API_BASE_URL}/api/subscription?action=info&session=${sessionId}`);
+    const subData = await subResponse.ok ? await subResponse.json() : { plan: 'free' };
+    const userPlan = subData.plan || 'free';
+    const isPro = userPlan !== 'free';
+    const maxQuality = subData.features?.maxVideoQuality || '480p';
+    
+    let availableFormats = formatsData.available?.video || ['2160p', '1440p', '1080p', '720p', '480p', '360p', '240p', '144p'];
+    
+    if (!isPro && maxQuality === '480p') {
+      availableFormats = availableFormats.filter(q => {
+        const qualityNum = parseInt(q.replace('p', ''));
+        return qualityNum <= 480 || q === '480p';
+      });
+    }
+    
+    showQualityModal(availableFormats, url, sessionId, isPro, 'video');
+    
+  } catch (error) {
+    console.error('Error:', error);
+    showMessage('خطا در دریافت کیفیت‌ها: ' + error.message, 'error');
+  }
+}
+
+async function handleAudioDownload() {
+  const sessionId = checkLogin();
+  if (!sessionId) return;
+  
+  const url = getCurrentUrl();
+  if (!isValidUrl(url)) {
+    const platformName = currentPlatform === 'youtube' ? 'یوتیوب' : 
+                         currentPlatform === 'tiktok' ? 'تیک‌تاک' : 
+                         currentPlatform === 'instagram' ? 'اینستاگرام' : '';
+    showMessage(`لینک ${platformName} معتبر نیست`, 'error');
+    return;
+  }
+  
+  try {
+    const limitCheck = await checkSubscriptionLimit(sessionId, 'downloadAudio', 0);
+    if (limitCheck && !limitCheck.allowed && limitCheck.reason && !limitCheck.reason.includes('proceeding anyway')) {
+      showMessage(limitCheck.reason || 'حد مجاز دانلود موزیک شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
+      window.open(`dashboard.html?session=${sessionId}`, '_blank');
+      return;
+    }
+    
+    showMessage('در حال دریافت کیفیت‌های موجود...', 'info');
+    const formatsResponse = await fetch(`${API_BASE_URL}/api/youtube-formats`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': sessionId
+      },
+      body: JSON.stringify({ url })
+    });
+    
+    if (!formatsResponse.ok) {
+      throw new Error('خطا در دریافت کیفیت‌ها');
+    }
+    
+    const formatsData = await formatsResponse.json();
+    const subResponse = await fetch(`${API_BASE_URL}/api/subscription?action=info&session=${sessionId}`);
+    const subData = await subResponse.ok ? await subResponse.json() : { plan: 'free' };
+    const userPlan = subData.plan || 'free';
+    const isPro = userPlan !== 'free';
+    
+    const availableFormats = formatsData.available?.audio || ['best', '320k', '256k', '192k', '128k', '96k', '64k'];
+    showQualityModal(availableFormats, url, sessionId, isPro, 'audio');
+    
+  } catch (error) {
+    console.error('Error:', error);
+    showMessage('خطا در دریافت کیفیت‌ها: ' + error.message, 'error');
+  }
+}
+
+async function handleSummarize() {
+  const sessionId = checkLogin();
+  if (!sessionId) {
+    showMessage('لطفاً ابتدا وارد حساب کاربری خود شوید', 'error');
+    return;
+  }
+  
+  const url = getCurrentUrl();
+  const file = audioFileInput && audioFileInput.files[0];
+  
+  if (!url && !file) {
+    if (currentPlatform === 'audiofile') {
+      showMessage('لطفاً فایل صوتی را انتخاب کنید', 'error');
+    } else {
+      showMessage('لطفاً لینک را وارد کنید', 'error');
+    }
+    return;
+  }
+  
+  if (file && url.startsWith('📁')) {
+    await processSummarizeFile(file, sessionId);
+  } else if (isValidUrl(url)) {
+    await processSummarize(url, sessionId);
+  } else {
+    showMessage('لینک معتبر نیست', 'error');
+  }
+}
+
+async function handleFullText() {
+  const sessionId = checkLogin();
+  if (!sessionId) {
+    showMessage('لطفاً ابتدا وارد حساب کاربری خود شوید', 'error');
+    return;
+  }
+  
+  const url = getCurrentUrl();
+  const file = audioFileInput && audioFileInput.files[0];
+  
+  if (!url && !file) {
+    if (currentPlatform === 'audiofile') {
+      showMessage('لطفاً فایل صوتی را انتخاب کنید', 'error');
+    } else {
+      showMessage('لطفاً لینک را وارد کنید', 'error');
+    }
+    return;
+  }
+  
+  if (file && url.startsWith('📁')) {
+    await processFullTextFile(file, sessionId);
+  } else if (isValidUrl(url)) {
+    await processFullText(url, sessionId);
+  } else {
+    showMessage('لینک معتبر نیست', 'error');
+  }
+}
+
 // Handle video download
 downloadVideoBtnMain.addEventListener('click', async () => {
+  await handleVideoDownload();
   const sessionId = checkLogin();
   if (!sessionId) return;
   
@@ -733,76 +1008,7 @@ downloadVideoBtnMain.addEventListener('click', async () => {
 
 // Handle audio download
 downloadAudioBtnMain.addEventListener('click', async () => {
-  const sessionId = checkLogin();
-  if (!sessionId) return;
-  
-  // Check local usage first
-  const localUsage = getLocalUsage();
-  const userPlan = window.userSubscription?.plan || 'free';
-  const planLimits = {
-    free: { audio: 3, video: 3, minutes: 20 },
-    starter: { audio: 20, video: 20, minutes: 120 },
-    pro: { audio: 100, video: 100, minutes: 300 },
-    business: { audio: null, video: null, minutes: 600 }
-  };
-  const limits = planLimits[userPlan] || planLimits.free;
-  
-  if (limits.audio !== null && localUsage.audioDownloads >= limits.audio) {
-    showMessage(`حد مجاز دانلود موزیک شما (${limits.audio} مورد در ماه) تمام شده است. برای دانلود نامحدود، لطفاً پلن خود را ارتقا دهید.`, 'error');
-    window.open(`dashboard.html?session=${sessionId}`, '_blank');
-    return;
-  }
-  
-  const url = getCurrentUrl();
-  if (!isValidUrl(url)) {
-    const platformName = currentPlatform === 'youtube' ? 'یوتیوب' : 
-                         currentPlatform === 'tiktok' ? 'تیک‌تاک' : 
-                         currentPlatform === 'instagram' ? 'اینستاگرام' : '';
-    showMessage(`لینک ${platformName} معتبر نیست`, 'error');
-    return;
-  }
-  
-  try {
-    // Check download limit for free users (non-blocking)
-    const limitCheck = await checkSubscriptionLimit(sessionId, 'downloadAudio', 0);
-    if (limitCheck && !limitCheck.allowed && limitCheck.reason && !limitCheck.reason.includes('proceeding anyway')) {
-      showMessage(limitCheck.reason || 'حد مجاز دانلود موزیک شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
-      window.open(`dashboard.html?session=${sessionId}`, '_blank');
-      return;
-    }
-    
-    showMessage('در حال دریافت کیفیت‌های موجود...', 'info');
-    const formatsResponse = await fetch(`${API_BASE_URL}/api/youtube-formats`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Session-Id': sessionId
-      },
-      body: JSON.stringify({ url })
-    });
-    
-    if (!formatsResponse.ok) {
-      throw new Error('خطا در دریافت کیفیت‌ها');
-    }
-    
-    const formatsData = await formatsResponse.json();
-    
-    // Get user subscription info
-    const subResponse = await fetch(`${API_BASE_URL}/api/subscription?action=info&session=${sessionId}`);
-    const subData = await subResponse.ok ? await subResponse.json() : { plan: 'free' };
-    const userPlan = subData.plan || 'free';
-    const isPro = userPlan !== 'free';
-    
-    // Use available formats from API or default
-    const availableFormats = formatsData.available?.audio || ['best', '320k', '256k', '192k', '128k', '96k', '64k'];
-    
-    // Show quality modal for audio
-    showQualityModal(availableFormats, url, sessionId, isPro, 'audio');
-    
-  } catch (error) {
-    console.error('Error:', error);
-    showMessage('خطا در دریافت کیفیت‌ها: ' + error.message, 'error');
-  }
+  await handleAudioDownload();
 });
 
 // Handle subtitle download
@@ -942,144 +1148,12 @@ async function checkSubscriptionLimit(sessionId, feature, videoDurationMinutes =
 
 // Handle summarize
 summarizeBtnMain.addEventListener('click', async () => {
-  const sessionId = checkLogin();
-  if (!sessionId) {
-    showMessage('لطفاً ابتدا وارد حساب کاربری خود شوید', 'error');
-    return;
-  }
-  
-  const url = getCurrentUrl();
-  const file = audioFileInput && audioFileInput.files[0];
-  
-  if (!url && !file) {
-    if (currentPlatform === 'audiofile') {
-      showMessage('لطفاً فایل صوتی را انتخاب کنید', 'error');
-    } else {
-      showMessage('لطفاً لینک را وارد کنید', 'error');
-    }
-    return;
-  }
-  
-  // Estimate duration for limit check (like extension)
-  let estimatedDurationMinutes = 0;
-  if (url && isYouTubeUrl(url)) {
-    // Try to get actual duration from YouTube (like extension)
-    try {
-      const videoId = extractVideoId(url);
-      const response = await fetch(`${API_BASE_URL}/api/youtube-title`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoId, url })
-      });
-      if (response.ok) {
-        const data = await response.json();
-        if (data.duration) {
-          estimatedDurationMinutes = Math.ceil(data.duration / 60); // Convert seconds to minutes
-        }
-      }
-    } catch (e) {
-      console.warn('Could not get video duration:', e);
-      estimatedDurationMinutes = 5; // Fallback estimate
-    }
-  } else if (file) {
-    // Estimate from file size (like extension)
-    estimatedDurationMinutes = Math.ceil((file.size / 1024 / 1024) * 1.2); // Add 20% buffer
-  }
-  
-  // Check subscription limit (like extension - only block if explicitly not allowed)
-  try {
-    const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', estimatedDurationMinutes);
-    if (limitCheck && !limitCheck.allowed && limitCheck.reason && !limitCheck.reason.includes('proceeding anyway')) {
-      showMessage(limitCheck.reason + '\n\nلطفاً پلن خود را ارتقا دهید یا بعداً تلاش کنید.', 'error');
-      window.open(`dashboard.html?session=${sessionId}`, '_blank');
-      return;
-    }
-  } catch (error) {
-    console.error('Error checking subscription limit:', error);
-    // Continue anyway if check fails (like extension)
-  }
-  
-  // Process summarize and save to dashboard
-  if (file && url.startsWith('📁')) {
-    // File selected
-    await processSummarizeFile(file, sessionId);
-  } else if (isYouTubeUrl(url)) {
-    // YouTube URL
-    await processSummarize(url, sessionId);
-  } else {
-    showMessage('لینک یوتیوب معتبر نیست', 'error');
-  }
+  await handleSummarize();
 });
 
 // Handle full text
 fullTextBtnMain.addEventListener('click', async () => {
-  const sessionId = checkLogin();
-  if (!sessionId) {
-    showMessage('لطفاً ابتدا وارد حساب کاربری خود شوید', 'error');
-    return;
-  }
-  
-  const url = getCurrentUrl();
-  const file = audioFileInput && audioFileInput.files[0];
-  
-  if (!url && !file) {
-    if (currentPlatform === 'audiofile') {
-      showMessage('لطفاً فایل صوتی را انتخاب کنید', 'error');
-    } else {
-      showMessage('لطفاً لینک را وارد کنید', 'error');
-    }
-    return;
-  }
-  
-  // Estimate duration for limit check (like extension)
-  let estimatedDurationMinutes = 0;
-  if (url && isYouTubeUrl(url)) {
-    // Try to get actual duration from YouTube (like extension)
-    try {
-      const videoId = extractVideoId(url);
-      const response = await fetch(`${API_BASE_URL}/api/youtube-title`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoId, url })
-      });
-      if (response.ok) {
-        const data = await response.json();
-        if (data.duration) {
-          estimatedDurationMinutes = Math.ceil(data.duration / 60); // Convert seconds to minutes
-        }
-      }
-    } catch (e) {
-      console.warn('Could not get video duration:', e);
-      estimatedDurationMinutes = 5; // Fallback estimate
-    }
-  } else if (file) {
-    // Estimate from file size (like extension)
-    estimatedDurationMinutes = Math.ceil((file.size / 1024 / 1024) * 1.2); // Add 20% buffer
-  }
-  
-  // Check subscription limit (like extension - only block if explicitly not allowed)
-  try {
-    const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', estimatedDurationMinutes);
-    if (limitCheck && !limitCheck.allowed && limitCheck.reason && !limitCheck.reason.includes('proceeding anyway')) {
-      showMessage(limitCheck.reason + '\n\nلطفاً پلن خود را ارتقا دهید یا بعداً تلاش کنید.', 'error');
-      window.open(`dashboard.html?session=${sessionId}`, '_blank');
-      return;
-    }
-  } catch (error) {
-    console.error('Error checking subscription limit:', error);
-    // Continue anyway if check fails (like extension)
-  }
-  
-  // Process transcription and save to dashboard
-  if (file && url.startsWith('📁')) {
-    // File selected
-    await processFullTextFile(file, sessionId);
-  } else if (isYouTubeUrl(url)) {
-    // YouTube URL
-    await processFullText(url, sessionId);
-  } else {
-    showMessage('لینک یوتیوب معتبر نیست', 'error');
-  }
+  await handleFullText();
 });
 
 // Process summarize for file
@@ -1729,17 +1803,22 @@ function switchPlatform(platform) {
     activeTab.classList.add('active');
   }
   
-  // Hide download options for audiofile tab
-  if (platform === 'audiofile') {
-    downloadOptions.style.display = 'none';
-  } else {
-    // Clear inputs
+  // Hide all download options first
+  const allOptions = ['downloadOptionsYoutube', 'downloadOptionsInstagram', 'downloadOptionsTiktok', 'downloadOptionsAudiofile'];
+  allOptions.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  
+  // Clear inputs
+  if (platform !== 'audiofile') {
     const urlInput = document.getElementById(`${platform}UrlInput`) || document.getElementById('youtubeUrlInput');
     if (urlInput) {
       urlInput.value = '';
     }
-    checkInput();
   }
+  
+  checkInput();
 }
 
 // Setup platform tabs
@@ -2587,7 +2666,7 @@ function setupEnterKeyHandler(input) {
       if (e.key === 'Enter') {
         const url = input.value.trim();
         if (url && isValidUrl(url)) {
-          downloadOptions.style.display = 'block';
+          checkInput();
           showMessage('لطفاً یکی از گزینه‌های زیر را انتخاب کنید', 'info');
         } else {
           const platformName = currentPlatform === 'youtube' ? 'یوتیوب' : 
@@ -2663,58 +2742,46 @@ function getCurrentUrl() {
   return input ? input.value.trim() : '';
 }
 
+// Get download options container for current platform
+function getDownloadOptions() {
+  if (currentPlatform === 'youtube') {
+    return document.getElementById('downloadOptionsYoutube');
+  } else if (currentPlatform === 'instagram') {
+    return document.getElementById('downloadOptionsInstagram');
+  } else if (currentPlatform === 'tiktok') {
+    return document.getElementById('downloadOptionsTiktok');
+  } else if (currentPlatform === 'audiofile') {
+    return document.getElementById('downloadOptionsAudiofile');
+  }
+  return null;
+}
+
 // Check input and show/hide appropriate buttons
 function checkInput() {
+  // Hide all download options first
+  const allOptions = ['downloadOptionsYoutube', 'downloadOptionsInstagram', 'downloadOptionsTiktok', 'downloadOptionsAudiofile'];
+  allOptions.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  
   if (currentPlatform === 'audiofile') {
     // For audio file tab, show options when file is selected
     const hasFile = audioFileInput && audioFileInput.files.length > 0;
-    if (hasFile) {
-      downloadOptions.style.display = 'block';
-      downloadVideoBtnMain.style.display = 'none';
-      downloadAudioBtnMain.style.display = 'none';
-      downloadSubtitleBtnMain.style.display = 'none';
-      summarizeBtnMain.disabled = false;
-      fullTextBtnMain.disabled = false;
-    } else {
-      downloadOptions.style.display = 'none';
+    const options = getDownloadOptions();
+    if (hasFile && options) {
+      options.style.display = 'block';
     }
     return;
   }
   
   const url = getCurrentUrl();
   const isValid = url && isValidUrl(url);
+  const options = getDownloadOptions();
   
   // Show download options if we have valid URL
-  if (isValid) {
-    downloadOptions.style.display = 'block';
-  } else {
-    downloadOptions.style.display = 'none';
-    return;
-  }
-  
-  // For YouTube URLs: show all buttons
-  if (isValid && currentPlatform === 'youtube') {
-    downloadVideoBtnMain.style.display = 'flex';
-    downloadAudioBtnMain.style.display = 'flex';
-    downloadSubtitleBtnMain.style.display = 'flex';
-    summarizeBtnMain.disabled = false;
-    fullTextBtnMain.disabled = false;
-  } 
-  // For TikTok and Instagram: show only video and audio download
-  else if (isValid && (currentPlatform === 'tiktok' || currentPlatform === 'instagram')) {
-    downloadVideoBtnMain.style.display = 'flex';
-    downloadAudioBtnMain.style.display = 'flex';
-    downloadSubtitleBtnMain.style.display = 'none';
-    summarizeBtnMain.disabled = false;
-    fullTextBtnMain.disabled = false;
-  }
-  // For other URLs: show only summarize and full text
-  else {
-    downloadVideoBtnMain.style.display = 'none';
-    downloadAudioBtnMain.style.display = 'none';
-    downloadSubtitleBtnMain.style.display = 'none';
-    summarizeBtnMain.disabled = false;
-    fullTextBtnMain.disabled = false;
+  if (isValid && options) {
+    options.style.display = 'block';
   }
 }
 
