@@ -89,42 +89,92 @@
       <div class="container">
         <div class="download-box">
           <!-- Platform Tabs -->
-          <div class="platform-tabs">
-            <button class="platform-tab active" data-platform="youtube">
+          <div class="platform-tabs-container">
+            <button class="platform-tab active" data-tab="youtube">
               <span class="platform-icon">📺</span>
-              <span class="platform-name">YouTube</span>
+              <span class="platform-name">یوتیوب</span>
             </button>
-            <button class="platform-tab" data-platform="tiktok">
-              <span class="platform-icon">🎵</span>
-              <span class="platform-name">TikTok</span>
-            </button>
-            <button class="platform-tab" data-platform="instagram">
+            <button class="platform-tab" data-tab="instagram">
               <span class="platform-icon">📷</span>
-              <span class="platform-name">Instagram</span>
+              <span class="platform-name">اینستاگرام</span>
+            </button>
+            <button class="platform-tab" data-tab="tiktok">
+              <span class="platform-icon">🎵</span>
+              <span class="platform-name">تیک‌تاک</span>
+            </button>
+            <button class="platform-tab" data-tab="audiofile">
+              <span class="platform-icon">📁</span>
+              <span class="platform-name">فایل صوتی</span>
             </button>
           </div>
           
-          <h2 class="download-title" id="downloadTitle">لینک یوتیوب را وارد کنید یا فایل صوتی انتخاب کنید</h2>
-          <div class="download-input-group">
-            <input 
-              type="text" 
-              id="youtubeUrlInput" 
-              class="download-input" 
-              placeholder="https://youtube.com/watch?v=..."
-            >
-            <button class="download-btn-main" id="pasteBtnMain">
-              📋 چسباندن
-            </button>
-            <label for="audioFileInput" class="file-input-label">
+          <!-- YouTube Tab Content -->
+          <div class="tab-content active" id="youtube-tab">
+            <h2 class="download-title">لینک یوتیوب را وارد کنید</h2>
+            <div class="download-input-group">
               <input 
-                type="file" 
-                id="audioFileInput" 
-                accept="audio/*,video/*" 
-                style="display: none;"
+                type="text" 
+                id="youtubeUrlInput" 
+                class="download-input" 
+                placeholder="https://youtube.com/watch?v=..."
               >
-              <span class="file-input-btn">📁 انتخاب فایل</span>
-            </label>
+              <button class="download-btn-main" id="pasteBtnMain">
+                📋 چسباندن
+              </button>
+            </div>
           </div>
+          
+          <!-- Instagram Tab Content -->
+          <div class="tab-content" id="instagram-tab">
+            <h2 class="download-title">لینک اینستاگرام را وارد کنید</h2>
+            <div class="download-input-group">
+              <input 
+                type="text" 
+                id="instagramUrlInput" 
+                class="download-input" 
+                placeholder="https://www.instagram.com/p/..."
+              >
+              <button class="download-btn-main" id="pasteInstagramBtn">
+                📋 چسباندن
+              </button>
+            </div>
+          </div>
+          
+          <!-- TikTok Tab Content -->
+          <div class="tab-content" id="tiktok-tab">
+            <h2 class="download-title">لینک تیک‌تاک را وارد کنید</h2>
+            <div class="download-input-group">
+              <input 
+                type="text" 
+                id="tiktokUrlInput" 
+                class="download-input" 
+                placeholder="https://www.tiktok.com/..."
+              >
+              <button class="download-btn-main" id="pasteTiktokBtn">
+                📋 چسباندن
+              </button>
+            </div>
+          </div>
+          
+          <!-- Audio File Tab Content -->
+          <div class="tab-content" id="audiofile-tab">
+            <h2 class="download-title">فایل صوتی انتخاب کنید</h2>
+            <div class="download-input-group">
+              <label for="audioFileInput" class="file-input-label-full">
+                <input 
+                  type="file" 
+                  id="audioFileInput" 
+                  accept="audio/*,video/*" 
+                  style="display: none;"
+                >
+                <span class="file-input-btn-full">📁 انتخاب فایل صوتی</span>
+              </label>
+            </div>
+          </div>
+          
+          <!-- Shared Input (hidden, used for processing) -->
+          <input type="text" id="currentUrlInput" style="display: none;">
+          <!-- Download Options (shown for all tabs except audiofile) -->
           <div class="download-options" id="downloadOptions" style="display: none;">
             <div class="download-option-group">
               <button class="download-option-btn" id="downloadVideoBtnMain">

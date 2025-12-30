@@ -818,49 +818,108 @@ code, pre {
 }
 
 /* Platform Tabs */
-.platform-tabs {
+.platform-tabs-container {
   display: flex;
-  gap: 12px;
-  margin-bottom: 24px;
-  padding-bottom: 16px;
+  gap: 0;
+  margin-bottom: 0;
+  background: transparent;
   border-bottom: 2px solid var(--border);
+  padding: 0;
+  position: relative;
+  top: -1px;
 }
 
 .platform-tab {
   flex: 1;
   display: flex;
-  flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  padding: 16px;
-  background: white;
+  padding: 16px 20px;
+  background: var(--bg-gray);
   border: 2px solid var(--border);
-  border-radius: 12px;
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
   cursor: pointer;
   transition: all 0.3s;
   font-family: 'Vazirmatn', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  position: relative;
+  margin-left: 4px;
+  margin-right: 4px;
+  z-index: 1;
+}
+
+.platform-tab:first-child {
+  margin-right: 0;
+}
+
+.platform-tab:last-child {
+  margin-left: 0;
 }
 
 .platform-tab:hover {
+  background: rgba(99, 102, 241, 0.1);
   border-color: var(--primary);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px var(--shadow);
 }
 
 .platform-tab.active {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: white;
+  background: white;
+  border-color: var(--border);
+  border-bottom: 2px solid white;
+  color: var(--text-primary);
+  z-index: 2;
+  margin-bottom: -2px;
+}
+
+.platform-tab.active:hover {
+  background: white;
 }
 
 .platform-icon {
-  font-size: 32px;
+  font-size: 20px;
   line-height: 1;
 }
 
 .platform-name {
   font-size: 14px;
   font-weight: 600;
+}
+
+/* Tab Content */
+.tab-content {
+  display: none;
+  padding: 24px 0;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+.file-input-label-full {
+  display: block;
+  width: 100%;
+}
+
+.file-input-btn-full {
+  display: block;
+  width: 100%;
+  padding: 20px;
+  background: var(--secondary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-family: 'Vazirmatn', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.file-input-btn-full:hover {
+  background: #7c3aed;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px var(--shadow);
 }
 
 /* Download Progress Container */

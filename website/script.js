@@ -600,39 +600,52 @@ function checkLogin() {
 
 // Handle paste button
 const pasteBtnMain = document.getElementById('pasteBtnMain');
-pasteBtnMain.addEventListener('click', async () => {
-  try {
-    // Read from clipboard
-    const text = await navigator.clipboard.readText();
-    if (text) {
-      // Clear file selection if pasting URL
-      if (audioFileInput) {
-        audioFileInput.value = '';
-      }
-      youtubeUrlInput.value = text;
-      checkInput();
-      if (isValidUrl(text)) {
-        showMessage('لطفاً یکی از گزینه‌های زیر را انتخاب کنید', 'info');
+if (pasteBtnMain) {
+  pasteBtnMain.addEventListener('click', async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        const input = getCurrentUrlInput();
+        if (input) {
+          input.value = text;
+          checkInput();
+          if (isValidUrl(text)) {
+            showMessage('لطفاً یکی از گزینه‌های زیر را انتخاب کنید', 'info');
+          } else {
+            showMessage('لینک معتبر نیست. لطفاً لینک صحیح را وارد کنید.', 'error');
+          }
+        }
       } else {
-        showMessage('لینک معتبر نیست. لطفاً لینک صحیح را وارد کنید.', 'error');
+        showMessage('کلیپ‌بورد خالی است', 'error');
       }
-    } else {
-      showMessage('کلیپ‌بورد خالی است', 'error');
+    } catch (error) {
+      console.error('Error reading clipboard:', error);
+      showMessage('خطا در خواندن کلیپ‌بورد. لطفاً لینک را دستی وارد کنید.', 'error');
     }
-  } catch (error) {
-    console.error('Error reading clipboard:', error);
-    showMessage('خطا در خواندن کلیپ‌بورد. لطفاً لینک را دستی وارد کنید.', 'error');
-  }
-});
+  });
+}
 
 // Also check input when URL is entered manually
-youtubeUrlInput.addEventListener('input', () => {
-  // Clear file selection if typing URL
-  if (audioFileInput) {
-    audioFileInput.value = '';
-  }
-  checkInput();
-});
+const youtubeUrlInput = document.getElementById('youtubeUrlInput');
+if (youtubeUrlInput) {
+  youtubeUrlInput.addEventListener('input', () => {
+    checkInput();
+  });
+}
+
+const instagramUrlInput = document.getElementById('instagramUrlInput');
+if (instagramUrlInput) {
+  instagramUrlInput.addEventListener('input', () => {
+    checkInput();
+  });
+}
+
+const tiktokUrlInput = document.getElementById('tiktokUrlInput');
+if (tiktokUrlInput) {
+  tiktokUrlInput.addEventListener('input', () => {
+    checkInput();
+  });
+}
 
 // Handle video download
 downloadVideoBtnMain.addEventListener('click', async () => {
@@ -656,10 +669,11 @@ downloadVideoBtnMain.addEventListener('click', async () => {
     return;
   }
   
-  const url = youtubeUrlInput.value.trim();
+  const url = getCurrentUrl();
   if (!isValidUrl(url)) {
     const platformName = currentPlatform === 'youtube' ? 'یوتیوب' : 
-                         currentPlatform === 'tiktok' ? 'TikTok' : 'Instagram';
+                         currentPlatform === 'tiktok' ? 'تیک‌تاک' : 
+                         currentPlatform === 'instagram' ? 'اینستاگرام' : '';
     showMessage(`لینک ${platformName} معتبر نیست`, 'error');
     return;
   }
@@ -739,10 +753,11 @@ downloadAudioBtnMain.addEventListener('click', async () => {
     return;
   }
   
-  const url = youtubeUrlInput.value.trim();
+  const url = getCurrentUrl();
   if (!isValidUrl(url)) {
     const platformName = currentPlatform === 'youtube' ? 'یوتیوب' : 
-                         currentPlatform === 'tiktok' ? 'TikTok' : 'Instagram';
+                         currentPlatform === 'tiktok' ? 'تیک‌تاک' : 
+                         currentPlatform === 'instagram' ? 'اینستاگرام' : '';
     showMessage(`لینک ${platformName} معتبر نیست`, 'error');
     return;
   }
@@ -795,10 +810,11 @@ downloadSubtitleBtnMain.addEventListener('click', async () => {
   const sessionId = checkLogin();
   if (!sessionId) return;
   
-  const url = youtubeUrlInput.value.trim();
+  const url = getCurrentUrl();
   if (!isValidUrl(url)) {
     const platformName = currentPlatform === 'youtube' ? 'یوتیوب' : 
-                         currentPlatform === 'tiktok' ? 'TikTok' : 'Instagram';
+                         currentPlatform === 'tiktok' ? 'تیک‌تاک' : 
+                         currentPlatform === 'instagram' ? 'اینستاگرام' : '';
     showMessage(`لینک ${platformName} معتبر نیست`, 'error');
     return;
   }
@@ -932,11 +948,15 @@ summarizeBtnMain.addEventListener('click', async () => {
     return;
   }
   
-  const url = youtubeUrlInput.value.trim();
+  const url = getCurrentUrl();
   const file = audioFileInput && audioFileInput.files[0];
   
   if (!url && !file) {
-    showMessage('لطفاً لینک یوتیوب یا فایل صوتی را وارد کنید', 'error');
+    if (currentPlatform === 'audiofile') {
+      showMessage('لطفاً فایل صوتی را انتخاب کنید', 'error');
+    } else {
+      showMessage('لطفاً لینک را وارد کنید', 'error');
+    }
     return;
   }
   
@@ -999,11 +1019,15 @@ fullTextBtnMain.addEventListener('click', async () => {
     return;
   }
   
-  const url = youtubeUrlInput.value.trim();
+  const url = getCurrentUrl();
   const file = audioFileInput && audioFileInput.files[0];
   
   if (!url && !file) {
-    showMessage('لطفاً لینک یوتیوب یا فایل صوتی را وارد کنید', 'error');
+    if (currentPlatform === 'audiofile') {
+      showMessage('لطفاً فایل صوتی را انتخاب کنید', 'error');
+    } else {
+      showMessage('لطفاً لینک را وارد کنید', 'error');
+    }
     return;
   }
   
@@ -1690,29 +1714,32 @@ function switchPlatform(platform) {
   // Update tab buttons
   document.querySelectorAll('.platform-tab').forEach(tab => {
     tab.classList.remove('active');
-    if (tab.dataset.platform === platform) {
+    if (tab.dataset.tab === platform) {
       tab.classList.add('active');
     }
   });
   
-  // Update title and placeholder
-  const downloadTitle = document.getElementById('downloadTitle');
-  const youtubeUrlInput = document.getElementById('youtubeUrlInput');
+  // Update tab content
+  document.querySelectorAll('.tab-content').forEach(content => {
+    content.classList.remove('active');
+  });
   
-  if (platform === 'youtube') {
-    downloadTitle.textContent = 'لینک یوتیوب را وارد کنید یا فایل صوتی انتخاب کنید';
-    youtubeUrlInput.placeholder = 'https://youtube.com/watch?v=...';
-  } else if (platform === 'tiktok') {
-    downloadTitle.textContent = 'لینک TikTok را وارد کنید';
-    youtubeUrlInput.placeholder = 'https://www.tiktok.com/...';
-  } else if (platform === 'instagram') {
-    downloadTitle.textContent = 'لینک Instagram را وارد کنید';
-    youtubeUrlInput.placeholder = 'https://www.instagram.com/...';
+  const activeTab = document.getElementById(`${platform}-tab`);
+  if (activeTab) {
+    activeTab.classList.add('active');
   }
   
-  // Clear input
-  youtubeUrlInput.value = '';
-  checkInput();
+  // Hide download options for audiofile tab
+  if (platform === 'audiofile') {
+    downloadOptions.style.display = 'none';
+  } else {
+    // Clear inputs
+    const urlInput = document.getElementById(`${platform}UrlInput`) || document.getElementById('youtubeUrlInput');
+    if (urlInput) {
+      urlInput.value = '';
+    }
+    checkInput();
+  }
 }
 
 // Setup platform tabs
@@ -2424,9 +2451,20 @@ async function downloadFile(url, format, sessionId, type) {
     }
     
     // Download with progress tracking
+    if (!response.body) {
+      throw new Error('Response body is not available');
+    }
+    
     const reader = response.body.getReader();
     const chunks = [];
     let receivedLength = 0;
+    
+    // Show initial progress
+    if (totalBytes > 0) {
+      updateProgressBar(0, totalBytes, 5);
+    } else {
+      updateProgressBar(0, 0, 5);
+    }
     
     while (true) {
       const { done, value } = await reader.read();
@@ -2436,15 +2474,19 @@ async function downloadFile(url, format, sessionId, type) {
       receivedLength += value.length;
       
       if (totalBytes > 0) {
-        const percent = Math.min(95, 10 + (receivedLength / totalBytes) * 85);
+        const percent = Math.min(95, 5 + (receivedLength / totalBytes) * 90);
         updateProgressBar(receivedLength, totalBytes, percent);
       } else {
-        // If we don't know total size, show indeterminate progress
-        updateProgressBar(receivedLength, receivedLength * 1.2, Math.min(90, 10 + (receivedLength / 1024 / 1024) * 5));
+        // If we don't know total size, estimate based on received data
+        const estimatedTotal = receivedLength * 1.1; // Estimate 10% more
+        const percent = Math.min(90, 5 + (receivedLength / 1024 / 1024) * 2);
+        updateProgressBar(receivedLength, estimatedTotal, percent);
       }
     }
     
-    updateProgressBar(receivedLength, receivedLength, 100);
+    // Final update
+    const finalTotal = totalBytes > 0 ? totalBytes : receivedLength;
+    updateProgressBar(receivedLength, finalTotal, 100);
     
     // Combine chunks into blob
     const allChunks = new Uint8Array(receivedLength);
@@ -2539,18 +2581,29 @@ async function downloadFile(url, format, sessionId, type) {
 }
 
 // Allow Enter key to check URL
-youtubeUrlInput.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') {
-    const url = youtubeUrlInput.value.trim();
-    if (url && isValidUrl(url)) {
-      downloadOptions.style.display = 'block';
-      showMessage('لطفاً یکی از گزینه‌های زیر را انتخاب کنید', 'info');
-    } else {
-      const platformName = currentPlatform === 'youtube' ? 'یوتیوب' : 
-                           currentPlatform === 'tiktok' ? 'TikTok' : 'Instagram';
-      showMessage(`لینک ${platformName} معتبر نیست`, 'error');
-    }
+function setupEnterKeyHandler(input) {
+  if (input) {
+    input.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        const url = input.value.trim();
+        if (url && isValidUrl(url)) {
+          downloadOptions.style.display = 'block';
+          showMessage('لطفاً یکی از گزینه‌های زیر را انتخاب کنید', 'info');
+        } else {
+          const platformName = currentPlatform === 'youtube' ? 'یوتیوب' : 
+                               currentPlatform === 'tiktok' ? 'تیک‌تاک' : 
+                               currentPlatform === 'instagram' ? 'اینستاگرام' : '';
+          showMessage(`لینک ${platformName} معتبر نیست`, 'error');
+        }
+      }
+    });
   }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  setupEnterKeyHandler(document.getElementById('youtubeUrlInput'));
+  setupEnterKeyHandler(document.getElementById('instagramUrlInput'));
+  setupEnterKeyHandler(document.getElementById('tiktokUrlInput'));
 });
 
 // Handle audio file input (like extension)
@@ -2558,7 +2611,6 @@ function handleFileSelect(e) {
   const file = e.target.files[0];
   if (!file) {
     // If no file selected, clear input and reset
-    youtubeUrlInput.value = '';
     checkInput();
     return;
   }
@@ -2568,7 +2620,6 @@ function handleFileSelect(e) {
   if (file.size > maxSize) {
     showMessage(`فایل خیلی بزرگ است (${(file.size / 1024 / 1024).toFixed(2)}MB). حداکثر حجم مجاز ${maxSize / 1024 / 1024}MB است.`, 'error');
     audioFileInput.value = ''; // Clear selection
-    youtubeUrlInput.value = '';
     checkInput();
     return;
   }
@@ -2580,30 +2631,61 @@ function handleFileSelect(e) {
   if (!isAudio && !isVideo) {
     showMessage('لطفاً فایل صوتی یا ویدئویی انتخاب کنید', 'error');
     audioFileInput.value = ''; // Clear selection
-    youtubeUrlInput.value = '';
     checkInput();
     return;
   }
   
-  // Show file name in input (like extension)
-  youtubeUrlInput.value = `📁 ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`;
-  
   // Store file for later use
   window.selectedFile = file;
+  
+  // Show success message
+  showMessage(`فایل "${file.name}" انتخاب شد (${(file.size / 1024 / 1024).toFixed(2)}MB)`, 'success');
   
   // Check input to show/hide buttons
   checkInput();
 }
 
+// Get current URL input based on active tab
+function getCurrentUrlInput() {
+  if (currentPlatform === 'youtube') {
+    return document.getElementById('youtubeUrlInput');
+  } else if (currentPlatform === 'instagram') {
+    return document.getElementById('instagramUrlInput');
+  } else if (currentPlatform === 'tiktok') {
+    return document.getElementById('tiktokUrlInput');
+  }
+  return null;
+}
+
+// Get current URL value
+function getCurrentUrl() {
+  const input = getCurrentUrlInput();
+  return input ? input.value.trim() : '';
+}
+
 // Check input and show/hide appropriate buttons
 function checkInput() {
-  const url = youtubeUrlInput.value.trim();
-  const hasFile = audioFileInput && audioFileInput.files.length > 0;
-  const isValid = url && isValidUrl(url);
-  const isFile = hasFile && url.startsWith('📁');
+  if (currentPlatform === 'audiofile') {
+    // For audio file tab, show options when file is selected
+    const hasFile = audioFileInput && audioFileInput.files.length > 0;
+    if (hasFile) {
+      downloadOptions.style.display = 'block';
+      downloadVideoBtnMain.style.display = 'none';
+      downloadAudioBtnMain.style.display = 'none';
+      downloadSubtitleBtnMain.style.display = 'none';
+      summarizeBtnMain.disabled = false;
+      fullTextBtnMain.disabled = false;
+    } else {
+      downloadOptions.style.display = 'none';
+    }
+    return;
+  }
   
-  // Show download options if we have URL or file
-  if (url || hasFile) {
+  const url = getCurrentUrl();
+  const isValid = url && isValidUrl(url);
+  
+  // Show download options if we have valid URL
+  if (isValid) {
     downloadOptions.style.display = 'block';
   } else {
     downloadOptions.style.display = 'none';
@@ -2622,14 +2704,6 @@ function checkInput() {
   else if (isValid && (currentPlatform === 'tiktok' || currentPlatform === 'instagram')) {
     downloadVideoBtnMain.style.display = 'flex';
     downloadAudioBtnMain.style.display = 'flex';
-    downloadSubtitleBtnMain.style.display = 'none';
-    summarizeBtnMain.disabled = false;
-    fullTextBtnMain.disabled = false;
-  }
-  // For files: hide platform-specific buttons, show only summarize and full text
-  else if (isFile) {
-    downloadVideoBtnMain.style.display = 'none';
-    downloadAudioBtnMain.style.display = 'none';
     downloadSubtitleBtnMain.style.display = 'none';
     summarizeBtnMain.disabled = false;
     fullTextBtnMain.disabled = false;
