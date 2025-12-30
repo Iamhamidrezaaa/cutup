@@ -212,8 +212,10 @@ export default async function handler(req, res) {
         };
         formatSelector = simpleFormats[quality] || 'best';
         
-        // For TikTok and Instagram, use simpler command (no merging needed usually)
-        downloadCommand = `${ytDlpPath} -f "${formatSelector}" -o "${baseOutputPath}.mp4" --no-playlist --no-warnings "${finalUrl}"`;
+        // For TikTok and Instagram, use simpler command
+        // Use %(ext)s placeholder and let yt-dlp determine the extension
+        // Then we'll find the actual file
+        downloadCommand = `${ytDlpPath} -f "${formatSelector}" -o "${baseOutputPath}.%(ext)s" --no-playlist --no-warnings --no-check-certificate "${finalUrl}"`;
       } else {
         // For YouTube, use complex format selection with merging
         const videoFormats = {
@@ -257,7 +259,15 @@ export default async function handler(req, res) {
         console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Found file at expected location: ${foundFile}`);
       } else {
         // Try to find file with different extensions
-        const baseName = outputFile.substring(0, outputFile.lastIndexOf('.'));
+        // For TikTok/Instagram, yt-dlp may use %(ext)s placeholder, so we need to check baseName without extension
+        let baseName;
+        if (detectedPlatform === 'tiktok' || detectedPlatform === 'instagram') {
+          // For TikTok/Instagram, baseOutputPath might not have extension yet
+          baseName = baseOutputPath;
+        } else {
+          baseName = outputFile.substring(0, outputFile.lastIndexOf('.'));
+        }
+        
         const possibleExtensions = type === 'audio' 
           ? ['.mp3', '.m4a', '.opus', '.ogg', '.webm', '.aac', '.mp4']
           : ['.mp4', '.webm', '.mkv', '.flv', '.avi', '.mov', '.m4v'];
@@ -305,22 +315,23 @@ export default async function handler(req, res) {
               }
             }
           } catch (readError) {
-            console.error('YOUTUBE_DOWNLOAD: Error reading temp directory:', readError);
+            console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Error reading temp directory:`, readError);
           }
         }
       }
       
       if (!foundFile) {
-        console.error('YOUTUBE_DOWNLOAD: Could not find downloaded file');
-        console.error('YOUTUBE_DOWNLOAD: Expected:', outputFile);
-        console.error('YOUTUBE_DOWNLOAD: stdout length:', stdout ? stdout.length : 0);
+        console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Could not find downloaded file`);
+        console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Expected:`, outputFile);
+        console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Base output path:`, baseOutputPath);
+        console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: stdout length:`, stdout ? stdout.length : 0);
         if (stdout) {
-          console.error('YOUTUBE_DOWNLOAD: stdout (last 500 chars):', stdout.substring(Math.max(0, stdout.length - 500)));
+          console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: stdout (last 500 chars):`, stdout.substring(Math.max(0, stdout.length - 500)));
         }
         if (stderr) {
-          console.error('YOUTUBE_DOWNLOAD: stderr:', stderr);
+          console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: stderr:`, stderr);
         }
-        throw new Error('Downloaded file not found. Please check server logs for details.');
+        throw new Error(`Downloaded file not found for ${detectedPlatform}. Please check server logs for details.`);
       }
       
       outputFile = foundFile;
@@ -329,7 +340,7 @@ export default async function handler(req, res) {
       const fileStats = statSync(outputFile);
       const fileSize = fileStats.size;
 
-      console.log(`YOUTUBE_DOWNLOAD: File downloaded, size: ${fileSize} bytes`);
+      console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: File downloaded, size: ${fileSize} bytes`);
 
       // Read file and send as response
       const fileBuffer = readFileSync(outputFile);
