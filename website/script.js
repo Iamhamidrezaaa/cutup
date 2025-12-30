@@ -768,7 +768,7 @@ async function handlePaste(inputElement) {
         inputElement.value = text;
         checkInput();
         if (isValidUrl(text)) {
-          showMessage('لطفاً یکی از گزینه‌های زیر را انتخاب کنید', 'info');
+          showMessage('لطفاً یکی از گزینه‌های بالا را انتخاب کنید', 'info');
         }
         // Error message is already shown in checkInput() if URL is invalid
       }
@@ -2683,7 +2683,7 @@ function setupEnterKeyHandler(input) {
         const url = input.value.trim();
         checkInput(); // This will validate and show appropriate message
         if (url && isValidUrl(url)) {
-          showMessage('لطفاً یکی از گزینه‌های زیر را انتخاب کنید', 'info');
+          showMessage('لطفاً یکی از گزینه‌های بالا را انتخاب کنید', 'info');
         }
         // Error message is already shown in checkInput() if URL is invalid
       }

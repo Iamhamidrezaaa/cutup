@@ -198,28 +198,45 @@ export default async function handler(req, res) {
       const baseOutputPath = join(tempDir, `${filePrefix}_video_${timestamp}`);
       outputFile = `${baseOutputPath}.mp4`;
       
-      // Video quality formats
-      const videoFormats = {
-        '2160p': 'bestvideo[height<=2160]+bestaudio/best[height<=2160]',
-        '1440p': 'bestvideo[height<=1440]+bestaudio/best[height<=1440]',
-        '1080p': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
-        '720p': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
-        '480p': 'bestvideo[height<=480]+bestaudio/best[height<=480]',
-        '360p': 'bestvideo[height<=360]+bestaudio/best[height<=360]',
-        '240p': 'bestvideo[height<=240]+bestaudio/best[height<=240]',
-        '144p': 'bestvideo[height<=144]+bestaudio/best[height<=144]'
-      };
+      // Video quality formats - different for different platforms
+      let formatSelector;
       
-      const formatSelector = videoFormats[quality] || 'bestvideo+bestaudio/best';
-      
-      // Download video and merge to mp4
-      // Use --merge-output-format mp4 for faster download (no recoding)
-      // If video is not playable, we can add --recode-video mp4 but it's slower
-      downloadCommand = `${ytDlpPath} -f "${formatSelector}" --merge-output-format mp4 -o "${baseOutputPath}.mp4" --no-playlist --no-warnings "${finalUrl}"`;
+      if (detectedPlatform === 'tiktok' || detectedPlatform === 'instagram') {
+        // For TikTok and Instagram, use simpler format selection
+        const simpleFormats = {
+          'best': 'best',
+          '1080p': 'best[height<=1080]',
+          '720p': 'best[height<=720]',
+          '480p': 'best[height<=480]',
+          '360p': 'best[height<=360]'
+        };
+        formatSelector = simpleFormats[quality] || 'best';
+        
+        // For TikTok and Instagram, use simpler command (no merging needed usually)
+        downloadCommand = `${ytDlpPath} -f "${formatSelector}" -o "${baseOutputPath}.mp4" --no-playlist --no-warnings "${finalUrl}"`;
+      } else {
+        // For YouTube, use complex format selection with merging
+        const videoFormats = {
+          '2160p': 'bestvideo[height<=2160]+bestaudio/best[height<=2160]',
+          '1440p': 'bestvideo[height<=1440]+bestaudio/best[height<=1440]',
+          '1080p': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
+          '720p': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
+          '480p': 'bestvideo[height<=480]+bestaudio/best[height<=480]',
+          '360p': 'bestvideo[height<=360]+bestaudio/best[height<=360]',
+          '240p': 'bestvideo[height<=240]+bestaudio/best[height<=240]',
+          '144p': 'bestvideo[height<=144]+bestaudio/best[height<=144]'
+        };
+        
+        formatSelector = videoFormats[quality] || 'bestvideo+bestaudio/best';
+        
+        // Download video and merge to mp4
+        // Use --merge-output-format mp4 for faster download (no recoding)
+        downloadCommand = `${ytDlpPath} -f "${formatSelector}" --merge-output-format mp4 -o "${baseOutputPath}.mp4" --no-playlist --no-warnings "${finalUrl}"`;
+      }
     }
 
-    console.log(`YOUTUBE_DOWNLOAD: Executing: ${downloadCommand}`);
-    console.log(`YOUTUBE_DOWNLOAD: Expected output: ${outputFile}`);
+    console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Executing: ${downloadCommand}`);
+    console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Expected output: ${outputFile}`);
     
     try {
       const { stdout, stderr } = await execAsync(downloadCommand, {
@@ -228,7 +245,7 @@ export default async function handler(req, res) {
       });
 
       if (stderr && !stderr.toLowerCase().includes('warning')) {
-        console.warn('YOUTUBE_DOWNLOAD: stderr:', stderr.substring(0, 500));
+        console.warn(`${detectedPlatform.toUpperCase()}_DOWNLOAD: stderr:`, stderr.substring(0, 500));
       }
 
       // yt-dlp uses %(ext)s placeholder, so we need to find the actual file
@@ -237,19 +254,19 @@ export default async function handler(req, res) {
       
       if (existsSync(outputFile)) {
         foundFile = outputFile;
-        console.log(`YOUTUBE_DOWNLOAD: Found file at expected location: ${foundFile}`);
+        console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Found file at expected location: ${foundFile}`);
       } else {
         // Try to find file with different extensions
         const baseName = outputFile.substring(0, outputFile.lastIndexOf('.'));
         const possibleExtensions = type === 'audio' 
-          ? ['.mp3', '.m4a', '.opus', '.ogg', '.webm', '.aac']
-          : ['.mp4', '.webm', '.mkv', '.flv', '.avi', '.mov'];
+          ? ['.mp3', '.m4a', '.opus', '.ogg', '.webm', '.aac', '.mp4']
+          : ['.mp4', '.webm', '.mkv', '.flv', '.avi', '.mov', '.m4v'];
         
         for (const ext of possibleExtensions) {
           const testFile = baseName + ext;
           if (existsSync(testFile)) {
             foundFile = testFile;
-            console.log(`YOUTUBE_DOWNLOAD: Found file with extension ${ext}: ${foundFile}`);
+            console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Found file with extension ${ext}: ${foundFile}`);
             break;
           }
         }
@@ -258,14 +275,33 @@ export default async function handler(req, res) {
         if (!foundFile) {
           try {
             const files = readdirSync(tempDir);
-            const pattern = `youtube_${finalVideoId}_${type === 'audio' ? 'audio' : 'video'}_${timestamp}`;
-            console.log(`YOUTUBE_DOWNLOAD: Searching for files matching pattern: ${pattern}`);
+            let pattern;
+            if (detectedPlatform === 'youtube') {
+              pattern = `youtube_${finalVideoId}_${type === 'audio' ? 'audio' : 'video'}_${timestamp}`;
+            } else if (detectedPlatform === 'tiktok') {
+              pattern = `tiktok_${timestamp}_${type === 'audio' ? 'audio' : 'video'}_${timestamp}`;
+            } else {
+              pattern = `instagram_${timestamp}_${type === 'audio' ? 'audio' : 'video'}_${timestamp}`;
+            }
+            console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Searching for files matching pattern: ${pattern}`);
             
             for (const file of files) {
-              if (file.includes(pattern)) {
+              if (file.includes(pattern) || file.startsWith(pattern.split('_')[0])) {
                 foundFile = join(tempDir, file);
-                console.log(`YOUTUBE_DOWNLOAD: Found file by pattern: ${foundFile}`);
+                console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Found file by pattern: ${foundFile}`);
                 break;
+              }
+            }
+            
+            // If still not found, try to find any file with the timestamp
+            if (!foundFile) {
+              const timestampStr = timestamp.toString();
+              for (const file of files) {
+                if (file.includes(timestampStr) && (file.includes('audio') || file.includes('video') || file.endsWith('.mp4') || file.endsWith('.mp3'))) {
+                  foundFile = join(tempDir, file);
+                  console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Found file by timestamp: ${foundFile}`);
+                  break;
+                }
               }
             }
           } catch (readError) {
@@ -346,11 +382,29 @@ export default async function handler(req, res) {
     }
 
   } catch (error) {
-    console.error('YOUTUBE_DOWNLOAD_ERROR:', error);
+    console.error('DOWNLOAD_ERROR:', error);
     setCORSHeaders(res);
+    
+    // Determine platform for error message
+    const { url, platform } = req.body || {};
+    let detectedPlatform = platform || 'youtube';
+    if (url && !platform) {
+      if (url.includes('youtube.com') || url.includes('youtu.be')) {
+        detectedPlatform = 'youtube';
+      } else if (url.includes('tiktok.com') || url.includes('vm.tiktok.com')) {
+        detectedPlatform = 'tiktok';
+      } else if (url.includes('instagram.com')) {
+        detectedPlatform = 'instagram';
+      }
+    }
+    
+    const platformName = detectedPlatform === 'youtube' ? 'YouTube' : 
+                         detectedPlatform === 'tiktok' ? 'TikTok' : 
+                         detectedPlatform === 'instagram' ? 'Instagram' : 'platform';
+    
     return res.status(500).json({
-      error: 'YOUTUBE_DOWNLOAD_ERROR',
-      message: error.message || 'Failed to download from YouTube'
+      error: 'DOWNLOAD_ERROR',
+      message: error.message || `Failed to download from ${platformName}`
     });
   }
 }
