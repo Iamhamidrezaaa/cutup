@@ -26,18 +26,28 @@
           <div class="nav-links">
             <a href="#features" class="nav-link">ویژگی‌ها</a>
             <a href="#how-it-works" class="nav-link">نحوه کار</a>
-            <a href="#install" class="nav-link">نصب</a>
             <div class="auth-section" id="authSection">
               <button class="nav-link login-btn" id="loginBtn" style="display: none;">
                 🔐 ورود با Google
               </button>
               <div class="user-profile" id="userProfile" style="display: none;">
-                <img src="" alt="Profile" class="user-avatar" id="userAvatar">
-                <span class="user-name" id="userName"></span>
-                <button class="logout-btn" id="logoutBtn">خروج</button>
+                <div class="user-profile-trigger" id="userProfileTrigger">
+                  <img src="" alt="Profile" class="user-avatar" id="userAvatar">
+                  <span class="user-name" id="userName"></span>
+                  <span class="dropdown-arrow">▼</span>
+                </div>
+                <div class="user-dropdown" id="userDropdown">
+                  <a href="#" class="dropdown-item" id="dashboardLink">
+                    <span class="dropdown-icon">⚙️</span>
+                    <span>ورود به کنترل پنل</span>
+                  </a>
+                  <button class="dropdown-item" id="logoutBtn">
+                    <span class="dropdown-icon">🚪</span>
+                    <span>خروج</span>
+                  </button>
+                </div>
               </div>
             </div>
-            <a href="https://chrome.google.com/webstore" class="nav-link cta" target="_blank">نصب از Chrome Store</a>
           </div>
         </div>
       </div>
@@ -473,23 +483,6 @@
       </div>
     </section>
 
-    <!-- Install Section -->
-    <section id="install" class="install">
-      <div class="container">
-        <h2 class="section-title">نصب افزونه</h2>
-        <div class="install-content">
-          <div class="install-steps">
-            <div class="install-step">
-              <h3>از Chrome Web Store</h3>
-              <p>به زودی در Chrome Web Store در دسترس خواهد بود.</p>
-              <a href="https://chrome.google.com/webstore" class="btn btn-primary" target="_blank">
-                مشاهده در Store
-              </a>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
   </main>
 
   <footer class="footer">

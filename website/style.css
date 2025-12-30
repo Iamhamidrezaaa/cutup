@@ -121,9 +121,23 @@ body {
 }
 
 .user-profile {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
+}
+
+.user-profile-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.user-profile-trigger:hover {
+  background: var(--bg-gray);
 }
 
 .user-avatar {
@@ -131,6 +145,7 @@ body {
   height: 32px;
   border-radius: 50%;
   border: 2px solid var(--border);
+  object-fit: cover;
 }
 
 .user-name {
@@ -139,21 +154,70 @@ body {
   color: var(--text-primary);
 }
 
-.logout-btn {
-  background: transparent;
-  border: 1px solid var(--border);
+.dropdown-arrow {
+  font-size: 10px;
   color: var(--text-secondary);
-  padding: 6px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 12px;
+  transition: transform 0.2s;
+}
+
+.user-profile.active .dropdown-arrow {
+  transform: rotate(180deg);
+}
+
+.user-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px var(--shadow);
+  min-width: 200px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-10px);
+  transition: all 0.3s ease;
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.user-profile.active .user-dropdown {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  color: var(--text-primary);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
   transition: all 0.2s;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: right;
+  cursor: pointer;
   font-family: 'Vazirmatn', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-.logout-btn:hover {
+.dropdown-item:hover {
   background: var(--bg-gray);
-  color: var(--text-primary);
+  color: var(--primary);
+}
+
+.dropdown-item:first-child {
+  border-bottom: 1px solid var(--border);
+}
+
+.dropdown-icon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
 }
 
 /* Hero Section */

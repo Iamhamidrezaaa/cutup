@@ -66,6 +66,14 @@ if (authSuccess === 'success' && sessionId) {
   window.history.replaceState({}, document.title, window.location.pathname);
   // Load user profile
   loadUserProfile();
+  
+  // Scroll to download section after login
+  setTimeout(() => {
+    const downloadSection = document.querySelector('.download-section');
+    if (downloadSection) {
+      downloadSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, 500);
 } else if (authError) {
   console.error('Auth error:', authError);
   alert('خطا در ورود. لطفاً دوباره تلاش کنید.');
@@ -416,8 +424,11 @@ function showUserProfile(user) {
   const userProfile = document.getElementById('userProfile');
   const avatar = document.getElementById('userAvatar');
   const userName = document.getElementById('userName');
+  const userProfileTrigger = document.getElementById('userProfileTrigger');
+  const dashboardLink = document.getElementById('dashboardLink');
+  const logoutBtn = document.getElementById('logoutBtn');
   
-  if (!loginBtn || !userProfile || !avatar || !userName) {
+  if (!loginBtn || !userProfile || !avatar || !userName || !userProfileTrigger) {
     console.error('[script] User profile elements not found!');
     // Retry after a short delay
     setTimeout(() => {
@@ -442,17 +453,47 @@ function showUserProfile(user) {
   
   userName.textContent = user.name || user.email;
   
-  // Make avatar and name clickable to go to dashboard
+  // Setup dropdown menu
   const sessionId = localStorage.getItem('cutup_session');
-  if (sessionId) {
-    avatar.style.cursor = 'pointer';
-    userName.style.cursor = 'pointer';
-    avatar.onclick = () => {
-      window.location.href = `dashboard.html?session=${sessionId}`;
-    };
-    userName.onclick = () => {
-      window.location.href = `dashboard.html?session=${sessionId}`;
-    };
+  if (sessionId && dashboardLink) {
+    dashboardLink.href = `dashboard.html?session=${sessionId}`;
+  }
+  
+  // Toggle dropdown on click
+  userProfileTrigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    userProfile.classList.toggle('active');
+  });
+  
+  // Close dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!userProfile.contains(e.target)) {
+      userProfile.classList.remove('active');
+    }
+  });
+  
+  // Setup logout button
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', async () => {
+      if (sessionId) {
+        try {
+          await fetch(`${API_BASE_URL}/api/auth?action=logout`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Session-Id': sessionId
+            },
+            body: JSON.stringify({ session: sessionId })
+          });
+        } catch (error) {
+          console.error('Error logging out:', error);
+        }
+      }
+      localStorage.removeItem('cutup_session');
+      currentSession = null;
+      userProfile.classList.remove('active');
+      showLoginButton();
+    });
   }
   
   console.log('[script] User profile displayed successfully');
@@ -491,27 +532,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
   }
 });
 
-// Logout button click
-document.getElementById('logoutBtn').addEventListener('click', async () => {
-  const sessionId = localStorage.getItem('cutup_session');
-  if (sessionId) {
-    try {
-      await fetch(`${API_BASE_URL}/api/auth?action=logout`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Session-Id': sessionId
-        },
-        body: JSON.stringify({ session: sessionId })
-      });
-    } catch (error) {
-      console.error('Error logging out:', error);
-    }
-  }
-  localStorage.removeItem('cutup_session');
-  currentSession = null;
-  showLoginButton();
-});
+// Logout button is now handled in showUserProfile function
 
 // Download functionality - wait for DOM to be ready
 let youtubeUrlInput, audioFileInput, downloadVideoBtnMain, downloadAudioBtnMain;
@@ -657,8 +678,12 @@ function isInstagramUrl(url) {
   return patterns.some(pattern => pattern.test(url));
 }
 
-// Check URL based on current platform
+// Check URL based on current platform - strict validation
 function isValidUrl(url) {
+  if (!url || !url.trim()) {
+    return false;
+  }
+  
   if (currentPlatform === 'youtube') {
     return isYouTubeUrl(url);
   } else if (currentPlatform === 'tiktok') {
@@ -667,6 +692,26 @@ function isValidUrl(url) {
     return isInstagramUrl(url);
   }
   return false;
+}
+
+// Get platform name in Persian
+function getPlatformName(platform) {
+  const names = {
+    'youtube': 'یوتیوب',
+    'tiktok': 'تیک‌تاک',
+    'instagram': 'اینستاگرام'
+  };
+  return names[platform] || platform;
+}
+
+// Get example URL for platform
+function getExampleUrl(platform) {
+  const examples = {
+    'youtube': 'https://youtube.com/watch?v=...',
+    'tiktok': 'https://www.tiktok.com/@username/video/...',
+    'instagram': 'https://www.instagram.com/p/...'
+  };
+  return examples[platform] || '';
 }
 
 // Show message
@@ -715,9 +760,8 @@ if (pasteBtnMain) {
           checkInput();
           if (isValidUrl(text)) {
             showMessage('لطفاً یکی از گزینه‌های زیر را انتخاب کنید', 'info');
-          } else {
-            showMessage('لینک معتبر نیست. لطفاً لینک صحیح را وارد کنید.', 'error');
           }
+          // Error message is already shown in checkInput() if URL is invalid
         }
       } else {
         showMessage('کلیپ‌بورد خالی است', 'error');
@@ -2587,15 +2631,11 @@ function setupEnterKeyHandler(input) {
     input.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') {
         const url = input.value.trim();
+        checkInput(); // This will validate and show appropriate message
         if (url && isValidUrl(url)) {
-          checkInput();
           showMessage('لطفاً یکی از گزینه‌های زیر را انتخاب کنید', 'info');
-        } else {
-          const platformName = currentPlatform === 'youtube' ? 'یوتیوب' : 
-                               currentPlatform === 'tiktok' ? 'تیک‌تاک' : 
-                               currentPlatform === 'instagram' ? 'اینستاگرام' : '';
-          showMessage(`لینک ${platformName} معتبر نیست`, 'error');
         }
+        // Error message is already shown in checkInput() if URL is invalid
       }
     });
   }
@@ -2700,6 +2740,35 @@ function checkInput() {
   }
   
   const url = getCurrentUrl();
+  
+  // Check if URL is for the correct platform
+  if (url && url.trim()) {
+    // Check if URL matches current platform
+    const isYouTube = isYouTubeUrl(url);
+    const isTikTok = isTikTokUrl(url);
+    const isInstagram = isInstagramUrl(url);
+    
+    // If URL is for a different platform, show error
+    if (currentPlatform === 'youtube' && !isYouTube && (isTikTok || isInstagram)) {
+      const wrongPlatform = isTikTok ? 'تیک‌تاک' : 'اینستاگرام';
+      showMessage(`این لینک مربوط به ${wrongPlatform} است. لطفاً لینک یوتیوب وارد کنید. مثال: ${getExampleUrl('youtube')}`, 'error');
+      return;
+    } else if (currentPlatform === 'instagram' && !isInstagram && (isYouTube || isTikTok)) {
+      const wrongPlatform = isYouTube ? 'یوتیوب' : 'تیک‌تاک';
+      showMessage(`این لینک مربوط به ${wrongPlatform} است. لطفاً لینک اینستاگرام وارد کنید. مثال: ${getExampleUrl('instagram')}`, 'error');
+      return;
+    } else if (currentPlatform === 'tiktok' && !isTikTok && (isYouTube || isInstagram)) {
+      const wrongPlatform = isYouTube ? 'یوتیوب' : 'اینستاگرام';
+      showMessage(`این لینک مربوط به ${wrongPlatform} است. لطفاً لینک تیک‌تاک وارد کنید. مثال: ${getExampleUrl('tiktok')}`, 'error');
+      return;
+    } else if (!isYouTube && !isTikTok && !isInstagram) {
+      // URL is not from any known platform
+      const platformName = getPlatformName(currentPlatform);
+      showMessage(`لینک وارد شده معتبر نیست. لطفاً لینک ${platformName} وارد کنید. مثال: ${getExampleUrl(currentPlatform)}`, 'error');
+      return;
+    }
+  }
+  
   const isValid = url && isValidUrl(url);
   const options = getDownloadOptions();
   
