@@ -1,4 +1,5 @@
-// API endpoint for getting available YouTube video/audio formats
+// API endpoint for getting available video/audio formats
+// Supports YouTube, TikTok, and Instagram
 // Uses yt-dlp to get format list
 
 import { handleCORS, setCORSHeaders } from './cors.js';
@@ -17,13 +18,41 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { videoId, url } = req.body;
+    const { videoId, url, platform } = req.body;
 
     if (!videoId && !url) {
       return res.status(400).json({ error: 'videoId or url is required' });
     }
 
-    // Extract video ID from URL if provided
+    // Determine platform from URL if not provided
+    let detectedPlatform = platform || 'youtube';
+    if (url && !platform) {
+      if (url.includes('youtube.com') || url.includes('youtu.be')) {
+        detectedPlatform = 'youtube';
+      } else if (url.includes('tiktok.com') || url.includes('vm.tiktok.com')) {
+        detectedPlatform = 'tiktok';
+      } else if (url.includes('instagram.com')) {
+        detectedPlatform = 'instagram';
+      }
+    }
+
+    console.log(`FORMATS: Getting formats for platform: ${detectedPlatform}, URL: ${url}`);
+
+    // For TikTok and Instagram, use URL directly and return default formats
+    if (detectedPlatform === 'tiktok' || detectedPlatform === 'instagram') {
+      // For TikTok and Instagram, yt-dlp may have different format structures
+      // Return default formats that work with these platforms
+      return res.json({
+        audio: [],
+        video: [],
+        available: {
+          audio: ['best', '320k', '256k', '192k', '128k'],
+          video: ['best', '1080p', '720p', '480p', '360p']
+        }
+      });
+    }
+
+    // For YouTube, extract video ID and get formats
     let finalVideoId = videoId;
     if (url && !videoId) {
       const patterns = [
@@ -145,11 +174,11 @@ export default async function handler(req, res) {
     }
 
   } catch (error) {
-    console.error('YOUTUBE_FORMATS_ERROR:', error);
+    console.error('FORMATS_ERROR:', error);
     setCORSHeaders(res);
     return res.status(500).json({
-      error: 'YOUTUBE_FORMATS_ERROR',
-      message: error.message || 'Failed to get YouTube formats'
+      error: 'FORMATS_ERROR',
+      message: error.message || 'Failed to get formats'
     });
   }
 }

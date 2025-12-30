@@ -463,17 +463,22 @@ function showUserProfile(user) {
     });
   }
   
-  // Toggle dropdown on click
-  userProfileTrigger.addEventListener('click', (e) => {
-    e.stopPropagation();
-    userProfile.classList.toggle('active');
+  // Open dropdown on mouse enter
+  userProfileTrigger.addEventListener('mouseenter', () => {
+    userProfile.classList.add('active');
   });
   
-  // Close dropdown when clicking outside
-  document.addEventListener('click', (e) => {
-    if (!userProfile.contains(e.target)) {
-      userProfile.classList.remove('active');
-    }
+  // Keep dropdown open when mouse is over dropdown menu
+  const userDropdown = document.getElementById('userDropdown');
+  if (userDropdown) {
+    userDropdown.addEventListener('mouseenter', () => {
+      userProfile.classList.add('active');
+    });
+  }
+  
+  // Close dropdown when mouse leaves the profile area
+  userProfile.addEventListener('mouseleave', () => {
+    userProfile.classList.remove('active');
   });
   
   // Setup logout button
@@ -754,31 +759,57 @@ function checkLogin() {
   return sessionId;
 }
 
-// Handle paste button
-const pasteBtnMain = document.getElementById('pasteBtnMain');
-if (pasteBtnMain) {
-  pasteBtnMain.addEventListener('click', async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      if (text) {
-        const input = getCurrentUrlInput();
-        if (input) {
-          input.value = text;
-          checkInput();
-          if (isValidUrl(text)) {
-            showMessage('لطفاً یکی از گزینه‌های زیر را انتخاب کنید', 'info');
-          }
-          // Error message is already shown in checkInput() if URL is invalid
+// Handle paste button - common function for all paste buttons
+async function handlePaste(inputElement) {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text) {
+      if (inputElement) {
+        inputElement.value = text;
+        checkInput();
+        if (isValidUrl(text)) {
+          showMessage('لطفاً یکی از گزینه‌های زیر را انتخاب کنید', 'info');
         }
-      } else {
-        showMessage('کلیپ‌بورد خالی است', 'error');
+        // Error message is already shown in checkInput() if URL is invalid
       }
-    } catch (error) {
-      console.error('Error reading clipboard:', error);
-      showMessage('خطا در خواندن کلیپ‌بورد. لطفاً لینک را دستی وارد کنید.', 'error');
+    } else {
+      showMessage('کلیپ‌بورد خالی است', 'error');
     }
-  });
+  } catch (error) {
+    console.error('Error reading clipboard:', error);
+    showMessage('خطا در خواندن کلیپ‌بورد. لطفاً لینک را دستی وارد کنید.', 'error');
+  }
 }
+
+// Setup paste buttons for all platforms
+document.addEventListener('DOMContentLoaded', () => {
+  // YouTube paste button
+  const pasteBtnMain = document.getElementById('pasteBtnMain');
+  if (pasteBtnMain) {
+    pasteBtnMain.addEventListener('click', async () => {
+      const input = getCurrentUrlInput();
+      await handlePaste(input);
+    });
+  }
+  
+  // Instagram paste button
+  const pasteInstagramBtn = document.getElementById('pasteInstagramBtn');
+  if (pasteInstagramBtn) {
+    pasteInstagramBtn.addEventListener('click', async () => {
+      const input = document.getElementById('instagramUrlInput');
+      await handlePaste(input);
+    });
+  }
+  
+  // TikTok paste button
+  const pasteTiktokBtn = document.getElementById('pasteTiktokBtn');
+  if (pasteTiktokBtn) {
+    pasteTiktokBtn.addEventListener('click', async () => {
+      const input = document.getElementById('tiktokUrlInput');
+      await handlePaste(input);
+    });
+  }
+});
 
 // Setup event listeners for all platform buttons
 document.addEventListener('DOMContentLoaded', () => {
@@ -927,7 +958,7 @@ async function handleVideoDownload() {
         'Content-Type': 'application/json',
         'X-Session-Id': sessionId
       },
-      body: JSON.stringify({ url })
+      body: JSON.stringify({ url, platform: currentPlatform })
     });
     
     if (!formatsResponse.ok) {
@@ -941,7 +972,13 @@ async function handleVideoDownload() {
     const isPro = userPlan !== 'free';
     const maxQuality = subData.features?.maxVideoQuality || '480p';
     
-    let availableFormats = formatsData.available?.video || ['2160p', '1440p', '1080p', '720p', '480p', '360p', '240p', '144p'];
+    // For TikTok and Instagram, use simpler format list
+    let availableFormats;
+    if (currentPlatform === 'tiktok' || currentPlatform === 'instagram') {
+      availableFormats = formatsData.available?.video || ['best', '1080p', '720p', '480p', '360p'];
+    } else {
+      availableFormats = formatsData.available?.video || ['2160p', '1440p', '1080p', '720p', '480p', '360p', '240p', '144p'];
+    }
     
     if (!isPro && maxQuality === '480p') {
       availableFormats = availableFormats.filter(q => {
@@ -986,7 +1023,7 @@ async function handleAudioDownload() {
         'Content-Type': 'application/json',
         'X-Session-Id': sessionId
       },
-      body: JSON.stringify({ url })
+      body: JSON.stringify({ url, platform: currentPlatform })
     });
     
     if (!formatsResponse.ok) {
@@ -999,7 +1036,13 @@ async function handleAudioDownload() {
     const userPlan = subData.plan || 'free';
     const isPro = userPlan !== 'free';
     
-    const availableFormats = formatsData.available?.audio || ['best', '320k', '256k', '192k', '128k', '96k', '64k'];
+    // For TikTok and Instagram, use simpler format list
+    let availableFormats;
+    if (currentPlatform === 'tiktok' || currentPlatform === 'instagram') {
+      availableFormats = formatsData.available?.audio || ['best', '320k', '256k', '192k', '128k'];
+    } else {
+      availableFormats = formatsData.available?.audio || ['best', '320k', '256k', '192k', '128k', '96k', '64k'];
+    }
     showQualityModal(availableFormats, url, sessionId, isPro, 'audio');
     
   } catch (error) {
