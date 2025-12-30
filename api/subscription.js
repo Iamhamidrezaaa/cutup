@@ -98,8 +98,10 @@ const PLANS = {
   }
 };
 
-// Initialize user with free plan
+// Initialize user with free plan - ONLY if user doesn't exist
+// IMPORTANT: This function should NOT reset existing usage
 function initializeUser(userId) {
+  // Only initialize subscription if not exists
   if (!userSubscriptions.has(userId)) {
     userSubscriptions.set(userId, {
       plan: 'free',
@@ -107,30 +109,41 @@ function initializeUser(userId) {
       endDate: null, // Free plan never expires
       billingPeriod: 'monthly'
     });
+  }
+  
+  // Only initialize usage if not exists - preserve existing usage
+  if (!userUsage.has(userId)) {
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+    const today = new Date().toDateString();
     
     userUsage.set(userId, {
       daily: {
-        date: new Date().toDateString(),
+        date: today,
         minutes: 0
       },
       monthly: {
-        month: new Date().getMonth(),
-        year: new Date().getFullYear(),
+        month: currentMonth,
+        year: currentYear,
         minutes: 0
       },
       downloads: {
         audio: {
-          month: new Date().getMonth(),
-          year: new Date().getFullYear(),
+          month: currentMonth,
+          year: currentYear,
           count: 0
         },
         video: {
-          month: new Date().getMonth(),
-          year: new Date().getFullYear(),
+          month: currentMonth,
+          year: currentYear,
           count: 0
         }
       }
     });
+    
+    console.log(`[initializeUser] Initialized new user: ${userId}`);
+  } else {
+    console.log(`[initializeUser] User ${userId} already exists, preserving usage`);
   }
 }
 
@@ -140,18 +153,43 @@ function getUserSubscription(userId) {
   return userSubscriptions.get(userId);
 }
 
-// Get user usage
+// Get user usage - IMPORTANT: This preserves usage across sessions
 function getUserUsage(userId, sessionId = null) {
-  initializeUser(userId);
+  // Always initialize user if not exists (but don't reset existing usage)
+  if (!userUsage.has(userId)) {
+    initializeUser(userId);
+  }
+  
   const usage = userUsage.get(userId);
   
-  // Reset audio downloads for h.asgarizade@gmail.com
+  // Check if month/year changed - reset only if month changed
+  const currentMonth = new Date().getMonth();
+  const currentYear = new Date().getFullYear();
+  
+  // Reset monthly usage if month changed
+  if (usage.monthly.month !== currentMonth || usage.monthly.year !== currentYear) {
+    usage.monthly = { month: currentMonth, year: currentYear, minutes: 0 };
+  }
+  
+  // Reset download counts if month changed
+  if (usage.downloads.audio.month !== currentMonth || usage.downloads.audio.year !== currentYear) {
+    usage.downloads.audio = { month: currentMonth, year: currentYear, count: 0 };
+  }
+  
+  if (usage.downloads.video.month !== currentMonth || usage.downloads.video.year !== currentYear) {
+    usage.downloads.video = { month: currentMonth, year: currentYear, count: 0 };
+  }
+  
+  // Reset daily usage if date changed
+  const today = new Date().toDateString();
+  if (usage.daily.date !== today) {
+    usage.daily = { date: today, minutes: 0 };
+  }
+  
+  // Reset audio downloads for h.asgarizade@gmail.com (special case for testing)
   if (sessionId) {
     const session = sessions.get(sessionId);
     if (session && session.user && session.user.email === 'h.asgarizade@gmail.com') {
-      const currentMonth = new Date().getMonth();
-      const currentYear = new Date().getFullYear();
-      
       // Reset audio downloads count to 0
       if (usage.downloads.audio.month === currentMonth && usage.downloads.audio.year === currentYear) {
         usage.downloads.audio.count = 0;

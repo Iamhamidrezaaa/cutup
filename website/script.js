@@ -457,6 +457,10 @@ function showUserProfile(user) {
   const sessionId = localStorage.getItem('cutup_session');
   if (sessionId && dashboardLink) {
     dashboardLink.href = `dashboard.html?session=${sessionId}`;
+    dashboardLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.location.href = `dashboard.html?session=${sessionId}`;
+    });
   }
   
   // Toggle dropdown on click
@@ -474,7 +478,10 @@ function showUserProfile(user) {
   
   // Setup logout button
   if (logoutBtn) {
-    logoutBtn.addEventListener('click', async () => {
+    logoutBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
       if (sessionId) {
         try {
           await fetch(`${API_BASE_URL}/api/auth?action=logout`, {
