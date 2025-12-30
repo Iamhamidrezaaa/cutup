@@ -171,13 +171,14 @@ export default async function handler(req, res) {
     
     let outputFile;
     let downloadCommand;
+    let baseOutputPath; // Declare in outer scope
 
     if (type === 'audio') {
       // For audio, extract audio and convert to mp3
       const filePrefix = detectedPlatform === 'youtube' ? `youtube_${finalVideoId || 'video'}` :
                          detectedPlatform === 'tiktok' ? `tiktok_${timestamp}` :
                          `instagram_${timestamp}`;
-      const baseOutputPath = join(tempDir, `${filePrefix}_audio_${timestamp}`);
+      baseOutputPath = join(tempDir, `${filePrefix}_audio_${timestamp}`);
       outputFile = `${baseOutputPath}.mp3`;
       
       // Map quality to audio bitrate
@@ -195,7 +196,7 @@ export default async function handler(req, res) {
       const filePrefix = detectedPlatform === 'youtube' ? `youtube_${finalVideoId || 'video'}` :
                          detectedPlatform === 'tiktok' ? `tiktok_${timestamp}` :
                          `instagram_${timestamp}`;
-      const baseOutputPath = join(tempDir, `${filePrefix}_video_${timestamp}`);
+      baseOutputPath = join(tempDir, `${filePrefix}_video_${timestamp}`);
       outputFile = `${baseOutputPath}.mp4`;
       
       // Video quality formats - different for different platforms
@@ -246,8 +247,13 @@ export default async function handler(req, res) {
         maxBuffer: 10 * 1024 * 1024 // 10MB buffer
       });
 
-      if (stderr && !stderr.toLowerCase().includes('warning')) {
-        console.warn(`${detectedPlatform.toUpperCase()}_DOWNLOAD: stderr:`, stderr.substring(0, 500));
+      // Log stdout and stderr for debugging
+      if (stdout) {
+        console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: stdout (first 500 chars):`, stdout.substring(0, 500));
+      }
+      if (stderr) {
+        // Log stderr even if it's just warnings - might contain useful info
+        console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: stderr:`, stderr.substring(0, 1000));
       }
 
       // yt-dlp uses %(ext)s placeholder, so we need to find the actual file
@@ -364,23 +370,37 @@ export default async function handler(req, res) {
         try {
           if (existsSync(outputFile)) {
             unlinkSync(outputFile);
-            console.log(`YOUTUBE_DOWNLOAD: Cleaned up file: ${outputFile}`);
+            console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Cleaned up file: ${outputFile}`);
           }
         } catch (cleanupError) {
-          console.error('YOUTUBE_DOWNLOAD: Error cleaning up file:', cleanupError);
+          console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Error cleaning up file:`, cleanupError);
         }
       }, 1000);
 
     } catch (downloadError) {
-      console.error('YOUTUBE_DOWNLOAD: Download error:', downloadError);
-      console.error('YOUTUBE_DOWNLOAD: Error stack:', downloadError.stack);
+      console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Download error:`, downloadError);
+      console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Error stack:`, downloadError.stack);
+      console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Command was:`, downloadCommand);
+      console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: URL was:`, finalUrl);
+      console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Base output path:`, baseOutputPath);
       
-      // Clean up on error
-      if (outputFile && existsSync(outputFile)) {
+      // Clean up on error - try to clean up any partial files
+      if (baseOutputPath) {
         try {
-          unlinkSync(outputFile);
+          // Try to find and delete any files with the baseOutputPath
+          const files = readdirSync(tempDir);
+          const baseName = baseOutputPath.split('/').pop() || baseOutputPath.split('\\').pop();
+          for (const file of files) {
+            if (file.includes(baseName)) {
+              const filePath = join(tempDir, file);
+              if (existsSync(filePath)) {
+                unlinkSync(filePath);
+                console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Cleaned up partial file: ${filePath}`);
+              }
+            }
+          }
         } catch (cleanupError) {
-          console.error('YOUTUBE_DOWNLOAD: Error cleaning up on error:', cleanupError);
+          console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Error cleaning up on error:`, cleanupError);
         }
       }
       
@@ -389,7 +409,9 @@ export default async function handler(req, res) {
         throw new Error(`Failed to download ${type}: ffmpeg is required for video encoding. Please install ffmpeg on the server.`);
       }
       
-      throw new Error(`Failed to download ${type}: ${downloadError.message}`);
+      // Provide more detailed error message
+      const errorMessage = downloadError.message || downloadError.toString();
+      throw new Error(`Failed to download ${type} from ${detectedPlatform}: ${errorMessage}`);
     }
 
   } catch (error) {
