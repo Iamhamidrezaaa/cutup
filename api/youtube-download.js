@@ -185,9 +185,17 @@ export default async function handler(req, res) {
           '--no-playlist',
           '--no-warnings',
           '--no-check-certificate',
+          '--no-mtime',
           '--print', 'after_move:filepath',
           '-o', outputTemplate,
         ];
+        
+        // Add Instagram-specific options for stories
+        // Stories may require different handling, but yt-dlp should handle them automatically
+        if (detectedPlatform === 'instagram') {
+          // Add user agent to help with Instagram requests
+          baseArgs.push('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        }
 
         let formatArgs = [];
         

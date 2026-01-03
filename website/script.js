@@ -2469,9 +2469,17 @@ async function downloadFile(url, format, sessionId, type) {
         videoId = tiktokMatch[2] || tiktokMatch[1];
       }
     } else if (currentPlatform === 'instagram') {
-      // Extract Instagram shortcode from URL
-      const instaMatch = url.match(/\/(p|reel|tv)\/([A-Za-z0-9_-]+)/);
-      if (instaMatch) {
+      // Extract Instagram shortcode from URL (supports posts, reels, TV, and stories)
+      // Stories format: /stories/username/story_id/
+      // Posts/Reels format: /p/... or /reel/... or /tv/...
+      let instaMatch = url.match(/\/(p|reel|tv)\/([A-Za-z0-9_-]+)/);
+      if (!instaMatch) {
+        // Try to match stories format: /stories/username/story_id/
+        instaMatch = url.match(/\/stories\/([A-Za-z0-9_.]+)\/(\d+)/);
+        if (instaMatch) {
+          videoId = `story_${instaMatch[2]}`;
+        }
+      } else {
         videoId = instaMatch[2];
       }
     }
