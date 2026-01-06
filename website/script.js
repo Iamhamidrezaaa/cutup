@@ -62,10 +62,27 @@ if (authSuccess === 'success' && sessionId) {
     // Extension might not be available, that's okay
     console.log('Could not notify extension:', e);
   }
+  // Check if we have a pending URL (user logged in after entering URL)
+  const pendingUrl = localStorage.getItem('cutup_pending_url');
+  const pendingPlatform = localStorage.getItem('cutup_pending_platform');
+  
+  // If we're on dashboard.html and have pending URL, redirect to main page
+  if (window.location.pathname.includes('dashboard.html') && pendingUrl) {
+    console.log('[script] Redirecting to main page with pending URL');
+    window.location.href = `index.html?session=${sessionId}`;
+    return;
+  }
+  
   // Remove query params from URL
   window.history.replaceState({}, document.title, window.location.pathname);
   // Load user profile
-  loadUserProfile();
+  loadUserProfile().then(() => {
+    // After profile is loaded, restore pending URL if exists
+    if (pendingUrl && pendingPlatform) {
+      console.log('[script] Restoring pending URL:', pendingUrl, 'Platform:', pendingPlatform);
+      restorePendingUrl(pendingUrl, pendingPlatform);
+    }
+  });
   
   // Scroll to download section after login
   setTimeout(() => {
@@ -91,17 +108,105 @@ window.addEventListener('DOMContentLoaded', () => {
     loginBtn.style.display = 'block';
   }
   
+  // Check if we have a pending URL (user logged in after entering URL)
+  const pendingUrl = localStorage.getItem('cutup_pending_url');
+  const pendingPlatform = localStorage.getItem('cutup_pending_platform');
+  
   if (savedSession) {
     currentSession = savedSession;
     // Wait a bit to ensure DOM is fully ready
     setTimeout(() => {
-      loadUserProfile();
+      loadUserProfile().then(() => {
+        // After profile is loaded, restore pending URL if exists
+        if (pendingUrl && pendingPlatform) {
+          console.log('[script] Restoring pending URL:', pendingUrl, 'Platform:', pendingPlatform);
+          restorePendingUrl(pendingUrl, pendingPlatform);
+        }
+      });
     }, 100);
   } else {
     console.log('[script] No saved session, showing login button');
     showLoginButton();
   }
 });
+
+// Restore pending URL after login
+async function restorePendingUrl(url, platform) {
+  try {
+    console.log('[script] Restoring pending URL:', url, 'Platform:', platform);
+    
+    // Switch to the correct platform tab (without clearing input)
+    if (platform && platform !== currentPlatform) {
+      currentPlatform = platform;
+      
+      // Update tab buttons
+      document.querySelectorAll('.platform-tab').forEach(tab => {
+        tab.classList.remove('active');
+        if (tab.dataset.tab === platform) {
+          tab.classList.add('active');
+        }
+      });
+      
+      // Update tab content
+      document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
+      });
+      
+      const activeTab = document.getElementById(`${platform}-tab`);
+      if (activeTab) {
+        activeTab.classList.add('active');
+      }
+      
+      // Update title and placeholder based on platform
+      const downloadTitle = document.querySelector('.download-title');
+      if (downloadTitle) {
+        const titles = {
+          'youtube': 'لینک یوتیوب را وارد کنید',
+          'instagram': 'لینک اینستاگرام را وارد کنید',
+          'tiktok': 'لینک تیک‌تاک را وارد کنید',
+          'audiofile': 'فایل صوتی انتخاب کنید'
+        };
+        downloadTitle.textContent = titles[platform] || titles.youtube;
+      }
+    }
+    
+    // Wait for platform switch to complete
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    // Set the URL in the input (don't clear it)
+    const input = getCurrentUrlInput();
+    if (input) {
+      input.value = url;
+      // Trigger input event to validate and show options
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    
+    // Check input to show download options
+    checkInput();
+    
+    // Update buttons based on subscription
+    const sessionId = localStorage.getItem('cutup_session');
+    if (sessionId) {
+      await updateButtonsBasedOnSubscription(sessionId);
+    }
+    
+    // Clear pending URL
+    localStorage.removeItem('cutup_pending_url');
+    localStorage.removeItem('cutup_pending_platform');
+    
+    // Scroll to download section
+    setTimeout(() => {
+      const downloadSection = document.querySelector('.download-section');
+      if (downloadSection) {
+        downloadSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 500);
+    
+    console.log('[script] Pending URL restored successfully');
+  } catch (error) {
+    console.error('[script] Error restoring pending URL:', error);
+  }
+}
 
 async function loadUserProfile() {
   const sessionId = localStorage.getItem('cutup_session');
@@ -742,6 +847,17 @@ function showMessage(text, type = 'info') {
 function checkLogin() {
   const sessionId = localStorage.getItem('cutup_session');
   if (!sessionId) {
+    // Save current URL and platform before showing login message
+    const url = getCurrentUrl();
+    const platform = currentPlatform || 'youtube';
+    
+    if (url && url.trim()) {
+      // Save URL and platform to localStorage
+      localStorage.setItem('cutup_pending_url', url);
+      localStorage.setItem('cutup_pending_platform', platform);
+      console.log('[script] Saved pending URL:', url, 'Platform:', platform);
+    }
+    
     showMessage('برای استفاده از این قابلیت، لطفاً ابتدا وارد حساب کاربری خود شوید.', 'error');
     // Scroll to login button
     document.getElementById('loginBtn')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
