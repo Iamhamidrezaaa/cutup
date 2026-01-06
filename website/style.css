@@ -104,20 +104,21 @@ body {
 }
 
 .login-btn {
-  background: var(--primary);
-  color: white;
+  background: white;
+  color: #1a1a1a;
   padding: 8px 16px;
   border-radius: 8px;
-  border: none;
+  border: 1px solid #dadce0;
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
-  transition: background 0.2s;
+  transition: all 0.2s;
   font-family: 'Vazirmatn', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .login-btn svg {
@@ -125,7 +126,9 @@ body {
 }
 
 .login-btn:hover {
-  background: var(--primary-hover);
+  background: #f8f9fa;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  border-color: #c4c7c5;
 }
 
 .user-profile {

@@ -661,19 +661,36 @@ document.addEventListener('DOMContentLoaded', () => {
   const loginBtn = document.getElementById('loginBtn');
   if (loginBtn) {
     loginBtn.addEventListener('click', async () => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/auth?action=login`);
-    const data = await response.json();
-    if (data.authUrl) {
-      window.location.href = data.authUrl;
-    } else {
-      alert('خطا در دریافت لینک ورود. لطفاً دوباره تلاش کنید.');
-    }
-  } catch (error) {
-    console.error('Error initiating login:', error);
-    alert('خطا در ورود. لطفاً دوباره تلاش کنید.');
-  }
-});
+      try {
+        console.log('[script] Login button clicked, fetching auth URL...');
+        const response = await fetch(`${API_BASE_URL}/api/auth?action=login`);
+        console.log('[script] Auth response status:', response.status);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('[script] Auth error response:', errorText);
+          alert('خطا در دریافت لینک ورود. لطفاً دوباره تلاش کنید.');
+          return;
+        }
+        
+        const data = await response.json();
+        console.log('[script] Auth data received:', data);
+        
+        if (data.authUrl) {
+          console.log('[script] Redirecting to Google OAuth:', data.authUrl);
+          window.location.href = data.authUrl;
+        } else {
+          console.error('[script] No authUrl in response:', data);
+          alert('خطا در دریافت لینک ورود. لطفاً دوباره تلاش کنید.');
+        }
+      } catch (error) {
+        console.error('[script] Error initiating login:', error);
+        alert('خطا در ورود. لطفاً دوباره تلاش کنید.');
+      }
+    });
+    console.log('[script] Login button event listener attached');
+  } else {
+    console.error('[script] Login button not found!');
   }
   
   // Setup event listeners for YouTube buttons
