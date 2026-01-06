@@ -85,7 +85,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Import and use API routes
-let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler;
+let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler;
 
 async function loadRoutes() {
   try {
@@ -116,6 +116,10 @@ async function loadRoutes() {
     // Auth endpoint
     const authModule = await import('./api/auth.js');
     authHandler = authModule.default;
+    
+    // OAuth Google Start endpoint
+    const oauthGoogleStartModule = await import('./api/oauth-google-start.js');
+    oauthGoogleStartHandler = oauthGoogleStartModule.default;
     
     // YouTube Download endpoint
     const youtubeDownloadModule = await import('./api/youtube-download.js');
@@ -201,6 +205,14 @@ app.get('/api/auth/callback', async (req, res) => {
   // Set action to 'callback' for this route
   req.query.action = 'callback';
   return authHandler(req, res);
+});
+
+// OAuth Google Start route - separate endpoint to avoid conflicts
+app.post('/api/oauth/google/start', async (req, res) => {
+  if (!oauthGoogleStartHandler) {
+    return res.status(500).json({ error: 'OAuth Google Start handler not loaded' });
+  }
+  return oauthGoogleStartHandler(req, res);
 });
 
 // YouTube Download routes

@@ -657,74 +657,55 @@ document.addEventListener('DOMContentLoaded', () => {
   summarizeBtnMain = document.getElementById('summarizeBtnMain');
   fullTextBtnMain = document.getElementById('fullTextBtnMain');
   
-  // Setup login button event listener
-  const loginBtn = document.getElementById('loginBtn');
-  if (loginBtn) {
-    // Remove any existing listeners by cloning the button
-    const newLoginBtn = loginBtn.cloneNode(true);
-    loginBtn.parentNode.replaceChild(newLoginBtn, loginBtn);
+  // Setup login button event listener using event delegation (simple and reliable)
+  document.addEventListener('click', async function(e) {
+    const btn = e.target.closest('#loginBtn');
+    if (!btn) return;
     
-    // Add click event listener
-    newLoginBtn.addEventListener('click', async function(e) {
-      e.preventDefault();
-      e.stopPropagation();
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Disable button to prevent double clicks
+    btn.disabled = true;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = 'در حال اتصال...';
+    
+    try {
+      console.log('[script] Login button clicked, fetching auth URL from /api/oauth/google/start...');
+      const response = await fetch(`${API_BASE_URL}/api/oauth/google/start`, { 
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
       
-      try {
-        console.log('[script] Login button clicked, fetching auth URL...');
-        const response = await fetch(`${API_BASE_URL}/api/auth?action=login`);
-        console.log('[script] Auth response status:', response.status);
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error('[script] Auth error response:', errorText);
-          alert('خطا در دریافت لینک ورود. لطفاً دوباره تلاش کنید.');
-          return;
-        }
-        
-        const data = await response.json();
-        console.log('[script] Auth data received:', data);
-        
-        if (data.authUrl) {
-          console.log('[script] Redirecting to Google OAuth:', data.authUrl);
-          window.location.href = data.authUrl;
-        } else {
-          console.error('[script] No authUrl in response:', data);
-          alert('خطا در دریافت لینک ورود. لطفاً دوباره تلاش کنید.');
-        }
-      } catch (error) {
-        console.error('[script] Error initiating login:', error);
-        alert('خطا در ورود. لطفاً دوباره تلاش کنید.');
+      console.log('[script] Auth response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[script] Auth error response:', response.status, errorText);
+        throw new Error(`Server error: ${response.status}`);
       }
-    });
-    console.log('[script] Login button event listener attached successfully');
-  } else {
-    console.error('[script] Login button not found!');
-    // Retry after a short delay
-    setTimeout(() => {
-      const retryLoginBtn = document.getElementById('loginBtn');
-      if (retryLoginBtn) {
-        retryLoginBtn.addEventListener('click', async function(e) {
-          e.preventDefault();
-          e.stopPropagation();
-          
-          try {
-            console.log('[script] Login button clicked (retry), fetching auth URL...');
-            const response = await fetch(`${API_BASE_URL}/api/auth?action=login`);
-            const data = await response.json();
-            if (data.authUrl) {
-              window.location.href = data.authUrl;
-            } else {
-              alert('خطا در دریافت لینک ورود. لطفاً دوباره تلاش کنید.');
-            }
-          } catch (error) {
-            console.error('[script] Error initiating login:', error);
-            alert('خطا در ورود. لطفاً دوباره تلاش کنید.');
-          }
-        });
-        console.log('[script] Login button event listener attached (retry)');
+      
+      const data = await response.json();
+      console.log('[script] Auth data received:', data);
+      
+      if (!data?.authUrl) {
+        console.error('[script] No authUrl in response:', data);
+        throw new Error('No authUrl returned from server');
       }
-    }, 500);
-  }
+      
+      console.log('[script] Redirecting to Google OAuth:', data.authUrl);
+      window.location.href = data.authUrl;
+    } catch (error) {
+      console.error('[script] Google login failed:', error);
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+      alert('ورود با گوگل با خطا مواجه شد. لطفاً دوباره تلاش کنید.');
+    }
+  });
+  
+  console.log('[script] Login button event listener attached (event delegation)');
   
   // Setup event listeners for YouTube buttons
   if (downloadVideoBtnMain) {
