@@ -85,6 +85,12 @@ window.addEventListener('DOMContentLoaded', () => {
   const savedSession = localStorage.getItem('cutup_session');
   console.log('[script] Saved session from localStorage:', savedSession);
   
+  // Ensure login button is visible by default
+  const loginBtn = document.getElementById('loginBtn');
+  if (loginBtn) {
+    loginBtn.style.display = 'block';
+  }
+  
   if (savedSession) {
     currentSession = savedSession;
     // Wait a bit to ensure DOM is fully ready
