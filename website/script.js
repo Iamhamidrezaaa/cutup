@@ -1199,38 +1199,44 @@ async function processSummarizeFile(file, sessionId) {
   try {
     showMessage('در حال پردازش فایل...', 'info');
     
-    // Convert file to data URL (like extension)
-    const fileDataUrl = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
+    // Check file size (limit to 4MB to avoid 413 error)
+    const maxFileSize = 4 * 1024 * 1024; // 4MB
+    if (file.size > maxFileSize) {
+      showMessage(`فایل خیلی بزرگ است (${(file.size / 1024 / 1024).toFixed(2)} MB). لطفاً فایلی کمتر از 4MB انتخاب کنید.`, 'error');
+      return;
+    }
     
-    // Transcribe
-    showMessage('در حال تبدیل به متن...', 'info');
-    const transcribeResponse = await fetch(`${API_BASE_URL}/api/transcribe`, {
+    // Use upload endpoint for all files to avoid 413 error
+    // Upload endpoint handles transcription directly
+    showMessage('در حال آپلود و تبدیل به متن...', 'info');
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const uploadResponse = await fetch(`${API_BASE_URL}/api/upload`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
         'X-Session-Id': sessionId
       },
-      body: JSON.stringify({ audioUrl: fileDataUrl })
+      body: formData
     });
     
-    if (!transcribeResponse.ok) {
-      let errorMessage = 'خطا در تبدیل به متن';
-      try {
-        const errorData = await transcribeResponse.json();
-        errorMessage = errorData.message || errorData.details || errorData.error || errorMessage;
-      } catch (e) {
-        const errorText = await transcribeResponse.text().catch(() => '');
-        errorMessage = errorText || errorMessage;
+    if (!uploadResponse.ok) {
+      let errorMessage = 'خطا در آپلود و تبدیل به متن';
+      if (uploadResponse.status === 413) {
+        errorMessage = 'فایل خیلی بزرگ است. لطفاً فایلی کمتر از 4MB انتخاب کنید.';
+      } else {
+        try {
+          const errorData = await uploadResponse.json();
+          errorMessage = errorData.message || errorData.details || errorData.error || errorMessage;
+        } catch (e) {
+          const errorText = await uploadResponse.text().catch(() => '');
+          errorMessage = errorText || errorMessage;
+        }
       }
       throw new Error(errorMessage);
     }
     
-    const transcribeData = await transcribeResponse.json();
+    const transcribeData = await uploadResponse.json();
     
     // Check for error in response
     if (transcribeData.error) {
@@ -1650,29 +1656,97 @@ function displayResults(summary, fullText, segments = null, options = {}) {
   }
   
   // Display summary - handle both object and string formats
+  // Format summary as beautiful paragraphs (at least 2 paragraphs)
   let summaryTextContent = 'خلاصه در دسترس نیست';
+  let keyPointsArray = [];
+  
   if (summary) {
     if (typeof summary === 'string') {
       summaryTextContent = summary;
     } else if (typeof summary === 'object' && summary.summary) {
       summaryTextContent = summary.summary;
+      keyPointsArray = Array.isArray(summary.keyPoints) ? summary.keyPoints : [];
     } else if (typeof summary === 'object' && summary.keyPoints) {
-      // If it's an object with keyPoints, format it nicely
-      const keyPoints = Array.isArray(summary.keyPoints) ? summary.keyPoints : [];
-      const summaryPart = summary.summary || '';
-      if (keyPoints.length > 0) {
-        summaryTextContent = summaryPart + '\n\n' + keyPoints.map((kp, i) => `${i + 1}. ${kp}`).join('\n');
+      keyPointsArray = Array.isArray(summary.keyPoints) ? summary.keyPoints : [];
+      summaryTextContent = summary.summary || '';
       } else {
-        summaryTextContent = summaryPart || JSON.stringify(summary);
-      }
-    } else {
       summaryTextContent = JSON.stringify(summary);
     }
   }
   
+  // Format summary into paragraphs (at least 2 paragraphs)
+  let formattedSummary = '';
+  if (summaryTextContent) {
+    // First, try to split by double newlines (if already formatted)
+    let paragraphs = summaryTextContent.split(/\n\s*\n/).filter(p => p.trim());
+    
+    // If no double newlines, split by sentences
+    if (paragraphs.length < 2) {
+      // Split by sentence endings
+      const sentences = summaryTextContent.split(/([.!?]\s+)/).filter(s => s.trim());
+      
+      // Group sentences into paragraphs (aim for 2-3 paragraphs)
+      const targetParagraphs = Math.max(2, Math.min(3, Math.ceil(sentences.length / 4)));
+      const sentencesPerParagraph = Math.ceil(sentences.length / targetParagraphs);
+      
+      paragraphs = [];
+      for (let i = 0; i < sentences.length; i += sentencesPerParagraph) {
+        const paragraph = sentences.slice(i, i + sentencesPerParagraph).join(' ').trim();
+        if (paragraph) {
+          paragraphs.push(paragraph);
+        }
+      }
+    }
+    
+    // If still only one paragraph, split it intelligently
+    if (paragraphs.length === 1 && paragraphs[0].length > 150) {
+      const text = paragraphs[0];
+      const midPoint = Math.floor(text.length / 2);
+      
+      // Try to find a good split point (sentence ending near the middle)
+      let splitPoint = text.lastIndexOf('.', midPoint);
+      if (splitPoint === -1) splitPoint = text.lastIndexOf('!', midPoint);
+      if (splitPoint === -1) splitPoint = text.lastIndexOf('?', midPoint);
+      if (splitPoint === -1) splitPoint = text.lastIndexOf('،', midPoint);
+      if (splitPoint === -1) splitPoint = text.lastIndexOf(' ', midPoint);
+      
+      if (splitPoint > text.length * 0.3 && splitPoint < text.length * 0.7) {
+        paragraphs[0] = text.substring(0, splitPoint + 1).trim();
+        paragraphs.push(text.substring(splitPoint + 1).trim());
+    } else {
+        // Force split at middle
+        paragraphs[0] = text.substring(0, midPoint).trim();
+        paragraphs.push(text.substring(midPoint).trim());
+      }
+    }
+    
+    // Ensure at least 2 paragraphs
+    if (paragraphs.length < 2 && summaryTextContent.length > 50) {
+      const text = summaryTextContent;
+      const midPoint = Math.floor(text.length / 2);
+      const splitPoint = text.lastIndexOf('.', midPoint) || text.lastIndexOf(' ', midPoint) || midPoint;
+      paragraphs = [
+        text.substring(0, splitPoint + 1).trim(),
+        text.substring(splitPoint + 1).trim()
+      ];
+    }
+    
+    // Format paragraphs with beautiful styling
+    formattedSummary = paragraphs.map(p => `<p class="summary-paragraph">${p}</p>`).join('');
+  }
+  
+  // Add key points if available
+  if (keyPointsArray.length > 0) {
+    formattedSummary += '<div class="key-points-container"><h4 class="key-points-title">نکات کلیدی:</h4><ul class="key-points-list">';
+    keyPointsArray.forEach((kp, i) => {
+      formattedSummary += `<li class="key-point-item">${kp}</li>`;
+    });
+    formattedSummary += '</ul></div>';
+  }
+  
   const summaryTextEl = document.getElementById('summaryText');
   if (summaryTextEl) {
-    summaryTextEl.textContent = summaryTextContent;
+    summaryTextEl.innerHTML = formattedSummary || '<p class="summary-paragraph">خلاصه در دسترس نیست</p>';
   }
 
   // Store original texts for translation
