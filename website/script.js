@@ -1199,96 +1199,48 @@ async function processSummarizeFile(file, sessionId) {
   try {
     showMessage('در حال پردازش فایل...', 'info');
     
-    // Check file size (limit to 4MB to avoid 413 error)
-    const maxFileSize = 4 * 1024 * 1024; // 4MB
+    // Check file size (limit to 100MB like extension)
+    const maxFileSize = 100 * 1024 * 1024; // 100MB
     if (file.size > maxFileSize) {
-      showMessage(`فایل خیلی بزرگ است (${(file.size / 1024 / 1024).toFixed(2)} MB). لطفاً فایلی کمتر از 4MB انتخاب کنید.`, 'error');
+      showMessage(`فایل خیلی بزرگ است (${(file.size / 1024 / 1024).toFixed(2)}MB). حداکثر حجم مجاز ${maxFileSize / 1024 / 1024}MB است.`, 'error');
       return;
     }
     
-    // Use upload endpoint for all files to avoid 413 error
-    // Upload endpoint handles transcription directly
-    showMessage('در حال آپلود و تبدیل به متن...', 'info');
-    const formData = new FormData();
-    formData.append('file', file);
+    // Estimate duration for limit check
+    const estimatedDurationMinutes = Math.ceil((file.size / 1024 / 1024) * 1.2);
     
-    const uploadResponse = await fetch(`${API_BASE_URL}/api/upload`, {
-      method: 'POST',
-      headers: {
-        'X-Session-Id': sessionId
-      },
-      body: formData
-    });
-    
-    if (!uploadResponse.ok) {
-      let errorMessage = 'خطا در آپلود و تبدیل به متن';
-      if (uploadResponse.status === 413) {
-        errorMessage = 'فایل خیلی بزرگ است. لطفاً فایلی کمتر از 4MB انتخاب کنید.';
-      } else {
-        try {
-          const errorData = await uploadResponse.json();
-          errorMessage = errorData.message || errorData.details || errorData.error || errorMessage;
-        } catch (e) {
-          const errorText = await uploadResponse.text().catch(() => '');
-          errorMessage = errorText || errorMessage;
-        }
-      }
-      throw new Error(errorMessage);
+    // Check subscription limit
+    const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', estimatedDurationMinutes);
+    if (!limitCheck.allowed) {
+      showMessage(limitCheck.reason || 'حد مجاز شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
+      window.open(`dashboard.html?session=${sessionId}`, '_blank');
+      return;
     }
     
-    const transcribeData = await uploadResponse.json();
-    
-    // Check for error in response
-    if (transcribeData.error) {
-      throw new Error(transcribeData.message || transcribeData.details || transcribeData.error || 'خطا در تبدیل به متن');
-    }
-    
-    const transcription = transcribeData.text || transcribeData.transcription;
-    
-    if (!transcription) {
-      throw new Error('متن دریافت نشد. پاسخ API: ' + JSON.stringify(transcribeData).substring(0, 200));
-    }
+    // Transcribe using transcribeAudio (like extension)
+    showMessage('در حال تبدیل صوت به متن...', 'info');
+    const transcription = await transcribeAudio(file, null);
     
     // Summarize (unlimited for all tiers)
     showMessage('در حال خلاصه‌سازی...', 'info');
-    const summarizeResponse = await fetch(`${API_BASE_URL}/api/summarize`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Session-Id': sessionId
-      },
-      body: JSON.stringify({ text: transcription, language: transcribeData.language || 'en' })
-    });
-    
-    if (!summarizeResponse.ok) {
-      let errorMessage = 'خطا در خلاصه‌سازی';
-      try {
-        const errorData = await summarizeResponse.json();
-        errorMessage = errorData.message || errorData.details || errorData.error || errorMessage;
-      } catch (e) {
-        const errorText = await summarizeResponse.text().catch(() => '');
-        errorMessage = errorText || errorMessage;
-      }
-      throw new Error(errorMessage);
+    let summary = null;
+    try {
+      summary = await summarizeText(transcription.text, transcription.language);
+    } catch (error) {
+      console.error('Error in summarization:', error);
+      // Continue without summary if check fails
+      summary = {
+        keyPoints: ['خطا در خلاصه‌سازی'],
+        summary: 'متن با موفقیت تبدیل شد اما خلاصه‌سازی در دسترس نیست.'
+      };
     }
-    
-    const summarizeData = await summarizeResponse.json();
-    
-    // Check for error in response
-    if (summarizeData.error) {
-      throw new Error(summarizeData.message || summarizeData.details || summarizeData.error || 'خطا در خلاصه‌سازی');
-    }
-    
-    const summary = summarizeData.summary || summarizeData;
-    const keyPoints = summarizeData.keyPoints || [];
     
     // Display results in result section (like extension)
-    displayResults(summary, transcription, transcribeData.segments || [], {
-      originalLanguage: transcribeData.language || 'en'
+    displayResults(summary, transcription.text, transcription.segments || [], {
+      originalLanguage: transcription.language || 'en'
     });
     
     // Record usage (estimate from file size: ~1MB per minute)
-    const estimatedDurationMinutes = Math.ceil((file.size / 1024 / 1024) * 1.2);
     await recordUsage(sessionId, 'summarization', estimatedDurationMinutes, {
       title: file.name,
       fileName: file.name,
@@ -1299,9 +1251,9 @@ async function processSummarizeFile(file, sessionId) {
     await saveToDashboard(sessionId, {
       title: file.name,
       type: 'summarize',
-      transcription,
+      transcription: transcription.text,
       summary,
-      keyPoints,
+      keyPoints: summary.keyPoints || [],
       duration: estimatedDurationMinutes * 60
     });
     
@@ -1319,53 +1271,31 @@ async function processFullTextFile(file, sessionId) {
   try {
     showMessage('در حال پردازش فایل...', 'info');
     
-    // Convert file to data URL (like extension)
-    const fileDataUrl = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-    
-    // Transcribe
-    showMessage('در حال تبدیل به متن...', 'info');
-    const transcribeResponse = await fetch(`${API_BASE_URL}/api/transcribe`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Session-Id': sessionId
-      },
-      body: JSON.stringify({ audioUrl: fileDataUrl })
-    });
-    
-    if (!transcribeResponse.ok) {
-      let errorMessage = 'خطا در تبدیل به متن';
-      try {
-        const errorData = await transcribeResponse.json();
-        errorMessage = errorData.message || errorData.details || errorData.error || errorMessage;
-      } catch (e) {
-        const errorText = await transcribeResponse.text().catch(() => '');
-        errorMessage = errorText || errorMessage;
-      }
-      throw new Error(errorMessage);
+    // Check file size (limit to 100MB like extension)
+    const maxFileSize = 100 * 1024 * 1024; // 100MB
+    if (file.size > maxFileSize) {
+      showMessage(`فایل خیلی بزرگ است (${(file.size / 1024 / 1024).toFixed(2)}MB). حداکثر حجم مجاز ${maxFileSize / 1024 / 1024}MB است.`, 'error');
+      return;
     }
     
-    const transcribeData = await transcribeResponse.json();
+    // Estimate duration for limit check
+    const estimatedDurationMinutes = Math.ceil((file.size / 1024 / 1024) * 1.2);
     
-    // Check for error in response
-    if (transcribeData.error) {
-      throw new Error(transcribeData.message || transcribeData.details || transcribeData.error || 'خطا در تبدیل به متن');
+    // Check subscription limit
+    const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', estimatedDurationMinutes);
+    if (!limitCheck.allowed) {
+      showMessage(limitCheck.reason || 'حد مجاز شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
+      window.open(`dashboard.html?session=${sessionId}`, '_blank');
+      return;
     }
     
-    const transcription = transcribeData.text || transcribeData.transcription;
-    
-    if (!transcription) {
-      throw new Error('متن دریافت نشد. پاسخ API: ' + JSON.stringify(transcribeData).substring(0, 200));
-    }
+    // Transcribe using transcribeAudio (like extension)
+    showMessage('در حال تبدیل صوت به متن...', 'info');
+    const transcription = await transcribeAudio(file, null);
     
     // Display results in result section (like extension)
-    displayResults(null, transcription, transcribeData.segments || [], {
-      originalLanguage: transcribeData.language || 'en'
+    displayResults(null, transcription.text, transcription.segments || [], {
+      originalLanguage: transcription.language || 'en'
     });
     
     // Record usage (estimate from file size: ~1MB per minute)
@@ -1380,8 +1310,8 @@ async function processFullTextFile(file, sessionId) {
     await saveToDashboard(sessionId, {
       title: file.name,
       type: 'transcription',
-      transcription,
-      segments: transcribeData.segments || [],
+      transcription: transcription.text,
+      segments: transcription.segments || [],
       duration: estimatedDurationMinutes * 60
     });
     
@@ -1394,136 +1324,415 @@ async function processFullTextFile(file, sessionId) {
   }
 }
 
-// Process summarize
+// Extract YouTube audio (like extension)
+async function extractYouTubeAudio(url) {
+  const videoId = extractVideoId(url);
+  if (!videoId) {
+    throw new Error('لینک یوتیوب معتبر نیست');
+  }
+  
+  console.log('YOUTUBE: Extracting audio for video ID:', videoId);
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/youtube`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ videoId, url }),
+      signal: AbortSignal.timeout(300000) // 5 minutes timeout
+    });
+
+    console.log('YOUTUBE: Response status:', response.status);
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      console.error('YOUTUBE: Error:', error);
+      
+      let errorMessage = error.message || error.details || `استخراج صوت از یوتیوب ناموفق بود (${response.status})`;
+      
+      if (error.error === 'YOUTUBE_ERROR' && error.details?.includes('yt-dlp')) {
+        errorMessage = 'yt-dlp روی سرور نصب نیست. لطفاً با مدیر سرور تماس بگیرید.';
+      } else if (error.error === 'FILE_TOO_LARGE') {
+        errorMessage = error.message || 'ویدئو خیلی بزرگ است. لطفاً ویدئوی کوتاه‌تری انتخاب کنید.';
+      }
+      
+      throw new Error(errorMessage);
+    }
+
+    const result = await response.json();
+    console.log('YOUTUBE: Success, audio URL received, language hint:', result.language);
+    console.log('YOUTUBE: Subtitles available:', !!result.subtitles, 'Language:', result.subtitleLanguage);
+    console.log('YOUTUBE: Available languages:', result.availableLanguages);
+    console.log('YOUTUBE: Video title:', result.title);
+    
+    // Return in same format as extension
+    if (typeof result === 'string') {
+      return { 
+        audioUrl: result, 
+        language: null, 
+        subtitles: null, 
+        subtitleLanguage: null, 
+        availableLanguages: [], 
+        title: null,
+        duration: null
+      };
+    }
+    return {
+      audioUrl: result.audioUrl,
+      language: result.language || null,
+      subtitles: result.subtitles || null,
+      subtitleLanguage: result.subtitleLanguage || null,
+      availableLanguages: result.availableLanguages || [],
+      title: result.title || null,
+      duration: result.duration || null
+    };
+    
+  } catch (error) {
+    if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+      console.error('YOUTUBE: Request timeout');
+      throw new Error('درخواست timeout شد. لطفاً دوباره تلاش کنید یا ویدئوی کوتاه‌تری انتخاب کنید.');
+    } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      console.error('YOUTUBE: Network error', error);
+      throw new Error('خطای اتصال. لطفاً اتصال اینترنت خود را بررسی کنید و دوباره تلاش کنید.');
+    } else {
+      throw error;
+    }
+  }
+}
+
+// Transcribe audio (like extension)
+async function transcribeAudio(audioUrlOrFile, languageHint = null) {
+  try {
+    let response;
+    
+    // If it's a File object, send to upload endpoint
+    if (audioUrlOrFile instanceof File) {
+      const formData = new FormData();
+      formData.append('file', audioUrlOrFile);
+      
+      console.log('TRANSCRIBE: Sending file to upload endpoint, size:', audioUrlOrFile.size, 'bytes');
+      
+      response = await fetch(`${API_BASE_URL}/api/upload`, {
+        method: 'POST',
+        body: formData,
+        signal: AbortSignal.timeout(900000) // 15 minutes timeout
+      });
+    } else {
+      // Handle JSON request (audioUrl)
+      console.log('TRANSCRIBE: Sending request to', `${API_BASE_URL}/api/transcribe`);
+      
+      const body = { audioUrl: audioUrlOrFile, languageHint };
+      
+      console.log('TRANSCRIBE: Body size:', JSON.stringify(body).length, 'bytes');
+      
+      response = await fetch(`${API_BASE_URL}/api/transcribe`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(900000) // 15 minutes timeout
+      });
+    }
+
+    console.log('TRANSCRIBE: Response status:', response.status);
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      console.error('Transcribe error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: error
+      });
+      
+      let errorMessage = error.message || error.details || `تبدیل صوت به متن ناموفق بود (${response.status})`;
+      
+      if (error.error === 'QUOTA_ERROR' || error.errorType === 'QuotaError') {
+        errorMessage = 'سهمیه OpenAI شما تمام شده است. لطفاً به حساب OpenAI خود بروید و سهمیه یا روش پرداخت را بررسی کنید.';
+      } else if (error.error === 'AUTH_ERROR' || error.errorType === 'AuthError') {
+        errorMessage = 'کلید API معتبر نیست. لطفاً کلید API را در فایل .env سرور بررسی کنید.';
+      } else if (error.retryable || error.error === 'CONNECTION_ERROR') {
+        errorMessage = 'خطای اتصال به سرور. لطفاً دوباره تلاش کنید. اگر مشکل ادامه داشت، فایل ممکن است خیلی بزرگ باشد.';
+      }
+      
+      throw new Error(errorMessage);
+    }
+
+    const result = await response.json();
+    
+    console.log('TRANSCRIBE: Response parsed:', {
+      hasText: !!result.text,
+      textLength: result.text?.length || 0,
+      hasSegments: !!result.segments,
+      segmentsCount: result.segments?.length || 0,
+      hasError: !!result.error
+    });
+    
+    if (!result || !result.text || result.text.trim().length === 0) {
+      console.error('TRANSCRIBE: No text in result:', result);
+      throw new Error(`متن تبدیل شده در دسترس نیست. ${result.error ? 'خطا: ' + result.message : 'لطفاً دوباره تلاش کنید.'}`);
+    }
+    
+    console.log('TRANSCRIBE: Success, text length:', result.text.length);
+    console.log('TRANSCRIBE: Segments count:', result.segments?.length || 0);
+    
+    return {
+      text: result.text,
+      language: result.language || 'unknown',
+      segments: (result.segments && Array.isArray(result.segments)) ? result.segments : []
+    };
+  } catch (error) {
+    if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+      console.error('TRANSCRIBE: Request timeout');
+      throw new Error('درخواست timeout شد. لطفاً دوباره تلاش کنید یا فایل کوچکتری انتخاب کنید.');
+    } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      console.error('TRANSCRIBE: Network error', error);
+      throw new Error('خطای اتصال. لطفاً اتصال اینترنت خود را بررسی کنید و دوباره تلاش کنید.');
+    } else {
+      throw error;
+    }
+  }
+}
+
+// Summarize text (like extension)
+async function summarizeText(text, language = null) {
+  console.log('SUMMARIZE: Sending request, text length:', text.length, 'language:', language);
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/summarize`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ text, language }),
+      signal: AbortSignal.timeout(120000) // 2 minutes timeout
+    });
+
+    console.log('SUMMARIZE: Response status:', response.status);
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      console.error('Summarize error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: error
+      });
+      throw new Error(error.details || error.message || `خلاصه‌سازی ناموفق بود (${response.status})`);
+    }
+
+    const result = await response.json();
+    console.log('SUMMARIZE: Success');
+    return result;
+  } catch (error) {
+    if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+      console.error('SUMMARIZE: Request timeout');
+      throw new Error('درخواست خلاصه‌سازی timeout شد. لطفاً دوباره تلاش کنید.');
+    } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      console.error('SUMMARIZE: Network error', error);
+      throw new Error('خطای اتصال. لطفاً اتصال اینترنت خود را بررسی کنید و دوباره تلاش کنید.');
+    } else {
+      throw error;
+    }
+  }
+}
+
+// Parse YouTube VTT subtitles to segments (like extension)
+async function parseYouTubeSubtitles(vttContent, language) {
+  // Convert VTT to SRT format
+  const srtContent = vttToSRT(vttContent);
+  
+  // Parse SRT to segments
+  const segments = parseSRTToSegments(srtContent);
+  
+  // Extract full text
+  const fullText = segments.map(s => s.text).join(' ');
+  
+  return {
+    text: fullText,
+    language: language || 'en',
+    segments: segments
+  };
+}
+
+// Convert VTT to SRT format
+function vttToSRT(vttContent) {
+  // Remove VTT header and WEBVTT line
+  let srt = vttContent.replace(/WEBVTT[\s\S]*?\n\n/, '');
+  
+  // Process each line to clean up HTML tags and inline timestamps
+  const lines = srt.split('\n');
+  const cleanedLines = lines.map(line => {
+    // Skip timestamp lines (they start with time format)
+    if (line.match(/^\d{2}:\d{2}:\d{2}[,\.]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[,\.]\d{3}/)) {
+      return line;
+    }
+    
+    // For text lines, remove HTML tags and inline timestamps
+    let cleaned = line;
+    // Remove inline timestamps like <00:00:02,000> or <00:00:02.000>
+    cleaned = cleaned.replace(/<\d{2}:\d{2}:\d{2}[,\.]\d{3}>/g, '');
+    // Remove HTML tags like <c>, </c>, <i>, </i>, <b>, </b>, etc.
+    cleaned = cleaned.replace(/<[^>]+>/g, '');
+    // Normalize whitespace
+    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+    return cleaned;
+  });
+  
+  srt = cleanedLines.join('\n');
+  
+  // Replace VTT timestamp format with SRT format
+  srt = srt.replace(/(\d{2}):(\d{2}):(\d{2})\.(\d{3})/g, '$1:$2:$3,$4');
+  
+  // Add segment numbers
+  const blocks = srt.trim().split(/\n\s*\n/);
+  let srtContent = '';
+  blocks.forEach((block, index) => {
+    if (block.trim()) {
+      srtContent += `${index + 1}\n${block}\n\n`;
+    }
+  });
+  
+  return srtContent;
+}
+
+// Parse SRT content to segments array
+function parseSRTToSegments(srtContent) {
+  const rawSegments = [];
+  const blocks = srtContent.trim().split(/\n\s*\n/);
+  
+  // First pass: collect all segments with cleaned text
+  for (const block of blocks) {
+    const lines = block.trim().split('\n');
+    if (lines.length < 3) continue;
+    
+    const timeLine = lines[1];
+    const textLines = lines.slice(2);
+    
+    const timeMatch = timeLine.match(/(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})/);
+    if (!timeMatch) continue;
+    
+    const startTime = parseSRTTimeToSeconds(timeMatch[1], timeMatch[2], timeMatch[3], timeMatch[4]);
+    const endTime = parseSRTTimeToSeconds(timeMatch[5], timeMatch[6], timeMatch[7], timeMatch[8]);
+    let text = textLines.join(' ').trim();
+    
+    // Clean up text: remove any remaining HTML tags and inline timestamps
+    text = text.replace(/<[^>]+>/g, ''); // Remove HTML tags
+    text = text.replace(/<\d{2}:\d{2}:\d{2}[,\.]\d{3}>/g, ''); // Remove inline timestamps
+    text = text.replace(/\s+/g, ' ').trim(); // Normalize whitespace
+    
+    if (text.length > 0) {
+      rawSegments.push({ start: startTime, end: endTime, text });
+    }
+  }
+  
+  // Second pass: remove incremental duplicates (YouTube VTT format)
+  const segments = [];
+  let previousText = '';
+  
+  for (let i = 0; i < rawSegments.length; i++) {
+    const current = rawSegments[i];
+    const currentText = current.text.trim();
+    
+    if (currentText.length > previousText.length && currentText.startsWith(previousText)) {
+      // Extract only new text
+      const newText = currentText.substring(previousText.length).trim();
+      if (newText) {
+        segments.push({ start: current.start, end: current.end, text: newText });
+      }
+    } else if (currentText !== previousText) {
+      // Completely different text
+      segments.push({ start: current.start, end: current.end, text: currentText });
+    }
+    
+    previousText = currentText;
+  }
+  
+  return segments;
+}
+
+// Parse SRT time to seconds
+function parseSRTTimeToSeconds(hours, minutes, seconds, milliseconds) {
+  return parseInt(hours) * 3600 + parseInt(minutes) * 60 + parseInt(seconds) + parseInt(milliseconds) / 1000;
+}
+
+// Process summarize (using extension logic)
 async function processSummarize(url, sessionId) {
   try {
     showMessage('در حال پردازش...', 'info');
     
-    // Extract video
-    const videoId = extractVideoId(url);
-    const youtubeResponse = await fetch(`${API_BASE_URL}/api/youtube`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Session-Id': sessionId
-      },
-      body: JSON.stringify({ videoId, url })
-    });
-    
-    if (!youtubeResponse.ok) {
-      const errorData = await youtubeResponse.json().catch(() => ({}));
-      throw new Error(errorData.error || errorData.message || 'خطا در دریافت ویدئو');
-    }
-    
-    const youtubeData = await youtubeResponse.json();
-    const audioUrl = youtubeData.audioUrl;
+    // Extract audio from YouTube (like extension)
+    const youtubeResult = await extractYouTubeAudio(url);
+    const audioUrl = youtubeResult.audioUrl;
+    const youtubeLanguage = youtubeResult.language || null;
     
     if (!audioUrl) {
       throw new Error('خطا در استخراج صوت از ویدئو');
     }
     
     // Get actual duration and check limit
-    const durationSeconds = youtubeData.duration || 0;
+    const durationSeconds = youtubeResult.duration || 0;
     const durationMinutes = Math.ceil(durationSeconds / 60);
     
     // Check subscription limit with actual duration
-    const limitCheck = await checkSubscriptionLimit(sessionId, 'summarization', durationMinutes);
+    const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', durationMinutes);
     if (!limitCheck.allowed) {
       showMessage(limitCheck.reason || 'حد مجاز شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
       window.open(`dashboard.html?session=${sessionId}`, '_blank');
       return;
     }
     
-    // Transcribe
-    showMessage('در حال تبدیل به متن...', 'info');
-    const transcribeResponse = await fetch(`${API_BASE_URL}/api/transcribe`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Session-Id': sessionId
-      },
-      body: JSON.stringify({ audioUrl, language: youtubeData.language })
-    });
-    
-    if (!transcribeResponse.ok) {
-      let errorMessage = 'خطا در تبدیل به متن';
-      try {
-        const errorData = await transcribeResponse.json();
-        errorMessage = errorData.message || errorData.details || errorData.error || errorMessage;
-      } catch (e) {
-        const errorText = await transcribeResponse.text().catch(() => '');
-        errorMessage = errorText || errorMessage;
-      }
-      throw new Error(errorMessage);
-    }
-    
-    const transcribeData = await transcribeResponse.json();
-    
-    // Check for error in response
-    if (transcribeData.error) {
-      throw new Error(transcribeData.message || transcribeData.details || transcribeData.error || 'خطا در تبدیل به متن');
-    }
-    
-    const transcription = transcribeData.text || transcribeData.transcription;
-    
-    if (!transcription) {
-      throw new Error('متن دریافت نشد. پاسخ API: ' + JSON.stringify(transcribeData).substring(0, 200));
+    // Check if YouTube subtitles are available (like extension)
+    let transcription = null;
+    if (youtubeResult.subtitles) {
+      // Use YouTube subtitles if available
+      console.log('YOUTUBE: Using YouTube subtitles');
+      showMessage('در حال پردازش زیرنویس‌های یوتیوب...', 'info');
+      transcription = await parseYouTubeSubtitles(youtubeResult.subtitles, youtubeResult.subtitleLanguage);
+    } else {
+      // Fallback to audio transcription
+      console.log('YOUTUBE: No subtitles available, transcribing audio');
+      showMessage('در حال تبدیل صوت به متن...', 'info');
+      transcription = await transcribeAudio(audioUrl, youtubeLanguage);
     }
     
     // Summarize (unlimited for all tiers)
     showMessage('در حال خلاصه‌سازی...', 'info');
-    const summarizeResponse = await fetch(`${API_BASE_URL}/api/summarize`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Session-Id': sessionId
-      },
-      body: JSON.stringify({ text: transcription, language: transcribeData.language || 'en' })
-    });
-    
-    if (!summarizeResponse.ok) {
-      let errorMessage = 'خطا در خلاصه‌سازی';
-      try {
-        const errorData = await summarizeResponse.json();
-        errorMessage = errorData.message || errorData.details || errorData.error || errorMessage;
-      } catch (e) {
-        const errorText = await summarizeResponse.text().catch(() => '');
-        errorMessage = errorText || errorMessage;
-      }
-      throw new Error(errorMessage);
+    let summary = null;
+    try {
+      summary = await summarizeText(transcription.text, transcription.language);
+    } catch (error) {
+      console.error('Error in summarization:', error);
+      // Continue without summary if check fails
+      summary = {
+        keyPoints: ['خطا در خلاصه‌سازی'],
+        summary: 'متن با موفقیت تبدیل شد اما خلاصه‌سازی در دسترس نیست.'
+      };
     }
-    
-    const summarizeData = await summarizeResponse.json();
-    
-    // Check for error in response
-    if (summarizeData.error) {
-      throw new Error(summarizeData.message || summarizeData.details || summarizeData.error || 'خطا در خلاصه‌سازی');
-    }
-    
-    const summary = summarizeData.summary || summarizeData;
-    const keyPoints = summarizeData.keyPoints || [];
     
     // Display results in result section (like extension)
-    displayResults(summary, transcription, transcribeData.segments || [], {
-      originalLanguage: transcribeData.language || 'en'
+    displayResults(summary, transcription.text, transcription.segments || [], {
+      isYouTubeSubtitle: !!youtubeResult.subtitles,
+      availableLanguages: youtubeResult.availableLanguages || [],
+      originalLanguage: transcription.language
     });
     
     // Record usage
-    const duration = youtubeData.duration ? Math.ceil(youtubeData.duration / 60) : 0;
+    const duration = youtubeResult.duration ? Math.ceil(youtubeResult.duration / 60) : 0;
     await recordUsage(sessionId, 'summarization', duration, {
-      title: youtubeData.title || 'ویدئو یوتیوب',
-      videoId: videoId,
+      title: youtubeResult.title || 'ویدئو یوتیوب',
+      videoId: extractVideoId(url),
       url: url
     });
     
     // Save to dashboard
     await saveToDashboard(sessionId, {
-      title: youtubeData.title || 'ویدئو یوتیوب',
+      title: youtubeResult.title || 'ویدئو یوتیوب',
       type: 'summarize',
-      transcription,
+      transcription: transcription.text,
       summary,
-      keyPoints,
-      duration: youtubeData.duration || 0
+      keyPoints: summary.keyPoints || [],
+      duration: youtubeResult.duration || 0
     });
     
     // Update buttons after usage
@@ -1535,107 +1744,68 @@ async function processSummarize(url, sessionId) {
   }
 }
 
-// Process full text
+// Process full text (using extension logic)
 async function processFullText(url, sessionId) {
   try {
     showMessage('در حال پردازش...', 'info');
     
-    // Extract video
-    const videoId = extractVideoId(url);
-    const youtubeResponse = await fetch(`${API_BASE_URL}/api/youtube`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Session-Id': sessionId
-      },
-      body: JSON.stringify({ videoId, url })
-    });
-    
-    if (!youtubeResponse.ok) {
-      const errorData = await youtubeResponse.json().catch(() => ({}));
-      throw new Error(errorData.error || errorData.message || 'خطا در دریافت ویدئو');
-    }
-    
-    const youtubeData = await youtubeResponse.json();
-    const audioUrl = youtubeData.audioUrl;
+    // Extract audio from YouTube (like extension)
+    const youtubeResult = await extractYouTubeAudio(url);
+    const audioUrl = youtubeResult.audioUrl;
+    const youtubeLanguage = youtubeResult.language || null;
     
     if (!audioUrl) {
       throw new Error('خطا در استخراج صوت از ویدئو');
     }
     
-    // Get actual duration and check limit (like extension - continue if check fails)
-    const durationSeconds = youtubeData.duration || 0;
+    // Get actual duration and check limit
+    const durationSeconds = youtubeResult.duration || 0;
     const durationMinutes = Math.ceil(durationSeconds / 60);
     
-    // Check subscription limit with actual duration (like extension)
-    try {
-      const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', durationMinutes);
-      if (limitCheck && !limitCheck.allowed && limitCheck.reason && !limitCheck.reason.includes('proceeding anyway')) {
-        showMessage(limitCheck.reason + '\n\nلطفاً پلن خود را ارتقا دهید یا بعداً تلاش کنید.', 'error');
-        window.open(`dashboard.html?session=${sessionId}`, '_blank');
-        return;
-      }
-    } catch (error) {
-      console.error('Error checking subscription limit:', error);
-      // Continue anyway if check fails (like extension)
+    // Check subscription limit with actual duration
+    const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', durationMinutes);
+    if (!limitCheck.allowed) {
+      showMessage(limitCheck.reason || 'حد مجاز شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
+      window.open(`dashboard.html?session=${sessionId}`, '_blank');
+      return;
     }
     
-    // Transcribe
-    showMessage('در حال تبدیل به متن...', 'info');
-    const transcribeResponse = await fetch(`${API_BASE_URL}/api/transcribe`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Session-Id': sessionId
-      },
-      body: JSON.stringify({ audioUrl, language: youtubeData.language })
-    });
-    
-    if (!transcribeResponse.ok) {
-      let errorMessage = 'خطا در تبدیل به متن';
-      try {
-        const errorData = await transcribeResponse.json();
-        errorMessage = errorData.message || errorData.details || errorData.error || errorMessage;
-      } catch (e) {
-        const errorText = await transcribeResponse.text().catch(() => '');
-        errorMessage = errorText || errorMessage;
-      }
-      throw new Error(errorMessage);
-    }
-    
-    const transcribeData = await transcribeResponse.json();
-    
-    // Check for error in response
-    if (transcribeData.error) {
-      throw new Error(transcribeData.message || transcribeData.details || transcribeData.error || 'خطا در تبدیل به متن');
-    }
-    
-    const transcription = transcribeData.text || transcribeData.transcription;
-    
-    if (!transcription) {
-      throw new Error('متن دریافت نشد. پاسخ API: ' + JSON.stringify(transcribeData).substring(0, 200));
+    // Check if YouTube subtitles are available (like extension)
+    let transcription = null;
+    if (youtubeResult.subtitles) {
+      // Use YouTube subtitles if available
+      console.log('YOUTUBE: Using YouTube subtitles');
+      showMessage('در حال پردازش زیرنویس‌های یوتیوب...', 'info');
+      transcription = await parseYouTubeSubtitles(youtubeResult.subtitles, youtubeResult.subtitleLanguage);
+    } else {
+      // Fallback to audio transcription
+      console.log('YOUTUBE: No subtitles available, transcribing audio');
+      showMessage('در حال تبدیل صوت به متن...', 'info');
+      transcription = await transcribeAudio(audioUrl, youtubeLanguage);
     }
     
     // Display results in result section (like extension)
-    displayResults(null, transcription, transcribeData.segments || [], {
-      originalLanguage: transcribeData.language || 'en'
+    displayResults(null, transcription.text, transcription.segments || [], {
+      isYouTubeSubtitle: !!youtubeResult.subtitles,
+      availableLanguages: youtubeResult.availableLanguages || [],
+      originalLanguage: transcription.language
     });
     
     // Record usage
-    const duration = youtubeData.duration ? Math.ceil(youtubeData.duration / 60) : 0;
+    const duration = youtubeResult.duration ? Math.ceil(youtubeResult.duration / 60) : 0;
     await recordUsage(sessionId, 'transcription', duration, {
-      title: youtubeData.title || 'ویدئو یوتیوب',
-      videoId: videoId,
+      title: youtubeResult.title || 'ویدئو یوتیوب',
+      videoId: extractVideoId(url),
       url: url
     });
     
     // Save to dashboard
     await saveToDashboard(sessionId, {
-      title: youtubeData.title || 'ویدئو یوتیوب',
+      title: youtubeResult.title || 'ویدئو یوتیوب',
       type: 'transcription',
-      transcription,
-      segments: transcribeData.segments || [],
-      duration: youtubeData.duration || 0
+      transcription: transcription.text,
+      segments: transcription.segments || [],
+      duration: youtubeResult.duration || 0
     });
     
     // Update buttons after usage
