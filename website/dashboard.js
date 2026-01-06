@@ -414,23 +414,41 @@ async function drawUsageChart() {
     const itemDate = new Date(item.date).toDateString();
     const dayData = last7Days.find(d => d.date === itemDate);
     if (dayData) {
-      dayData.minutes += item.minutes || 0;
+      // For downloads, count them but don't add to minutes
+      // Downloads should appear in chart but not affect minute count
+      if (item.type === 'downloadVideo' || item.type === 'downloadAudio') {
+        // Count downloads but don't add to minutes
+        dayData.downloads = (dayData.downloads || 0) + 1;
+      } else {
+        // For transcription/summarization, add minutes
+        dayData.minutes += item.minutes || 0;
+      }
     }
   });
   
   // Draw daily usage bars
   const barWidth = (width - 60) / 7;
-  const maxMinutes = Math.max(...last7Days.map(d => d.minutes), 1);
+  const maxMinutes = Math.max(...last7Days.map(d => d.minutes || 0), 1);
   const barHeight = 200;
   
   last7Days.forEach((day, index) => {
     const x = 30 + index * barWidth;
-    const barH = maxMinutes > 0 ? (day.minutes / maxMinutes) * barHeight : 0;
+    const barH = maxMinutes > 0 ? ((day.minutes || 0) / maxMinutes) * barHeight : 0;
     const y = 50 + barHeight - barH;
     
-    // Draw bar
-    ctx.fillStyle = subscriptionInfo.plan === 'free' ? '#ef4444' : '#6366f1';
-    ctx.fillRect(x, y, barWidth - 5, barH);
+    // Draw bar for minutes (transcription/summarization)
+    if (day.minutes > 0) {
+      ctx.fillStyle = subscriptionInfo.plan === 'free' ? '#ef4444' : '#6366f1';
+      ctx.fillRect(x, y, barWidth - 5, barH);
+    }
+    
+    // Draw download indicator (small dot or icon)
+    if (day.downloads > 0) {
+      ctx.fillStyle = '#10b981';
+      ctx.beginPath();
+      ctx.arc(x + barWidth / 2 - 2.5, y - 10, 4, 0, 2 * Math.PI);
+      ctx.fill();
+    }
     
     // Draw day label
     const dayName = new Date(day.date).toLocaleDateString('fa-IR', { weekday: 'short' });
@@ -444,6 +462,13 @@ async function drawUsageChart() {
       ctx.fillStyle = '#1a1a1a';
       ctx.font = '10px Vazirmatn';
       ctx.fillText(`${day.minutes}د`, x + barWidth / 2 - 2.5, y - 5);
+    }
+    
+    // Draw downloads count
+    if (day.downloads > 0) {
+      ctx.fillStyle = '#10b981';
+      ctx.font = '9px Vazirmatn';
+      ctx.fillText(`${day.downloads}↓`, x + barWidth / 2 - 2.5, y - 20);
     }
   });
   

@@ -962,7 +962,8 @@ async function handleVideoDownload() {
     const subResponse = await fetch(`${API_BASE_URL}/api/subscription?action=info&session=${sessionId}`);
     const subData = await subResponse.ok ? await subResponse.json() : { plan: 'free' };
     const userPlan = subData.plan || 'free';
-    const isPro = userPlan !== 'free';
+    const isPro = userPlan !== 'free' && userPlan !== 'starter';
+    const isStarter = userPlan === 'starter';
     const maxQuality = subData.features?.maxVideoQuality || '480p';
     
     // For TikTok and Instagram, use simpler format list
@@ -973,14 +974,17 @@ async function handleVideoDownload() {
       availableFormats = formatsData.available?.video || ['2160p', '1440p', '1080p', '720p', '480p', '360p', '240p', '144p'];
     }
     
-    if (!isPro && maxQuality === '480p') {
+    // For free plan, filter out high qualities
+    if (userPlan === 'free' && maxQuality === '480p') {
       availableFormats = availableFormats.filter(q => {
         const qualityNum = parseInt(q.replace('p', ''));
         return qualityNum <= 480 || q === '480p';
       });
     }
     
-    showQualityModal(availableFormats, url, sessionId, isPro, 'video');
+    // For starter plan, show all qualities but only enable 480p and 360p
+    // For pro/business, show all and enable all
+    showQualityModal(availableFormats, url, sessionId, isPro, isStarter, userPlan, 'video');
     
   } catch (error) {
     console.error('Error:', error);
@@ -1043,7 +1047,7 @@ async function handleAudioDownload() {
     } else {
       availableFormats = formatsData.available?.audio || ['best', '320k', '256k', '192k', '128k', '96k', '64k'];
     }
-    showQualityModal(availableFormats, url, sessionId, isPro, 'audio');
+    showQualityModal(availableFormats, url, sessionId, isPro, false, userPlan, 'audio');
     
   } catch (error) {
     console.error('Error:', error);
@@ -2312,7 +2316,7 @@ async function recordUsage(sessionId, type, duration, metadata = {}) {
 }
 
 // Show quality modal
-function showQualityModal(formats, url, sessionId, isPro, type) {
+function showQualityModal(formats, url, sessionId, isPro, isStarter, userPlan, type) {
   // Create modal if doesn't exist
   let modal = document.getElementById('qualityModal');
   if (!modal) {
@@ -2352,27 +2356,36 @@ function showQualityModal(formats, url, sessionId, isPro, type) {
   }
   
   formats.forEach(quality => {
-    // Check if quality is locked for free users
-    // For video: lock anything above 480p
-    // For audio: all qualities are available
+    // Check if quality is locked
+    // For starter plan: only 480p and 360p are enabled
+    // For free plan: only up to 480p (already filtered)
+    // For pro/business: all enabled
     let isLocked = false;
-    if (type === 'video' && !isPro) {
-      // Extract numeric quality (e.g., "720p" -> 720)
-      const qualityMatch = quality.match(/(\d+)p/);
-      if (qualityMatch) {
-        const qualityNum = parseInt(qualityMatch[1]);
-        isLocked = qualityNum > 480;
-      } else {
-        // Lock 4K, 1440p, 1080p, 720p explicitly
-        isLocked = quality === '720p' || quality === '1080p' || quality === '1440p' || quality === '2160p' || quality === '4K';
+    if (type === 'video') {
+      if (isStarter) {
+        // For starter, only 480p and 360p are enabled
+        isLocked = quality !== '480p' && quality !== '360p';
+      } else if (!isPro && userPlan === 'free') {
+        // For free, lock anything above 480p (shouldn't happen as we filter, but just in case)
+        const qualityMatch = quality.match(/(\d+)p/);
+        if (qualityMatch) {
+          const qualityNum = parseInt(qualityMatch[1]);
+          isLocked = qualityNum > 480;
+        } else {
+          isLocked = quality === '720p' || quality === '1080p' || quality === '1440p' || quality === '2160p' || quality === '4K';
+        }
       }
     }
     
     const item = document.createElement('div');
     item.className = `quality-item ${isLocked ? 'locked' : ''}`;
+    
+    // Create lock icon for locked qualities
+    const lockIcon = isLocked ? '<span class="lock-icon" title="برای دسترسی به این کیفیت، پلن خود را ارتقا دهید">🔒</span>' : '';
+    
     item.innerHTML = `
-      ${isLocked ? '<span class="pro-badge">Pro</span>' : ''}
-      ${type === 'video' ? quality : quality === 'best' ? 'بهترین کیفیت' : quality + ' kbps'}
+      ${lockIcon}
+      <span class="quality-text">${type === 'video' ? quality : quality === 'best' ? 'بهترین کیفیت' : quality + ' kbps'}</span>
     `;
     
     if (!isLocked) {
@@ -2380,11 +2393,23 @@ function showQualityModal(formats, url, sessionId, isPro, type) {
         modal.classList.remove('active');
         await downloadFile(url, { quality: quality }, sessionId, type);
       });
+      item.style.cursor = 'pointer';
     } else {
+      // For locked items, clicking the lock icon should go to subscription page
+      const lockIconEl = item.querySelector('.lock-icon');
+      if (lockIconEl) {
+        lockIconEl.addEventListener('click', (e) => {
+          e.stopPropagation();
+          window.open(`dashboard.html?session=${sessionId}#subscription`, '_blank');
+        });
+        lockIconEl.style.cursor = 'pointer';
+      }
       item.addEventListener('click', () => {
-        showMessage('این کیفیت فقط برای کاربران Pro در دسترس است. کاربران رایگان فقط تا 480p می‌توانند دانلود کنند. لطفاً پلن خود را ارتقا دهید.', 'error');
-        window.open(`dashboard.html?session=${sessionId}`, '_blank');
+        showMessage('این کیفیت فقط برای کاربران با پلن بالاتر در دسترس است. لطفاً پلن خود را ارتقا دهید.', 'info');
+        window.open(`dashboard.html?session=${sessionId}#subscription`, '_blank');
       });
+      item.style.cursor = 'not-allowed';
+      item.style.opacity = '0.6';
     }
     
     qualityList.appendChild(item);
@@ -2683,12 +2708,15 @@ async function downloadFile(url, format, sessionId, type) {
     }));
     
     // Save to dashboard (for history display)
+    // NOTE: Downloads don't count as minutes, so minutes is 0
     await saveToDashboard(sessionId, {
       title: videoTitle,
       type: type === 'video' ? 'downloadVideo' : 'downloadAudio',
       quality: quality,
       url: url,
-      videoId: videoId
+      videoId: videoId,
+      minutes: 0, // Downloads don't count as minutes for transcription/summarization limits
+      duration: 0 // No duration for downloads
     });
     
     // Update buttons after download

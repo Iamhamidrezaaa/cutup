@@ -1306,17 +1306,25 @@ code, pre {
 }
 
 .quality-item.locked {
-  opacity: 0.5;
+  opacity: 0.6;
   cursor: not-allowed;
   position: relative;
 }
 
-.quality-item.locked::after {
-  content: '🔒';
-  position: absolute;
-  left: 16px;
-  top: 50%;
-  transform: translateY(-50%);
+.quality-item.locked .lock-icon {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.quality-item.locked .lock-icon:hover {
+  transform: scale(1.2);
+}
+
+.quality-item .quality-text {
+  display: inline-block;
 }
 
 .pro-badge {
