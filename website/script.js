@@ -657,10 +657,15 @@ document.addEventListener('DOMContentLoaded', () => {
   summarizeBtnMain = document.getElementById('summarizeBtnMain');
   fullTextBtnMain = document.getElementById('fullTextBtnMain');
   
-  // Setup login button event listener
-  const loginBtn = document.getElementById('loginBtn');
-  if (loginBtn) {
-    loginBtn.addEventListener('click', async () => {
+  // Setup login button event listener using event delegation
+  // Use document to catch clicks even if button is added later
+  document.addEventListener('click', async (e) => {
+    // Check if clicked element is login button or inside it
+    const loginBtn = e.target.closest('#loginBtn');
+    if (loginBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      
       try {
         console.log('[script] Login button clicked, fetching auth URL...');
         const response = await fetch(`${API_BASE_URL}/api/auth?action=login`);
@@ -687,10 +692,46 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error('[script] Error initiating login:', error);
         alert('خطا در ورود. لطفاً دوباره تلاش کنید.');
       }
+    }
+  });
+  
+  // Also setup direct listener as backup
+  const loginBtn = document.getElementById('loginBtn');
+  if (loginBtn) {
+    loginBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      try {
+        console.log('[script] Login button clicked (direct listener), fetching auth URL...');
+        const response = await fetch(`${API_BASE_URL}/api/auth?action=login`);
+        console.log('[script] Auth response status:', response.status);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('[script] Auth error response:', errorText);
+          alert('خطا در دریافت لینک ورود. لطفاً دوباره تلاش کنید.');
+          return;
+        }
+        
+        const data = await response.json();
+        console.log('[script] Auth data received:', data);
+        
+        if (data.authUrl) {
+          console.log('[script] Redirecting to Google OAuth:', data.authUrl);
+          window.location.href = data.authUrl;
+        } else {
+          console.error('[script] No authUrl in response:', data);
+          alert('خطا در دریافت لینک ورود. لطفاً دوباره تلاش کنید.');
+        }
+      } catch (error) {
+        console.error('[script] Error initiating login:', error);
+        alert('خطا در ورود. لطفاً دوباره تلاش کنید.');
+      }
     });
-    console.log('[script] Login button event listener attached');
+    console.log('[script] Login button event listener attached (direct)');
   } else {
-    console.error('[script] Login button not found!');
+    console.warn('[script] Login button not found initially, using event delegation');
   }
   
   // Setup event listeners for YouTube buttons
