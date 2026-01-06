@@ -700,10 +700,57 @@ code, pre {
 }
 
 .footer-bottom {
-  text-align: center;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   padding-top: 24px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   color: rgba(255, 255, 255, 0.6);
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.footer-copyright {
+  flex: 1;
+  text-align: right;
+}
+
+.footer-enamad {
+  flex-shrink: 0;
+}
+
+.enamad-link {
+  display: inline-block;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.enamad-link:hover {
+  opacity: 0.9;
+  transform: scale(1.05);
+}
+
+.enamad-logo {
+  width: 120px;
+  height: auto;
+  display: block;
+  border-radius: 4px;
+}
+
+/* Responsive for footer */
+@media (max-width: 768px) {
+  .footer-bottom {
+    flex-direction: column;
+    text-align: center;
+    gap: 20px;
+  }
+  
+  .footer-copyright {
+    text-align: center;
+  }
+  
+  .enamad-logo {
+    width: 100px;
+  }
 }
 
 /* Download Section */

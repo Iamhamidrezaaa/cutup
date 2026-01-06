@@ -190,11 +190,27 @@ export default async function handler(req, res) {
           '-o', outputTemplate,
         ];
         
-        // Add Instagram-specific options for stories
-        // Stories may require different handling, but yt-dlp should handle them automatically
+        // Add Instagram-specific options
         if (detectedPlatform === 'instagram') {
           // Add user agent to help with Instagram requests
           baseArgs.push('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+          
+          // For Instagram stories, we need cookies for authentication
+          if (finalUrl.includes('/stories/')) {
+            // Try multiple cookie sources in order of preference
+            const cookiesPath = join(process.cwd(), 'cookies', 'instagram_cookies.txt');
+            if (existsSync(cookiesPath)) {
+              // Use cookies file if it exists (best option)
+              baseArgs.push('--cookies', cookiesPath);
+              console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Using cookies file: ${cookiesPath}`);
+            } else {
+              // Try to use cookies from browser (if available on server)
+              // This requires browser to be installed on server
+              // Try Chrome first, then Firefox, then Edge
+              baseArgs.push('--cookies-from-browser', 'chrome');
+              console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Attempting to use cookies from Chrome browser`);
+            }
+          }
         }
 
         let formatArgs = [];
@@ -544,10 +560,24 @@ export default async function handler(req, res) {
                          detectedPlatform === 'tiktok' ? 'TikTok' : 
                          detectedPlatform === 'instagram' ? 'Instagram' : 'platform';
     
+    // Check if error is related to Instagram stories authentication
+    const isInstagramStory = url && url.includes('/stories/');
+    const isAuthError = error.stderr && (
+      error.stderr.includes('You need to log in') ||
+      error.stderr.includes('authentication') ||
+      error.stderr.includes('cookies') ||
+      error.stderr.includes('log in to access')
+    );
+    
+    let userFriendlyMessage = error.message || `Failed to download from ${platformName}`;
+    if (isInstagramStory && isAuthError) {
+      userFriendlyMessage = 'دانلود استوری‌های اینستاگرام نیاز به احراز هویت دارد. در حال حاضر این قابلیت در دسترس نیست. لطفاً از پست‌ها یا ریلز استفاده کنید.';
+    }
+    
     // Return detailed error for debugging (include stderr/stdout)
     return res.status(500).json({
       error: 'DOWNLOAD_ERROR',
-      message: error.message || `Failed to download from ${platformName}`,
+      message: userFriendlyMessage,
       stderr: error.stderr || null,
       stdout: error.stdout || null,
       code: error.code || null,

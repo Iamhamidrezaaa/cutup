@@ -611,11 +611,11 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const videoId = extractVideoId(url);
         const youtubeResponse = await fetch(`${API_BASE_URL}/api/youtube`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Session-Id': sessionId
-          },
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Session-Id': sessionId
+        },
           body: JSON.stringify({ videoId, url })
         });
         
@@ -633,7 +633,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const srtContent = generateSRTFromSubtitles(youtubeData.subtitles, youtubeData.subtitleLanguage);
         showSubtitleModal(srtContent, youtubeData.subtitleLanguage || 'en', videoId, sessionId);
         
-      } catch (error) {
+    } catch (error) {
         console.error('Error:', error);
         showMessage('خطا در دریافت زیرنویس: ' + error.message, 'error');
       }
@@ -759,7 +759,7 @@ async function handlePaste(inputElement) {
     if (text) {
       if (inputElement) {
         inputElement.value = text;
-        checkInput();
+      checkInput();
         if (isValidUrl(text)) {
           showMessage('لطفاً یکی از گزینه‌های بالا را انتخاب کنید', 'info');
         }
@@ -990,7 +990,7 @@ async function handleVideoDownload() {
       const downloadMessage = document.getElementById('downloadMessage');
       if (downloadMessage && downloadMessage.textContent.includes('در حال دریافت کیفیت')) {
         downloadMessage.style.display = 'none';
-      }
+  }
     }, 3000);
   }
 }
@@ -1053,7 +1053,7 @@ async function handleAudioDownload() {
       const downloadMessage = document.getElementById('downloadMessage');
       if (downloadMessage && downloadMessage.textContent.includes('در حال دریافت کیفیت')) {
         downloadMessage.style.display = 'none';
-      }
+  }
     }, 3000);
   }
 }
@@ -1074,9 +1074,9 @@ async function handleSummarize() {
     } else {
       showMessage('لطفاً لینک را وارد کنید', 'error');
     }
-    return;
-  }
-  
+      return;
+    }
+    
   if (file && url.startsWith('📁')) {
     await processSummarizeFile(file, sessionId);
   } else if (isValidUrl(url)) {
@@ -1091,20 +1091,20 @@ async function handleFullText() {
   if (!sessionId) {
     showMessage('لطفاً ابتدا وارد حساب کاربری خود شوید', 'error');
     return;
-  }
-  
+    }
+    
   const url = getCurrentUrl();
   const file = audioFileInput && audioFileInput.files[0];
-  
+    
   if (!url && !file) {
     if (currentPlatform === 'audiofile') {
       showMessage('لطفاً فایل صوتی را انتخاب کنید', 'error');
     } else {
       showMessage('لطفاً لینک را وارد کنید', 'error');
     }
-    return;
-  }
-  
+      return;
+    }
+    
   if (file && url.startsWith('📁')) {
     await processFullTextFile(file, sessionId);
   } else if (isValidUrl(url)) {
@@ -2491,16 +2491,16 @@ async function downloadFile(url, format, sessionId, type) {
     try {
       // Try to get title (works for YouTube, may need separate endpoints for TikTok/Instagram)
       if (currentPlatform === 'youtube' && videoId) {
-        const titleResponse = await fetch(`${API_BASE_URL}/api/youtube-title`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ videoId, url })
-        });
-        if (titleResponse.ok) {
-          const titleData = await titleResponse.json();
-          if (titleData.title) {
-            // Clean title for filename (remove invalid characters)
-            videoTitle = titleData.title.replace(/[<>:"/\\|?*]/g, '_').substring(0, 50);
+      const titleResponse = await fetch(`${API_BASE_URL}/api/youtube-title`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoId, url })
+      });
+      if (titleResponse.ok) {
+        const titleData = await titleResponse.json();
+        if (titleData.title) {
+          // Clean title for filename (remove invalid characters)
+          videoTitle = titleData.title.replace(/[<>:"/\\|?*]/g, '_').substring(0, 50);
           }
         }
       }
@@ -2532,7 +2532,7 @@ async function downloadFile(url, format, sessionId, type) {
     if (!response.ok) {
       hideProgressBar();
       // Get error response text first for logging
-      const errorText = await response.text();
+        const errorText = await response.text();
       console.error('[script] Download failed:', response.status, errorText);
       
       // Try to parse as JSON
@@ -2704,7 +2704,7 @@ async function downloadFile(url, format, sessionId, type) {
 function setupEnterKeyHandler(input) {
   if (input) {
     input.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
+  if (e.key === 'Enter') {
         const url = input.value.trim();
         checkInput(); // This will validate and show appropriate message
         if (url && isValidUrl(url)) {
