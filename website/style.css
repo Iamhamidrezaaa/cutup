@@ -114,6 +114,14 @@ body {
   font-weight: 500;
   transition: background 0.2s;
   font-family: 'Vazirmatn', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.login-btn svg {
+  flex-shrink: 0;
 }
 
 .login-btn:hover {

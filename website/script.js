@@ -639,21 +639,7 @@ function generateAvatar(text) {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&background=${color}&color=fff&size=128&bold=true&font-size=0.5`;
 }
 
-// Login button click
-document.getElementById('loginBtn').addEventListener('click', async () => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/auth?action=login`);
-    const data = await response.json();
-    if (data.authUrl) {
-      window.location.href = data.authUrl;
-    } else {
-      alert('خطا در دریافت لینک ورود. لطفاً دوباره تلاش کنید.');
-    }
-  } catch (error) {
-    console.error('Error initiating login:', error);
-    alert('خطا در ورود. لطفاً دوباره تلاش کنید.');
-  }
-});
+// Login button click - setup in DOMContentLoaded
 
 // Logout button is now handled in showUserProfile function
 
@@ -670,6 +656,25 @@ document.addEventListener('DOMContentLoaded', () => {
   downloadMessage = document.getElementById('downloadMessage');
   summarizeBtnMain = document.getElementById('summarizeBtnMain');
   fullTextBtnMain = document.getElementById('fullTextBtnMain');
+  
+  // Setup login button event listener
+  const loginBtn = document.getElementById('loginBtn');
+  if (loginBtn) {
+    loginBtn.addEventListener('click', async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/auth?action=login`);
+    const data = await response.json();
+    if (data.authUrl) {
+      window.location.href = data.authUrl;
+    } else {
+      alert('خطا در دریافت لینک ورود. لطفاً دوباره تلاش کنید.');
+    }
+  } catch (error) {
+    console.error('Error initiating login:', error);
+    alert('خطا در ورود. لطفاً دوباره تلاش کنید.');
+  }
+});
+  }
   
   // Setup event listeners for YouTube buttons
   if (downloadVideoBtnMain) {
@@ -1448,7 +1453,7 @@ async function processFullTextFile(file, sessionId) {
 
 // Extract YouTube audio (like extension)
 async function extractYouTubeAudio(url) {
-  const videoId = extractVideoId(url);
+    const videoId = extractVideoId(url);
   if (!videoId) {
     throw new Error('لینک یوتیوب معتبر نیست');
   }
@@ -1549,8 +1554,8 @@ async function transcribeAudio(audioUrlOrFile, languageHint = null) {
       console.log('TRANSCRIBE: Body size:', JSON.stringify(body).length, 'bytes');
       
       response = await fetch(`${API_BASE_URL}/api/transcribe`, {
-        method: 'POST',
-        headers: {
+      method: 'POST',
+      headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(body),
@@ -1580,7 +1585,7 @@ async function transcribeAudio(audioUrlOrFile, languageHint = null) {
       
       throw new Error(errorMessage);
     }
-
+    
     const result = await response.json();
     
     console.log('TRANSCRIBE: Response parsed:', {
@@ -1885,11 +1890,11 @@ async function processFullText(url, sessionId) {
     const durationMinutes = Math.ceil(durationSeconds / 60);
     
     // Check subscription limit with actual duration
-    const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', durationMinutes);
+      const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', durationMinutes);
     if (!limitCheck.allowed) {
       showMessage(limitCheck.reason || 'حد مجاز شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
-      window.open(`dashboard.html?session=${sessionId}`, '_blank');
-      return;
+        window.open(`dashboard.html?session=${sessionId}`, '_blank');
+        return;
     }
     
     // Check if YouTube subtitles are available (like extension)
