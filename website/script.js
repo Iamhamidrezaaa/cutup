@@ -974,16 +974,17 @@ async function handleVideoDownload() {
       availableFormats = formatsData.available?.video || ['2160p', '1440p', '1080p', '720p', '480p', '360p', '240p', '144p'];
     }
     
-    // For free plan, filter out high qualities
+    // For free plan, filter out high qualities (don't show them at all)
+    // For starter plan, show all qualities but only enable 480p and 360p
+    // For pro/business, show all and enable all
     if (userPlan === 'free' && maxQuality === '480p') {
       availableFormats = availableFormats.filter(q => {
         const qualityNum = parseInt(q.replace('p', ''));
         return qualityNum <= 480 || q === '480p';
       });
     }
+    // For starter plan, keep all formats (they will be shown but locked)
     
-    // For starter plan, show all qualities but only enable 480p and 360p
-    // For pro/business, show all and enable all
     showQualityModal(availableFormats, url, sessionId, isPro, isStarter, userPlan, 'video');
     
   } catch (error) {
@@ -2367,12 +2368,12 @@ function showQualityModal(formats, url, sessionId, isPro, isStarter, userPlan, t
         isLocked = quality !== '480p' && quality !== '360p';
       } else if (!isPro && userPlan === 'free') {
         // For free, lock anything above 480p (shouldn't happen as we filter, but just in case)
-        const qualityMatch = quality.match(/(\d+)p/);
-        if (qualityMatch) {
-          const qualityNum = parseInt(qualityMatch[1]);
-          isLocked = qualityNum > 480;
-        } else {
-          isLocked = quality === '720p' || quality === '1080p' || quality === '1440p' || quality === '2160p' || quality === '4K';
+      const qualityMatch = quality.match(/(\d+)p/);
+      if (qualityMatch) {
+        const qualityNum = parseInt(qualityMatch[1]);
+        isLocked = qualityNum > 480;
+      } else {
+        isLocked = quality === '720p' || quality === '1080p' || quality === '1440p' || quality === '2160p' || quality === '4K';
         }
       }
     }
@@ -2384,8 +2385,8 @@ function showQualityModal(formats, url, sessionId, isPro, isStarter, userPlan, t
     const lockIcon = isLocked ? '<span class="lock-icon" title="برای دسترسی به این کیفیت، پلن خود را ارتقا دهید">🔒</span>' : '';
     
     item.innerHTML = `
-      ${lockIcon}
       <span class="quality-text">${type === 'video' ? quality : quality === 'best' ? 'بهترین کیفیت' : quality + ' kbps'}</span>
+      ${lockIcon}
     `;
     
     if (!isLocked) {

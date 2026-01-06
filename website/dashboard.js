@@ -406,35 +406,61 @@ async function drawUsageChart() {
     date.setHours(0, 0, 0, 0);
     last7Days.push({
       date: date.toDateString(),
-      minutes: 0
+      dateObj: date, // Keep date object for comparison
+      minutes: 0,
+      downloads: 0
     });
   }
   
+  console.log('[dashboard] Processing history for chart:', history.length, 'items');
   history.forEach(item => {
-    const itemDate = new Date(item.date).toDateString();
-    const dayData = last7Days.find(d => d.date === itemDate);
+    if (!item.date) return;
+    
+    // Parse item date (could be ISO string or Date object)
+    const itemDate = new Date(item.date);
+    if (isNaN(itemDate.getTime())) {
+      console.warn('[dashboard] Invalid date in history item:', item.date);
+      return;
+    }
+    
+    // Set time to midnight for comparison
+    itemDate.setHours(0, 0, 0, 0);
+    const itemDateString = itemDate.toDateString();
+    
+    const dayData = last7Days.find(d => d.date === itemDateString);
     if (dayData) {
       // For downloads, count them but don't add to minutes
       // Downloads should appear in chart but not affect minute count
       if (item.type === 'downloadVideo' || item.type === 'downloadAudio') {
         // Count downloads but don't add to minutes
         dayData.downloads = (dayData.downloads || 0) + 1;
+        console.log('[dashboard] Found download:', item.type, 'on', itemDateString, 'total downloads:', dayData.downloads);
       } else {
         // For transcription/summarization, add minutes
         dayData.minutes += item.minutes || 0;
       }
+    } else {
+      // Item is outside last 7 days, skip it
+      console.log('[dashboard] Item date outside range:', itemDateString);
     }
   });
+  
+  console.log('[dashboard] Last 7 days data:', last7Days.map(d => ({
+    date: d.date,
+    minutes: d.minutes,
+    downloads: d.downloads
+  })));
   
   // Draw daily usage bars
   const barWidth = (width - 60) / 7;
   const maxMinutes = Math.max(...last7Days.map(d => d.minutes || 0), 1);
   const barHeight = 200;
+  const baseY = 50 + barHeight; // Base Y position for bars (bottom of chart area)
   
   last7Days.forEach((day, index) => {
     const x = 30 + index * barWidth;
     const barH = maxMinutes > 0 ? ((day.minutes || 0) / maxMinutes) * barHeight : 0;
-    const y = 50 + barHeight - barH;
+    const y = baseY - barH;
     
     // Draw bar for minutes (transcription/summarization)
     if (day.minutes > 0) {
@@ -442,12 +468,20 @@ async function drawUsageChart() {
       ctx.fillRect(x, y, barWidth - 5, barH);
     }
     
-    // Draw download indicator (small dot or icon)
+    // Draw download indicator (small dot or icon) - always visible if downloads exist
     if (day.downloads > 0) {
+      // Position download indicator at a fixed height from bottom (even if no minutes)
+      const downloadY = day.minutes > 0 ? y - 15 : baseY - 15;
       ctx.fillStyle = '#10b981';
       ctx.beginPath();
-      ctx.arc(x + barWidth / 2 - 2.5, y - 10, 4, 0, 2 * Math.PI);
+      ctx.arc(x + barWidth / 2 - 2.5, downloadY, 5, 0, 2 * Math.PI);
       ctx.fill();
+      
+      // Draw download count text
+      ctx.fillStyle = '#10b981';
+      ctx.font = 'bold 10px Vazirmatn';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${day.downloads}↓`, x + barWidth / 2 - 2.5, downloadY - 10);
     }
     
     // Draw day label
@@ -461,14 +495,8 @@ async function drawUsageChart() {
     if (day.minutes > 0) {
       ctx.fillStyle = '#1a1a1a';
       ctx.font = '10px Vazirmatn';
+      ctx.textAlign = 'center';
       ctx.fillText(`${day.minutes}د`, x + barWidth / 2 - 2.5, y - 5);
-    }
-    
-    // Draw downloads count
-    if (day.downloads > 0) {
-      ctx.fillStyle = '#10b981';
-      ctx.font = '9px Vazirmatn';
-      ctx.fillText(`${day.downloads}↓`, x + barWidth / 2 - 2.5, y - 20);
     }
   });
   
