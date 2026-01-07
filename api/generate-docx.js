@@ -2,7 +2,6 @@
 // Uses docx library to create proper DOCX files
 
 import { handleCORS, setCORSHeaders } from './cors.js';
-import { Document, Packer, Paragraph, TextRun, AlignmentType } from 'docx';
 
 // Fix Persian Bidi (Bidirectional) text for proper Word display
 // Adds Unicode BiDi control characters to handle mixed Persian/English text
@@ -105,7 +104,26 @@ export default async function handler(req, res) {
   if (corsHandled) return;
 
   if (req.method !== 'POST') {
+    setCORSHeaders(res);
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // Dynamically import docx library
+  let Document, Packer, Paragraph, TextRun, AlignmentType;
+  try {
+    const docxModule = await import('docx');
+    Document = docxModule.Document;
+    Packer = docxModule.Packer;
+    Paragraph = docxModule.Paragraph;
+    TextRun = docxModule.TextRun;
+    AlignmentType = docxModule.AlignmentType;
+  } catch (error) {
+    console.error('[generate-docx] Failed to import docx library:', error.message);
+    setCORSHeaders(res);
+    return res.status(500).json({
+      error: 'DOCX library not installed',
+      message: 'Please install docx library: npm install docx'
+    });
   }
 
   try {

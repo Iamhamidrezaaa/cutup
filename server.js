@@ -118,8 +118,14 @@ async function loadRoutes() {
     authHandler = authModule.default;
     
     // OAuth Google Start endpoint
-    const oauthGoogleStartModule = await import('./api/oauth-google-start.js');
-    oauthGoogleStartHandler = oauthGoogleStartModule.default;
+    try {
+      const oauthGoogleStartModule = await import('./api/oauth-google-start.js');
+      oauthGoogleStartHandler = oauthGoogleStartModule.default;
+      console.log('✅ OAuth Google Start handler loaded successfully');
+    } catch (err) {
+      console.error('❌ Failed to load OAuth Google Start handler:', err);
+      throw err;
+    }
     
     // YouTube Download endpoint
     const youtubeDownloadModule = await import('./api/youtube-download.js');
@@ -134,8 +140,17 @@ async function loadRoutes() {
     subscriptionHandler = subscriptionModule.default;
     
     // Generate DOCX endpoint
-    const generateDocxModule = await import('./api/generate-docx.js');
-    generateDocxHandler = generateDocxModule.default;
+    try {
+      const generateDocxModule = await import('./api/generate-docx.js');
+      generateDocxHandler = generateDocxModule.default;
+      console.log('✅ Generate DOCX handler loaded successfully');
+    } catch (err) {
+      console.error('❌ Failed to load Generate DOCX handler:', err);
+      console.error('   Error details:', err.message);
+      console.error('   Stack:', err.stack);
+      // Don't throw - make it optional
+      generateDocxHandler = null;
+    }
     
     console.log('All routes loaded successfully');
   } catch (err) {
@@ -213,10 +228,19 @@ app.get('/api/auth/callback', async (req, res) => {
 
 // OAuth Google Start route - separate endpoint to avoid conflicts
 app.post('/api/oauth/google/start', async (req, res) => {
-  if (!oauthGoogleStartHandler) {
-    return res.status(500).json({ error: 'OAuth Google Start handler not loaded' });
+  try {
+    if (!oauthGoogleStartHandler) {
+      console.error('[server] OAuth Google Start handler not loaded');
+      return res.status(500).json({ error: 'OAuth Google Start handler not loaded' });
+    }
+    await oauthGoogleStartHandler(req, res);
+  } catch (error) {
+    console.error('[server] Error in OAuth Google Start route:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      message: error.message 
+    });
   }
-  return oauthGoogleStartHandler(req, res);
 });
 
 // YouTube Download routes
