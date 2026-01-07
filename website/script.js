@@ -782,10 +782,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         stopProgressTracking(30, 'اطلاعات ویدئو دریافت شد');
-        startProgressTracking(30, 95, 3, 'در حال پردازش زیرنویس...', 'در حال پردازش زیرنویس...');
+        startProgressTracking(30, 99, 3, 'در حال پردازش زیرنویس...', 'در حال پردازش زیرنویس...');
         const srtContent = generateSRTFromSubtitles(youtubeData.subtitles, youtubeData.subtitleLanguage);
-        stopProgressTracking(95, 'زیرنویس پردازش شد');
-        updateProgressBar(0, 0, 100, 'پردازش کامل شد');
+        stopProgressTracking(99, 'زیرنویس پردازش شد');
+        
+        // Final update to 100%
+        setTimeout(() => {
+          updateProgressBar(0, 0, 100, 'پردازش کامل شد');
+        }, 350);
         
         showSubtitleModal(srtContent, youtubeData.subtitleLanguage || 'en', videoId, sessionId);
         hideProgressBar();
@@ -1402,14 +1406,14 @@ async function processSummarizeFile(file, sessionId) {
     
     // Summarize (unlimited for all tiers)
     const estimatedSummaryTime = estimateSummarizationDuration(transcription.text.length);
-    startProgressTracking(70, 95, estimatedSummaryTime, 'در حال خلاصه‌سازی...', 'در حال خلاصه‌سازی...');
+    startProgressTracking(70, 99, estimatedSummaryTime, 'در حال خلاصه‌سازی...', 'در حال خلاصه‌سازی...');
     let summary = null;
     try {
       summary = await summarizeText(transcription.text, transcription.language);
-      stopProgressTracking(95, 'خلاصه‌سازی انجام شد');
+      stopProgressTracking(99, 'خلاصه‌سازی انجام شد');
     } catch (error) {
       console.error('Error in summarization:', error);
-      stopProgressTracking(95, 'خلاصه‌سازی انجام شد');
+      stopProgressTracking(99, 'خلاصه‌سازی انجام شد');
       // Continue without summary if check fails
       summary = {
         keyPoints: ['خطا در خلاصه‌سازی'],
@@ -1417,7 +1421,10 @@ async function processSummarizeFile(file, sessionId) {
       };
     }
     
-    updateProgressBar(0, 0, 100, 'پردازش کامل شد');
+    // Final update to 100%
+    setTimeout(() => {
+      updateProgressBar(0, 0, 100, 'پردازش کامل شد');
+    }, 350);
     
     // Display results in result section - تب خلاصه به صورت پیش‌فرض فعال باشد
     displayResults(summary, transcription.text, transcription.segments || [], {
@@ -1489,11 +1496,14 @@ async function processFullTextFile(file, sessionId) {
     
     // Transcribe using transcribeAudio (like extension)
     const estimatedTranscriptionTime = estimateTranscriptionDuration(file.size, null);
-    startProgressTracking(10, 95, estimatedTranscriptionTime, 'در حال استخراج صوت از فایل...', 'در حال تبدیل صوت به متن...');
+    startProgressTracking(10, 99, estimatedTranscriptionTime, 'در حال استخراج صوت از فایل...', 'در حال تبدیل صوت به متن...');
     const transcription = await transcribeAudio(file, null);
-    stopProgressTracking(95, 'تبدیل صوت به متن انجام شد');
+    stopProgressTracking(99, 'تبدیل صوت به متن انجام شد');
     
-    updateProgressBar(0, 0, 100, 'پردازش کامل شد');
+    // Final update to 100%
+    setTimeout(() => {
+      updateProgressBar(0, 0, 100, 'پردازش کامل شد');
+    }, 350);
     
     // Display results in result section - تب متن کامل به صورت پیش‌فرض فعال باشد
     displayResults(null, transcription.text, transcription.segments || [], {
@@ -1921,14 +1931,14 @@ async function processSummarize(url, sessionId) {
     
     // Summarize (unlimited for all tiers)
     const estimatedSummaryTime = estimateSummarizationDuration(transcription.text.length);
-    startProgressTracking(70, 95, estimatedSummaryTime, 'در حال خلاصه‌سازی...', 'در حال خلاصه‌سازی...');
+    startProgressTracking(70, 99, estimatedSummaryTime, 'در حال خلاصه‌سازی...', 'در حال خلاصه‌سازی...');
     let summary = null;
     try {
       summary = await summarizeText(transcription.text, transcription.language);
-      stopProgressTracking(95, 'خلاصه‌سازی انجام شد');
+      stopProgressTracking(99, 'خلاصه‌سازی انجام شد');
     } catch (error) {
       console.error('Error in summarization:', error);
-      stopProgressTracking(95, 'خلاصه‌سازی انجام شد');
+      stopProgressTracking(99, 'خلاصه‌سازی انجام شد');
       // Continue without summary if check fails
       summary = {
         keyPoints: ['خطا در خلاصه‌سازی'],
@@ -1936,7 +1946,10 @@ async function processSummarize(url, sessionId) {
       };
     }
     
-    updateProgressBar(0, 0, 100, 'پردازش کامل شد');
+    // Final update to 100%
+    setTimeout(() => {
+      updateProgressBar(0, 0, 100, 'پردازش کامل شد');
+    }, 350);
     
     // Display results در بخش نتیجه - تب خلاصه فعال باشد
     displayResults(summary, transcription.text, transcription.segments || [], {
@@ -2014,19 +2027,22 @@ async function processFullText(url, sessionId) {
     if (youtubeResult.subtitles) {
       // Use YouTube subtitles if available
       console.log('YOUTUBE: Using YouTube subtitles');
-      startProgressTracking(25, 95, 5, 'در حال پردازش زیرنویس‌های یوتیوب...', 'در حال پردازش زیرنویس‌های یوتیوب...');
+      startProgressTracking(25, 99, 5, 'در حال پردازش زیرنویس‌های یوتیوب...', 'در حال پردازش زیرنویس‌های یوتیوب...');
       transcription = await parseYouTubeSubtitles(youtubeResult.subtitles, youtubeResult.subtitleLanguage);
-      stopProgressTracking(95, 'زیرنویس پردازش شد');
+      stopProgressTracking(99, 'زیرنویس پردازش شد');
     } else {
       // Fallback to audio transcription
       console.log('YOUTUBE: No subtitles available, transcribing audio');
       const estimatedTranscriptionTime = estimateTranscriptionDuration(null, durationSeconds);
-      startProgressTracking(25, 95, estimatedTranscriptionTime, 'در حال استخراج صوت از ویدئو...', 'در حال تبدیل صوت به متن...');
+      startProgressTracking(25, 99, estimatedTranscriptionTime, 'در حال استخراج صوت از ویدئو...', 'در حال تبدیل صوت به متن...');
       transcription = await transcribeAudio(audioUrl, youtubeLanguage);
-      stopProgressTracking(95, 'تبدیل صوت به متن انجام شد');
+      stopProgressTracking(99, 'تبدیل صوت به متن انجام شد');
     }
     
-    updateProgressBar(0, 0, 100, 'پردازش کامل شد');
+    // Final update to 100%
+    setTimeout(() => {
+      updateProgressBar(0, 0, 100, 'پردازش کامل شد');
+    }, 350);
     
     // Display results در بخش نتیجه - تب متن کامل فعال باشد
     displayResults(null, transcription.text, transcription.segments || [], {
@@ -3343,17 +3359,15 @@ function updateProgressBar(downloaded = 0, total = 0, percent = 0, statusText = 
   }
 }
 
-// Progress tracking system - improved smooth progress
+// Progress tracking system - smooth incremental progress
 let progressInterval = null;
 let progressStartTime = null;
 let progressEstimatedDuration = null; // in milliseconds
-let progressCurrentStage = null;
-let progressStageStartPercent = 0;
-let progressStageEndPercent = 0;
 let progressCurrentPercent = 0;
 let progressTargetPercent = 0;
 let progressStatusText = '';
 let progressStatusTextAt50 = null; // Text to show after 50%
+let progressAnimateToFinalInterval = null;
 
 // Easing function for smooth progress (ease-out)
 function easeOutCubic(t) {
@@ -3362,16 +3376,18 @@ function easeOutCubic(t) {
 
 // Start progress tracking for an async operation
 function startProgressTracking(startPercent, endPercent, estimatedDurationSeconds, statusText, statusTextAt50 = null) {
-  // Clear any existing interval
+  // Clear any existing intervals
   if (progressInterval) {
     clearInterval(progressInterval);
+    progressInterval = null;
+  }
+  if (progressAnimateToFinalInterval) {
+    clearInterval(progressAnimateToFinalInterval);
+    progressAnimateToFinalInterval = null;
   }
   
   progressStartTime = Date.now();
   progressEstimatedDuration = estimatedDurationSeconds * 1000; // Convert to milliseconds
-  progressCurrentStage = statusText;
-  progressStageStartPercent = startPercent;
-  progressStageEndPercent = endPercent;
   progressCurrentPercent = startPercent;
   progressTargetPercent = endPercent;
   progressStatusText = statusText;
@@ -3386,58 +3402,83 @@ function startProgressTracking(startPercent, endPercent, estimatedDurationSecond
   // Set initial progress
   updateProgressBar(0, 0, startPercent, statusText);
   
-  // Start interval to update progress smoothly
+  // Calculate how much progress we need to make
+  const progressRange = endPercent - startPercent;
+  const midPoint = startPercent + (progressRange * 0.5);
+  
+  // Start interval to update progress smoothly and incrementally
   progressInterval = setInterval(() => {
     const elapsed = Date.now() - progressStartTime;
-    const progressRatio = Math.min(0.98, elapsed / progressEstimatedDuration); // Cap at 98% until operation completes
+    const timeRatio = Math.min(0.99, elapsed / progressEstimatedDuration); // Cap at 99% until operation completes
     
     // Use easing for smoother progress
-    const easedRatio = easeOutCubic(progressRatio);
-    const currentProgress = startPercent + (easedRatio * (endPercent - startPercent));
+    const easedRatio = easeOutCubic(timeRatio);
+    const targetProgress = startPercent + (easedRatio * progressRange);
     
-    // Update status text at 50% if specified
-    if (progressStatusTextAt50 && progressTitle && currentProgress >= (startPercent + (endPercent - startPercent) * 0.5)) {
-      if (progressTitle.textContent !== progressStatusTextAt50) {
-        progressTitle.textContent = progressStatusTextAt50;
-        progressStatusText = progressStatusTextAt50;
+    // Incrementally move towards target (smooth animation)
+    if (progressCurrentPercent < targetProgress) {
+      // Move forward smoothly (max 2% per update for smoothness)
+      const increment = Math.min(2, (targetProgress - progressCurrentPercent) * 0.3);
+      progressCurrentPercent = Math.min(targetProgress, progressCurrentPercent + increment);
+      
+      // Update status text at 50% if specified
+      if (progressStatusTextAt50 && progressTitle && progressCurrentPercent >= midPoint) {
+        if (progressTitle.textContent !== progressStatusTextAt50) {
+          progressTitle.textContent = progressStatusTextAt50;
+          progressStatusText = progressStatusTextAt50;
+        }
       }
+      
+      updateProgressBar(0, 0, progressCurrentPercent, progressStatusText);
     }
-    
-    progressCurrentPercent = currentProgress;
-    updateProgressBar(0, 0, currentProgress, progressStatusText);
-  }, 100); // Update every 100ms for smoother progress
+  }, 50); // Update every 50ms for very smooth progress
 }
 
-// Stop progress tracking and animate to final percent smoothly
+// Stop progress tracking and smoothly animate to final percent
 function stopProgressTracking(finalPercent, statusText) {
+  // Clear the main progress interval
   if (progressInterval) {
     clearInterval(progressInterval);
     progressInterval = null;
   }
   
-  // Smoothly animate from current to final
+  // Get current progress
   const startPercent = progressCurrentPercent;
-  const targetPercent = finalPercent;
-  const duration = 500; // 500ms animation
+  const targetPercent = Math.max(startPercent, finalPercent); // Don't go backwards
+  
+  // If we're already at or past target, just update
+  if (startPercent >= targetPercent) {
+    updateProgressBar(0, 0, targetPercent, statusText);
+    progressCurrentPercent = targetPercent;
+    progressStartTime = null;
+    progressEstimatedDuration = null;
+    progressStatusTextAt50 = null;
+    return;
+  }
+  
+  // Smoothly animate from current to final
+  const duration = 300; // 300ms animation (faster)
   const startTime = Date.now();
   
-  const animateToFinal = setInterval(() => {
+  progressAnimateToFinalInterval = setInterval(() => {
     const elapsed = Date.now() - startTime;
     const progress = Math.min(1, elapsed / duration);
     const easedProgress = easeOutCubic(progress);
     const currentProgress = startPercent + (easedProgress * (targetPercent - startPercent));
     
+    progressCurrentPercent = currentProgress;
     updateProgressBar(0, 0, currentProgress, statusText);
     
     if (progress >= 1) {
-      clearInterval(animateToFinal);
+      clearInterval(progressAnimateToFinalInterval);
+      progressAnimateToFinalInterval = null;
+      progressCurrentPercent = targetPercent;
       updateProgressBar(0, 0, targetPercent, statusText);
     }
-  }, 50); // Update every 50ms for smooth animation
+  }, 30); // Update every 30ms for very smooth final animation
   
   progressStartTime = null;
   progressEstimatedDuration = null;
-  progressCurrentStage = null;
   progressStatusTextAt50 = null;
 }
 
@@ -3472,8 +3513,23 @@ function estimateSummarizationDuration(textLength = 0) {
 
 // Hide progress bar
 function hideProgressBar() {
-  // Stop any active progress tracking
-  stopProgressTracking(0, '');
+  // Clear all intervals
+  if (progressInterval) {
+    clearInterval(progressInterval);
+    progressInterval = null;
+  }
+  if (progressAnimateToFinalInterval) {
+    clearInterval(progressAnimateToFinalInterval);
+    progressAnimateToFinalInterval = null;
+  }
+  
+  // Reset all progress tracking variables
+  progressStartTime = null;
+  progressEstimatedDuration = null;
+  progressCurrentPercent = 0;
+  progressTargetPercent = 0;
+  progressStatusText = '';
+  progressStatusTextAt50 = null;
   
   const progressContainer = document.getElementById('downloadProgressContainer');
   if (progressContainer) {

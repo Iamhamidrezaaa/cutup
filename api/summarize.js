@@ -72,6 +72,13 @@ export default async function handler(req, res) {
   }
 }
 
+// Helper function to extract key points from text (fallback)
+function extractKeyPointsFromText(text, count) {
+  const sentences = text.split(/[.!?]\s+/).filter(s => s.trim().length > 20);
+  const points = sentences.slice(0, count).map(s => s.trim());
+  return points.length > 0 ? points : ['خلاصه‌سازی انجام شد'];
+}
+
 async function summarizeWithGPT(text, detectedLanguage = null) {
   // Detect language (Persian or English) - use detected language if provided
   let isPersian = false;
@@ -115,7 +122,7 @@ async function summarizeWithGPT(text, detectedLanguage = null) {
   
   // Calculate target summary length
   const targetSummaryWords = Math.max(Math.floor(wordCount * summaryRatio), 20); // Minimum 20 words
-  const targetSummaryChars = Math.max(Math.floor(charCount * summaryRatio), 100); // Minimum 100 chars
+  // Removed targetSummaryChars - not used
   
   console.log(`SUMMARIZE: Text stats - Words: ${wordCount}, Chars: ${charCount}, Target summary: ~${targetSummaryWords} words, Key points: ${keyPointsCount}`);
 
@@ -145,18 +152,86 @@ Please return the response in this JSON format:
   "summary": "One paragraph summary..."
 }`;
 
-  // Adjust max_tokens based on text length
-  const maxTokens = Math.min(Math.max(targetSummaryWords * 2, 500), 4000);
+  // Adjust max_tokens based on text length - reduced for faster response
+  const maxTokens = Math.min(Math.max(targetSummaryWords * 1.5, 300), 2000); // Reduced from 4000 to 2000 for speed
 
-  const completion = await client.chat.completions.create({
-    model: 'gpt-4o-mini', // Using cheaper model for MVP
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
-    ],
-    temperature: 0.7,
-    max_tokens: maxTokens
-  });
+  // Use streaming for faster response (especially for long texts)
+  // For shorter texts, use regular completion for better reliability
+  const useStreaming = wordCount > 1000;
+  
+  if (useStreaming) {
+    // Use streaming for long texts - faster perceived response
+    const stream = await client.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.7,
+      max_tokens: maxTokens,
+      stream: true
+    });
+    
+    let fullResponse = '';
+    for await (const chunk of stream) {
+      const content = chunk.choices[0]?.delta?.content || '';
+      if (content) {
+        fullResponse += content;
+      }
+    }
+    
+    // Parse the streamed response
+    try {
+      // Try to extract JSON from response
+      const jsonMatch = fullResponse.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+      // Fallback: create summary from text
+      return {
+        keyPoints: extractKeyPointsFromText(fullResponse, keyPointsCount),
+        summary: fullResponse
+      };
+    } catch (parseError) {
+      console.error('SUMMARIZE: Failed to parse streamed response, using fallback');
+      return {
+        keyPoints: extractKeyPointsFromText(fullResponse, keyPointsCount),
+        summary: fullResponse
+      };
+    }
+  } else {
+    // Use regular completion for shorter texts
+    const completion = await client.chat.completions.create({
+      model: 'gpt-4o-mini', // Using cheaper model for MVP
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.7,
+      max_tokens: maxTokens
+    });
+    
+    const content = completion.choices[0].message.content;
+    
+    // Try to parse JSON from response
+    try {
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+      // Fallback: create summary from text
+      return {
+        keyPoints: extractKeyPointsFromText(content, keyPointsCount),
+        summary: content
+      };
+    } catch (parseError) {
+      console.error('SUMMARIZE: Failed to parse response, using fallback');
+      return {
+        keyPoints: extractKeyPointsFromText(content, keyPointsCount),
+        summary: content
+      };
+    }
+  }
 
   const content = completion.choices[0].message.content;
 

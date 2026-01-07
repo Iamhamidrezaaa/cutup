@@ -236,8 +236,12 @@ export default async function handler(req, res) {
             knownLength: audioBuffer.length
           });
           formData.append('model', 'whisper-1');
-          // Don't specify language - let Whisper auto-detect
-          // formData.append('language', 'fa');
+          // Use language hint if provided for faster processing
+          // Whisper is faster when language is specified
+          if (req.body.languageHint) {
+            formData.append('language', req.body.languageHint);
+            console.log(`TRANSCRIBE: Using language hint: ${req.body.languageHint}`);
+          }
           formData.append('response_format', 'verbose_json'); // Get segments with timestamps
           
           // Don't add prompt yet - we'll add it only if Persian is detected
@@ -255,7 +259,7 @@ export default async function handler(req, res) {
               ...formHeaders
             },
             body: formData,
-            timeout: 300000 // 5 minutes timeout for larger files
+            timeout: 180000 // 3 minutes timeout (reduced from 5 minutes for faster failure detection)
           });
           
           if (!response.ok) {

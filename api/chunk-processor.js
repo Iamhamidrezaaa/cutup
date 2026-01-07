@@ -29,37 +29,52 @@ export async function transcribeLargeFile(audioBuffer, mimeType, apiKey, extensi
   const chunks = splitAudioIntoChunks(audioBuffer, CHUNK_SIZE);
   console.log(`CHUNK_PROCESSOR: Split into ${chunks.length} chunks`);
   
-  // Transcribe each chunk
+  // Transcribe chunks in parallel batches for faster processing
+  // Process up to 3 chunks at a time to avoid rate limits
+  const BATCH_SIZE = 3;
   const transcriptions = [];
   let detectedLanguage = null;
   
-  for (let i = 0; i < chunks.length; i++) {
-    console.log(`CHUNK_PROCESSOR: Processing chunk ${i + 1}/${chunks.length}...`);
-    const chunkResult = await transcribeChunk(chunks[i].buffer, mimeType, apiKey, extension);
+  for (let batchStart = 0; batchStart < chunks.length; batchStart += BATCH_SIZE) {
+    const batchEnd = Math.min(batchStart + BATCH_SIZE, chunks.length);
+    const batch = chunks.slice(batchStart, batchEnd);
     
-    // Adjust timestamps based on chunk offset (in seconds)
-    const adjustedSegments = chunkResult.segments.map(segment => ({
-      ...segment,
-      start: segment.start + chunks[i].offset,
-      end: segment.end + chunks[i].offset
-    })).filter(segment => segment.end > segment.start); // Remove invalid segments
+    console.log(`CHUNK_PROCESSOR: Processing batch ${Math.floor(batchStart / BATCH_SIZE) + 1} (chunks ${batchStart + 1}-${batchEnd} of ${chunks.length})...`);
     
-    transcriptions.push({
-      text: chunkResult.text,
-      segments: adjustedSegments,
-      language: chunkResult.language
+    // Process batch in parallel
+    const batchPromises = batch.map((chunk, batchIndex) => {
+      const chunkIndex = batchStart + batchIndex;
+      return transcribeChunk(chunk.buffer, mimeType, apiKey, extension).then(result => {
+        // Adjust timestamps based on chunk offset (in seconds)
+        const adjustedSegments = result.segments.map(segment => ({
+          ...segment,
+          start: segment.start + chunk.offset,
+          end: segment.end + chunk.offset
+        })).filter(segment => segment.end > segment.start); // Remove invalid segments
+        
+        return {
+          text: result.text,
+          segments: adjustedSegments,
+          language: result.language,
+          index: chunkIndex
+        };
+      });
     });
     
-    // Use language from first chunk
-    if (i === 0) {
-      detectedLanguage = chunkResult.language;
-    }
+    const batchResults = await Promise.all(batchPromises);
     
-    // Small delay between chunks to avoid rate limiting
-    if (i < chunks.length - 1) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+    // Store results in correct order
+    for (const result of batchResults) {
+      transcriptions.push(result);
+      
+      if (!detectedLanguage && result.language) {
+        detectedLanguage = result.language;
+      }
     }
   }
+  
+  // Sort by index to maintain order
+  transcriptions.sort((a, b) => a.index - b.index);
   
   // Combine results
   const combinedText = transcriptions.map(t => t.text).join(' ');
@@ -98,7 +113,7 @@ async function transcribeChunk(audioBuffer, mimeType, apiKey, extension) {
       ...formHeaders
     },
     body: formData,
-    timeout: 300000
+    timeout: 180000 // 3 minutes timeout (reduced for faster failure detection)
   });
   
   if (!response.ok) {

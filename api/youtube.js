@@ -286,7 +286,7 @@ export default async function handler(req, res) {
           
           try {
             await execAsync(subtitleCommand, {
-              timeout: 30000,
+              timeout: 20000, // Reduced from 30s to 20s for faster failure detection
               maxBuffer: 5 * 1024 * 1024
             });
             

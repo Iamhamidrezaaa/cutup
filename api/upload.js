@@ -183,7 +183,7 @@ export default async function handler(req, res) {
           ...formHeaders
         },
         body: formData,
-        timeout: 300000 // 5 minutes timeout
+        timeout: 180000 // 3 minutes timeout (reduced for faster failure detection)
       });
       
       if (!whisperResponse.ok) {
