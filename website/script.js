@@ -758,7 +758,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showProgressBar('در حال دریافت ویدئو و استخراج زیرنویس...', false);
         updateProgressBar(0, 0, 0, 'در حال دریافت اطلاعات ویدئو...');
         
-        animateProgressTo(30, 'در حال دریافت اطلاعات ویدئو...', 2000);
+        startProgressTracking(0, 30, 5, 'در حال دریافت اطلاعات ویدئو...');
         const videoId = extractVideoId(url);
         const youtubeResponse = await fetch(`${API_BASE_URL}/api/youtube`, {
         method: 'POST',
@@ -781,10 +781,11 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
         
-        updateProgressBar(0, 0, 30, 'اطلاعات ویدئو دریافت شد');
-        animateProgressTo(90, 'در حال پردازش زیرنویس...', 2000);
+        stopProgressTracking(30, 'اطلاعات ویدئو دریافت شد');
+        startProgressTracking(30, 95, 3, 'در حال پردازش زیرنویس...', 'در حال پردازش زیرنویس...');
         const srtContent = generateSRTFromSubtitles(youtubeData.subtitles, youtubeData.subtitleLanguage);
-        updateProgressBar(0, 0, 100, 'زیرنویس آماده شد');
+        stopProgressTracking(95, 'زیرنویس پردازش شد');
+        updateProgressBar(0, 0, 100, 'پردازش کامل شد');
         
         showSubtitleModal(srtContent, youtubeData.subtitleLanguage || 'en', videoId, sessionId);
         hideProgressBar();
@@ -1394,18 +1395,21 @@ async function processSummarizeFile(file, sessionId) {
     updateProgressBar(0, 0, 10, 'بررسی محدودیت‌ها انجام شد');
     
     // Transcribe using transcribeAudio (like extension)
-    animateProgressTo(60, 'در حال تبدیل صوت به متن...', 6000);
+    const estimatedTranscriptionTime = estimateTranscriptionDuration(file.size, null);
+    startProgressTracking(10, 70, estimatedTranscriptionTime, 'در حال استخراج صوت از فایل...', 'در حال تبدیل صوت به متن...');
     const transcription = await transcribeAudio(file, null);
-    updateProgressBar(0, 0, 60, 'تبدیل صوت به متن انجام شد');
+    stopProgressTracking(70, 'تبدیل صوت به متن انجام شد');
     
     // Summarize (unlimited for all tiers)
-    animateProgressTo(90, 'در حال خلاصه‌سازی...', 4000);
+    const estimatedSummaryTime = estimateSummarizationDuration(transcription.text.length);
+    startProgressTracking(70, 95, estimatedSummaryTime, 'در حال خلاصه‌سازی...', 'در حال خلاصه‌سازی...');
     let summary = null;
     try {
       summary = await summarizeText(transcription.text, transcription.language);
-      updateProgressBar(0, 0, 90, 'خلاصه‌سازی انجام شد');
+      stopProgressTracking(95, 'خلاصه‌سازی انجام شد');
     } catch (error) {
       console.error('Error in summarization:', error);
+      stopProgressTracking(95, 'خلاصه‌سازی انجام شد');
       // Continue without summary if check fails
       summary = {
         keyPoints: ['خطا در خلاصه‌سازی'],
@@ -1484,9 +1488,10 @@ async function processFullTextFile(file, sessionId) {
     updateProgressBar(0, 0, 10, 'بررسی محدودیت‌ها انجام شد');
     
     // Transcribe using transcribeAudio (like extension)
-    animateProgressTo(90, 'در حال تبدیل صوت به متن...', 6000);
+    const estimatedTranscriptionTime = estimateTranscriptionDuration(file.size, null);
+    startProgressTracking(10, 95, estimatedTranscriptionTime, 'در حال استخراج صوت از فایل...', 'در حال تبدیل صوت به متن...');
     const transcription = await transcribeAudio(file, null);
-    updateProgressBar(0, 0, 90, 'تبدیل صوت به متن انجام شد');
+    stopProgressTracking(95, 'تبدیل صوت به متن انجام شد');
     
     updateProgressBar(0, 0, 100, 'پردازش کامل شد');
     
@@ -1866,23 +1871,25 @@ async function processSummarize(url, sessionId) {
     updateProgressBar(0, 0, 0, 'در حال استخراج صوت از ویدئو...');
     
     // Extract audio from YouTube (like extension)
-    animateProgressTo(25, 'در حال استخراج صوت از ویدئو...', 2000);
+    // Estimate: audio extraction is usually fast (~10 seconds)
+    startProgressTracking(0, 20, 10, 'در حال استخراج صوت از ویدئو...');
     const youtubeResult = await extractYouTubeAudio(url);
     const audioUrl = youtubeResult.audioUrl;
     const youtubeLanguage = youtubeResult.language || null;
     
     if (!audioUrl) {
+      stopProgressTracking(0, 'خطا در استخراج صوت از ویدئو');
       throw new Error('خطا در استخراج صوت از ویدئو');
     }
     
-    updateProgressBar(0, 0, 25, 'استخراج صوت انجام شد');
+    stopProgressTracking(20, 'استخراج صوت انجام شد');
     
     // Get actual duration and check limit
     const durationSeconds = youtubeResult.duration || 0;
     const durationMinutes = Math.ceil(durationSeconds / 60);
     
     // Check subscription limit with actual duration
-    updateProgressBar(0, 0, 28, 'در حال بررسی محدودیت‌ها...');
+    updateProgressBar(0, 0, 22, 'در حال بررسی محدودیت‌ها...');
     const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', durationMinutes);
     if (!limitCheck.allowed) {
       showMessage(limitCheck.reason || 'حد مجاز شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
@@ -1891,30 +1898,37 @@ async function processSummarize(url, sessionId) {
       return;
     }
     
+    updateProgressBar(0, 0, 25, 'بررسی محدودیت‌ها انجام شد');
+    
     // Check if YouTube subtitles are available (like extension)
     let transcription = null;
     if (youtubeResult.subtitles) {
       // Use YouTube subtitles if available
       console.log('YOUTUBE: Using YouTube subtitles');
-      animateProgressTo(60, 'در حال پردازش زیرنویس‌های یوتیوب...', 3000);
+      // Subtitle parsing is usually fast (~5 seconds)
+      startProgressTracking(25, 70, 5, 'در حال پردازش زیرنویس‌های یوتیوب...', 'در حال پردازش زیرنویس‌های یوتیوب...');
       transcription = await parseYouTubeSubtitles(youtubeResult.subtitles, youtubeResult.subtitleLanguage);
-      updateProgressBar(0, 0, 60, 'زیرنویس پردازش شد');
+      stopProgressTracking(70, 'زیرنویس پردازش شد');
     } else {
       // Fallback to audio transcription
       console.log('YOUTUBE: No subtitles available, transcribing audio');
-      animateProgressTo(60, 'در حال تبدیل صوت به متن...', 5000);
+      // Transcription takes longer: estimate based on video duration
+      const estimatedTranscriptionTime = estimateTranscriptionDuration(null, durationSeconds);
+      startProgressTracking(25, 70, estimatedTranscriptionTime, 'در حال استخراج صوت از ویدئو...', 'در حال تبدیل صوت به متن...');
       transcription = await transcribeAudio(audioUrl, youtubeLanguage);
-      updateProgressBar(0, 0, 60, 'تبدیل صوت به متن انجام شد');
+      stopProgressTracking(70, 'تبدیل صوت به متن انجام شد');
     }
     
     // Summarize (unlimited for all tiers)
-    animateProgressTo(90, 'در حال خلاصه‌سازی...', 4000);
+    const estimatedSummaryTime = estimateSummarizationDuration(transcription.text.length);
+    startProgressTracking(70, 95, estimatedSummaryTime, 'در حال خلاصه‌سازی...', 'در حال خلاصه‌سازی...');
     let summary = null;
     try {
       summary = await summarizeText(transcription.text, transcription.language);
-      updateProgressBar(0, 0, 90, 'خلاصه‌سازی انجام شد');
+      stopProgressTracking(95, 'خلاصه‌سازی انجام شد');
     } catch (error) {
       console.error('Error in summarization:', error);
+      stopProgressTracking(95, 'خلاصه‌سازی انجام شد');
       // Continue without summary if check fails
       summary = {
         keyPoints: ['خطا در خلاصه‌سازی'],
@@ -1967,23 +1981,24 @@ async function processFullText(url, sessionId) {
     updateProgressBar(0, 0, 0, 'در حال استخراج صوت از ویدئو...');
     
     // Extract audio from YouTube (like extension)
-    animateProgressTo(25, 'در حال استخراج صوت از ویدئو...', 2000);
+    startProgressTracking(0, 20, 10, 'در حال استخراج صوت از ویدئو...');
     const youtubeResult = await extractYouTubeAudio(url);
     const audioUrl = youtubeResult.audioUrl;
     const youtubeLanguage = youtubeResult.language || null;
     
     if (!audioUrl) {
+      stopProgressTracking(0, 'خطا در استخراج صوت از ویدئو');
       throw new Error('خطا در استخراج صوت از ویدئو');
     }
     
-    updateProgressBar(0, 0, 25, 'استخراج صوت انجام شد');
+    stopProgressTracking(20, 'استخراج صوت انجام شد');
     
     // Get actual duration and check limit
     const durationSeconds = youtubeResult.duration || 0;
     const durationMinutes = Math.ceil(durationSeconds / 60);
     
     // Check subscription limit with actual duration
-    updateProgressBar(0, 0, 28, 'در حال بررسی محدودیت‌ها...');
+    updateProgressBar(0, 0, 22, 'در حال بررسی محدودیت‌ها...');
     const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', durationMinutes);
     if (!limitCheck.allowed) {
       showMessage(limitCheck.reason || 'حد مجاز شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
@@ -1992,20 +2007,23 @@ async function processFullText(url, sessionId) {
       return;
     }
     
+    updateProgressBar(0, 0, 25, 'بررسی محدودیت‌ها انجام شد');
+    
     // Check if YouTube subtitles are available (like extension)
     let transcription = null;
     if (youtubeResult.subtitles) {
       // Use YouTube subtitles if available
       console.log('YOUTUBE: Using YouTube subtitles');
-      animateProgressTo(90, 'در حال پردازش زیرنویس‌های یوتیوب...', 3000);
+      startProgressTracking(25, 95, 5, 'در حال پردازش زیرنویس‌های یوتیوب...', 'در حال پردازش زیرنویس‌های یوتیوب...');
       transcription = await parseYouTubeSubtitles(youtubeResult.subtitles, youtubeResult.subtitleLanguage);
-      updateProgressBar(0, 0, 90, 'زیرنویس پردازش شد');
+      stopProgressTracking(95, 'زیرنویس پردازش شد');
     } else {
       // Fallback to audio transcription
       console.log('YOUTUBE: No subtitles available, transcribing audio');
-      animateProgressTo(90, 'در حال تبدیل صوت به متن...', 5000);
+      const estimatedTranscriptionTime = estimateTranscriptionDuration(null, durationSeconds);
+      startProgressTracking(25, 95, estimatedTranscriptionTime, 'در حال استخراج صوت از ویدئو...', 'در حال تبدیل صوت به متن...');
       transcription = await transcribeAudio(audioUrl, youtubeLanguage);
-      updateProgressBar(0, 0, 90, 'تبدیل صوت به متن انجام شد');
+      stopProgressTracking(95, 'تبدیل صوت به متن انجام شد');
     }
     
     updateProgressBar(0, 0, 100, 'پردازش کامل شد');
@@ -3325,90 +3343,137 @@ function updateProgressBar(downloaded = 0, total = 0, percent = 0, statusText = 
   }
 }
 
-// Animate progress bar incrementally from current to target
+// Progress tracking system - improved smooth progress
 let progressInterval = null;
-function animateProgressTo(targetPercent, statusText = '', duration = 2000) {
+let progressStartTime = null;
+let progressEstimatedDuration = null; // in milliseconds
+let progressCurrentStage = null;
+let progressStageStartPercent = 0;
+let progressStageEndPercent = 0;
+let progressCurrentPercent = 0;
+let progressTargetPercent = 0;
+let progressStatusText = '';
+let progressStatusTextAt50 = null; // Text to show after 50%
+
+// Easing function for smooth progress (ease-out)
+function easeOutCubic(t) {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+// Start progress tracking for an async operation
+function startProgressTracking(startPercent, endPercent, estimatedDurationSeconds, statusText, statusTextAt50 = null) {
   // Clear any existing interval
   if (progressInterval) {
     clearInterval(progressInterval);
   }
   
-  const progressPercent = document.getElementById('progressPercent');
-  const progressFill = document.getElementById('progressFill');
-  const progressTitle = document.getElementById('progressTitle');
-  
-  if (!progressPercent || !progressFill) return;
-  
-  // Get current progress
-  const currentPercent = parseFloat(progressFill.style.width) || 0;
-  const target = Math.min(100, Math.max(0, targetPercent));
-  
-  if (currentPercent >= target) {
-    // Already at or past target, just update
-    updateProgressBar(0, 0, target, statusText);
-    return;
-  }
+  progressStartTime = Date.now();
+  progressEstimatedDuration = estimatedDurationSeconds * 1000; // Convert to milliseconds
+  progressCurrentStage = statusText;
+  progressStageStartPercent = startPercent;
+  progressStageEndPercent = endPercent;
+  progressCurrentPercent = startPercent;
+  progressTargetPercent = endPercent;
+  progressStatusText = statusText;
+  progressStatusTextAt50 = statusTextAt50;
   
   // Update status text immediately
+  const progressTitle = document.getElementById('progressTitle');
   if (statusText && progressTitle) {
     progressTitle.textContent = statusText;
   }
   
-  // Calculate steps
-  const steps = Math.max(10, Math.ceil((target - currentPercent) / 2)); // At least 10 steps
-  const stepSize = (target - currentPercent) / steps;
-  const stepDuration = duration / steps;
+  // Set initial progress
+  updateProgressBar(0, 0, startPercent, statusText);
   
-  let current = currentPercent;
-  let step = 0;
-  
+  // Start interval to update progress smoothly
   progressInterval = setInterval(() => {
-    step++;
-    current = Math.min(target, currentPercent + (stepSize * step));
+    const elapsed = Date.now() - progressStartTime;
+    const progressRatio = Math.min(0.98, elapsed / progressEstimatedDuration); // Cap at 98% until operation completes
     
-    if (progressFill) {
-      progressFill.style.width = `${current}%`;
-    }
-    if (progressPercent) {
-      progressPercent.textContent = `${Math.round(current)}%`;
+    // Use easing for smoother progress
+    const easedRatio = easeOutCubic(progressRatio);
+    const currentProgress = startPercent + (easedRatio * (endPercent - startPercent));
+    
+    // Update status text at 50% if specified
+    if (progressStatusTextAt50 && progressTitle && currentProgress >= (startPercent + (endPercent - startPercent) * 0.5)) {
+      if (progressTitle.textContent !== progressStatusTextAt50) {
+        progressTitle.textContent = progressStatusTextAt50;
+        progressStatusText = progressStatusTextAt50;
+      }
     }
     
-    if (current >= target || step >= steps) {
-      clearInterval(progressInterval);
-      progressInterval = null;
-      // Ensure we end at exact target
-      updateProgressBar(0, 0, target, statusText);
-    }
-  }, stepDuration);
+    progressCurrentPercent = currentProgress;
+    updateProgressBar(0, 0, currentProgress, progressStatusText);
+  }, 100); // Update every 100ms for smoother progress
 }
 
-// Simulate progress during async operation
-function simulateProgressDuringOperation(startPercent, endPercent, statusText, operationPromise) {
-  // Start animation
-  animateProgressTo(endPercent - 5, statusText, 3000); // Animate to 5% before end
-  
-  // Return a promise that resolves when operation completes
-  return operationPromise.then(result => {
-    // Complete the progress
-    clearInterval(progressInterval);
-    progressInterval = null;
-    updateProgressBar(0, 0, endPercent, statusText);
-    return result;
-  }).catch(error => {
-    // Stop animation on error
-    clearInterval(progressInterval);
-    progressInterval = null;
-    throw error;
-  });
-}
-
-// Hide progress bar
-function hideProgressBar() {
-  // Clear any active progress animation
+// Stop progress tracking and animate to final percent smoothly
+function stopProgressTracking(finalPercent, statusText) {
   if (progressInterval) {
     clearInterval(progressInterval);
     progressInterval = null;
   }
+  
+  // Smoothly animate from current to final
+  const startPercent = progressCurrentPercent;
+  const targetPercent = finalPercent;
+  const duration = 500; // 500ms animation
+  const startTime = Date.now();
+  
+  const animateToFinal = setInterval(() => {
+    const elapsed = Date.now() - startTime;
+    const progress = Math.min(1, elapsed / duration);
+    const easedProgress = easeOutCubic(progress);
+    const currentProgress = startPercent + (easedProgress * (targetPercent - startPercent));
+    
+    updateProgressBar(0, 0, currentProgress, statusText);
+    
+    if (progress >= 1) {
+      clearInterval(animateToFinal);
+      updateProgressBar(0, 0, targetPercent, statusText);
+    }
+  }, 50); // Update every 50ms for smooth animation
+  
+  progressStartTime = null;
+  progressEstimatedDuration = null;
+  progressCurrentStage = null;
+  progressStatusTextAt50 = null;
+}
+
+// Estimate duration for transcription based on file size or video duration
+function estimateTranscriptionDuration(fileSizeBytes = null, videoDurationSeconds = null) {
+  if (videoDurationSeconds) {
+    // Transcription typically takes 1.5x the video duration
+    return videoDurationSeconds * 1.5;
+  } else if (fileSizeBytes) {
+    // Estimate: ~1MB per minute, transcription takes 1.5x audio duration
+    const estimatedMinutes = (fileSizeBytes / 1024 / 1024) * 1.2;
+    return estimatedMinutes * 60 * 1.5; // Convert to seconds and multiply by 1.5
+  }
+  // Default: 30 seconds for small files
+  return 30;
+}
+
+// Estimate duration for audio extraction
+function estimateAudioExtractionDuration(videoDurationSeconds = null) {
+  if (videoDurationSeconds) {
+    // Audio extraction is usually fast: ~0.1x video duration
+    return Math.max(5, videoDurationSeconds * 0.1);
+  }
+  return 10; // Default: 10 seconds
+}
+
+// Estimate duration for summarization
+function estimateSummarizationDuration(textLength = 0) {
+  // Summarization is usually fast: ~1 second per 1000 characters
+  return Math.max(5, textLength / 1000);
+}
+
+// Hide progress bar
+function hideProgressBar() {
+  // Stop any active progress tracking
+  stopProgressTracking(0, '');
   
   const progressContainer = document.getElementById('downloadProgressContainer');
   if (progressContainer) {
