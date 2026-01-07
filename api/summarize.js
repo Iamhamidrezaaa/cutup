@@ -157,7 +157,8 @@ Please return the response in this JSON format:
 
   // Use streaming for faster response (especially for long texts)
   // For shorter texts, use regular completion for better reliability
-  const useStreaming = wordCount > 1000;
+  // Disable streaming for now - it's causing parsing issues
+  const useStreaming = false; // wordCount > 1000;
   
   if (useStreaming) {
     // Use streaming for long texts - faster perceived response

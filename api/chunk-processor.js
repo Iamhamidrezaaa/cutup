@@ -29,9 +29,10 @@ export async function transcribeLargeFile(audioBuffer, mimeType, apiKey, extensi
   const chunks = splitAudioIntoChunks(audioBuffer, CHUNK_SIZE);
   console.log(`CHUNK_PROCESSOR: Split into ${chunks.length} chunks`);
   
-  // Transcribe chunks in parallel batches for faster processing
-  // Process up to 3 chunks at a time to avoid rate limits
-  const BATCH_SIZE = 3;
+  // Transcribe chunks sequentially for reliability
+  // Parallel processing was causing issues, so we process one at a time
+  // But we can still optimize by removing delays
+  const BATCH_SIZE = 1; // Changed back to 1 for reliability
   const transcriptions = [];
   let detectedLanguage = null;
   

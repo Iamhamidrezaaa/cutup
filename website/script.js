@@ -783,7 +783,12 @@ document.addEventListener('DOMContentLoaded', () => {
         
         stopProgressTracking(30, 'اطلاعات ویدئو دریافت شد');
         startProgressTracking(30, 99, 3, 'در حال پردازش زیرنویس...', 'در حال پردازش زیرنویس...');
-        const srtContent = generateSRTFromSubtitles(youtubeData.subtitles, youtubeData.subtitleLanguage);
+        
+        // Parse VTT subtitles to segments
+        const transcription = await parseYouTubeSubtitles(youtubeData.subtitles, youtubeData.subtitleLanguage);
+        const segments = transcription.segments || [];
+        const fullText = transcription.text || '';
+        
         stopProgressTracking(99, 'زیرنویس پردازش شد');
         
         // Final update to 100%
@@ -791,7 +796,14 @@ document.addEventListener('DOMContentLoaded', () => {
           updateProgressBar(0, 0, 100, 'پردازش کامل شد');
         }, 350);
         
-        showSubtitleModal(srtContent, youtubeData.subtitleLanguage || 'en', videoId, sessionId);
+        // Display results in result section - تب زیرنویس فعال باشد
+        displayResults(null, fullText, segments, {
+          isYouTubeSubtitle: true,
+          availableLanguages: youtubeData.availableLanguages || [],
+          originalLanguage: youtubeData.subtitleLanguage || 'en',
+          activeTab: 'srt'
+        });
+        
         hideProgressBar();
         
     } catch (error) {
@@ -2319,21 +2331,24 @@ function displayResults(summary, fullText, segments = null, options = {}) {
       }
     });
   } else if (activeTab === 'srt' && hasSubtitleFeature) {
-    // Only show srt tab
+    // Show srt tab and make it active, but also show other tabs for navigation
     allTabBtns.forEach(btn => {
       const tabName = btn.dataset.tab;
+      btn.style.display = ''; // Show all tabs for navigation
       if (tabName === 'srt') {
-        btn.style.display = '';
+        btn.classList.add('active');
       } else {
-        btn.style.display = 'none';
+        btn.classList.remove('active');
       }
     });
     allTabContents.forEach(content => {
       const tabId = content.id;
       if (tabId === 'srt-tab') {
         content.style.display = '';
+        content.classList.add('active');
       } else {
         content.style.display = 'none';
+        content.classList.remove('active');
       }
     });
   }
