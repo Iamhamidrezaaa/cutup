@@ -1393,9 +1393,10 @@ async function processSummarizeFile(file, sessionId) {
       };
     }
     
-    // Display results in result section (like extension)
+    // Display results in result section - تب خلاصه به صورت پیش‌فرض فعال باشد
     displayResults(summary, transcription.text, transcription.segments || [], {
-      originalLanguage: transcription.language || 'en'
+      originalLanguage: transcription.language || 'en',
+      activeTab: 'summary'
     });
     
     // Record usage (estimate from file size: ~1MB per minute)
@@ -1451,13 +1452,14 @@ async function processFullTextFile(file, sessionId) {
     showMessage('در حال تبدیل صوت به متن...', 'info');
     const transcription = await transcribeAudio(file, null);
     
-    // Display results in result section (like extension)
+    // Display results in result section - تب متن کامل به صورت پیش‌فرض فعال باشد
     displayResults(null, transcription.text, transcription.segments || [], {
-      originalLanguage: transcription.language || 'en'
+      originalLanguage: transcription.language || 'en',
+      activeTab: 'fulltext'
     });
     
     // Record usage (estimate from file size: ~1MB per minute)
-    const estimatedDurationMinutes = Math.ceil((file.size / 1024 / 1024) * 1.2);
+    // Use the same estimatedDurationMinutes that was calculated earlier
     await recordUsage(sessionId, 'transcription', estimatedDurationMinutes, {
       title: file.name,
       fileName: file.name,
@@ -1868,11 +1870,12 @@ async function processSummarize(url, sessionId) {
       };
     }
     
-    // Display results in result section (like extension)
+    // Display results در بخش نتیجه - تب خلاصه فعال باشد
     displayResults(summary, transcription.text, transcription.segments || [], {
       isYouTubeSubtitle: !!youtubeResult.subtitles,
       availableLanguages: youtubeResult.availableLanguages || [],
-      originalLanguage: transcription.language
+      originalLanguage: transcription.language,
+      activeTab: 'summary'
     });
     
     // Record usage
@@ -1942,11 +1945,12 @@ async function processFullText(url, sessionId) {
       transcription = await transcribeAudio(audioUrl, youtubeLanguage);
     }
     
-    // Display results in result section (like extension)
+    // Display results در بخش نتیجه - تب متن کامل فعال باشد
     displayResults(null, transcription.text, transcription.segments || [], {
       isYouTubeSubtitle: !!youtubeResult.subtitles,
       availableLanguages: youtubeResult.availableLanguages || [],
-      originalLanguage: transcription.language
+      originalLanguage: transcription.language,
+      activeTab: 'fulltext'
     });
     
     // Record usage
@@ -1983,6 +1987,26 @@ function displayResults(summary, fullText, segments = null, options = {}) {
     return;
   }
   
+  // Determine user plan / subtitle access (for gating SRT tab)
+  const subscription = window.userSubscription || {};
+  const plan = subscription.plan || 'free';
+  const features = subscription.features || {};
+  const hasSubtitleFeature = !!(features.subtitles || plan !== 'free');
+
+  // Show or hide SRT tab based on subtitle access
+  const srtTabBtn = resultSection.querySelector('.tab-btn[data-tab="srt"]');
+  const srtTab = document.getElementById('srt-tab');
+  if (!hasSubtitleFeature) {
+    if (srtTabBtn) srtTabBtn.style.display = 'none';
+    if (srtTab) {
+      srtTab.style.display = 'none';
+      srtTab.classList.remove('active');
+    }
+  } else {
+    if (srtTabBtn) srtTabBtn.style.display = '';
+    if (srtTab) srtTab.style.display = '';
+  }
+
   // Display summary - handle both object and string formats
   // Format summary as beautiful paragraphs (at least 2 paragraphs)
   let summaryTextContent = 'خلاصه در دسترس نیست';
@@ -2088,27 +2112,39 @@ function displayResults(summary, fullText, segments = null, options = {}) {
     fulltextEl.textContent = fullText;
   }
 
-  // Generate and display SRT
-  if (segments && Array.isArray(segments) && segments.length > 0) {
-    const validSegments = segments.filter(s => 
-      s && 
-      typeof s.start === 'number' && 
-      typeof s.end === 'number' && 
-      s.start >= 0 && 
-      s.end > s.start &&
-      s.text && 
-      s.text.trim().length > 0
-    );
-    
-    if (validSegments.length > 0) {
-      const srtContent = generateSRT(validSegments);
-      const srtPreviewEl = document.getElementById('srtPreview');
-      if (srtPreviewEl) {
-        srtPreviewEl.textContent = srtContent;
+  // Generate and display SRT فقط در صورتی که کاربر به زیرنویس دسترسی داشته باشد
+  if (hasSubtitleFeature) {
+    if (segments && Array.isArray(segments) && segments.length > 0) {
+      const validSegments = segments.filter(s => 
+        s && 
+        typeof s.start === 'number' && 
+        typeof s.end === 'number' && 
+        s.start >= 0 && 
+        s.end > s.start &&
+        s.text && 
+        s.text.trim().length > 0
+      );
+      
+      if (validSegments.length > 0) {
+        const srtContent = generateSRT(validSegments);
+        const srtPreviewEl = document.getElementById('srtPreview');
+        if (srtPreviewEl) {
+          srtPreviewEl.textContent = srtContent;
+        }
+        window.currentSrtContent = srtContent;
+      } else {
+        // Create simple SRT with full text
+        const wordCount = fullText.split(/\s+/).length;
+        const estimatedDuration = Math.max(wordCount / 2.5, 10);
+        const simpleSrt = `1\n00:00:00,000 --> ${formatSRTTime(estimatedDuration)}\n${fullText}\n\n`;
+        const srtPreviewEl = document.getElementById('srtPreview');
+        if (srtPreviewEl) {
+          srtPreviewEl.textContent = simpleSrt;
+        }
+        window.currentSrtContent = simpleSrt;
       }
-      window.currentSrtContent = srtContent;
     } else {
-      // Create simple SRT with full text
+      // If no segments, create a simple SRT with full text
       const wordCount = fullText.split(/\s+/).length;
       const estimatedDuration = Math.max(wordCount / 2.5, 10);
       const simpleSrt = `1\n00:00:00,000 --> ${formatSRTTime(estimatedDuration)}\n${fullText}\n\n`;
@@ -2118,29 +2154,30 @@ function displayResults(summary, fullText, segments = null, options = {}) {
       }
       window.currentSrtContent = simpleSrt;
     }
-  } else {
-    // If no segments, create a simple SRT with full text
-    const wordCount = fullText.split(/\s+/).length;
-    const estimatedDuration = Math.max(wordCount / 2.5, 10);
-    const simpleSrt = `1\n00:00:00,000 --> ${formatSRTTime(estimatedDuration)}\n${fullText}\n\n`;
-    const srtPreviewEl = document.getElementById('srtPreview');
-    if (srtPreviewEl) {
-      srtPreviewEl.textContent = simpleSrt;
-    }
-    window.currentSrtContent = simpleSrt;
-  }
 
-  // Store original SRT for translation
-  window.originalSrtContent = window.currentSrtContent;
-  window.originalSrtSegments = segments;
-  window.originalSrtLanguage = (options && options.originalLanguage) || 'en';
-  window.availableLanguages = (options && options.availableLanguages) || [];
+    // Store original SRT for translation
+    window.originalSrtContent = window.currentSrtContent;
+    window.originalSrtSegments = segments;
+    window.originalSrtLanguage = (options && options.originalLanguage) || 'en';
+    window.availableLanguages = (options && options.availableLanguages) || [];
+  } else {
+    // اگر دسترسی زیرنویس ندارد، state مربوط به SRT را پاک کنیم
+    window.currentSrtContent = null;
+    window.originalSrtContent = null;
+    window.originalSrtSegments = null;
+  }
 
   // Show result section
   resultSection.style.display = 'block';
   
-  // Switch to fulltext tab (first tab)
-  switchTab('fulltext');
+  // Switch to مناسب‌ترین تب بر اساس اکشن فعلی
+  const activeTab = options.activeTab || (summary ? 'summary' : 'fulltext');
+  // اگر تب انتخابی قفل/پنهان است، برگردیم روی متن کامل
+  if (activeTab === 'srt' && !hasSubtitleFeature) {
+    switchTab('fulltext');
+  } else {
+    switchTab(activeTab);
+  }
   
   // Scroll result section into view
   setTimeout(() => {
@@ -2148,14 +2185,17 @@ function displayResults(summary, fullText, segments = null, options = {}) {
   }, 100);
 }
 
-// Switch tab function (like extension)
+// Switch tab function (فقط برای تب‌های بخش نتیجه)
 function switchTab(tabName) {
-  // Remove active class from all tabs and contents
-  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+  const resultSection = document.getElementById('resultSection');
+  if (!resultSection) return;
+
+  // Remove active class from result tabs and contents فقط داخل resultSection
+  resultSection.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+  resultSection.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
   
   // Add active class to selected tab and content
-  const tabBtn = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
+  const tabBtn = resultSection.querySelector(`.tab-btn[data-tab="${tabName}"]`);
   const tabContent = document.getElementById(`${tabName}-tab`);
   
   if (tabBtn) tabBtn.classList.add('active');
