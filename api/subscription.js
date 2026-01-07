@@ -150,11 +150,46 @@ function initializeUser(userId) {
 // Get user subscription
 function getUserSubscription(userId) {
   initializeUser(userId);
+  
+  // Special case: h.asgarizade@gmail.com gets business plan with 10 years validity
+  if (userId === 'h.asgarizade@gmail.com') {
+    const subscription = userSubscriptions.get(userId);
+    if (!subscription || subscription.plan !== 'business' || !subscription.endDate || new Date(subscription.endDate) < new Date(new Date().setFullYear(new Date().getFullYear() + 10))) {
+      const endDate = new Date();
+      endDate.setFullYear(endDate.getFullYear() + 10); // 10 years from now
+      
+      userSubscriptions.set(userId, {
+        plan: 'business',
+        startDate: new Date(),
+        endDate: endDate,
+        billingPeriod: 'annual'
+      });
+      
+      console.log(`[getUserSubscription] Set business plan for h.asgarizade@gmail.com until ${endDate.toISOString()}`);
+    }
+  }
+  
   return userSubscriptions.get(userId);
 }
 
 // Get user usage - IMPORTANT: This preserves usage across sessions
 function getUserUsage(userId, sessionId = null) {
+  // Special case: h.asgarizade@gmail.com - always return zero usage (unlimited access)
+  if (userId === 'h.asgarizade@gmail.com') {
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+    const today = new Date().toDateString();
+    
+    return {
+      daily: { date: today, minutes: 0 },
+      monthly: { month: currentMonth, year: currentYear, minutes: 0 },
+      downloads: {
+        audio: { month: currentMonth, year: currentYear, count: 0 },
+        video: { month: currentMonth, year: currentYear, count: 0 }
+      }
+    };
+  }
+  
   // Always initialize user if not exists (but don't reset existing usage)
   if (!userUsage.has(userId)) {
     initializeUser(userId);
@@ -186,23 +221,17 @@ function getUserUsage(userId, sessionId = null) {
     usage.daily = { date: today, minutes: 0 };
   }
   
-  // Reset audio downloads for h.asgarizade@gmail.com (special case for testing)
-  if (sessionId) {
-    const session = sessions.get(sessionId);
-    if (session && session.user && session.user.email === 'h.asgarizade@gmail.com') {
-      // Reset audio downloads count to 0
-      if (usage.downloads.audio.month === currentMonth && usage.downloads.audio.year === currentYear) {
-        usage.downloads.audio.count = 0;
-        console.log(`[getUserUsage] Reset audio downloads for h.asgarizade@gmail.com`);
-      }
-    }
-  }
-  
   return usage;
 }
 
 // Check if user can use feature
 export function canUseFeature(userId, feature, videoDurationMinutes = 0) {
+  // Special case: h.asgarizade@gmail.com has unlimited access
+  if (userId === 'h.asgarizade@gmail.com') {
+    console.log(`[canUseFeature] Unlimited access granted for h.asgarizade@gmail.com, feature: ${feature}`);
+    return { allowed: true };
+  }
+  
   const subscription = getUserSubscription(userId);
   const usage = getUserUsage(userId);
   const plan = PLANS[subscription.plan];
@@ -305,18 +334,24 @@ export function canUseFeature(userId, feature, videoDurationMinutes = 0) {
 
 // Record usage
 function recordUsage(userId, minutes, type = 'transcription', metadata = {}) {
+  // Special case: h.asgarizade@gmail.com - don't record usage (unlimited)
+  if (userId === 'h.asgarizade@gmail.com') {
+    console.log(`[recordUsage] Skipping usage recording for h.asgarizade@gmail.com (unlimited access)`);
+    return;
+  }
+  
   const usage = getUserUsage(userId);
   const today = new Date().toDateString();
   const currentMonth = new Date().getMonth();
   const currentYear = new Date().getFullYear();
-  
+
   // Update daily usage
   if (usage.daily.date === today) {
     usage.daily.minutes += minutes;
   } else {
     usage.daily = { date: today, minutes };
   }
-  
+
   // Update monthly usage
   if (usage.monthly.month === currentMonth && usage.monthly.year === currentYear) {
     usage.monthly.minutes += minutes;
@@ -346,6 +381,12 @@ function recordUsage(userId, minutes, type = 'transcription', metadata = {}) {
 
 // Record download
 export function recordDownload(userId, type, metadata = {}, sessionId = null) {
+  // Special case: h.asgarizade@gmail.com - don't record downloads (unlimited)
+  if (userId === 'h.asgarizade@gmail.com') {
+    console.log(`[recordDownload] Skipping download recording for h.asgarizade@gmail.com (unlimited access)`);
+    return;
+  }
+  
   // Get usage with reset logic for h.asgarizade@gmail.com
   const usage = getUserUsage(userId, sessionId);
   const currentMonth = new Date().getMonth();
@@ -354,15 +395,6 @@ export function recordDownload(userId, type, metadata = {}, sessionId = null) {
   // Reset if new month
   if (usage.downloads[type].month !== currentMonth || usage.downloads[type].year !== currentYear) {
     usage.downloads[type] = { month: currentMonth, year: currentYear, count: 0 };
-  }
-  
-  // For h.asgarizade@gmail.com, reset audio downloads to 0 before incrementing
-  if (sessionId) {
-    const session = sessions.get(sessionId);
-    if (session && session.user && session.user.email === 'h.asgarizade@gmail.com' && type === 'audio') {
-      usage.downloads.audio.count = 0;
-      console.log(`[recordDownload] Reset audio downloads for h.asgarizade@gmail.com before recording`);
-    }
   }
   
   const oldCount = usage.downloads[type].count;
