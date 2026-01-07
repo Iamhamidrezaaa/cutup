@@ -85,7 +85,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Import and use API routes
-let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler;
+let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler;
 
 async function loadRoutes() {
   try {
@@ -132,6 +132,10 @@ async function loadRoutes() {
     // Subscription endpoint
     const subscriptionModule = await import('./api/subscription.js');
     subscriptionHandler = subscriptionModule.default;
+    
+    // Generate DOCX endpoint
+    const generateDocxModule = await import('./api/generate-docx.js');
+    generateDocxHandler = generateDocxModule.default;
     
     console.log('All routes loaded successfully');
   } catch (err) {
@@ -236,6 +240,14 @@ app.get('/api/subscription', async (req, res) => {
     return res.status(500).json({ error: 'Subscription handler not loaded' });
   }
   return subscriptionHandler(req, res);
+});
+
+app.post('/api/generate-docx', async (req, res) => {
+  if (generateDocxHandler) {
+    await generateDocxHandler(req, res);
+  } else {
+    res.status(503).json({ error: 'Service unavailable' });
+  }
 });
 
 app.post('/api/subscription', async (req, res) => {

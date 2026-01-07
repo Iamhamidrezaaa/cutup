@@ -2179,6 +2179,73 @@ function displayResults(summary, fullText, segments = null, options = {}) {
     switchTab(activeTab);
   }
   
+  // Hide tabs that are not relevant based on what was requested
+  const allTabBtns = resultSection.querySelectorAll('.tab-btn');
+  const allTabContents = resultSection.querySelectorAll('.tab-content');
+  
+  if (activeTab === 'summary') {
+    // Only show summary tab, hide fulltext and srt
+    allTabBtns.forEach(btn => {
+      const tabName = btn.dataset.tab;
+      if (tabName === 'summary') {
+        btn.style.display = '';
+      } else {
+        btn.style.display = 'none';
+      }
+    });
+    allTabContents.forEach(content => {
+      const tabId = content.id;
+      if (tabId === 'summary-tab') {
+        content.style.display = '';
+      } else {
+        content.style.display = 'none';
+      }
+    });
+  } else if (activeTab === 'fulltext') {
+    // Only show fulltext tab, hide summary and srt
+    allTabBtns.forEach(btn => {
+      const tabName = btn.dataset.tab;
+      if (tabName === 'fulltext') {
+        btn.style.display = '';
+      } else {
+        btn.style.display = 'none';
+      }
+    });
+    allTabContents.forEach(content => {
+      const tabId = content.id;
+      if (tabId === 'fulltext-tab') {
+        content.style.display = '';
+      } else {
+        content.style.display = 'none';
+      }
+    });
+  } else if (activeTab === 'srt' && hasSubtitleFeature) {
+    // Only show srt tab
+    allTabBtns.forEach(btn => {
+      const tabName = btn.dataset.tab;
+      if (tabName === 'srt') {
+        btn.style.display = '';
+      } else {
+        btn.style.display = 'none';
+      }
+    });
+    allTabContents.forEach(content => {
+      const tabId = content.id;
+      if (tabId === 'srt-tab') {
+        content.style.display = '';
+      } else {
+        content.style.display = 'none';
+      }
+    });
+  }
+  
+  // Clear processing message
+  const downloadMessage = document.getElementById('downloadMessage');
+  if (downloadMessage) {
+    downloadMessage.style.display = 'none';
+    downloadMessage.textContent = '';
+  }
+  
   // Scroll result section into view
   setTimeout(() => {
     resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2247,7 +2314,247 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Download buttons
   setupDownloadButtons();
+  
+  // Translate buttons
+  setupTranslateButtons();
 });
+
+// Setup translate buttons
+function setupTranslateButtons() {
+  // Translate fulltext button
+  const translateFulltextBtn = document.getElementById('translateFulltextBtn');
+  if (translateFulltextBtn) {
+    translateFulltextBtn.addEventListener('click', async () => {
+      const sessionId = checkLogin();
+      if (!sessionId) {
+        showMessage('لطفاً ابتدا وارد حساب کاربری خود شوید', 'error');
+        return;
+      }
+      
+      const originalLanguage = window.originalTextLanguage || 'en';
+      await translateFulltextContent(sessionId, originalLanguage);
+    });
+  }
+  
+  // Translate summary button
+  const translateSummaryBtn = document.getElementById('translateSummaryBtn');
+  if (translateSummaryBtn) {
+    translateSummaryBtn.addEventListener('click', async () => {
+      const sessionId = checkLogin();
+      if (!sessionId) {
+        showMessage('لطفاً ابتدا وارد حساب کاربری خود شوید', 'error');
+        return;
+      }
+      
+      const originalLanguage = window.originalTextLanguage || 'en';
+      await translateSummaryContent(sessionId, originalLanguage);
+    });
+  }
+  
+  // Translate SRT button
+  const translateSrtBtn = document.getElementById('translateSrtBtn');
+  if (translateSrtBtn) {
+    translateSrtBtn.addEventListener('click', async () => {
+      const sessionId = checkLogin();
+      if (!sessionId) {
+        showMessage('لطفاً ابتدا وارد حساب کاربری خود شوید', 'error');
+        return;
+      }
+      
+      const originalLanguage = window.originalSrtLanguage || 'en';
+      await translateSrtContent(sessionId, originalLanguage);
+    });
+  }
+}
+
+// Translate fulltext content
+async function translateFulltextContent(sessionId, originalLanguage) {
+  const targetLanguage = document.getElementById('fulltextLanguage')?.value;
+  if (!targetLanguage || targetLanguage === 'original') {
+    const fulltextEl = document.getElementById('fulltext');
+    if (fulltextEl && window.originalFullText) {
+      fulltextEl.textContent = window.originalFullText;
+    }
+    return;
+  }
+  
+  const btn = document.getElementById('translateFulltextBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ در حال ترجمه...';
+  }
+  
+  try {
+    const fulltext = window.originalFullText || '';
+    if (!fulltext) {
+      throw new Error('متن برای ترجمه موجود نیست');
+    }
+    
+    // Use translate-srt API for translation
+    const response = await fetch(`${API_BASE_URL}/api/translate-srt`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': sessionId
+      },
+      body: JSON.stringify({
+        srtContent: `1\n00:00:00,000 --> 00:00:10,000\n${fulltext}\n\n`,
+        targetLanguage: targetLanguage,
+        sourceLanguage: originalLanguage || 'en'
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error('خطا در ترجمه');
+    }
+    
+    const data = await response.json();
+    const translatedText = data.srtContent.split('\n').slice(2).join('\n').trim();
+    
+    const fulltextEl = document.getElementById('fulltext');
+    if (fulltextEl) {
+      fulltextEl.textContent = translatedText;
+    }
+    
+  } catch (error) {
+    console.error('Error:', error);
+    showMessage('خطا در ترجمه: ' + error.message, 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '🔄 ترجمه';
+    }
+  }
+}
+
+// Translate summary content
+async function translateSummaryContent(sessionId, originalLanguage) {
+  const targetLanguage = document.getElementById('summaryLanguage')?.value;
+  if (!targetLanguage || targetLanguage === 'original') {
+    const summaryTextEl = document.getElementById('summaryText');
+    if (summaryTextEl && window.originalSummary) {
+      // Restore original summary HTML
+      const summary = typeof window.originalSummary === 'string' ? window.originalSummary : (window.originalSummary.summary || '');
+      // Re-format summary
+      const paragraphs = summary.split(/\n\s*\n/).filter(p => p.trim());
+      const formattedSummary = paragraphs.map(p => `<p class="summary-paragraph">${p}</p>`).join('');
+      summaryTextEl.innerHTML = formattedSummary || '<p class="summary-paragraph">خلاصه در دسترس نیست</p>';
+    }
+    return;
+  }
+  
+  const btn = document.getElementById('translateSummaryBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ در حال ترجمه...';
+  }
+  
+  try {
+    const summary = typeof window.originalSummary === 'string' ? window.originalSummary : (window.originalSummary?.summary || '');
+    if (!summary) {
+      throw new Error('خلاصه برای ترجمه موجود نیست');
+    }
+    
+    // Use translate-srt API for translation
+    const response = await fetch(`${API_BASE_URL}/api/translate-srt`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': sessionId
+      },
+      body: JSON.stringify({
+        srtContent: `1\n00:00:00,000 --> 00:00:10,000\n${summary}\n\n`,
+        targetLanguage: targetLanguage,
+        sourceLanguage: originalLanguage || 'en'
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error('خطا در ترجمه');
+    }
+    
+    const data = await response.json();
+    const translatedText = data.srtContent.split('\n').slice(2).join('\n').trim();
+    
+    // Format translated summary
+    const paragraphs = translatedText.split(/\n\s*\n/).filter(p => p.trim());
+    const formattedSummary = paragraphs.map(p => `<p class="summary-paragraph">${p}</p>`).join('');
+    
+    const summaryTextEl = document.getElementById('summaryText');
+    if (summaryTextEl) {
+      summaryTextEl.innerHTML = formattedSummary || '<p class="summary-paragraph">خلاصه در دسترس نیست</p>';
+    }
+    
+  } catch (error) {
+    console.error('Error:', error);
+    showMessage('خطا در ترجمه: ' + error.message, 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '🔄 ترجمه';
+    }
+  }
+}
+
+// Translate SRT content
+async function translateSrtContent(sessionId, originalLanguage) {
+  const targetLanguage = document.getElementById('srtLanguage')?.value;
+  if (!targetLanguage || targetLanguage === 'original') {
+    const srtPreviewEl = document.getElementById('srtPreview');
+    if (srtPreviewEl && window.originalSrtContent) {
+      srtPreviewEl.textContent = window.originalSrtContent;
+      window.currentSrtContent = window.originalSrtContent;
+    }
+    return;
+  }
+  
+  const btn = document.getElementById('translateSrtBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ در حال ترجمه...';
+  }
+  
+  try {
+    const srtContent = window.originalSrtContent || '';
+    if (!srtContent) {
+      throw new Error('زیرنویس برای ترجمه موجود نیست');
+    }
+    
+    const response = await fetch(`${API_BASE_URL}/api/translate-srt`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': sessionId
+      },
+      body: JSON.stringify({
+        srtContent: srtContent,
+        targetLanguage: targetLanguage,
+        sourceLanguage: originalLanguage || 'en'
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error('خطا در ترجمه');
+    }
+    
+    const data = await response.json();
+    window.currentSrtContent = data.srtContent;
+    
+    const srtPreviewEl = document.getElementById('srtPreview');
+    if (srtPreviewEl) {
+      srtPreviewEl.textContent = data.srtContent;
+    }
+    
+  } catch (error) {
+    console.error('Error:', error);
+    showMessage('خطا در ترجمه: ' + error.message, 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '🔄 ترجمه';
+    }
+  }
+}
 
 // Setup progress bar close button
 document.addEventListener('DOMContentLoaded', () => {
@@ -2372,22 +2679,39 @@ function downloadAsTxt(content, filename, extension = 'txt') {
   URL.revokeObjectURL(url);
 }
 
-// Download as DOCX (simple implementation - creates a basic DOCX)
-function downloadAsDocx(content, filename) {
-  // For now, create a simple DOCX-like file
-  // In production, use a proper DOCX library or API endpoint
-  const blob = new Blob([content], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${filename}.docx`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  
-  // Note: This creates a basic file. For proper DOCX, use a library like docx.js or create an API endpoint
-  showMessage('توجه: این فایل DOCX ساده است. برای فایل DOCX کامل، از API استفاده کنید.', 'info');
+// Download as DOCX using API endpoint
+async function downloadAsDocx(content, filename) {
+  try {
+    showMessage('در حال ساخت فایل DOCX...', 'info');
+    
+    const response = await fetch(`${API_BASE_URL}/api/generate-docx`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ content, filename })
+    });
+    
+    if (!response.ok) {
+      throw new Error('خطا در ساخت فایل DOCX');
+    }
+    
+    // Get blob from response
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${filename}.docx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    showMessage('فایل DOCX با موفقیت دانلود شد', 'success');
+  } catch (error) {
+    console.error('Error downloading DOCX:', error);
+    showMessage('خطا در دانلود فایل DOCX: ' + error.message, 'error');
+  }
 }
 
 // OLD: Show summary modal (kept for backward compatibility but not used)
