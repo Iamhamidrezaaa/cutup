@@ -756,8 +756,9 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Show progress bar
         showProgressBar('در حال دریافت ویدئو و استخراج زیرنویس...', false);
-        updateProgressBar(0, 0, 10, 'در حال دریافت اطلاعات ویدئو...');
+        updateProgressBar(0, 0, 0, 'در حال دریافت اطلاعات ویدئو...');
         
+        animateProgressTo(30, 'در حال دریافت اطلاعات ویدئو...', 2000);
         const videoId = extractVideoId(url);
         const youtubeResponse = await fetch(`${API_BASE_URL}/api/youtube`, {
         method: 'POST',
@@ -780,7 +781,8 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
         
-        updateProgressBar(0, 0, 80, 'در حال پردازش زیرنویس...');
+        updateProgressBar(0, 0, 30, 'اطلاعات ویدئو دریافت شد');
+        animateProgressTo(90, 'در حال پردازش زیرنویس...', 2000);
         const srtContent = generateSRTFromSubtitles(youtubeData.subtitles, youtubeData.subtitleLanguage);
         updateProgressBar(0, 0, 100, 'زیرنویس آماده شد');
         
@@ -1364,7 +1366,7 @@ async function processSummarizeFile(file, sessionId) {
   try {
     // Show progress bar
     showProgressBar('در حال پردازش فایل...', false);
-    updateProgressBar(0, 0, 5, 'در حال بررسی فایل...');
+    updateProgressBar(0, 0, 0, 'در حال بررسی فایل...');
     
     // Check file size (limit to 100MB like extension)
     const maxFileSize = 100 * 1024 * 1024; // 100MB
@@ -1374,11 +1376,13 @@ async function processSummarizeFile(file, sessionId) {
       return;
     }
     
+    updateProgressBar(0, 0, 5, 'بررسی فایل انجام شد');
+    
     // Estimate duration for limit check
     const estimatedDurationMinutes = Math.ceil((file.size / 1024 / 1024) * 1.2);
     
     // Check subscription limit
-    updateProgressBar(0, 0, 10, 'در حال بررسی محدودیت‌ها...');
+    updateProgressBar(0, 0, 8, 'در حال بررسی محدودیت‌ها...');
     const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', estimatedDurationMinutes);
     if (!limitCheck.allowed) {
       showMessage(limitCheck.reason || 'حد مجاز شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
@@ -1387,17 +1391,19 @@ async function processSummarizeFile(file, sessionId) {
       return;
     }
     
+    updateProgressBar(0, 0, 10, 'بررسی محدودیت‌ها انجام شد');
+    
     // Transcribe using transcribeAudio (like extension)
-    updateProgressBar(0, 0, 20, 'در حال تبدیل صوت به متن...');
+    animateProgressTo(60, 'در حال تبدیل صوت به متن...', 6000);
     const transcription = await transcribeAudio(file, null);
     updateProgressBar(0, 0, 60, 'تبدیل صوت به متن انجام شد');
     
     // Summarize (unlimited for all tiers)
-    updateProgressBar(0, 0, 70, 'در حال خلاصه‌سازی...');
+    animateProgressTo(90, 'در حال خلاصه‌سازی...', 4000);
     let summary = null;
     try {
       summary = await summarizeText(transcription.text, transcription.language);
-      updateProgressBar(0, 0, 95, 'خلاصه‌سازی انجام شد');
+      updateProgressBar(0, 0, 90, 'خلاصه‌سازی انجام شد');
     } catch (error) {
       console.error('Error in summarization:', error);
       // Continue without summary if check fails
@@ -1450,7 +1456,7 @@ async function processFullTextFile(file, sessionId) {
   try {
     // Show progress bar
     showProgressBar('در حال پردازش فایل...', false);
-    updateProgressBar(0, 0, 5, 'در حال بررسی فایل...');
+    updateProgressBar(0, 0, 0, 'در حال بررسی فایل...');
     
     // Check file size (limit to 100MB like extension)
     const maxFileSize = 100 * 1024 * 1024; // 100MB
@@ -1460,11 +1466,13 @@ async function processFullTextFile(file, sessionId) {
       return;
     }
     
+    updateProgressBar(0, 0, 5, 'بررسی فایل انجام شد');
+    
     // Estimate duration for limit check
     const estimatedDurationMinutes = Math.ceil((file.size / 1024 / 1024) * 1.2);
     
     // Check subscription limit
-    updateProgressBar(0, 0, 10, 'در حال بررسی محدودیت‌ها...');
+    updateProgressBar(0, 0, 8, 'در حال بررسی محدودیت‌ها...');
     const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', estimatedDurationMinutes);
     if (!limitCheck.allowed) {
       showMessage(limitCheck.reason || 'حد مجاز شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
@@ -1473,8 +1481,10 @@ async function processFullTextFile(file, sessionId) {
       return;
     }
     
+    updateProgressBar(0, 0, 10, 'بررسی محدودیت‌ها انجام شد');
+    
     // Transcribe using transcribeAudio (like extension)
-    updateProgressBar(0, 0, 20, 'در حال تبدیل صوت به متن...');
+    animateProgressTo(90, 'در حال تبدیل صوت به متن...', 6000);
     const transcription = await transcribeAudio(file, null);
     updateProgressBar(0, 0, 90, 'تبدیل صوت به متن انجام شد');
     
@@ -1853,9 +1863,10 @@ async function processSummarize(url, sessionId) {
   try {
     // Show progress bar
     showProgressBar('در حال پردازش...', false);
-    updateProgressBar(0, 0, 5, 'در حال استخراج صوت از ویدئو...');
+    updateProgressBar(0, 0, 0, 'در حال استخراج صوت از ویدئو...');
     
     // Extract audio from YouTube (like extension)
+    animateProgressTo(25, 'در حال استخراج صوت از ویدئو...', 2000);
     const youtubeResult = await extractYouTubeAudio(url);
     const audioUrl = youtubeResult.audioUrl;
     const youtubeLanguage = youtubeResult.language || null;
@@ -1864,15 +1875,19 @@ async function processSummarize(url, sessionId) {
       throw new Error('خطا در استخراج صوت از ویدئو');
     }
     
+    updateProgressBar(0, 0, 25, 'استخراج صوت انجام شد');
+    
     // Get actual duration and check limit
     const durationSeconds = youtubeResult.duration || 0;
     const durationMinutes = Math.ceil(durationSeconds / 60);
     
     // Check subscription limit with actual duration
+    updateProgressBar(0, 0, 28, 'در حال بررسی محدودیت‌ها...');
     const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', durationMinutes);
     if (!limitCheck.allowed) {
       showMessage(limitCheck.reason || 'حد مجاز شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
       window.open(`dashboard.html?session=${sessionId}`, '_blank');
+      hideProgressBar();
       return;
     }
     
@@ -1881,23 +1896,23 @@ async function processSummarize(url, sessionId) {
     if (youtubeResult.subtitles) {
       // Use YouTube subtitles if available
       console.log('YOUTUBE: Using YouTube subtitles');
-      updateProgressBar(0, 0, 30, 'در حال پردازش زیرنویس‌های یوتیوب...');
+      animateProgressTo(60, 'در حال پردازش زیرنویس‌های یوتیوب...', 3000);
       transcription = await parseYouTubeSubtitles(youtubeResult.subtitles, youtubeResult.subtitleLanguage);
       updateProgressBar(0, 0, 60, 'زیرنویس پردازش شد');
     } else {
       // Fallback to audio transcription
       console.log('YOUTUBE: No subtitles available, transcribing audio');
-      updateProgressBar(0, 0, 30, 'در حال تبدیل صوت به متن...');
+      animateProgressTo(60, 'در حال تبدیل صوت به متن...', 5000);
       transcription = await transcribeAudio(audioUrl, youtubeLanguage);
       updateProgressBar(0, 0, 60, 'تبدیل صوت به متن انجام شد');
     }
     
     // Summarize (unlimited for all tiers)
-    updateProgressBar(0, 0, 70, 'در حال خلاصه‌سازی...');
+    animateProgressTo(90, 'در حال خلاصه‌سازی...', 4000);
     let summary = null;
     try {
       summary = await summarizeText(transcription.text, transcription.language);
-      updateProgressBar(0, 0, 95, 'خلاصه‌سازی انجام شد');
+      updateProgressBar(0, 0, 90, 'خلاصه‌سازی انجام شد');
     } catch (error) {
       console.error('Error in summarization:', error);
       // Continue without summary if check fails
@@ -1949,9 +1964,10 @@ async function processFullText(url, sessionId) {
   try {
     // Show progress bar
     showProgressBar('در حال پردازش...', false);
-    updateProgressBar(0, 0, 5, 'در حال استخراج صوت از ویدئو...');
+    updateProgressBar(0, 0, 0, 'در حال استخراج صوت از ویدئو...');
     
     // Extract audio from YouTube (like extension)
+    animateProgressTo(25, 'در حال استخراج صوت از ویدئو...', 2000);
     const youtubeResult = await extractYouTubeAudio(url);
     const audioUrl = youtubeResult.audioUrl;
     const youtubeLanguage = youtubeResult.language || null;
@@ -1960,16 +1976,20 @@ async function processFullText(url, sessionId) {
       throw new Error('خطا در استخراج صوت از ویدئو');
     }
     
+    updateProgressBar(0, 0, 25, 'استخراج صوت انجام شد');
+    
     // Get actual duration and check limit
     const durationSeconds = youtubeResult.duration || 0;
     const durationMinutes = Math.ceil(durationSeconds / 60);
     
     // Check subscription limit with actual duration
-      const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', durationMinutes);
+    updateProgressBar(0, 0, 28, 'در حال بررسی محدودیت‌ها...');
+    const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', durationMinutes);
     if (!limitCheck.allowed) {
       showMessage(limitCheck.reason || 'حد مجاز شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
-        window.open(`dashboard.html?session=${sessionId}`, '_blank');
-        return;
+      window.open(`dashboard.html?session=${sessionId}`, '_blank');
+      hideProgressBar();
+      return;
     }
     
     // Check if YouTube subtitles are available (like extension)
@@ -1977,13 +1997,13 @@ async function processFullText(url, sessionId) {
     if (youtubeResult.subtitles) {
       // Use YouTube subtitles if available
       console.log('YOUTUBE: Using YouTube subtitles');
-      updateProgressBar(0, 0, 30, 'در حال پردازش زیرنویس‌های یوتیوب...');
+      animateProgressTo(90, 'در حال پردازش زیرنویس‌های یوتیوب...', 3000);
       transcription = await parseYouTubeSubtitles(youtubeResult.subtitles, youtubeResult.subtitleLanguage);
       updateProgressBar(0, 0, 90, 'زیرنویس پردازش شد');
     } else {
       // Fallback to audio transcription
       console.log('YOUTUBE: No subtitles available, transcribing audio');
-      updateProgressBar(0, 0, 30, 'در حال تبدیل صوت به متن...');
+      animateProgressTo(90, 'در حال تبدیل صوت به متن...', 5000);
       transcription = await transcribeAudio(audioUrl, youtubeLanguage);
       updateProgressBar(0, 0, 90, 'تبدیل صوت به متن انجام شد');
     }
@@ -3305,8 +3325,91 @@ function updateProgressBar(downloaded = 0, total = 0, percent = 0, statusText = 
   }
 }
 
+// Animate progress bar incrementally from current to target
+let progressInterval = null;
+function animateProgressTo(targetPercent, statusText = '', duration = 2000) {
+  // Clear any existing interval
+  if (progressInterval) {
+    clearInterval(progressInterval);
+  }
+  
+  const progressPercent = document.getElementById('progressPercent');
+  const progressFill = document.getElementById('progressFill');
+  const progressTitle = document.getElementById('progressTitle');
+  
+  if (!progressPercent || !progressFill) return;
+  
+  // Get current progress
+  const currentPercent = parseFloat(progressFill.style.width) || 0;
+  const target = Math.min(100, Math.max(0, targetPercent));
+  
+  if (currentPercent >= target) {
+    // Already at or past target, just update
+    updateProgressBar(0, 0, target, statusText);
+    return;
+  }
+  
+  // Update status text immediately
+  if (statusText && progressTitle) {
+    progressTitle.textContent = statusText;
+  }
+  
+  // Calculate steps
+  const steps = Math.max(10, Math.ceil((target - currentPercent) / 2)); // At least 10 steps
+  const stepSize = (target - currentPercent) / steps;
+  const stepDuration = duration / steps;
+  
+  let current = currentPercent;
+  let step = 0;
+  
+  progressInterval = setInterval(() => {
+    step++;
+    current = Math.min(target, currentPercent + (stepSize * step));
+    
+    if (progressFill) {
+      progressFill.style.width = `${current}%`;
+    }
+    if (progressPercent) {
+      progressPercent.textContent = `${Math.round(current)}%`;
+    }
+    
+    if (current >= target || step >= steps) {
+      clearInterval(progressInterval);
+      progressInterval = null;
+      // Ensure we end at exact target
+      updateProgressBar(0, 0, target, statusText);
+    }
+  }, stepDuration);
+}
+
+// Simulate progress during async operation
+function simulateProgressDuringOperation(startPercent, endPercent, statusText, operationPromise) {
+  // Start animation
+  animateProgressTo(endPercent - 5, statusText, 3000); // Animate to 5% before end
+  
+  // Return a promise that resolves when operation completes
+  return operationPromise.then(result => {
+    // Complete the progress
+    clearInterval(progressInterval);
+    progressInterval = null;
+    updateProgressBar(0, 0, endPercent, statusText);
+    return result;
+  }).catch(error => {
+    // Stop animation on error
+    clearInterval(progressInterval);
+    progressInterval = null;
+    throw error;
+  });
+}
+
 // Hide progress bar
 function hideProgressBar() {
+  // Clear any active progress animation
+  if (progressInterval) {
+    clearInterval(progressInterval);
+    progressInterval = null;
+  }
+  
   const progressContainer = document.getElementById('downloadProgressContainer');
   if (progressContainer) {
     setTimeout(() => {
