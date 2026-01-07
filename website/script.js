@@ -754,7 +754,9 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
         
-        showMessage('در حال دریافت ویدئو و استخراج زیرنویس...', 'info');
+        // Show progress bar
+        showProgressBar('در حال دریافت ویدئو و استخراج زیرنویس...', false);
+        updateProgressBar(0, 0, 10, 'در حال دریافت اطلاعات ویدئو...');
         
         const videoId = extractVideoId(url);
         const youtubeResponse = await fetch(`${API_BASE_URL}/api/youtube`, {
@@ -774,11 +776,16 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (!youtubeData.subtitles) {
           showMessage('زیرنویس برای این ویدئو در دسترس نیست.', 'error');
+          hideProgressBar();
           return;
         }
         
+        updateProgressBar(0, 0, 80, 'در حال پردازش زیرنویس...');
         const srtContent = generateSRTFromSubtitles(youtubeData.subtitles, youtubeData.subtitleLanguage);
+        updateProgressBar(0, 0, 100, 'زیرنویس آماده شد');
+        
         showSubtitleModal(srtContent, youtubeData.subtitleLanguage || 'en', videoId, sessionId);
+        hideProgressBar();
         
     } catch (error) {
         console.error('Error:', error);
@@ -1355,12 +1362,15 @@ async function checkSubscriptionLimit(sessionId, feature, videoDurationMinutes =
 // Process summarize for file
 async function processSummarizeFile(file, sessionId) {
   try {
-    showMessage('در حال پردازش فایل...', 'info');
+    // Show progress bar
+    showProgressBar('در حال پردازش فایل...', false);
+    updateProgressBar(0, 0, 5, 'در حال بررسی فایل...');
     
     // Check file size (limit to 100MB like extension)
     const maxFileSize = 100 * 1024 * 1024; // 100MB
     if (file.size > maxFileSize) {
       showMessage(`فایل خیلی بزرگ است (${(file.size / 1024 / 1024).toFixed(2)}MB). حداکثر حجم مجاز ${maxFileSize / 1024 / 1024}MB است.`, 'error');
+      hideProgressBar();
       return;
     }
     
@@ -1368,22 +1378,26 @@ async function processSummarizeFile(file, sessionId) {
     const estimatedDurationMinutes = Math.ceil((file.size / 1024 / 1024) * 1.2);
     
     // Check subscription limit
+    updateProgressBar(0, 0, 10, 'در حال بررسی محدودیت‌ها...');
     const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', estimatedDurationMinutes);
     if (!limitCheck.allowed) {
       showMessage(limitCheck.reason || 'حد مجاز شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
       window.open(`dashboard.html?session=${sessionId}`, '_blank');
+      hideProgressBar();
       return;
     }
     
     // Transcribe using transcribeAudio (like extension)
-    showMessage('در حال تبدیل صوت به متن...', 'info');
+    updateProgressBar(0, 0, 20, 'در حال تبدیل صوت به متن...');
     const transcription = await transcribeAudio(file, null);
+    updateProgressBar(0, 0, 60, 'تبدیل صوت به متن انجام شد');
     
     // Summarize (unlimited for all tiers)
-    showMessage('در حال خلاصه‌سازی...', 'info');
+    updateProgressBar(0, 0, 70, 'در حال خلاصه‌سازی...');
     let summary = null;
     try {
       summary = await summarizeText(transcription.text, transcription.language);
+      updateProgressBar(0, 0, 95, 'خلاصه‌سازی انجام شد');
     } catch (error) {
       console.error('Error in summarization:', error);
       // Continue without summary if check fails
@@ -1392,6 +1406,8 @@ async function processSummarizeFile(file, sessionId) {
         summary: 'متن با موفقیت تبدیل شد اما خلاصه‌سازی در دسترس نیست.'
       };
     }
+    
+    updateProgressBar(0, 0, 100, 'پردازش کامل شد');
     
     // Display results in result section - تب خلاصه به صورت پیش‌فرض فعال باشد
     displayResults(summary, transcription.text, transcription.segments || [], {
@@ -1419,21 +1435,28 @@ async function processSummarizeFile(file, sessionId) {
     // Update buttons after usage
     await updateButtonsBasedOnSubscription(sessionId);
     
+    // Hide progress bar
+    hideProgressBar();
+    
   } catch (error) {
     console.error('Error:', error);
     showMessage('خطا: ' + error.message, 'error');
+    hideProgressBar();
   }
 }
 
 // Process full text for file
 async function processFullTextFile(file, sessionId) {
   try {
-    showMessage('در حال پردازش فایل...', 'info');
+    // Show progress bar
+    showProgressBar('در حال پردازش فایل...', false);
+    updateProgressBar(0, 0, 5, 'در حال بررسی فایل...');
     
     // Check file size (limit to 100MB like extension)
     const maxFileSize = 100 * 1024 * 1024; // 100MB
     if (file.size > maxFileSize) {
       showMessage(`فایل خیلی بزرگ است (${(file.size / 1024 / 1024).toFixed(2)}MB). حداکثر حجم مجاز ${maxFileSize / 1024 / 1024}MB است.`, 'error');
+      hideProgressBar();
       return;
     }
     
@@ -1441,16 +1464,21 @@ async function processFullTextFile(file, sessionId) {
     const estimatedDurationMinutes = Math.ceil((file.size / 1024 / 1024) * 1.2);
     
     // Check subscription limit
+    updateProgressBar(0, 0, 10, 'در حال بررسی محدودیت‌ها...');
     const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', estimatedDurationMinutes);
     if (!limitCheck.allowed) {
       showMessage(limitCheck.reason || 'حد مجاز شما تمام شده است. لطفاً پلن خود را ارتقا دهید.', 'error');
       window.open(`dashboard.html?session=${sessionId}`, '_blank');
+      hideProgressBar();
       return;
     }
     
     // Transcribe using transcribeAudio (like extension)
-    showMessage('در حال تبدیل صوت به متن...', 'info');
+    updateProgressBar(0, 0, 20, 'در حال تبدیل صوت به متن...');
     const transcription = await transcribeAudio(file, null);
+    updateProgressBar(0, 0, 90, 'تبدیل صوت به متن انجام شد');
+    
+    updateProgressBar(0, 0, 100, 'پردازش کامل شد');
     
     // Display results in result section - تب متن کامل به صورت پیش‌فرض فعال باشد
     displayResults(null, transcription.text, transcription.segments || [], {
@@ -1478,9 +1506,13 @@ async function processFullTextFile(file, sessionId) {
     // Update buttons after usage
     await updateButtonsBasedOnSubscription(sessionId);
     
+    // Hide progress bar
+    hideProgressBar();
+    
   } catch (error) {
     console.error('Error:', error);
     showMessage('خطا: ' + error.message, 'error');
+    hideProgressBar();
   }
 }
 
@@ -1819,7 +1851,9 @@ function parseSRTTimeToSeconds(hours, minutes, seconds, milliseconds) {
 // Process summarize (using extension logic)
 async function processSummarize(url, sessionId) {
   try {
-    showMessage('در حال پردازش...', 'info');
+    // Show progress bar
+    showProgressBar('در حال پردازش...', false);
+    updateProgressBar(0, 0, 5, 'در حال استخراج صوت از ویدئو...');
     
     // Extract audio from YouTube (like extension)
     const youtubeResult = await extractYouTubeAudio(url);
@@ -1847,20 +1881,23 @@ async function processSummarize(url, sessionId) {
     if (youtubeResult.subtitles) {
       // Use YouTube subtitles if available
       console.log('YOUTUBE: Using YouTube subtitles');
-      showMessage('در حال پردازش زیرنویس‌های یوتیوب...', 'info');
+      updateProgressBar(0, 0, 30, 'در حال پردازش زیرنویس‌های یوتیوب...');
       transcription = await parseYouTubeSubtitles(youtubeResult.subtitles, youtubeResult.subtitleLanguage);
+      updateProgressBar(0, 0, 60, 'زیرنویس پردازش شد');
     } else {
       // Fallback to audio transcription
       console.log('YOUTUBE: No subtitles available, transcribing audio');
-      showMessage('در حال تبدیل صوت به متن...', 'info');
+      updateProgressBar(0, 0, 30, 'در حال تبدیل صوت به متن...');
       transcription = await transcribeAudio(audioUrl, youtubeLanguage);
+      updateProgressBar(0, 0, 60, 'تبدیل صوت به متن انجام شد');
     }
     
     // Summarize (unlimited for all tiers)
-    showMessage('در حال خلاصه‌سازی...', 'info');
+    updateProgressBar(0, 0, 70, 'در حال خلاصه‌سازی...');
     let summary = null;
     try {
       summary = await summarizeText(transcription.text, transcription.language);
+      updateProgressBar(0, 0, 95, 'خلاصه‌سازی انجام شد');
     } catch (error) {
       console.error('Error in summarization:', error);
       // Continue without summary if check fails
@@ -1869,6 +1906,8 @@ async function processSummarize(url, sessionId) {
         summary: 'متن با موفقیت تبدیل شد اما خلاصه‌سازی در دسترس نیست.'
       };
     }
+    
+    updateProgressBar(0, 0, 100, 'پردازش کامل شد');
     
     // Display results در بخش نتیجه - تب خلاصه فعال باشد
     displayResults(summary, transcription.text, transcription.segments || [], {
@@ -1908,7 +1947,9 @@ async function processSummarize(url, sessionId) {
 // Process full text (using extension logic)
 async function processFullText(url, sessionId) {
   try {
-    showMessage('در حال پردازش...', 'info');
+    // Show progress bar
+    showProgressBar('در حال پردازش...', false);
+    updateProgressBar(0, 0, 5, 'در حال استخراج صوت از ویدئو...');
     
     // Extract audio from YouTube (like extension)
     const youtubeResult = await extractYouTubeAudio(url);
@@ -1936,14 +1977,18 @@ async function processFullText(url, sessionId) {
     if (youtubeResult.subtitles) {
       // Use YouTube subtitles if available
       console.log('YOUTUBE: Using YouTube subtitles');
-      showMessage('در حال پردازش زیرنویس‌های یوتیوب...', 'info');
+      updateProgressBar(0, 0, 30, 'در حال پردازش زیرنویس‌های یوتیوب...');
       transcription = await parseYouTubeSubtitles(youtubeResult.subtitles, youtubeResult.subtitleLanguage);
+      updateProgressBar(0, 0, 90, 'زیرنویس پردازش شد');
     } else {
       // Fallback to audio transcription
       console.log('YOUTUBE: No subtitles available, transcribing audio');
-      showMessage('در حال تبدیل صوت به متن...', 'info');
+      updateProgressBar(0, 0, 30, 'در حال تبدیل صوت به متن...');
       transcription = await transcribeAudio(audioUrl, youtubeLanguage);
+      updateProgressBar(0, 0, 90, 'تبدیل صوت به متن انجام شد');
     }
+    
+    updateProgressBar(0, 0, 100, 'پردازش کامل شد');
     
     // Display results در بخش نتیجه - تب متن کامل فعال باشد
     displayResults(null, transcription.text, transcription.segments || [], {
@@ -2693,7 +2738,9 @@ async function downloadAsDocx(content, filename) {
     });
     
     if (!response.ok) {
-      throw new Error('خطا در ساخت فایل DOCX');
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = errorData.message || errorData.error || `خطا در ساخت فایل DOCX (${response.status})`;
+      throw new Error(errorMessage);
     }
     
     // Get blob from response
@@ -3186,7 +3233,7 @@ function showQualityModal(formats, url, sessionId, isPro, isStarter, userPlan, t
 }
 
 // Show progress bar
-function showProgressBar(title = 'در حال دانلود...') {
+function showProgressBar(title = 'در حال پردازش...', showFileSize = true) {
   const progressContainer = document.getElementById('downloadProgressContainer');
   const progressTitle = document.getElementById('progressTitle');
   const progressFill = document.getElementById('progressFill');
@@ -3200,37 +3247,61 @@ function showProgressBar(title = 'در حال دانلود...') {
     progressTitle.textContent = title;
     progressFill.style.width = '0%';
     progressPercent.textContent = '0%';
-    fileSize.textContent = 'حجم فایل: در حال محاسبه...';
-    progressDownloaded.textContent = '0 MB';
-    progressTotal.textContent = '0 MB';
+    
+    if (showFileSize) {
+      fileSize.textContent = 'حجم فایل: در حال محاسبه...';
+      progressDownloaded.textContent = '0 MB';
+      progressTotal.textContent = '0 MB';
+      if (progressDownloaded.parentElement) {
+        progressDownloaded.parentElement.style.display = '';
+      }
+    } else {
+      fileSize.textContent = '';
+      if (progressDownloaded.parentElement) {
+        progressDownloaded.parentElement.style.display = 'none';
+      }
+    }
   }
 }
 
 // Update progress bar
-function updateProgressBar(downloaded, total, percent) {
+function updateProgressBar(downloaded = 0, total = 0, percent = 0, statusText = '') {
   const progressFill = document.getElementById('progressFill');
   const progressPercent = document.getElementById('progressPercent');
   const fileSize = document.getElementById('fileSize');
   const progressDownloaded = document.getElementById('progressDownloaded');
   const progressTotal = document.getElementById('progressTotal');
+  const progressTitle = document.getElementById('progressTitle');
   
   if (progressFill) {
-    progressFill.style.width = `${percent}%`;
+    progressFill.style.width = `${Math.min(100, Math.max(0, percent))}%`;
   }
   if (progressPercent) {
-    progressPercent.textContent = `${Math.round(percent)}%`;
+    progressPercent.textContent = `${Math.round(Math.min(100, Math.max(0, percent)))}%`;
   }
-  if (fileSize) {
-    const totalMB = (total / 1024 / 1024).toFixed(2);
-    fileSize.textContent = `حجم فایل: ${totalMB} MB`;
+  
+  // Update status text if provided
+  if (statusText && progressTitle) {
+    progressTitle.textContent = statusText;
   }
-  if (progressDownloaded) {
-    const downloadedMB = (downloaded / 1024 / 1024).toFixed(2);
-    progressDownloaded.textContent = `${downloadedMB} MB`;
-  }
-  if (progressTotal) {
-    const totalMB = (total / 1024 / 1024).toFixed(2);
-    progressTotal.textContent = `${totalMB} MB`;
+  
+  // Only show file size if total > 0 (download operation)
+  if (total > 0) {
+    if (fileSize) {
+      const totalMB = (total / 1024 / 1024).toFixed(2);
+      fileSize.textContent = `حجم فایل: ${totalMB} MB`;
+    }
+    if (progressDownloaded) {
+      const downloadedMB = (downloaded / 1024 / 1024).toFixed(2);
+      progressDownloaded.textContent = `${downloadedMB} MB`;
+    }
+    if (progressTotal) {
+      const totalMB = (total / 1024 / 1024).toFixed(2);
+      progressTotal.textContent = `${totalMB} MB`;
+    }
+    if (progressDownloaded.parentElement) {
+      progressDownloaded.parentElement.style.display = '';
+    }
   }
 }
 

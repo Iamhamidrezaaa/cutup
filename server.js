@@ -267,10 +267,22 @@ app.get('/api/subscription', async (req, res) => {
 });
 
 app.post('/api/generate-docx', async (req, res) => {
-  if (generateDocxHandler) {
-    await generateDocxHandler(req, res);
-  } else {
-    res.status(503).json({ error: 'Service unavailable' });
+  try {
+    if (generateDocxHandler) {
+      await generateDocxHandler(req, res);
+    } else {
+      console.error('[server] Generate DOCX handler not loaded');
+      res.status(503).json({ 
+        error: 'Service unavailable',
+        message: 'DOCX generation service is not available. Please check server logs.'
+      });
+    }
+  } catch (error) {
+    console.error('[server] Error in Generate DOCX route:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      message: error.message 
+    });
   }
 });
 

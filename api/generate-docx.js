@@ -118,11 +118,13 @@ export default async function handler(req, res) {
     TextRun = docxModule.TextRun;
     AlignmentType = docxModule.AlignmentType;
   } catch (error) {
-    console.error('[generate-docx] Failed to import docx library:', error.message);
+    console.error('[generate-docx] Failed to import docx library:', error);
+    console.error('[generate-docx] Error stack:', error.stack);
     setCORSHeaders(res);
     return res.status(500).json({
       error: 'DOCX library not installed',
-      message: 'Please install docx library: npm install docx'
+      message: 'Please install docx library: npm install docx',
+      details: error.message
     });
   }
 
