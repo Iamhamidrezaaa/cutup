@@ -76,7 +76,7 @@
 
   <main>
     <!-- Hero Section -->
-    <section class="hero">
+    <section class="hero hero-strong">
       <div class="hero-background">
         <svg class="hero-curves" viewBox="0 0 1200 600" preserveAspectRatio="none">
           <path class="curve-1" d="M0,300 Q300,200 600,300 T1200,300 L1200,600 L0,600 Z" fill="url(#gradient1)"/>
@@ -104,22 +104,49 @@
         <div class="hero-content">
           <p class="hero-eyebrow">Subtitles &amp; transcripts · AI-powered · No signup for preview</p>
           <h1 class="hero-title">
-            Ship captions <span class="gradient-text">10× faster</span>—paste a link, get real subtitles
+            Turn any video into <span class="gradient-text">subtitles in seconds — ready to publish</span>
           </h1>
+          <p class="hero-trust-line">Used by creators, students, and teams · No signup required for preview</p>
+          <p class="hero-support-line">Supports YouTube, TikTok, Instagram &amp; audio files</p>
           <p class="hero-description">
             <strong>Creators</strong> stop retyping captions. <strong>Students</strong> turn lectures into notes. <strong>Professionals</strong> export clean transcripts—fast, simple, and powerful. Your first preview runs in seconds; no account required.
           </p>
-          <div class="hero-quick-tool">
+          <div class="hero-quick-tool hero-main-interaction">
             <label class="visually-hidden" for="heroUrlInput">Video URL</label>
-            <input type="url" id="heroUrlInput" class="hero-url-input" placeholder="Paste YouTube, TikTok, or Instagram link…" autocomplete="url" inputmode="url">
-            <div class="hero-quick-actions">
-              <button type="button" class="btn btn-primary hero-primary-btn" id="heroGenerateBtn">Generate subtitles</button>
-              <button type="button" class="btn btn-secondary hero-secondary-btn" id="heroSeeDemoBtn">See demo</button>
+            <div class="smart-input-wrap">
+              <span class="smart-input-icon" aria-hidden="true">🔗</span>
+              <input type="url" id="heroUrlInput" class="hero-url-input" placeholder="Paste YouTube, TikTok, or Instagram link…" autocomplete="url" inputmode="url">
             </div>
-            <p class="hero-microcopy">Free preview · Full SRT &amp; exports when you upgrade</p>
+            <div class="hero-quick-actions">
+              <button type="button" class="btn btn-primary hero-primary-btn" id="heroGenerateBtn">Generate subtitles now</button>
+              <button type="button" class="btn btn-secondary hero-secondary-btn" id="heroSeeDemoBtn">See real output</button>
+            </div>
+            <div class="hero-live-indicator">
+              <span class="hero-live-dot" aria-hidden="true"></span>
+              <span>⚡ Takes ~10 seconds</span>
+            </div>
+            <p class="hero-microcopy">Free preview · Full SRT &amp; exports when you upgrade · No credit card required</p>
+          </div>
+          <p class="hero-preview-flow-text">See a real example below</p>
+          <div class="hero-floating-preview" aria-hidden="true">
+            <p class="hero-preview-title">Live AI output</p>
+            <div class="hero-preview-stack">
+              <div class="hero-preview-pill">
+                <span class="hero-preview-label">SRT</span>
+                <span class="hero-preview-text">00:00:03,120 → 00:00:06,820</span>
+              </div>
+              <div class="hero-preview-pill">
+                <span class="hero-preview-label">Transcript</span>
+                <span class="hero-preview-text">Clean, readable paragraphs generated instantly.</span>
+              </div>
+              <div class="hero-preview-pill">
+                <span class="hero-preview-label">Summary</span>
+                <span class="hero-preview-text">3 key takeaways in under 10 seconds.</span>
+              </div>
+            </div>
           </div>
           <div class="hero-cta hero-cta-row hero-cta-secondary">
-            <a href="#pricing" class="btn btn-secondary btn-ghost">View pricing</a>
+            <a href="#pricing" class="btn btn-secondary btn-ghost">Compare plans</a>
             <a href="#tool" class="nav-text-link">Or use the full tool below →</a>
           </div>
         </div>
@@ -131,27 +158,47 @@
       <div class="container">
         <h2 class="section-title">See what you get in seconds</h2>
         <p class="demo-sample-lead">Timed lines you can drop into any editor—this is the kind of structure Cutup builds from your link or file.</p>
-        <div class="demo-sample-grid">
-          <div class="demo-sample-card">
-            <h3 class="demo-sample-label">SRT-style preview</h3>
-            <pre class="demo-sample-pre" aria-label="Sample subtitle output">1
-00:00:01,000 --&gt; 00:00:04,200
+        <div class="demo-product-frame">
+          <div class="demo-frame-topbar">
+            <span></span><span></span><span></span>
+            <p>Cutup Preview</p>
+          </div>
+          <div class="demo-live-meta">
+            <span class="demo-live-badge">Live AI output</span>
+            <span class="demo-processing">Processing<span class="typing-dots"></span></span>
+          </div>
+          <div class="demo-product-grid">
+            <div class="demo-sample-card demo-srt-panel">
+              <div class="demo-srt-meta">
+                <span class="demo-meta-badge">Real output</span>
+                <span class="demo-meta-item">Duration: 00:01:20</span>
+                <span class="demo-meta-item">Language: English</span>
+              </div>
+              <h3 class="demo-sample-label">Subtitle file</h3>
+              <pre class="demo-sample-pre" aria-label="Sample subtitle output">1
+<span class="srt-timestamp-highlight">00:00:01,000 --&gt; 00:00:04,200</span>
 Hey everyone—today we're unpacking the workflow in under five minutes.
 
 2
-00:00:04,500 --&gt; 00:00:08,100
+<span class="srt-timestamp-highlight">00:00:04,500 --&gt; 00:00:08,100</span>
 Here's the fastest path from link to publish-ready captions.
 
 # Generated by Cutup</pre>
-          </div>
-          <div class="demo-sample-card">
-            <h3 class="demo-sample-label">Transcript snippet</h3>
-            <p class="demo-sample-text">Clean, readable paragraphs instead of a wall of auto-captions—ready for blogs, study guides, or client deliverables.</p>
-            <ul class="demo-sample-bullets">
-              <li>Key ideas stay in order</li>
-              <li>Translate or export to TXT / DOCX</li>
-              <li>Optional AI summary for long videos</li>
-            </ul>
+            </div>
+            <div class="demo-side-cards">
+              <div class="demo-sample-card">
+                <h3 class="demo-sample-label">Transcript</h3>
+                <p class="demo-sample-text">Clean, readable paragraphs instead of a wall of auto-captions—ready for blogs, study guides, or client deliverables.</p>
+              </div>
+              <div class="demo-sample-card">
+                <h3 class="demo-sample-label">AI summary</h3>
+                <ul class="demo-sample-bullets">
+                  <li>Key ideas stay in order</li>
+                  <li>Translate or export to TXT / DOCX</li>
+                  <li>Optional AI summary for long videos</li>
+                </ul>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -483,7 +530,7 @@ Here's the fastest path from link to publish-ready captions.
     <!-- Features Section -->
     <section id="features" class="features">
       <div class="container">
-        <h2 class="section-title">Built for fast subtitles & transcripts</h2>
+        <h2 class="section-title">Export subtitles, transcripts, and summaries in seconds</h2>
         <div class="features-grid">
           <div class="feature-card">
             <div class="feature-icon">📝</div>
@@ -595,6 +642,8 @@ Here's the fastest path from link to publish-ready captions.
           <div class="feature-card pricing-card">
             <h3 class="feature-title">Free</h3>
             <p class="feature-description" style="font-weight: 600; color: var(--primary);">~2–3 videos total</p>
+            <p class="feature-description pricing-micro-note">Limited preview only</p>
+            <p class="feature-description pricing-access-note">Cancel anytime · Instant access after upgrade</p>
             <p class="feature-description">Perfect for a quick proof-of-concept. Preview subtitles &amp; text, feel the workflow, then upgrade when you are ready to ship.</p>
             <ul class="feature-description" style="padding-left: 18px; margin: 0 0 12px; font-size: 14px; line-height: 1.5;">
               <li>No full SRT download (locked)</li>
@@ -606,6 +655,7 @@ Here's the fastest path from link to publish-ready captions.
           <div class="feature-card pricing-card">
             <h3 class="feature-title">Starter · $9.99/mo</h3>
             <p class="feature-description" style="font-weight: 600; color: var(--primary);">~10–15 videos / month</p>
+            <p class="feature-description pricing-access-note">Cancel anytime · Instant access after upgrade</p>
             <p class="feature-description">Ideal for solo creators posting weekly. Download real SRT files, keep summaries on, and stay bilingual without hiring a transcriptionist.</p>
             <ul class="feature-description" style="padding-left: 18px; margin: 0 0 12px; font-size: 14px; line-height: 1.5;">
               <li>Subtitle download (SRT) unlocked</li>
@@ -615,9 +665,12 @@ Here's the fastest path from link to publish-ready captions.
             <a href="dashboard.html" class="btn btn-primary" style="margin-top: auto; display: inline-block;">Upgrade in dashboard</a>
           </div>
           <div class="feature-card pricing-card pricing-card-pro">
-            <span class="pricing-badge">Recommended</span>
+            <span class="pricing-badge">Most Popular</span>
             <h3 class="feature-title">Pro · $19.99/mo</h3>
             <p class="feature-description" style="font-weight: 600; color: var(--primary);">~25–35 videos / month</p>
+            <p class="feature-description pricing-micro-note">Most users choose this plan</p>
+            <p class="feature-description pricing-fit-note">Best for creators publishing weekly</p>
+            <p class="feature-description pricing-access-note">Cancel anytime · Instant access after upgrade</p>
             <p class="feature-description">For channels, educators, and agencies juggling multiple languages. Faster processing, richer exports, fewer bottlenecks.</p>
             <ul class="feature-description" style="padding-left: 18px; margin: 0 0 12px; font-size: 14px; line-height: 1.5;">
               <li>Multilingual subtitles &amp; translations</li>
@@ -629,6 +682,7 @@ Here's the fastest path from link to publish-ready captions.
           <div class="feature-card pricing-card">
             <h3 class="feature-title">Advanced · $39.99/mo</h3>
             <p class="feature-description" style="font-weight: 600; color: var(--primary);">~80–100 videos / month</p>
+            <p class="feature-description pricing-access-note">Cancel anytime · Instant access after upgrade</p>
             <p class="feature-description">Heavy publishing schedules get priority routing, generous fair-use headroom, and every premium export option unlocked.</p>
             <ul class="feature-description" style="padding-left: 18px; margin: 0 0 12px; font-size: 14px; line-height: 1.5;">
               <li>Priority processing</li>
@@ -691,21 +745,6 @@ Here's the fastest path from link to publish-ready captions.
       <div class="footer-bottom">
         <div class="footer-copyright">
           <p>&copy; 2026 Cutup. All rights reserved.</p>
-        </div>
-        <div class="footer-enamad">
-          <a 
-            referrerpolicy="origin" 
-            target="_blank" 
-            href="https://trustseal.enamad.ir/?id=696822&Code=jUnfgpgbYBkCq6pWiydVQ6Vvj74q0ODv"
-            class="enamad-link"
-          >
-            <img 
-              referrerpolicy="origin" 
-              src="https://trustseal.enamad.ir/logo.aspx?id=696822&Code=jUnfgpgbYBkCq6pWiydVQ6Vvj74q0ODv" 
-              alt="eNamad trust seal" 
-              class="enamad-logo"
-            />
-          </a>
         </div>
       </div>
     </div>

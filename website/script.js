@@ -990,6 +990,26 @@ function isValidUrl(url) {
   return false;
 }
 
+function detectPlatformFromUrl(url) {
+  if (!url || !url.trim()) return null;
+  if (isYouTubeUrl(url)) return 'youtube';
+  if (isInstagramUrl(url)) return 'instagram';
+  if (isTikTokUrl(url)) return 'tiktok';
+  return null;
+}
+
+function getActivePlatformFromTab() {
+  const activeTab = document.querySelector('.platform-tab.active');
+  return activeTab?.dataset?.tab || null;
+}
+
+function resolveRequestedPlatform(url, file) {
+  if (file) return 'audiofile';
+  const byUrl = detectPlatformFromUrl(url);
+  if (byUrl) return byUrl;
+  return getActivePlatformFromTab() || currentPlatform || 'youtube';
+}
+
 // Get platform name in Persian
 function getPlatformName(platform) {
   const names = {
@@ -1426,6 +1446,7 @@ async function handleSummarize() {
   
   const url = getCurrentUrl();
   const file = audioFileInput && audioFileInput.files[0];
+  const requestedPlatform = resolveRequestedPlatform(url, file);
   
   if (!url && !file) {
     if (currentPlatform === 'audiofile') {
@@ -1436,12 +1457,15 @@ async function handleSummarize() {
       return;
     }
     
-  if (file && url.startsWith('📁')) {
+  if (file && (currentPlatform === 'audiofile' || !url || url.startsWith('📁'))) {
     trackEvent('link_submitted', { platform: 'file', mode: 'summary', auth: !!sessionId });
     await processSummarizeFile(file, sessionId);
-  } else if (isValidUrl(url)) {
-    trackEvent('link_submitted', { platform: currentPlatform, mode: 'summary', auth: !!sessionId });
-    await processSummarize(url, sessionId);
+  } else if (requestedPlatform === 'youtube' && isYouTubeUrl(url)) {
+    trackEvent('link_submitted', { platform: 'youtube', mode: 'summary', auth: !!sessionId });
+    await processSummarize(url, sessionId, 'youtube');
+  } else if ((requestedPlatform === 'instagram' && isInstagramUrl(url)) || (requestedPlatform === 'tiktok' && isTikTokUrl(url))) {
+    showMessage('Instagram/TikTok processing is temporarily unavailable. Please upload the video or audio file instead.', 'error');
+    return;
   } else {
     showMessage('Invalid URL for the selected platform.', 'error');
   }
@@ -1452,6 +1476,7 @@ async function handleFullText() {
     
   const url = getCurrentUrl();
   const file = audioFileInput && audioFileInput.files[0];
+  const requestedPlatform = resolveRequestedPlatform(url, file);
     
   if (!url && !file) {
     if (currentPlatform === 'audiofile') {
@@ -1462,12 +1487,15 @@ async function handleFullText() {
       return;
     }
     
-  if (file && url.startsWith('📁')) {
+  if (file && (currentPlatform === 'audiofile' || !url || url.startsWith('📁'))) {
     trackEvent('link_submitted', { platform: 'file', mode: 'fulltext', auth: !!sessionId });
     await processFullTextFile(file, sessionId);
-  } else if (isValidUrl(url)) {
-    trackEvent('link_submitted', { platform: currentPlatform, mode: 'fulltext', auth: !!sessionId });
-    await processFullText(url, sessionId);
+  } else if (requestedPlatform === 'youtube' && isYouTubeUrl(url)) {
+    trackEvent('link_submitted', { platform: 'youtube', mode: 'fulltext', auth: !!sessionId });
+    await processFullText(url, sessionId, 'youtube');
+  } else if ((requestedPlatform === 'instagram' && isInstagramUrl(url)) || (requestedPlatform === 'tiktok' && isTikTokUrl(url))) {
+    showMessage('Instagram/TikTok processing is temporarily unavailable. Please upload the video or audio file instead.', 'error');
+    return;
   } else {
     showMessage('Invalid URL for the selected platform.', 'error');
   }
@@ -2057,8 +2085,11 @@ function parseSRTTimeToSeconds(hours, minutes, seconds, milliseconds) {
 }
 
 // Process summarize (using extension logic)
-async function processSummarize(url, sessionId) {
+async function processSummarize(url, sessionId, platform = 'youtube') {
   const isPreviewMode = !sessionId;
+  if (platform !== 'youtube') {
+    throw new Error('Unsupported platform for summarize URL flow');
+  }
   try {
     // Show progress bar
     showProgressBar('Working on your video…', false);
@@ -2168,12 +2199,17 @@ async function processSummarize(url, sessionId) {
     console.error('Error:', error);
     reportClientError('process', error);
     showMessage(USER_ERROR_GENERIC, 'error');
+  } finally {
+    hideProgressBar();
   }
 }
 
 // Process full text (using extension logic)
-async function processFullText(url, sessionId) {
+async function processFullText(url, sessionId, platform = 'youtube') {
   const isPreviewMode = !sessionId;
+  if (platform !== 'youtube') {
+    throw new Error('Unsupported platform for fulltext URL flow');
+  }
   try {
     // Show progress bar
     showProgressBar('Working on your video…', false);
@@ -2262,6 +2298,8 @@ async function processFullText(url, sessionId) {
     console.error('Error:', error);
     reportClientError('process', error);
     showMessage(USER_ERROR_GENERIC, 'error');
+  } finally {
+    hideProgressBar();
   }
 }
 
