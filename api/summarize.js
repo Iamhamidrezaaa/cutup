@@ -110,19 +110,22 @@ function extractKeyPointsFromText(text, count) {
 }
 
 async function summarizeWithGPT(text, detectedLanguage = null) {
-  // Detect language (Persian or English) - use detected language if provided
-  let isPersian = false;
-  let language = 'English';
-  
-  if (detectedLanguage) {
-    // Use detected language from Whisper
-    isPersian = detectedLanguage === 'fa' || detectedLanguage === 'per' || detectedLanguage === 'persian';
-    language = isPersian ? 'Persian' : detectedLanguage;
-  } else {
-    // Fallback to text-based detection
-    isPersian = /[\u0600-\u06FF]/.test(text);
-    language = isPersian ? 'Persian' : 'English';
+  const dl =
+    detectedLanguage != null && detectedLanguage !== ''
+      ? String(detectedLanguage).toLowerCase().trim()
+      : '';
+  let langIso = null;
+  if (dl === 'per' || dl === 'persian' || dl === 'fas' || dl === 'fa') {
+    langIso = 'fa';
+  } else if (dl.length >= 2 && /^[a-z]{2}$/.test(dl.slice(0, 2))) {
+    langIso = dl.slice(0, 2);
+  } else if (dl.length === 2 && /^[a-z]{2}$/.test(dl)) {
+    langIso = dl;
   }
+
+  // Only use Persian prompts when language is actually Persian (never infer from Arabic script:
+  // Arabic/Urdu/etc. share the same Unicode range and falsely triggered Persian before).
+  const isPersian = langIso === 'fa';
 
   // Calculate text length and determine summary length
   const wordCount = text.split(/\s+/).length;
@@ -156,9 +159,15 @@ async function summarizeWithGPT(text, detectedLanguage = null) {
   
   console.log(`SUMMARIZE: Text stats - Words: ${wordCount}, Chars: ${charCount}, Target summary: ~${targetSummaryWords} words, Key points: ${keyPointsCount}`);
 
-  const systemPrompt = isPersian 
+  const outputLanguageRule = langIso
+    ? `OUTPUT LANGUAGE IS LOCKED TO ISO 639-1 "${langIso}". All key points and the summary MUST be in that language only. Never translate to Persian (fa) unless "${langIso}" is fa. Never translate to English unless "${langIso}" is en. Never switch languages.`
+    : `Write every key point and the summary in the same language as the source text (dominant language if mixed). Do not translate: keep Persian only if the source is Persian; keep English only if the source is English; same for Arabic, Chinese, etc.`;
+
+  const systemPrompt = isPersian
     ? `شما یک دستیار خلاصه‌ساز هوشمند هستید. متن را با نسبت مناسب خلاصه کنید و ${keyPointsCount} نکته کلیدی استخراج کنید. خلاصه باید حدود ${targetSummaryWords} کلمه باشد.`
-    : `You are an intelligent summarization assistant. Summarize the text with appropriate ratio and extract ${keyPointsCount} key points. The summary should be approximately ${targetSummaryWords} words.`;
+    : `You are an intelligent summarization assistant. Summarize the text with appropriate ratio and extract ${keyPointsCount} key points. The summary should be approximately ${targetSummaryWords} words.
+
+${outputLanguageRule}`;
 
   const userPrompt = isPersian
     ? `متن زیر را خلاصه کنید و ${keyPointsCount} نکته کلیدی استخراج کنید. همچنین یک خلاصه یک‌پاراگرافی ارائه دهید که حدود ${targetSummaryWords} کلمه باشد.
@@ -173,13 +182,15 @@ ${text}
 }`
     : `Summarize the following text and extract ${keyPointsCount} key points. Also provide a one-paragraph summary that is approximately ${targetSummaryWords} words.
 
+${outputLanguageRule}
+
 Text (${wordCount} words):
 ${text}
 
-Please return the response in this JSON format:
+Return JSON only in this shape (use the output language rule for all string values):
 {
-  "keyPoints": ["Point 1", "Point 2", ...],
-  "summary": "One paragraph summary..."
+  "keyPoints": ["...", "..."],
+  "summary": "..."
 }`;
 
   // Adjust max_tokens based on text length - reduced for faster response

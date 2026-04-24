@@ -2757,6 +2757,33 @@ body {
   border-radius: 999px;
 }
 
+/* Keep transcript/summary visibly active and readable */
+.result-section .summary-text,
+.result-section .fulltext {
+  color: #1a1a1a !important;
+  opacity: 1 !important;
+  background: #ffffff !important;
+}
+
+.result-section .srt-preview {
+  color: #111827 !important;
+  opacity: 1 !important;
+  background: #ffffff !important;
+  line-height: 1.75;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+.summary-notice {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f9fafb;
+  color: #4b5563;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
 @media (max-width: 768px) {
   .hero,
   .download-section,

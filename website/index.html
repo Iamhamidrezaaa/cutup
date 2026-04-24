@@ -249,7 +249,7 @@ Here's the fastest path from link to publish-ready captions.
             </button>
             <button class="platform-tab" data-tab="audiofile">
               <span class="platform-icon">📁</span>
-              <span class="platform-name">Audio File</span>
+              <span class="platform-name">Upload File</span>
             </button>
           </div>
           
@@ -269,17 +269,13 @@ Here's the fastest path from link to publish-ready captions.
           </div>
             <div class="download-options" id="downloadOptionsYoutube" style="display: none;">
             <div class="download-option-group">
-              <button class="download-option-btn download-option-btn--primary" id="downloadSubtitleBtnMain">
-                <span class="option-icon">📄</span>
-                <span class="option-text">Generate Subtitles</span>
-              </button>
               <button class="download-option-btn download-option-btn--primary" id="fullTextBtnMain">
                 <span class="option-icon">📋</span>
                 <span class="option-text">Full Transcript</span>
               </button>
-              <button class="download-option-btn download-option-btn--primary" id="summarizeBtnMain">
-                <span class="option-icon">📝</span>
-                <span class="option-text">Summarize</span>
+              <button class="download-option-btn download-option-btn--primary" id="downloadSubtitleBtnMain">
+                <span class="option-icon">📄</span>
+                <span class="option-text">SRT Subtitles</span>
               </button>
               <button class="download-option-btn" id="downloadVideoBtnMain">
                 <span class="option-icon">🎬</span>
@@ -309,13 +305,13 @@ Here's the fastest path from link to publish-ready captions.
             </div>
             <div class="download-options" id="downloadOptionsInstagram" style="display: none;">
               <div class="download-option-group">
-                <button class="download-option-btn download-option-btn--primary" id="summarizeBtnInstagram">
-                  <span class="option-icon">📝</span>
-                  <span class="option-text">Summarize</span>
-                </button>
                 <button class="download-option-btn download-option-btn--primary" id="fullTextBtnInstagram">
                   <span class="option-icon">📋</span>
                   <span class="option-text">Full Transcript</span>
+                </button>
+                <button class="download-option-btn download-option-btn--primary" id="downloadSubtitleBtnInstagram">
+                  <span class="option-icon">📄</span>
+                  <span class="option-text">SRT Subtitles</span>
                 </button>
                 <button class="download-option-btn" id="downloadVideoBtnInstagram">
                   <span class="option-icon">🎬</span>
@@ -345,13 +341,13 @@ Here's the fastest path from link to publish-ready captions.
             </div>
             <div class="download-options" id="downloadOptionsTiktok" style="display: none;">
               <div class="download-option-group">
-                <button class="download-option-btn download-option-btn--primary" id="summarizeBtnTiktok">
-                  <span class="option-icon">📝</span>
-                  <span class="option-text">Summarize</span>
-                </button>
                 <button class="download-option-btn download-option-btn--primary" id="fullTextBtnTiktok">
                   <span class="option-icon">📋</span>
                   <span class="option-text">Full Transcript</span>
+                </button>
+                <button class="download-option-btn download-option-btn--primary" id="downloadSubtitleBtnTiktok">
+                  <span class="option-icon">📄</span>
+                  <span class="option-text">SRT Subtitles</span>
                 </button>
                 <button class="download-option-btn" id="downloadVideoBtnTiktok">
                   <span class="option-icon">🎬</span>
@@ -385,9 +381,9 @@ Here's the fastest path from link to publish-ready captions.
                   <span class="option-icon">📋</span>
                   <span class="option-text">Full Transcript</span>
                 </button>
-                <button class="download-option-btn download-option-btn--primary" id="summarizeBtnAudiofile">
-                  <span class="option-icon">📝</span>
-                  <span class="option-text">Summarize</span>
+                <button class="download-option-btn download-option-btn--primary" id="downloadSubtitleBtnAudiofile">
+                  <span class="option-icon">📄</span>
+                  <span class="option-text">SRT Subtitles</span>
                 </button>
               </div>
             </div>
@@ -449,19 +445,29 @@ Here's the fastest path from link to publish-ready captions.
                   <div class="srt-controls">
                     <label for="fulltextLanguage" class="srt-language-label">Translate to</label>
                     <select id="fulltextLanguage" class="srt-language-select">
-                      <option value="original">Original</option>
-                      <option value="fa">فارسی</option>
+                      <option value="original">Original language</option>
                       <option value="en">English</option>
-                      <option value="ar">العربية</option>
                       <option value="es">Español</option>
                       <option value="fr">Français</option>
                       <option value="de">Deutsch</option>
                       <option value="it">Italiano</option>
-                      <option value="ru">Русский</option>
+                      <option value="pt">Português</option>
+                      <option value="ar">العربية</option>
+                      <option value="fa">فارسی</option>
                       <option value="tr">Türkçe</option>
+                      <option value="ru">Русский</option>
                       <option value="zh">中文</option>
                       <option value="ja">日本語</option>
                       <option value="ko">한국어</option>
+                      <option value="hi">हिन्दी</option>
+                      <option value="ur">اردو</option>
+                      <option value="id">Bahasa Indonesia</option>
+                      <option value="ms">Bahasa Melayu</option>
+                      <option value="vi">Tiếng Việt</option>
+                      <option value="th">ไทย</option>
+                      <option value="nl">Nederlands</option>
+                      <option value="pl">Polski</option>
+                      <option value="uk">Українська</option>
                     </select>
                     <button class="translate-srt-btn" id="translateFulltextBtn">🔄 Translate</button>
                     <button class="download-btn" id="downloadFulltextTxtBtn">📥 Download TXT</button>
@@ -475,19 +481,29 @@ Here's the fastest path from link to publish-ready captions.
                   <div class="srt-controls">
                     <label for="summaryLanguage" class="srt-language-label">Translate to</label>
                     <select id="summaryLanguage" class="srt-language-select">
-                      <option value="original">Original</option>
-                      <option value="fa">فارسی</option>
+                      <option value="original">Original language</option>
                       <option value="en">English</option>
-                      <option value="ar">العربية</option>
                       <option value="es">Español</option>
                       <option value="fr">Français</option>
                       <option value="de">Deutsch</option>
                       <option value="it">Italiano</option>
-                      <option value="ru">Русский</option>
+                      <option value="pt">Português</option>
+                      <option value="ar">العربية</option>
+                      <option value="fa">فارسی</option>
                       <option value="tr">Türkçe</option>
+                      <option value="ru">Русский</option>
                       <option value="zh">中文</option>
                       <option value="ja">日本語</option>
                       <option value="ko">한국어</option>
+                      <option value="hi">हिन्दी</option>
+                      <option value="ur">اردو</option>
+                      <option value="id">Bahasa Indonesia</option>
+                      <option value="ms">Bahasa Melayu</option>
+                      <option value="vi">Tiếng Việt</option>
+                      <option value="th">ไทย</option>
+                      <option value="nl">Nederlands</option>
+                      <option value="pl">Polski</option>
+                      <option value="uk">Українська</option>
                     </select>
                     <button class="translate-srt-btn" id="translateSummaryBtn">🔄 Translate</button>
                     <button class="download-btn" id="downloadSummaryTxtBtn">📥 Download TXT</button>
@@ -501,19 +517,29 @@ Here's the fastest path from link to publish-ready captions.
                   <div class="srt-controls">
                     <label for="srtLanguage" class="srt-language-label">Subtitle language</label>
                     <select id="srtLanguage" class="srt-language-select">
-                      <option value="original">Original</option>
-                      <option value="fa">فارسی</option>
+                      <option value="original">Original language</option>
                       <option value="en">English</option>
-                      <option value="ar">العربية</option>
                       <option value="es">Español</option>
                       <option value="fr">Français</option>
                       <option value="de">Deutsch</option>
                       <option value="it">Italiano</option>
-                      <option value="ru">Русский</option>
+                      <option value="pt">Português</option>
+                      <option value="ar">العربية</option>
+                      <option value="fa">فارسی</option>
                       <option value="tr">Türkçe</option>
+                      <option value="ru">Русский</option>
                       <option value="zh">中文</option>
                       <option value="ja">日本語</option>
                       <option value="ko">한국어</option>
+                      <option value="hi">हिन्दी</option>
+                      <option value="ur">اردو</option>
+                      <option value="id">Bahasa Indonesia</option>
+                      <option value="ms">Bahasa Melayu</option>
+                      <option value="vi">Tiếng Việt</option>
+                      <option value="th">ไทย</option>
+                      <option value="nl">Nederlands</option>
+                      <option value="pl">Polski</option>
+                      <option value="uk">Українська</option>
                     </select>
                     <button class="translate-srt-btn" id="translateSrtBtn">🔄 Translate</button>
                   </div>
