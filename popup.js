@@ -331,7 +331,10 @@ async function handleSummarize() {
       const videoId = extractVideoId(url);
       const response = await fetch(`${API_BASE_URL}/api/youtube-title`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(currentSession ? { 'X-Session-Id': currentSession } : {})
+        },
         body: JSON.stringify({ videoId, url })
       });
       if (response.ok) {
@@ -740,7 +743,8 @@ async function extractYouTubeAudio(url) {
     const response = await fetch(`${API_BASE_URL}/api/youtube`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(currentSession ? { 'X-Session-Id': currentSession } : {})
       },
       body: JSON.stringify({ videoId, url }),
       signal: AbortSignal.timeout(300000) // 5 minutes timeout
@@ -942,7 +946,8 @@ async function transcribeAudio(audioUrlOrVideoId, languageHint = null, onProgres
       response = await fetch(`${API_BASE_URL}/api/transcribe`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          ...(currentSession ? { 'X-Session-Id': currentSession } : {})
         },
         body: JSON.stringify({ audioUrl: fileDataUrl, languageHint }),
         signal: AbortSignal.timeout(900000) // 15 minutes timeout for larger files (14 min video needs more time)
@@ -983,7 +988,8 @@ async function transcribeAudio(audioUrlOrVideoId, languageHint = null, onProgres
       response = await fetch(`${API_BASE_URL}/api/transcribe`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(currentSession ? { 'X-Session-Id': currentSession } : {})
       },
       body: JSON.stringify(body),
         signal: AbortSignal.timeout(900000) // 15 minutes timeout for larger files (14 min video needs more time)
@@ -1096,7 +1102,8 @@ async function summarizeText(text, language = null) {
     const response = await fetch(`${API_BASE_URL}/api/summarize`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(currentSession ? { 'X-Session-Id': currentSession } : {})
       },
       body: JSON.stringify({ text, language }),
       signal: AbortSignal.timeout(120000) // 2 minutes timeout
@@ -1451,83 +1458,10 @@ async function handleTranslateSRT() {
     alert('فایل SRT در دسترس نیست');
     return;
   }
-  
-  // Show loading state
-  translateSrtBtn.disabled = true;
-  translateSrtBtn.textContent = '⏳ در حال ترجمه...';
-  
-  try {
-    console.log('TRANSLATE_SRT: Translating to', targetLanguage);
-    
-    const response = await fetch(`${API_BASE_URL}/api/translate-srt`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        srtContent: srtContent,
-        targetLanguage: targetLanguage,
-        sourceLanguage: window.originalSrtLanguage || 'en'
-      }),
-      signal: AbortSignal.timeout(300000) // 5 minutes timeout
-    });
-    
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.details || error.message || `ترجمه ناموفق بود (${response.status})`);
-    }
-    
-    const result = await response.json();
-    console.log('TRANSLATE_SRT: Success, translated segments:', result.segmentCount);
-    
-    // Update preview and current content
-    srtPreview.textContent = result.srtContent;
-    window.currentSrtContent = result.srtContent;
-    
-  } catch (error) {
-    console.error('TRANSLATE_SRT: Error:', error);
-    alert(`خطا در ترجمه: ${error.message}`);
-  } finally {
-    translateSrtBtn.disabled = false;
-    translateSrtBtn.textContent = '🔄 ترجمه';
-  }
-}
 
-// Get language name from code
-function getLanguageName(code) {
-  const names = {
-    'fa': 'فارسی',
-    'en': 'English',
-    'ar': 'العربية',
-    'es': 'Español',
-    'fr': 'Français',
-    'de': 'Deutsch',
-    'it': 'Italiano',
-    'ru': 'Русский',
-    'tr': 'Türkçe',
-    'zh': '中文',
-    'ja': '日本語',
-    'ko': '한국어'
-  };
-  return names[code] || code;
-}
-
-// Handle SRT translation
-async function handleTranslateSRT() {
-  const targetLanguage = srtLanguageSelect.value;
-  
-  if (targetLanguage === 'original') {
-    // Restore original SRT
-    if (window.originalSrtContent) {
-      srtPreview.textContent = window.originalSrtContent;
-      window.currentSrtContent = window.originalSrtContent;
-    }
-    return;
-  }
-  
-  const srtContent = window.originalSrtContent || window.currentSrtContent;
-  if (!srtContent) {
-    alert('فایل SRT در دسترس نیست');
+  if (!currentSession) {
+    alert('لطفاً ابتدا وارد حساب کاربری خود شوید');
+    handleLogin();
     return;
   }
   
@@ -1541,7 +1475,8 @@ async function handleTranslateSRT() {
     const response = await fetch(`${API_BASE_URL}/api/translate-srt`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-Session-Id': currentSession
       },
       body: JSON.stringify({
         srtContent: srtContent,
@@ -1588,6 +1523,12 @@ async function handleTranslateText(type) {
     alert('متن اصلی در دسترس نیست');
     return;
   }
+
+  if (!currentSession) {
+    alert('لطفاً ابتدا وارد حساب کاربری خود شوید');
+    handleLogin();
+    return;
+  }
   
   btn.disabled = true;
   btn.textContent = '⏳ در حال ترجمه...';
@@ -1596,7 +1537,8 @@ async function handleTranslateText(type) {
     const response = await fetch(`${API_BASE_URL}/api/translate-srt`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-Session-Id': currentSession
       },
       body: JSON.stringify({
         srtContent: `1\n00:00:00,000 --> 00:00:10,000\n${originalText}\n\n`,
@@ -2598,7 +2540,8 @@ async function downloadAudio(quality) {
     const response = await fetch(`${API_BASE_URL}/api/youtube-download`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-Session-Id': currentSession
       },
       body: JSON.stringify({
         videoId: videoId,
@@ -2662,20 +2605,6 @@ async function downloadAudio(quality) {
     URL.revokeObjectURL(blobUrl);
     
     updateProgress(100, 'دانلود کامل شد!', '');
-    
-    // Record download
-    try {
-      await fetch(`${API_BASE_URL}/api/subscription?action=recordDownload`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Session-Id': currentSession
-        },
-        body: JSON.stringify({ type: 'audio' })
-      });
-    } catch (e) {
-      console.error('Error recording download:', e);
-    }
     
     // Save to history
     saveToHistory(videoTitle, null, null, null, 'downloadAudio', { quality, videoId, url });
@@ -2782,7 +2711,8 @@ async function downloadVideo(quality) {
     const response = await fetch(`${API_BASE_URL}/api/youtube-download`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-Session-Id': currentSession
       },
       body: JSON.stringify({
         videoId: videoId,
@@ -2845,20 +2775,6 @@ async function downloadVideo(quality) {
     URL.revokeObjectURL(blobUrl);
     
     updateProgress(100, 'دانلود کامل شد!', '');
-    
-    // Record download
-    try {
-      await fetch(`${API_BASE_URL}/api/subscription?action=recordDownload`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Session-Id': currentSession
-        },
-        body: JSON.stringify({ type: 'video' })
-      });
-    } catch (e) {
-      console.error('Error recording download:', e);
-    }
     
     // Save to history
     saveToHistory(videoTitle, null, null, null, 'downloadVideo', { quality, videoId, url });
@@ -2956,25 +2872,6 @@ async function checkSubscriptionLimit(feature, videoDurationMinutes = 0) {
   } catch (error) {
     console.error('Error checking subscription limit:', error);
     return { allowed: false, reason: 'خطا در بررسی محدودیت' };
-  }
-}
-
-async function recordUsage(minutes) {
-  if (!currentSession || !minutes || minutes <= 0) return;
-  
-  try {
-    await fetch(`${API_BASE_URL}/api/subscription?action=record`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Session-Id': currentSession
-      },
-      body: JSON.stringify({
-        minutes: minutes
-      })
-    });
-  } catch (error) {
-    console.error('Error recording usage:', error);
   }
 }
 

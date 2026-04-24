@@ -3,6 +3,13 @@
 
 import { handleCORS, setCORSHeaders } from './cors.js';
 import OpenAI from 'openai';
+import {
+  requireSessionEmail,
+  enforceQuota,
+  billingMinutesFromSrtSegments,
+  consumeSrtUsage,
+  respondConsumeFailure
+} from './processing-enforcement.js';
 
 export default async function handler(req, res) {
   // Handle CORS
@@ -12,6 +19,9 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  const userEmail = requireSessionEmail(req, res);
+  if (!userEmail) return;
 
   try {
     // Check API Key
@@ -40,6 +50,9 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'No valid segments found in SRT content' });
     }
 
+    const srtMinutes = billingMinutesFromSrtSegments(segments);
+    if (!(await enforceQuota(res, userEmail, 'srt', srtMinutes))) return;
+
     // Translate segments using GPT
     const translatedSegments = await translateSegments(segments, targetLanguage, sourceLanguage, apiKey);
 
@@ -47,6 +60,13 @@ export default async function handler(req, res) {
     const translatedSRT = generateSRT(translatedSegments);
 
     console.log('TRANSLATE_SRT: Translation complete');
+
+    const consumed = await consumeSrtUsage(userEmail, srtMinutes, {
+      route: 'translate-srt',
+      segmentCount: translatedSegments.length,
+      targetLanguage
+    });
+    if (respondConsumeFailure(res, consumed)) return;
 
     setCORSHeaders(res);
     return res.status(200).json({

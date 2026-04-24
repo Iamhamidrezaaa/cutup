@@ -8,6 +8,14 @@ import fetchModule from 'node-fetch';
 import OpenAI from 'openai';
 import Busboy from 'busboy';
 import { transcribeLargeFile } from './chunk-processor.js';
+import {
+  requireSessionEmail,
+  enforceQuota,
+  estimateTranscriptionMinutesFromBytes,
+  billingMinutesFromWhisperSegments,
+  consumeTranscriptionUsage,
+  respondConsumeFailure
+} from './processing-enforcement.js';
 
 export default async function handler(req, res) {
   // Log immediately to verify this endpoint is being called
@@ -36,6 +44,9 @@ export default async function handler(req, res) {
         details: 'API Key is not configured or invalid. Please set OPENAI_API_KEY in server .env file.' 
       });
     }
+
+    const userEmail = requireSessionEmail(req, res);
+    if (!userEmail) return;
 
     // Initialize fetch
     let fetch;
@@ -137,6 +148,9 @@ export default async function handler(req, res) {
     
     const audioBuffer = Buffer.concat(chunks);
     console.log(`UPLOAD: Processing audio file, size: ${audioBuffer.length} bytes, type: ${mimeType}`);
+
+    const preMinutes = estimateTranscriptionMinutesFromBytes(audioBuffer.length);
+    if (!(await enforceQuota(res, userEmail, 'transcription', preMinutes))) return;
 
     // Determine file extension from mime type
     let extension = 'mp3';
@@ -383,6 +397,14 @@ export default async function handler(req, res) {
     console.log('UPLOAD: Sending response with text length:', responseData.text.length);
     console.log('UPLOAD: Response data keys:', Object.keys(responseData));
     console.log('UPLOAD: Response preview:', JSON.stringify(responseData).substring(0, 200));
+
+    const billedMinutes = billingMinutesFromWhisperSegments(validSegments);
+    const consumed = await consumeTranscriptionUsage(userEmail, billedMinutes, {
+      route: 'upload',
+      filename: filename || 'audio',
+      precheckMinutes: preMinutes
+    });
+    if (respondConsumeFailure(res, consumed)) return;
     
     setCORSHeaders(res);
     return res.status(200).json(responseData);

@@ -39,6 +39,12 @@ try {
     }
   });
   console.log(`✅ Loaded ${loadedCount} environment variables from .env file`);
+
+  if (process.env.DATABASE_URL) {
+    console.log('✅ DATABASE_URL is set (subscription + usage persistence enabled)');
+  } else {
+    console.warn('⚠️ DATABASE_URL is NOT set — /api/subscription and Stripe webhooks will return 503 until configured');
+  }
   
   // Verify API key is set
   const apiKey = process.env.OPENAI_API_KEY;
@@ -75,6 +81,15 @@ app.options('*', (req, res) => {
   res.sendStatus(200);
 });
 
+// Stripe webhook must receive raw body (before express.json)
+let stripeWebhookHandler = null;
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  if (!stripeWebhookHandler) {
+    return res.status(503).json({ error: 'Stripe webhook handler not loaded' });
+  }
+  return stripeWebhookHandler(req, res);
+});
+
 // Body parser middleware
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
@@ -85,7 +100,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Import and use API routes
-let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler;
+let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler;
 
 async function loadRoutes() {
   try {
@@ -152,6 +167,19 @@ async function loadRoutes() {
       generateDocxHandler = null;
     }
     
+    try {
+      const stripeWh = await import('./api/stripe-webhook.js');
+      stripeWebhookHandler = stripeWh.default;
+      console.log('✅ Stripe webhook handler loaded');
+    } catch (err) {
+      console.error('❌ Stripe webhook handler failed to load:', err.message);
+      stripeWebhookHandler = null;
+    }
+
+    const stripeCh = await import('./api/stripe-checkout.js');
+    stripeCheckoutHandler = stripeCh.default;
+    console.log('✅ Stripe checkout handler loaded');
+
     console.log('All routes loaded successfully');
   } catch (err) {
     console.error('Error loading routes:', err);
@@ -293,6 +321,13 @@ app.post('/api/subscription', async (req, res) => {
   return subscriptionHandler(req, res);
 });
 
+app.post('/api/stripe/create-checkout-session', async (req, res) => {
+  if (!stripeCheckoutHandler) {
+    return res.status(503).json({ error: 'Stripe checkout not loaded' });
+  }
+  return stripeCheckoutHandler(req, res);
+});
+
 // Error handler
 app.use((err, req, res, next) => {
   console.error('Error:', err);
@@ -331,6 +366,8 @@ loadRoutes().then(() => {
     console.log(`   GET  /api/subscription?action=info`);
     console.log(`   POST /api/subscription?action=check`);
     console.log(`   POST /api/subscription?action=upgrade`);
+    console.log(`   POST /api/stripe/create-checkout-session`);
+    console.log(`   POST /api/stripe/webhook`);
   });
   
   server.on('error', (err) => {

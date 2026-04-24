@@ -10,6 +10,7 @@ import { unlinkSync, existsSync, readFileSync, statSync, readdirSync, mkdirSync,
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { sessions } from './auth.js';
+import { isBillingDbConfigured, consumeDownloadSlotAtomic } from './billing-repository.js';
 
 // Import subscription functions for atomic check + record
 // We'll need to access these functions - for now, we'll duplicate the logic
@@ -43,17 +44,34 @@ export default async function handler(req, res) {
   }
 
   try {
+    if (!isBillingDbConfigured()) {
+      setCORSHeaders(res);
+      return res.status(503).json({
+        error: 'service_unavailable',
+        code: 'BILLING_UNAVAILABLE',
+        message: 'Billing is not configured. Set DATABASE_URL and run database migrations.'
+      });
+    }
+
     // **STEP 1: Verify Session** - Get sessionId from query OR header OR body
     const sessionId = req.query?.session || req.headers['x-session-id'] || req.body?.session;
     if (!sessionId) {
       setCORSHeaders(res);
-      return res.status(401).json({ error: 'No session provided. Please log in first.' });
+      return res.status(401).json({
+        error: 'unauthorized',
+        code: 'NO_SESSION',
+        message: 'Sign in is required for downloads.'
+      });
     }
 
     const userId = getUserIdFromSession(sessionId);
     if (!userId) {
       setCORSHeaders(res);
-      return res.status(401).json({ error: 'Invalid or expired session. Please log in again.' });
+      return res.status(401).json({
+        error: 'unauthorized',
+        code: 'INVALID_SESSION',
+        message: 'Your session is invalid or expired. Please sign in again.'
+      });
     }
     
     console.log(`[youtube-download] Session verified: userId=${userId}, sessionId=${sessionId.substring(0, 8)}...`);
@@ -85,25 +103,6 @@ export default async function handler(req, res) {
       }
     }
 
-    // **STEP 3: Check subscription limits ATOMICALLY (before download)**
-    // Import subscription functions (atomic enforcement)
-    const { canUseFeature, recordDownload } = await import('./subscription.js');
-    
-    // Map type to feature name
-    const feature = type === 'audio' ? 'downloadAudio' : 'downloadVideo';
-    
-    // Check if user can download (atomic check)
-    const canDownload = canUseFeature(userId, feature, 0);
-    if (!canDownload.allowed) {
-      setCORSHeaders(res);
-      return res.status(403).json({ 
-        error: 'Download limit exceeded',
-        message: canDownload.reason || 'حد مجاز دانلود شما تمام شده است'
-      });
-    }
-
-    // **STEP 4: Record download ATOMICALLY (before actual download)**
-    // This ensures usage is recorded even if download fails later
     const platformName = detectedPlatform === 'youtube' ? 'YouTube' : 
                          detectedPlatform === 'tiktok' ? 'TikTok' : 'Instagram';
     const metadata = {
@@ -113,10 +112,24 @@ export default async function handler(req, res) {
       videoId: videoId,
       platform: detectedPlatform
     };
-    
-    recordDownload(userId, type, metadata, sessionId);
-    
-    console.log(`[youtube-download] User ${userId} authorized for ${type} download from ${detectedPlatform}, usage recorded atomically`);
+
+    const slot = await consumeDownloadSlotAtomic(userId, type, metadata);
+    if (!slot.ok) {
+      setCORSHeaders(res);
+      const reason = slot.reason || 'Download not allowed for your plan.';
+      const code = reason.includes('not available on your current plan')
+        ? 'FEATURE_NOT_AVAILABLE'
+        : reason.includes('past due') || reason.includes('expired')
+          ? 'SUBSCRIPTION_INACTIVE'
+          : 'LIMIT_EXCEEDED';
+      return res.status(403).json({
+        error: 'forbidden',
+        code,
+        message: reason
+      });
+    }
+
+    console.log(`[youtube-download] User ${userId} authorized for ${type} download from ${detectedPlatform}, download slot consumed atomically`);
 
     // Extract video ID from URL if provided (only for YouTube)
     let finalVideoId = videoId;

@@ -3,6 +3,13 @@
 
 import OpenAI from 'openai';
 import { handleCORS, setCORSHeaders } from './cors.js';
+import {
+  requireSessionEmail,
+  enforceQuota,
+  estimateSummarizationBillMinutes,
+  consumeSummarizationUsage,
+  respondConsumeFailure
+} from './processing-enforcement.js';
 
 // Initialize OpenAI client
 // Note: API key will be set dynamically in handler to ensure it's always current
@@ -20,6 +27,9 @@ export default async function handler(req, res) {
   }
 
   try {
+    const userEmail = requireSessionEmail(req, res);
+    if (!userEmail) return;
+
     // Check API Key
     const apiKey = process.env.OPENAI_API_KEY;
     console.log('SUMMARIZE: API Key check:', apiKey ? `Present (${apiKey.substring(0, 10)}...)` : 'MISSING');
@@ -43,12 +53,32 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Text is required' });
     }
 
+    const billMinutes = estimateSummarizationBillMinutes(text);
+    if (!(await enforceQuota(res, userEmail, 'summarization', billMinutes))) return;
+
     console.log(`SUMMARIZE: Processing text, length: ${text.length} characters, language: ${language || 'auto-detect'}`);
 
-    // Summarize using OpenAI GPT with detected language
-    const summary = await summarizeWithGPT(text, language);
+    let summary = null;
+    let lastErr = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        summary = await summarizeWithGPT(text, language);
+        break;
+      } catch (e) {
+        lastErr = e;
+        console.warn(`SUMMARIZE: attempt ${attempt} failed:`, e?.message);
+        if (attempt < 2) await new Promise(r => setTimeout(r, 800));
+      }
+    }
+    if (!summary) throw lastErr;
 
     console.log('SUMMARIZE: Success');
+
+    const consumed = await consumeSummarizationUsage(userEmail, billMinutes, {
+      route: 'summarize',
+      textLength: text.length
+    });
+    if (respondConsumeFailure(res, consumed)) return;
 
     return res.status(200).json(summary);
 
@@ -76,7 +106,7 @@ export default async function handler(req, res) {
 function extractKeyPointsFromText(text, count) {
   const sentences = text.split(/[.!?]\s+/).filter(s => s.trim().length > 20);
   const points = sentences.slice(0, count).map(s => s.trim());
-  return points.length > 0 ? points : ['خلاصه‌سازی انجام شد'];
+  return points.length > 0 ? points : ['Summary generated'];
 }
 
 async function summarizeWithGPT(text, detectedLanguage = null) {

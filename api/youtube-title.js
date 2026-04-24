@@ -4,6 +4,7 @@
 import { handleCORS, setCORSHeaders } from './cors.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { requireSessionEmail } from './processing-enforcement.js';
 
 const execAsync = promisify(exec);
 
@@ -16,6 +17,9 @@ export default async function handler(req, res) {
     setCORSHeaders(res);
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  const userEmail = requireSessionEmail(req, res);
+  if (!userEmail) return;
 
   try {
     const { videoId, url } = req.body;

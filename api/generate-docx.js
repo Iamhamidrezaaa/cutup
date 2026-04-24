@@ -2,6 +2,7 @@
 // Uses docx library to create proper DOCX files
 
 import { handleCORS, setCORSHeaders } from './cors.js';
+import { requireSessionEmail, enforceQuota } from './processing-enforcement.js';
 
 // Fix Persian Bidi (Bidirectional) text for proper Word display
 // Adds Unicode BiDi control characters to handle mixed Persian/English text
@@ -108,6 +109,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  const userEmail = requireSessionEmail(req, res);
+  if (!userEmail) return;
+
   // Dynamically import docx library
   let Document, Packer, Paragraph, TextRun, AlignmentType;
   try {
@@ -134,6 +138,8 @@ export default async function handler(req, res) {
     if (!content || typeof content !== 'string') {
       return res.status(400).json({ error: 'Content is required and must be a string' });
     }
+
+    if (!(await enforceQuota(res, userEmail, 'summarization', 0))) return;
 
     console.log(`GENERATE_DOCX: Generating DOCX for ${filename || 'document'}, content length: ${content.length}`);
 

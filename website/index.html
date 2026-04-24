@@ -1,13 +1,24 @@
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cutup - دانلود و خلاصه‌سازی هوشمند ویدئو و موزیک</title>
-  <meta name="description" content="دانلود ویدئو و موزیک از یوتیوب، تبدیل به متن و خلاصه‌سازی هوشمند با AI. پشتیبانی از یوتیوب و فایل‌های صوتی.">
+  <title>Cutup — AI subtitles &amp; transcripts for creators, students &amp; pros</title>
+  <meta name="description" content="Paste a link. Get timed subtitles and a clean transcript in under a minute—no login for your first preview. Built for YouTube, TikTok, Instagram &amp; files.">
+  <link rel="canonical" href="https://cutup.shop/">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://cutup.shop/">
+  <meta property="og:title" content="Cutup — AI subtitles &amp; transcripts">
+  <meta property="og:description" content="Paste a link. Preview subtitles and transcripts in seconds—no signup for your first try. YouTube, TikTok, Instagram &amp; file upload.">
+  <meta property="og:site_name" content="Cutup">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Cutup — AI subtitles &amp; transcripts">
+  <meta name="twitter:description" content="Paste a link. Preview subtitles and transcripts in seconds. Built for creators, students, and pros.">
+  <meta name="theme-color" content="#6366f1">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -21,11 +32,14 @@
               <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            <span class="logo-text">کات‌آپ</span>
+            <span class="logo-text">Cutup</span>
           </a>
           <div class="nav-links">
-            <a href="#features" class="nav-link">ویژگی‌ها</a>
-            <a href="#how-it-works" class="nav-link">نحوه کار</a>
+            <a href="#tool" class="nav-link cta">Generate subtitles</a>
+            <a href="#features" class="nav-link">Features</a>
+            <a href="#how-it-works" class="nav-link">How it works</a>
+            <a href="#pricing" class="nav-link">Pricing</a>
+            <a href="#faq" class="nav-link">FAQ</a>
             <div class="auth-section" id="authSection">
               <button type="button" class="nav-link login-btn" id="loginBtn">
                 <svg width="18" height="18" viewBox="0 0 24 24" style="margin-left: 6px;">
@@ -34,7 +48,7 @@
                   <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
                   <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
                 </svg>
-                ورود با گوگل
+                Continue with Google
               </button>
               <div class="user-profile" id="userProfile" style="display: none;">
                 <div class="user-profile-trigger" id="userProfileTrigger">
@@ -45,11 +59,11 @@
                 <div class="user-dropdown" id="userDropdown">
                   <a href="#" class="dropdown-item" id="dashboardLink">
                     <span class="dropdown-icon">⚙️</span>
-                    <span>داشبورد</span>
+                    <span>Dashboard</span>
                   </a>
                   <button class="dropdown-item" id="logoutBtn">
                     <span class="dropdown-icon">🚪</span>
-                    <span>خروج</span>
+                    <span>Log out</span>
                   </button>
                 </div>
               </div>
@@ -88,45 +102,113 @@
       </div>
       <div class="container">
         <div class="hero-content">
+          <p class="hero-eyebrow">Subtitles &amp; transcripts · AI-powered · No signup for preview</p>
           <h1 class="hero-title">
-            دانلود و خلاصه‌سازی<br>
-            <span class="gradient-text">ویدئو و موزیک</span>
+            Ship captions <span class="gradient-text">10× faster</span>—paste a link, get real subtitles
           </h1>
           <p class="hero-description">
-            با کات‌آپ، ویدئو و موزیک را از یوتیوب دانلود کنید، به متن تبدیل کنید و خلاصه هوشمند دریافت کنید.
-            پشتیبانی کامل از یوتیوب با کیفیت‌های مختلف، فایل‌های صوتی و زیرنویس به تمام زبان‌های دنیا با استفاده از هوش مصنوعی.
+            <strong>Creators</strong> stop retyping captions. <strong>Students</strong> turn lectures into notes. <strong>Professionals</strong> export clean transcripts—fast, simple, and powerful. Your first preview runs in seconds; no account required.
           </p>
+          <div class="hero-quick-tool">
+            <label class="visually-hidden" for="heroUrlInput">Video URL</label>
+            <input type="url" id="heroUrlInput" class="hero-url-input" placeholder="Paste YouTube, TikTok, or Instagram link…" autocomplete="url" inputmode="url">
+            <div class="hero-quick-actions">
+              <button type="button" class="btn btn-primary hero-primary-btn" id="heroGenerateBtn">Generate subtitles</button>
+              <button type="button" class="btn btn-secondary hero-secondary-btn" id="heroSeeDemoBtn">See demo</button>
+            </div>
+            <p class="hero-microcopy">Free preview · Full SRT &amp; exports when you upgrade</p>
+          </div>
+          <div class="hero-cta hero-cta-row hero-cta-secondary">
+            <a href="#pricing" class="btn btn-secondary btn-ghost">View pricing</a>
+            <a href="#tool" class="nav-text-link">Or use the full tool below →</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Sample output + trust -->
+    <section class="demo-sample" id="demo-sample">
+      <div class="container">
+        <h2 class="section-title">See what you get in seconds</h2>
+        <p class="demo-sample-lead">Timed lines you can drop into any editor—this is the kind of structure Cutup builds from your link or file.</p>
+        <div class="demo-sample-grid">
+          <div class="demo-sample-card">
+            <h3 class="demo-sample-label">SRT-style preview</h3>
+            <pre class="demo-sample-pre" aria-label="Sample subtitle output">1
+00:00:01,000 --&gt; 00:00:04,200
+Hey everyone—today we're unpacking the workflow in under five minutes.
+
+2
+00:00:04,500 --&gt; 00:00:08,100
+Here's the fastest path from link to publish-ready captions.
+
+# Generated by Cutup</pre>
+          </div>
+          <div class="demo-sample-card">
+            <h3 class="demo-sample-label">Transcript snippet</h3>
+            <p class="demo-sample-text">Clean, readable paragraphs instead of a wall of auto-captions—ready for blogs, study guides, or client deliverables.</p>
+            <ul class="demo-sample-bullets">
+              <li>Key ideas stay in order</li>
+              <li>Translate or export to TXT / DOCX</li>
+              <li>Optional AI summary for long videos</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Use cases -->
+    <section class="use-cases" id="use-cases">
+      <div class="container">
+        <h2 class="section-title">Built for how you actually work</h2>
+        <div class="use-cases-grid">
+          <div class="use-case-card">
+            <span class="use-case-icon" aria-hidden="true">🎬</span>
+            <h3>Creators &amp; YouTubers</h3>
+            <p>Batch shorts and long-form. Get a timed SRT you can tweak in your editor—less time in post, more time publishing.</p>
+          </div>
+          <div class="use-case-card">
+            <span class="use-case-icon" aria-hidden="true">🎓</span>
+            <h3>Students &amp; lifelong learners</h3>
+            <p>Turn lectures and explainers into searchable text. Skim, highlight, and study without scrubbing the timeline.</p>
+          </div>
+          <div class="use-case-card">
+            <span class="use-case-icon" aria-hidden="true">💼</span>
+            <h3>Professionals &amp; teams</h3>
+            <p>Document calls, webinars, and interviews with transcripts you can share—consistent quality without a transcription agency.</p>
+          </div>
         </div>
       </div>
     </section>
 
     <!-- Download Section -->
-    <section class="download-section">
+    <section class="download-section" id="tool">
       <div class="container">
+        <p class="tool-section-lead"><strong>Step 1:</strong> Paste a link or upload a file. <strong>Step 2:</strong> Tap <strong>Generate Subtitles</strong> or <strong>Full Transcript</strong>—preview appears without login. Video/audio download stays optional.</p>
         <div class="download-box">
           <!-- Platform Tabs -->
           <div class="platform-tabs-container">
             <button class="platform-tab active" data-tab="youtube">
               <span class="platform-icon">📺</span>
-              <span class="platform-name">یوتیوب</span>
+              <span class="platform-name">YouTube</span>
             </button>
             <button class="platform-tab" data-tab="instagram">
               <span class="platform-icon">📷</span>
-              <span class="platform-name">اینستاگرام</span>
+              <span class="platform-name">Instagram</span>
             </button>
             <button class="platform-tab" data-tab="tiktok">
               <span class="platform-icon">🎵</span>
-              <span class="platform-name">تیک‌تاک</span>
+              <span class="platform-name">TikTok</span>
             </button>
             <button class="platform-tab" data-tab="audiofile">
               <span class="platform-icon">📁</span>
-              <span class="platform-name">فایل صوتی</span>
+              <span class="platform-name">Audio File</span>
             </button>
           </div>
           
           <!-- YouTube Tab Content -->
           <div class="tab-content active" id="youtube-tab">
-            <h2 class="download-title">لینک یوتیوب را وارد کنید</h2>
+            <h2 class="download-title">Paste a YouTube link</h2>
           <div class="download-input-group">
             <input 
               type="text" 
@@ -135,30 +217,30 @@
               placeholder="https://youtube.com/watch?v=..."
             >
             <button class="download-btn-main" id="pasteBtnMain">
-              📋 چسباندن
+              📋 Paste
             </button>
           </div>
             <div class="download-options" id="downloadOptionsYoutube" style="display: none;">
             <div class="download-option-group">
+              <button class="download-option-btn download-option-btn--primary" id="downloadSubtitleBtnMain">
+                <span class="option-icon">📄</span>
+                <span class="option-text">Generate Subtitles</span>
+              </button>
+              <button class="download-option-btn download-option-btn--primary" id="fullTextBtnMain">
+                <span class="option-icon">📋</span>
+                <span class="option-text">Full Transcript</span>
+              </button>
+              <button class="download-option-btn download-option-btn--primary" id="summarizeBtnMain">
+                <span class="option-icon">📝</span>
+                <span class="option-text">Summarize</span>
+              </button>
               <button class="download-option-btn" id="downloadVideoBtnMain">
                 <span class="option-icon">🎬</span>
-                <span class="option-text">دانلود ویدئو</span>
+                <span class="option-text">Download Video</span>
               </button>
               <button class="download-option-btn" id="downloadAudioBtnMain">
                 <span class="option-icon">🎵</span>
-                <span class="option-text">دانلود موزیک</span>
-              </button>
-              <button class="download-option-btn" id="downloadSubtitleBtnMain">
-                <span class="option-icon">📄</span>
-                <span class="option-text">دانلود زیرنویس</span>
-              </button>
-              <button class="download-option-btn" id="summarizeBtnMain">
-                <span class="option-icon">📝</span>
-                <span class="option-text">خلاصه‌سازی</span>
-              </button>
-              <button class="download-option-btn" id="fullTextBtnMain">
-                <span class="option-icon">📋</span>
-                <span class="option-text">متن کامل</span>
+                <span class="option-text">Download Audio</span>
               </button>
             </div>
           </div>
@@ -166,7 +248,7 @@
           
           <!-- Instagram Tab Content -->
           <div class="tab-content" id="instagram-tab">
-            <h2 class="download-title">لینک اینستاگرام را وارد کنید</h2>
+            <h2 class="download-title">Paste an Instagram link</h2>
             <div class="download-input-group">
               <input 
                 type="text" 
@@ -175,26 +257,26 @@
                 placeholder="https://www.instagram.com/p/..."
               >
               <button class="download-btn-main" id="pasteInstagramBtn">
-                📋 چسباندن
+                📋 Paste
               </button>
             </div>
             <div class="download-options" id="downloadOptionsInstagram" style="display: none;">
               <div class="download-option-group">
+                <button class="download-option-btn download-option-btn--primary" id="summarizeBtnInstagram">
+                  <span class="option-icon">📝</span>
+                  <span class="option-text">Summarize</span>
+                </button>
+                <button class="download-option-btn download-option-btn--primary" id="fullTextBtnInstagram">
+                  <span class="option-icon">📋</span>
+                  <span class="option-text">Full Transcript</span>
+                </button>
                 <button class="download-option-btn" id="downloadVideoBtnInstagram">
                   <span class="option-icon">🎬</span>
-                  <span class="option-text">دانلود ویدئو</span>
+                  <span class="option-text">Download Video</span>
                 </button>
                 <button class="download-option-btn" id="downloadAudioBtnInstagram">
                   <span class="option-icon">🎵</span>
-                  <span class="option-text">دانلود موزیک</span>
-                </button>
-                <button class="download-option-btn" id="summarizeBtnInstagram">
-                  <span class="option-icon">📝</span>
-                  <span class="option-text">خلاصه‌سازی</span>
-                </button>
-                <button class="download-option-btn" id="fullTextBtnInstagram">
-                  <span class="option-icon">📋</span>
-                  <span class="option-text">متن کامل</span>
+                  <span class="option-text">Download Audio</span>
                 </button>
               </div>
             </div>
@@ -202,7 +284,7 @@
           
           <!-- TikTok Tab Content -->
           <div class="tab-content" id="tiktok-tab">
-            <h2 class="download-title">لینک تیک‌تاک را وارد کنید</h2>
+            <h2 class="download-title">Paste a TikTok link</h2>
             <div class="download-input-group">
               <input 
                 type="text" 
@@ -211,26 +293,26 @@
                 placeholder="https://www.tiktok.com/..."
               >
               <button class="download-btn-main" id="pasteTiktokBtn">
-                📋 چسباندن
+                📋 Paste
               </button>
             </div>
             <div class="download-options" id="downloadOptionsTiktok" style="display: none;">
               <div class="download-option-group">
+                <button class="download-option-btn download-option-btn--primary" id="summarizeBtnTiktok">
+                  <span class="option-icon">📝</span>
+                  <span class="option-text">Summarize</span>
+                </button>
+                <button class="download-option-btn download-option-btn--primary" id="fullTextBtnTiktok">
+                  <span class="option-icon">📋</span>
+                  <span class="option-text">Full Transcript</span>
+                </button>
                 <button class="download-option-btn" id="downloadVideoBtnTiktok">
                   <span class="option-icon">🎬</span>
-                  <span class="option-text">دانلود ویدئو</span>
+                  <span class="option-text">Download Video</span>
                 </button>
                 <button class="download-option-btn" id="downloadAudioBtnTiktok">
                   <span class="option-icon">🎵</span>
-                  <span class="option-text">دانلود موزیک</span>
-                </button>
-                <button class="download-option-btn" id="summarizeBtnTiktok">
-                  <span class="option-icon">📝</span>
-                  <span class="option-text">خلاصه‌سازی</span>
-                </button>
-                <button class="download-option-btn" id="fullTextBtnTiktok">
-                  <span class="option-icon">📋</span>
-                  <span class="option-text">متن کامل</span>
+                  <span class="option-text">Download Audio</span>
                 </button>
               </div>
             </div>
@@ -238,7 +320,7 @@
           
           <!-- Audio File Tab Content -->
           <div class="tab-content" id="audiofile-tab">
-            <h2 class="download-title">فایل صوتی انتخاب کنید</h2>
+            <h2 class="download-title">Upload audio or video</h2>
             <div class="download-input-group">
               <label for="audioFileInput" class="file-input-label-full">
                 <input 
@@ -247,18 +329,18 @@
                   accept="audio/*,video/*" 
                   style="display: none;"
                 >
-                <span class="file-input-btn-full">📁 انتخاب فایل صوتی</span>
+                <span class="file-input-btn-full">📁 Choose file</span>
               </label>
             </div>
             <div class="download-options" id="downloadOptionsAudiofile" style="display: none;">
               <div class="download-option-group">
-                <button class="download-option-btn" id="summarizeBtnAudiofile">
-                  <span class="option-icon">📝</span>
-                  <span class="option-text">خلاصه‌سازی</span>
-                </button>
-                <button class="download-option-btn" id="fullTextBtnAudiofile">
+                <button class="download-option-btn download-option-btn--primary" id="fullTextBtnAudiofile">
                   <span class="option-icon">📋</span>
-                  <span class="option-text">متن کامل</span>
+                  <span class="option-text">Full Transcript</span>
+                </button>
+                <button class="download-option-btn download-option-btn--primary" id="summarizeBtnAudiofile">
+                  <span class="option-icon">📝</span>
+                  <span class="option-text">Summarize</span>
                 </button>
               </div>
             </div>
@@ -266,16 +348,16 @@
           
           <!-- Shared Input (hidden, used for processing) -->
           <input type="text" id="currentUrlInput" style="display: none;">
-          <div class="download-message" id="downloadMessage"></div>
+          <div class="download-message" id="downloadMessage" role="status" aria-live="polite" aria-atomic="true"></div>
           
           <!-- Progress Bar Section -->
           <div class="download-progress-container" id="downloadProgressContainer" style="display: none;">
             <div class="progress-header">
-              <span class="progress-title" id="progressTitle">در حال دانلود...</span>
+              <span class="progress-title" id="progressTitle">Working on it…</span>
               <span class="progress-close" id="progressClose">×</span>
             </div>
             <div class="progress-info">
-              <span class="file-size" id="fileSize">حجم فایل: در حال محاسبه...</span>
+              <span class="file-size" id="fileSize">Sizing file…</span>
               <span class="progress-percent" id="progressPercent">0%</span>
             </div>
             <div class="progress-bar-wrapper">
@@ -291,25 +373,36 @@
           <!-- Result Section (like extension) -->
           <div class="result-section" id="resultSection" style="display: none;">
             <div class="result-header">
-              <h2>نتیجه</h2>
-              <button class="copy-btn" id="copyBtn" title="کپی">
-                📋
-              </button>
+              <h2>Your output</h2>
+              <div class="result-header-actions">
+                <button type="button" class="copy-btn" id="shareResultBtn" title="Share">🔗 Share</button>
+                <button class="copy-btn" id="copyBtn" title="Copy active tab">📋 Copy</button>
+              </div>
+            </div>
+            
+            <div class="preview-upgrade-banner" id="previewUpgradeBanner" style="display: none;">
+              <p class="preview-upgrade-eyebrow">You’re one step away</p>
+              <p class="preview-upgrade-text"><strong>Full subtitles are right there.</strong> Upgrade to download the complete SRT, unlock every minute of the transcript, and use multilingual tools—creators use this to ship the same day.</p>
+              <p class="preview-upgrade-urgency">Free previews reset—don’t lose momentum on this video.</p>
+              <div class="preview-upgrade-actions">
+                <button type="button" class="download-btn preview-upgrade-cta" id="unlockPreviewBtn">Unlock full output</button>
+                <a href="#pricing" class="btn btn-secondary preview-upgrade-plans">See plans</a>
+              </div>
             </div>
             
             <div class="result-tabs">
-              <button class="tab-btn active" data-tab="fulltext">متن کامل</button>
-              <button class="tab-btn" data-tab="summary">خلاصه</button>
-              <button class="tab-btn" data-tab="srt">زیرنویس SRT</button>
+              <button class="tab-btn active" data-tab="fulltext">Full Transcript</button>
+              <button class="tab-btn" data-tab="summary">Summary</button>
+              <button class="tab-btn" data-tab="srt">SRT Subtitles</button>
             </div>
 
             <div class="result-content">
               <div class="tab-content active" id="fulltext-tab">
                 <div class="srt-container">
                   <div class="srt-controls">
-                    <label for="fulltextLanguage" class="srt-language-label">زبان ترجمه:</label>
+                    <label for="fulltextLanguage" class="srt-language-label">Translate to</label>
                     <select id="fulltextLanguage" class="srt-language-select">
-                      <option value="original">زبان اصلی</option>
+                      <option value="original">Original</option>
                       <option value="fa">فارسی</option>
                       <option value="en">English</option>
                       <option value="ar">العربية</option>
@@ -323,19 +416,19 @@
                       <option value="ja">日本語</option>
                       <option value="ko">한국어</option>
                     </select>
-                    <button class="translate-srt-btn" id="translateFulltextBtn">🔄 ترجمه</button>
-                    <button class="download-btn" id="downloadFulltextTxtBtn">📥 دانلود TXT</button>
-                    <button class="download-btn" id="downloadFulltextDocxBtn">📄 دانلود DOCX</button>
+                    <button class="translate-srt-btn" id="translateFulltextBtn">🔄 Translate</button>
+                    <button class="download-btn" id="downloadFulltextTxtBtn">📥 Download TXT</button>
+                    <button class="download-btn" id="downloadFulltextDocxBtn">📄 Download DOCX</button>
                   </div>
-                  <p class="fulltext" id="fulltext" style="line-height: 1.8; text-align: right; padding: 16px; background: #f5f5f5; border-radius: 8px; max-height: 500px; overflow-y: auto;"></p>
+                  <p class="fulltext" id="fulltext" style="line-height: 1.8; text-align: left; padding: 16px; background: #f5f5f5; border-radius: 8px; max-height: 500px; overflow-y: auto;"></p>
                 </div>
               </div>
               <div class="tab-content" id="summary-tab">
                 <div class="srt-container">
                   <div class="srt-controls">
-                    <label for="summaryLanguage" class="srt-language-label">زبان ترجمه:</label>
+                    <label for="summaryLanguage" class="srt-language-label">Translate to</label>
                     <select id="summaryLanguage" class="srt-language-select">
-                      <option value="original">زبان اصلی</option>
+                      <option value="original">Original</option>
                       <option value="fa">فارسی</option>
                       <option value="en">English</option>
                       <option value="ar">العربية</option>
@@ -349,9 +442,9 @@
                       <option value="ja">日本語</option>
                       <option value="ko">한국어</option>
                     </select>
-                    <button class="translate-srt-btn" id="translateSummaryBtn">🔄 ترجمه</button>
-                    <button class="download-btn" id="downloadSummaryTxtBtn">📥 دانلود TXT</button>
-                    <button class="download-btn" id="downloadSummaryDocxBtn">📄 دانلود DOCX</button>
+                    <button class="translate-srt-btn" id="translateSummaryBtn">🔄 Translate</button>
+                    <button class="download-btn" id="downloadSummaryTxtBtn">📥 Download TXT</button>
+                    <button class="download-btn" id="downloadSummaryDocxBtn">📄 Download DOCX</button>
                   </div>
                   <div class="summary-text" id="summaryText"></div>
                 </div>
@@ -359,9 +452,9 @@
               <div class="tab-content" id="srt-tab">
                 <div class="srt-container" id="srtContainer">
                   <div class="srt-controls">
-                    <label for="srtLanguage" class="srt-language-label">زبان زیرنویس:</label>
+                    <label for="srtLanguage" class="srt-language-label">Subtitle language</label>
                     <select id="srtLanguage" class="srt-language-select">
-                      <option value="original">زبان اصلی</option>
+                      <option value="original">Original</option>
                       <option value="fa">فارسی</option>
                       <option value="en">English</option>
                       <option value="ar">العربية</option>
@@ -375,9 +468,9 @@
                       <option value="ja">日本語</option>
                       <option value="ko">한국어</option>
                     </select>
-                    <button class="translate-srt-btn" id="translateSrtBtn">🔄 ترجمه</button>
+                    <button class="translate-srt-btn" id="translateSrtBtn">🔄 Translate</button>
                   </div>
-                  <button class="download-btn" id="downloadSrtBtn">📥 دانلود فایل SRT</button>
+                  <button class="download-btn" id="downloadSrtBtn">📥 Download SRT</button>
                   <div class="srt-preview" id="srtPreview" style="padding: 16px; background: #f5f5f5; border-radius: 8px; max-height: 500px; overflow-y: auto; font-family: monospace; white-space: pre-wrap;"></div>
                 </div>
               </div>
@@ -390,62 +483,62 @@
     <!-- Features Section -->
     <section id="features" class="features">
       <div class="container">
-        <h2 class="section-title">ویژگی‌ها</h2>
+        <h2 class="section-title">Built for fast subtitles & transcripts</h2>
         <div class="features-grid">
           <div class="feature-card">
-            <div class="feature-icon">🎬</div>
-            <h3 class="feature-title">دانلود ویدئو از یوتیوب</h3>
+            <div class="feature-icon">📝</div>
+            <h3 class="feature-title">SRT in seconds</h3>
             <p class="feature-description">
-              ویدئوهای یوتیوب را با کیفیت‌های مختلف (480p تا 4K) دانلود کنید.
-            </p>
-          </div>
-          <div class="feature-card">
-            <div class="feature-icon">🎵</div>
-            <h3 class="feature-title">دانلود موزیک از یوتیوب</h3>
-            <p class="feature-description">
-              موزیک ویدیوهای یوتیوب را به صورت فایل صوتی با کیفیت بالا دانلود کنید.
-            </p>
-          </div>
-          <div class="feature-card">
-            <div class="feature-icon">📁</div>
-            <h3 class="feature-title">فایل‌های صوتی</h3>
-            <p class="feature-description">
-              فایل‌های صوتی خود را آپلود کنید و متن کامل و خلاصه دریافت کنید.
-            </p>
-          </div>
-          <div class="feature-card">
-            <div class="feature-icon">💾</div>
-            <h3 class="feature-title">ذخیره تاریخچه</h3>
-            <p class="feature-description">
-              تمام خلاصه‌های خود را در تاریخچه ذخیره کنید و بعداً مرور کنید.
+              Paste a link and get a timed subtitle preview instantly. Upgrade to download the full SRT.
             </p>
           </div>
           <div class="feature-card">
             <div class="feature-icon">🧠</div>
-            <h3 class="feature-title">تبدیل هوشمند</h3>
+            <h3 class="feature-title">Whisper-grade transcription</h3>
             <p class="feature-description">
-              استفاده از Whisper AI برای تبدیل دقیق صوت به متن.
+              High-quality speech-to-text for long videos and noisy audio when captions are missing.
             </p>
           </div>
           <div class="feature-card">
-            <div class="feature-icon">📝</div>
-            <h3 class="feature-title">خلاصه‌سازی هوشمند</h3>
+            <div class="feature-icon">✨</div>
+            <h3 class="feature-title">AI summaries</h3>
             <p class="feature-description">
-              لینک یوتیوب یا فایل صوتی را وارد کنید و خلاصه هوشمند با GPT شامل نکات کلیدی دریافت کنید.
+              Turn hours of talking heads into short paragraphs and bullet takeaways you can share.
             </p>
           </div>
           <div class="feature-card">
             <div class="feature-icon">🌍</div>
-            <h3 class="feature-title">زیرنویس چندزبانه</h3>
+            <h3 class="feature-title">Multilingual</h3>
             <p class="feature-description">
-              دانلود و ترجمه زیرنویس به تمام زبان‌های دنیا با دقت بالا.
+              Translate transcripts, summaries, and subtitle tracks to the languages your audience speaks.
             </p>
           </div>
           <div class="feature-card">
-            <div class="feature-icon">🌓</div>
-            <h3 class="feature-title">حالت تاریک/روشن</h3>
+            <div class="feature-icon">📁</div>
+            <h3 class="feature-title">Upload audio & video</h3>
             <p class="feature-description">
-              رابط کاربری زیبا با پشتیبانی از حالت تاریک و روشن.
+              Drop a podcast episode, lecture recording, or screen capture—no hosting required.
+            </p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">📄</div>
+            <h3 class="feature-title">Export to TXT & DOCX</h3>
+            <p class="feature-description">
+              Download polished documents for editors, legal workflows, or content repurposing.
+            </p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">📊</div>
+            <h3 class="feature-title">Usage dashboard</h3>
+            <p class="feature-description">
+              Sign in to see how many videos you have left this month, track downloads, and revisit history in one calm control panel.
+            </p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">⚡</div>
+            <h3 class="feature-title">Preview without friction</h3>
+            <p class="feature-description">
+              Try the workflow before you pay—see the hook, then unlock the full file when you are ready.
             </p>
           </div>
         </div>
@@ -455,35 +548,116 @@
     <!-- How It Works -->
     <section id="how-it-works" class="how-it-works">
       <div class="container">
-        <h2 class="section-title">نحوه کار</h2>
+        <h2 class="section-title">How it works</h2>
         <div class="steps">
           <div class="step">
             <div class="step-number">1</div>
-            <h3 class="step-title">لینک یا فایل را وارد کنید</h3>
+            <h3 class="step-title">Paste or upload</h3>
             <p class="step-description">
-              لینک یوتیوب را پیست کنید یا فایل صوتی خود را انتخاب کنید.
+              Drop a YouTube, TikTok, or Instagram URL—or upload your own media file.
             </p>
           </div>
           <div class="step">
             <div class="step-number">2</div>
-            <h3 class="step-title">دانلود یا تبدیل</h3>
+            <h3 class="step-title">Pick your output</h3>
             <p class="step-description">
-              ویدئو یا موزیک را دانلود کنید یا مستقیماً به متن تبدیل کنید.
+              Generate subtitles, full transcript, or an AI summary with one click.
             </p>
           </div>
           <div class="step">
             <div class="step-number">3</div>
-            <h3 class="step-title">تبدیل به متن</h3>
+            <h3 class="step-title">Preview instantly</h3>
             <p class="step-description">
-              Whisper AI صوت را به متن دقیق تبدیل می‌کند.
+              See the first chunk of subtitles and text without creating an account.
             </p>
           </div>
           <div class="step">
             <div class="step-number">4</div>
-            <h3 class="step-title">خلاصه‌سازی و دریافت</h3>
+            <h3 class="step-title">Unlock everything</h3>
             <p class="step-description">
-              GPT متن را خلاصه می‌کند و نکات کلیدی استخراج می‌کند.
+              Log in, upgrade, and export the complete SRT, translations, and documents.
             </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="pricing" class="features">
+      <div class="container">
+        <h2 class="section-title">Pricing that speaks your language</h2>
+        <p class="hero-description" style="text-align: center; max-width: 760px; margin: -32px auto 24px;">
+          Save hours of manual work: we bill in <strong>video-sized outcomes</strong>, not jargon. Pick a tier by how much you publish—creators, students, and teams all start with the same instant preview.
+        </p>
+        <p class="hero-description" style="text-align: center; max-width: 640px; margin: 0 auto 32px; font-size: 15px; color: #555;">
+          <strong>How we count:</strong> 1 processed video ≈ an average <strong>5–10 minutes</strong> of talking-head or lesson audio. Longer files simply use more of your monthly pool—your dashboard shows live estimates.
+        </p>
+        <div class="pricing-plans-grid">
+          <div class="feature-card">
+            <h3 class="feature-title">Free</h3>
+            <p class="feature-description" style="font-weight: 600; color: var(--primary);">~2–3 videos total</p>
+            <p class="feature-description">Perfect for a quick proof-of-concept. Preview subtitles &amp; text, feel the workflow, then upgrade when you are ready to ship.</p>
+            <ul class="feature-description" style="padding-left: 18px; margin: 0 0 12px; font-size: 14px; line-height: 1.5;">
+              <li>No full SRT download (locked)</li>
+              <li>Limited languages &amp; tools</li>
+              <li>Watermark may appear</li>
+            </ul>
+            <a href="#tool" class="btn btn-secondary" style="margin-top: auto; display: inline-block;">Try free preview</a>
+          </div>
+          <div class="feature-card">
+            <h3 class="feature-title">Starter · $9.99/mo</h3>
+            <p class="feature-description" style="font-weight: 600; color: var(--primary);">~10–15 videos / month</p>
+            <p class="feature-description">Ideal for solo creators posting weekly. Download real SRT files, keep summaries on, and stay bilingual without hiring a transcriptionist.</p>
+            <ul class="feature-description" style="padding-left: 18px; margin: 0 0 12px; font-size: 14px; line-height: 1.5;">
+              <li>Subtitle download (SRT) unlocked</li>
+              <li>Up to 2 languages</li>
+              <li>Summaries enabled</li>
+            </ul>
+            <a href="dashboard.html" class="btn btn-primary" style="margin-top: auto; display: inline-block;">Upgrade in dashboard</a>
+          </div>
+          <div class="feature-card" style="border-color: var(--primary); box-shadow: 0 8px 28px var(--shadow);">
+            <h3 class="feature-title">Pro · $19.99/mo</h3>
+            <p class="feature-description" style="font-weight: 600; color: var(--primary);">~25–35 videos / month</p>
+            <p class="feature-description">For channels, educators, and agencies juggling multiple languages. Faster processing, richer exports, fewer bottlenecks.</p>
+            <ul class="feature-description" style="padding-left: 18px; margin: 0 0 12px; font-size: 14px; line-height: 1.5;">
+              <li>Multilingual subtitles &amp; translations</li>
+              <li>Faster queue times</li>
+              <li>Better TXT / DOCX exports</li>
+            </ul>
+            <a href="dashboard.html" class="btn btn-primary" style="margin-top: auto; display: inline-block;">Subscribe with card</a>
+          </div>
+          <div class="feature-card">
+            <h3 class="feature-title">Advanced · $39.99/mo</h3>
+            <p class="feature-description" style="font-weight: 600; color: var(--primary);">~80–100 videos / month</p>
+            <p class="feature-description">Heavy publishing schedules get priority routing, generous fair-use headroom, and every premium export option unlocked.</p>
+            <ul class="feature-description" style="padding-left: 18px; margin: 0 0 12px; font-size: 14px; line-height: 1.5;">
+              <li>Priority processing</li>
+              <li>Fair-use pool (no scary fine print in-app)</li>
+              <li>Full feature access</li>
+            </ul>
+            <a href="dashboard.html" class="btn btn-primary" style="margin-top: auto; display: inline-block;">Go Advanced</a>
+          </div>
+        </div>
+        <p class="hero-description" style="text-align: center; max-width: 720px; margin: 28px auto 0; font-size: 14px; color: #666;">
+          International renewals run through Stripe after you sign in. Exact totals always match the live checkout page inside your dashboard.
+        </p>
+      </div>
+    </section>
+
+    <section id="faq" class="how-it-works">
+      <div class="container">
+        <h2 class="section-title">FAQ</h2>
+        <div class="steps" style="grid-template-columns: 1fr;">
+          <div class="step" style="text-align: left;">
+            <h3 class="step-title">Do I need an account?</h3>
+            <p class="step-description">No. You can run previews immediately. Creating a free account unlocks history and higher limits.</p>
+          </div>
+          <div class="step" style="text-align: left;">
+            <h3 class="step-title">Which payments do you support?</h3>
+            <p class="step-description">International cards via Stripe for Starter, Pro, and Advanced (<strong>$9.99</strong> / <strong>$19.99</strong> / <strong>$39.99</strong> per month). Optional legacy IRR cart remains in the dashboard where applicable.</p>
+          </div>
+          <div class="step" style="text-align: left;">
+            <h3 class="step-title">Can I translate subtitles?</h3>
+            <p class="step-description">Yes. Paid plans can translate SRT, transcript, and summary text into multiple languages.</p>
           </div>
         </div>
       </div>
@@ -501,18 +675,21 @@
               <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            <span class="logo-text">کات‌آپ</span>
+            <span class="logo-text">Cutup</span>
           </a>
         </div>
         <div class="footer-links">
-          <a href="about.html" class="footer-link">درباره ما</a>
-          <a href="privacy.html" class="footer-link">حریم خصوصی</a>
-          <a href="contact.html" class="footer-link">تماس با ما</a>
+          <a href="subtitle-generator.html" class="footer-link">Subtitle generator</a>
+          <a href="video-to-text.html" class="footer-link">Video to text</a>
+          <a href="translate-video.html" class="footer-link">Translate video</a>
+          <a href="about.html" class="footer-link">About</a>
+          <a href="privacy.html" class="footer-link">Privacy</a>
+          <a href="contact.html" class="footer-link">Contact</a>
         </div>
       </div>
       <div class="footer-bottom">
         <div class="footer-copyright">
-          <p>&copy; 2026. تمامی حقوق برای کات‌آپ محفوظ است.</p>
+          <p>&copy; 2026 Cutup. All rights reserved.</p>
         </div>
         <div class="footer-enamad">
           <a 
@@ -524,7 +701,7 @@
             <img 
               referrerpolicy="origin" 
               src="https://trustseal.enamad.ir/logo.aspx?id=696822&Code=jUnfgpgbYBkCq6pWiydVQ6Vvj74q0ODv" 
-              alt="نماد اعتماد الکترونیکی" 
+              alt="eNamad trust seal" 
               class="enamad-logo"
             />
           </a>

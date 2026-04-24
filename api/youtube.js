@@ -8,6 +8,12 @@ import { createWriteStream, unlinkSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import fetchModule from 'node-fetch';
+import {
+  requireSessionEmail,
+  enforceQuota,
+  consumeTranscriptionUsage,
+  respondConsumeFailure
+} from './processing-enforcement.js';
 
 const execAsync = promisify(exec);
 
@@ -19,6 +25,9 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  const userEmail = requireSessionEmail(req, res);
+  if (!userEmail) return;
 
   try {
     const { videoId, url } = req.body;
@@ -167,6 +176,14 @@ export default async function handler(req, res) {
         }
       } catch (metadataError) {
         console.warn('YOUTUBE: Could not get metadata, will auto-detect:', metadataError.message);
+      }
+
+      const durationMinutesForQuota =
+        videoDuration != null && Number(videoDuration) > 0
+          ? Math.ceil(Number(videoDuration) / 60)
+          : 15;
+      if (!(await enforceQuota(res, userEmail, 'transcription', durationMinutesForQuota))) {
+        return;
       }
       
       // Use yt-dlp to extract audio
@@ -320,6 +337,19 @@ export default async function handler(req, res) {
       // Log title before returning
       console.log(`YOUTUBE: Returning title in response: ${videoTitle || 'null'}`);
       console.log(`YOUTUBE: Returning duration in response: ${videoDuration || 'null'}`);
+
+      if (subtitles && String(subtitles).trim().length > 0) {
+        const minutesRecorded =
+          videoDuration != null && Number(videoDuration) > 0
+            ? Math.ceil(Number(videoDuration) / 60)
+            : durationMinutesForQuota;
+        const consumed = await consumeTranscriptionUsage(userEmail, minutesRecorded, {
+          source: 'youtube',
+          mode: 'subtitles',
+          videoId: finalVideoId
+        });
+        if (respondConsumeFailure(res, consumed)) return;
+      }
       
       setCORSHeaders(res);
       return res.status(200).json({

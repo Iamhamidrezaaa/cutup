@@ -1,12 +1,22 @@
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>داشبورد - Cutup</title>
+  <title>Dashboard — Cutup | Account &amp; usage</title>
+  <meta name="description" content="Manage your Cutup subscription, usage, and billing. Signed-in workspace for creators and teams.">
+  <link rel="canonical" href="https://cutup.shop/dashboard.html">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <meta name="robots" content="noindex, follow">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://cutup.shop/dashboard.html">
+  <meta property="og:title" content="Cutup Dashboard">
+  <meta property="og:description" content="Subscription, usage, and billing for your Cutup account.">
+  <meta name="twitter:card" content="summary">
+  <meta name="theme-color" content="#6366f1">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="dashboard.css">
 </head>
@@ -15,13 +25,13 @@
     <!-- Header -->
     <header class="dashboard-header">
       <div class="header-content">
-        <a href="/" class="logo" style="text-decoration: none; color: inherit;">
+        <a href="index.html" class="logo" style="text-decoration: none; color: inherit;">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
-          <span class="logo-text">کات‌آپ</span>
+          <span class="logo-text">Cutup</span>
         </a>
         <div class="header-actions">
           <div class="user-profile-header" id="userProfileHeader">
@@ -29,7 +39,7 @@
               <img src="" alt="Profile" class="user-avatar-header" id="userAvatarHeader">
               <span class="user-name-header" id="userNameHeader"></span>
             </a>
-            <button class="logout-btn-header" id="logoutBtnHeader">خروج</button>
+            <button class="logout-btn-header" id="logoutBtnHeader">Log out</button>
           </div>
         </div>
       </div>
@@ -42,28 +52,28 @@
         <nav class="sidebar-nav">
           <a href="#overview" class="nav-item active" data-section="overview">
             <span class="nav-icon">📊</span>
-            <span class="nav-text">نمای کلی</span>
+            <span class="nav-text">Overview</span>
           </a>
           <a href="#subscription" class="nav-item" data-section="subscription">
             <span class="nav-icon">💳</span>
-            <span class="nav-text">اشتراک</span>
+            <span class="nav-text">Subscription</span>
           </a>
           <a href="#usage" class="nav-item" data-section="usage">
             <span class="nav-icon">📈</span>
-            <span class="nav-text">استفاده</span>
+            <span class="nav-text">Usage</span>
           </a>
           <a href="#cart" class="nav-item" data-section="cart">
             <span class="nav-icon">🛒</span>
-            <span class="nav-text">سبد خرید</span>
+            <span class="nav-text">Cart</span>
             <span class="cart-badge" id="cartBadge" style="display: none;">0</span>
           </a>
           <a href="#financial" class="nav-item" data-section="financial">
             <span class="nav-icon">💰</span>
-            <span class="nav-text">مالی</span>
+            <span class="nav-text">Billing</span>
           </a>
           <a href="#support" class="nav-item" data-section="support">
             <span class="nav-icon">🎫</span>
-            <span class="nav-text">پشتیبانی</span>
+            <span class="nav-text">Support</span>
           </a>
         </nav>
       </aside>
@@ -72,58 +82,58 @@
       <div class="dashboard-content">
         <!-- Overview Section -->
         <section class="dashboard-section active" id="overview-section">
-          <h1 class="section-title">خوش آمدید!</h1>
+          <h1 class="section-title">Welcome</h1>
           <div class="welcome-message" id="welcomeMessage"></div>
           
           <!-- Stats Cards -->
           <div class="stats-grid">
             <div class="stat-card">
-              <div class="stat-icon">⏱️</div>
+              <div class="stat-icon">🎬</div>
               <div class="stat-content">
                 <div class="stat-value" id="usedMinutes">0</div>
-                <div class="stat-label">دقیقه استفاده شده (این ماه)</div>
+                <div class="stat-label" id="statUsedLabel">Videos processed (~this month)</div>
               </div>
             </div>
             <div class="stat-card">
               <div class="stat-icon">📊</div>
               <div class="stat-content">
                 <div class="stat-value" id="remainingMinutes">0</div>
-                <div class="stat-label">دقیقه باقی‌مانده (خلاصه‌سازی/ترنسکریپشن)</div>
+                <div class="stat-label" id="statRemainingLabel">Videos left (~this month)</div>
               </div>
             </div>
             <div class="stat-card">
               <div class="stat-icon">💳</div>
               <div class="stat-content">
-                <div class="stat-value" id="currentPlan">رایگان</div>
-                <div class="stat-label">پلن فعلی</div>
+                <div class="stat-value" id="currentPlan">Free</div>
+                <div class="stat-label">Current plan</div>
               </div>
             </div>
             <div class="stat-card">
               <div class="stat-icon">📅</div>
               <div class="stat-content">
                 <div class="stat-value" id="expiryDate">-</div>
-                <div class="stat-label">تاریخ انقضا</div>
+                <div class="stat-label">Renewal / expiry</div>
               </div>
             </div>
           </div>
 
           <!-- Usage Chart -->
           <div class="chart-container">
-            <h2 class="chart-title">نمودار استفاده</h2>
+            <h2 class="chart-title">Usage (~videos)</h2>
             <canvas id="usageChart"></canvas>
           </div>
         </section>
 
         <!-- Subscription Section -->
         <section class="dashboard-section" id="subscription-section">
-          <h1 class="section-title">اشتراک</h1>
+          <h1 class="section-title">Subscription</h1>
           <div class="subscription-info" id="subscriptionInfo"></div>
           <div class="plans-grid" id="plansGrid"></div>
         </section>
 
         <!-- Cart Section -->
         <section class="dashboard-section" id="cart-section" style="display: none;">
-          <h1 class="section-title">سبد خرید</h1>
+          <h1 class="section-title">Cart</h1>
           <div class="cart-content" id="cartContent">
             <div class="cart-items" id="cartItems"></div>
             <div class="cart-summary" id="cartSummary"></div>
@@ -132,19 +142,19 @@
 
         <!-- Usage Section -->
         <section class="dashboard-section" id="usage-section">
-          <h1 class="section-title">استفاده</h1>
+          <h1 class="section-title">Usage</h1>
           <div class="usage-details" id="usageDetails"></div>
         </section>
 
         <!-- Financial Section -->
         <section class="dashboard-section" id="financial-section">
-          <h1 class="section-title">مالی</h1>
+          <h1 class="section-title">Billing</h1>
           <div class="financial-info" id="financialInfo"></div>
         </section>
 
         <!-- Support Section -->
         <section class="dashboard-section" id="support-section">
-          <h1 class="section-title">پشتیبانی</h1>
+          <h1 class="section-title">Support</h1>
           <div class="support-tickets" id="supportTickets"></div>
         </section>
       </div>
@@ -161,18 +171,21 @@
               <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            <span class="logo-text">کات‌آپ</span>
+            <span class="logo-text">Cutup</span>
           </a>
         </div>
         <div class="footer-links">
-          <a href="about.html" class="footer-link">درباره ما</a>
-          <a href="privacy.html" class="footer-link">حریم خصوصی</a>
-          <a href="contact.html" class="footer-link">تماس با ما</a>
+          <a href="subtitle-generator.html" class="footer-link">Subtitle generator</a>
+          <a href="video-to-text.html" class="footer-link">Video to text</a>
+          <a href="translate-video.html" class="footer-link">Translate video</a>
+          <a href="about.html" class="footer-link">About</a>
+          <a href="privacy.html" class="footer-link">Privacy</a>
+          <a href="contact.html" class="footer-link">Contact</a>
         </div>
       </div>
       <div class="footer-bottom">
         <div class="footer-copyright">
-          <p>&copy; 2026. تمامی حقوق برای کات‌آپ محفوظ است.</p>
+          <p>&copy; 2026 Cutup. All rights reserved.</p>
         </div>
         <div class="footer-enamad">
           <a 
@@ -184,7 +197,7 @@
             <img 
               referrerpolicy="origin" 
               src="https://trustseal.enamad.ir/logo.aspx?id=696822&Code=jUnfgpgbYBkCq6pWiydVQ6Vvj74q0ODv" 
-              alt="نماد اعتماد الکترونیکی" 
+              alt="eNamad trust seal" 
               class="enamad-logo"
             />
           </a>

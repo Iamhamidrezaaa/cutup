@@ -87,6 +87,15 @@ export default async function handler(req, res) {
         expiresAt: Date.now() + (6 * 60 * 60 * 1000) // 6 hours
       });
 
+      try {
+        const { ensureUserByEmail, isBillingDbConfigured } = await import('./billing-repository.js');
+        if (isBillingDbConfigured()) {
+          await ensureUserByEmail(user.email);
+        }
+      } catch (e) {
+        console.error('[auth] ensureUserByEmail failed:', e.message);
+      }
+
       // Clean up expired sessions
       cleanupExpiredSessions();
 

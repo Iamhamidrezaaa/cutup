@@ -2,9 +2,68 @@
 const API_BASE_URL = 'https://cutup.shop';
 const DASHBOARD_HISTORY_KEY = 'cutup_dashboard_history'; // Shared key for localStorage
 let currentSession = null;
+
+/** Maps backend minutes → user-facing “videos” (~5–10 min each). */
+const AVG_VIDEO_MINUTES = 7;
+
+function videosUsedEstimate(usedMinutes) {
+  return Math.max(0, Math.ceil((Number(usedMinutes) || 0) / AVG_VIDEO_MINUTES));
+}
+
+function videosRemainingEstimate(usedMinutes, limitMinutes) {
+  const remMin = Math.max(0, (Number(limitMinutes) || 0) - (Number(usedMinutes) || 0));
+  return Math.floor(remMin / AVG_VIDEO_MINUTES);
+}
+
+function isAdvancedFairUsePlan(planId) {
+  return planId === 'advanced';
+}
+
+function planValueCopy(plan) {
+  const id = plan.id;
+  if (id === 'starter') {
+    return '~10–15 videos / month · subtitle downloads · up to 2 languages · summaries';
+  }
+  if (id === 'pro') {
+    return '~25–35 videos / month · multilingual subtitles · faster processing · stronger exports';
+  }
+  if (id === 'advanced') {
+    return '~80–100+ typical videos / month · priority queue · fair use · every feature';
+  }
+  return 'Full processing for creators and teams';
+}
 let currentUser = null;
 let subscriptionInfo = null;
 let shoppingCart = [];
+
+function trackConversionEvent(eventName, properties = {}) {
+  try {
+    if (window.posthog && typeof window.posthog.capture === 'function') {
+      window.posthog.capture(eventName, properties);
+    }
+    if (typeof window.gtag === 'function') {
+      window.gtag('event', eventName, properties);
+    }
+  } catch (e) { /* ignore */ }
+}
+
+function showDashboardBanner(message, variant = 'info') {
+  let el = document.getElementById('dashboardBanner');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'dashboardBanner';
+    el.setAttribute('role', 'status');
+    el.setAttribute('aria-live', 'polite');
+    document.body.insertBefore(el, document.body.firstChild);
+  }
+  el.textContent = message;
+  el.className = `dashboard-banner dashboard-banner--${variant}`;
+  el.hidden = false;
+  clearTimeout(el._hideT);
+  el._hideT = setTimeout(() => {
+    el.hidden = true;
+  }, 10000);
+}
 
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', () => {
@@ -15,6 +74,29 @@ document.addEventListener('DOMContentLoaded', () => {
   
   if (authSuccess === 'success' && sessionId) {
     localStorage.setItem('cutup_session', sessionId);
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+
+  const paymentResult = urlParams.get('payment');
+  if (paymentResult === 'success') {
+    trackConversionEvent('payment_success', { method: 'stripe', surface: 'dashboard_return' });
+    setTimeout(() => {
+      showDashboardBanner(
+        'Payment received. Your plan should update within a few seconds — this page refreshes your usage automatically.',
+        'success'
+      );
+    }, 400);
+  } else if (paymentResult === 'cancel') {
+    trackConversionEvent('payment_cancelled', { method: 'stripe', surface: 'dashboard_return' });
+    setTimeout(() => {
+      showDashboardBanner('Checkout was cancelled. You were not charged.', 'neutral');
+    }, 400);
+  }
+
+  if ((paymentResult === 'success' || paymentResult === 'cancel') && sessionId) {
+    const clean = `${window.location.pathname}?session=${encodeURIComponent(sessionId)}`;
+    window.history.replaceState({}, document.title, clean);
+  } else if (paymentResult === 'success' || paymentResult === 'cancel') {
     window.history.replaceState({}, document.title, window.location.pathname);
   }
   
@@ -29,7 +111,7 @@ async function initDashboard() {
   let savedSession = sessionFromUrl || localStorage.getItem('cutup_session');
   
   if (!savedSession) {
-    window.location.href = '/';
+    window.location.href = 'index.html';
     return;
   }
   
@@ -137,16 +219,16 @@ async function loadUserProfile() {
         showUserProfile(data.user);
       } else {
         localStorage.removeItem('cutup_session');
-        window.location.href = '/';
+        window.location.href = 'index.html';
       }
     } else {
       localStorage.removeItem('cutup_session');
-      window.location.href = '/';
+      window.location.href = 'index.html';
     }
   } catch (error) {
     console.error('Error loading user profile:', error);
     localStorage.removeItem('cutup_session');
-    window.location.href = '/';
+    window.location.href = 'index.html';
   }
 }
 
@@ -179,7 +261,9 @@ function showUserProfile(user) {
   userNameHeader.textContent = user.name || user.email;
   
   if (welcomeMessage) {
-    welcomeMessage.textContent = `خوش آمدید ${user.name || user.email}!`;
+    const raw = (user.name || user.email || 'there').trim();
+    const first = raw.includes(' ') ? raw.split(/\s+/)[0] : raw.split('@')[0];
+    welcomeMessage.textContent = `Hi ${first}—here’s your plan and usage at a glance.`;
   }
   
   console.log('[dashboard] User profile updated successfully');
@@ -261,10 +345,10 @@ async function loadSubscriptionInfo() {
       // Fallback: Create default structure (but don't use localStorage)
       subscriptionInfo = {
         plan: 'free',
-        planName: 'رایگان',
+        planName: 'Free',
         usage: {
-          monthly: { minutes: 0, remaining: 20 },
-          monthlyLimit: 20,
+          monthly: { minutes: 0, remaining: 15 },
+          monthlyLimit: 15,
           downloads: {
             audio: { count: 0, limit: 3 },
             video: { count: 0, limit: 3 }
@@ -279,10 +363,10 @@ async function loadSubscriptionInfo() {
     // Fallback: Create default structure
     subscriptionInfo = {
       plan: 'free',
-      planName: 'رایگان',
+      planName: 'Free',
       usage: {
-        monthly: { minutes: 0, remaining: 20 },
-        monthlyLimit: 20,
+        monthly: { minutes: 0, remaining: 15 },
+          monthlyLimit: 15,
         downloads: {
           audio: { count: 0, limit: 3 },
           video: { count: 0, limit: 3 }
@@ -298,24 +382,36 @@ function updateDashboard() {
   
   const usedMinutes = subscriptionInfo.usage.monthly.minutes || 0;
   const limit = subscriptionInfo.usage.monthlyLimit || 0;
-  const remaining = Math.max(0, limit - usedMinutes);
+  const planId = subscriptionInfo.plan || 'free';
+  const usedVideosDisp = videosUsedEstimate(usedMinutes);
+  const remainingVideosDisp = videosRemainingEstimate(usedMinutes, limit);
   
   // Update stats with null checks
   const usedMinutesEl = document.getElementById('usedMinutes');
   const remainingMinutesEl = document.getElementById('remainingMinutes');
+  const statUsedLabel = document.getElementById('statUsedLabel');
+  const statRemainingLabel = document.getElementById('statRemainingLabel');
   const currentPlanEl = document.getElementById('currentPlan');
   const expiryDateEl = document.getElementById('expiryDate');
   
-  if (usedMinutesEl) usedMinutesEl.textContent = usedMinutes;
-  if (remainingMinutesEl) remainingMinutesEl.textContent = remaining;
+  if (usedMinutesEl) usedMinutesEl.textContent = usedVideosDisp > 0 ? `~${usedVideosDisp}` : '0';
+  if (remainingMinutesEl) {
+    remainingMinutesEl.textContent = isAdvancedFairUsePlan(planId) ? 'Fair use' : String(remainingVideosDisp);
+  }
+  if (statUsedLabel) statUsedLabel.textContent = 'Videos processed (~this month)';
+  if (statRemainingLabel) {
+    statRemainingLabel.textContent = isAdvancedFairUsePlan(planId)
+      ? 'Included capacity (fair use)'
+      : 'Videos left (~this month)';
+  }
   if (currentPlanEl) currentPlanEl.textContent = subscriptionInfo.planName;
   
   if (expiryDateEl) {
     if (subscriptionInfo.subscription.endDate) {
       const endDate = new Date(subscriptionInfo.subscription.endDate);
-      expiryDateEl.textContent = endDate.toLocaleDateString('fa-IR');
+      expiryDateEl.textContent = endDate.toLocaleDateString('en-US');
     } else {
-      expiryDateEl.textContent = 'نامحدود';
+      expiryDateEl.textContent = 'No end date';
     }
   }
   
@@ -339,7 +435,7 @@ function updateDashboard() {
           <div class="stat-icon">📥</div>
           <div class="stat-content">
             <div class="stat-value" id="downloadCount">${audioCount + videoCount}</div>
-            <div class="stat-label">دانلود (موزیک: ${audioCount}${audioLimit ? `/${audioLimit}` : ''} | ویدئو: ${videoCount}${videoLimit ? `/${videoLimit}` : ''})</div>
+            <div class="stat-label">Downloads (audio: ${audioCount}${audioLimit ? `/${audioLimit}` : ''} | video: ${videoCount}${videoLimit ? `/${videoLimit}` : ''})</div>
           </div>
         `;
         statsGrid.appendChild(downloadStats);
@@ -352,7 +448,7 @@ function updateDashboard() {
       }
       const labelEl = downloadStats.querySelector('.stat-label');
       if (labelEl) {
-        labelEl.textContent = `دانلود (موزیک: ${audioCount}${audioLimit ? `/${audioLimit}` : ''} | ویدئو: ${videoCount}${videoLimit ? `/${videoLimit}` : ''})`;
+        labelEl.textContent = `Downloads (audio: ${audioCount}${audioLimit ? `/${audioLimit}` : ''} | video: ${videoCount}${videoLimit ? `/${videoLimit}` : ''})`;
         console.log('[dashboard] Updated download label');
       }
     }
@@ -391,6 +487,7 @@ async function drawUsageChart() {
   const used = subscriptionInfo.usage.monthly.minutes || 0;
   const limit = subscriptionInfo.usage.monthlyLimit || 0;
   const percentage = limit > 0 ? (used / limit) * 100 : 0;
+  const planKey = subscriptionInfo.plan || 'free';
   
   ctx.clearRect(0, 0, width, height);
   
@@ -491,20 +588,29 @@ async function drawUsageChart() {
     ctx.textAlign = 'center';
     ctx.fillText(dayName, x + barWidth / 2 - 2.5, height - 10);
     
-    // Draw minutes label
     if (day.minutes > 0) {
       ctx.fillStyle = '#1a1a1a';
       ctx.font = '10px Vazirmatn';
       ctx.textAlign = 'center';
-      ctx.fillText(`${day.minutes}د`, x + barWidth / 2 - 2.5, y - 5);
+      const vEq = Math.max(1, Math.ceil(day.minutes / AVG_VIDEO_MINUTES));
+      ctx.fillText(`~${vEq}`, x + barWidth / 2 - 2.5, y - 5);
     }
   });
   
-  // Draw summary text
+  const usedV = videosUsedEstimate(used);
+  const remV = videosRemainingEstimate(used, limit);
   ctx.fillStyle = '#1a1a1a';
-  ctx.font = '16px Vazirmatn';
+  ctx.font = '14px Vazirmatn';
   ctx.textAlign = 'right';
-  ctx.fillText(`مجموع: ${used} / ${limit} دقیقه (${percentage.toFixed(1)}%)`, width - 20, 30);
+  if (isAdvancedFairUsePlan(planKey)) {
+    ctx.fillText(`~${usedV} videos processed · priority & fair-use pool`, width - 20, 30);
+  } else {
+    ctx.fillText(
+      `~${usedV} videos used · ~${remV} left · ${percentage.toFixed(0)}% of monthly pool`,
+      width - 20,
+      30
+    );
+  }
 }
 
 async function loadPlans() {
@@ -521,16 +627,16 @@ async function loadPlans() {
         displayPlans(data.plans);
       } else {
         console.error('Invalid plans data:', data);
-        showPlansError('داده‌های پلن نامعتبر است');
+        showPlansError('We couldn\'t read plan data from the server. Tap retry or refresh.');
       }
     } else {
       const errorData = await response.json().catch(() => ({}));
       console.error('Error loading plans:', response.status, errorData);
-      showPlansError('خطا در بارگذاری پلن‌ها');
+      showPlansError('Plans didn\'t load. Check your connection and retry.');
     }
   } catch (error) {
     console.error('Error loading plans:', error);
-    showPlansError('خطا در اتصال به سرور');
+    showPlansError('Network issue while loading plans. Try again.');
   }
 }
 
@@ -539,7 +645,7 @@ function showPlansError(message) {
   if (plansGrid) {
     plansGrid.innerHTML = `<div class="error-message" style="text-align: center; padding: 48px; color: #ef4444;">
       <p>${message}</p>
-      <button onclick="loadPlans()" style="margin-top: 16px; padding: 8px 16px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer;">تلاش مجدد</button>
+      <button onclick="loadPlans()" style="margin-top: 16px; padding: 8px 16px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer;">Retry</button>
     </div>`;
   }
 }
@@ -554,7 +660,7 @@ function displayPlans(plans) {
   console.log('Displaying plans:', plans);
   
   if (!plans || plans.length === 0) {
-    plansGrid.innerHTML = '<div class="empty-state"><p>پلنی یافت نشد</p></div>';
+    plansGrid.innerHTML = '<div class="empty-state"><p class="dashboard-empty-note">No plans to show right now. Refresh in a moment.</p></div>';
     return;
   }
   
@@ -562,8 +668,7 @@ function displayPlans(plans) {
   const freePlan = plans.find(p => p.id === 'free');
   const paidPlans = plans.filter(p => p.id !== 'free');
   
-  // Sort paid plans: starter, pro, business
-  const sortedPaidPlans = ['starter', 'pro', 'business']
+  const sortedPaidPlans = ['starter', 'pro', 'advanced']
     .map(id => paidPlans.find(p => p.id === id))
     .filter(p => p);
   
@@ -574,15 +679,16 @@ function displayPlans(plans) {
     const freeInfo = document.createElement('div');
     freeInfo.className = 'free-plan-text';
     freeInfo.innerHTML = `
-      <h3 class="free-plan-title">💎 پلن رایگان</h3>
+      <h3 class="free-plan-title">Free — taste the workflow</h3>
       <p class="free-plan-description">
-        در حالت عادی یا همان عضویت رایگان، شما محدودیت‌های زیر را دارید:
+        Built to show value in one sitting. Limits are intentionally tight so serious creators upgrade quickly.
       </p>
       <ul class="free-plan-limits">
-        <li>✅ حداکثر 3 دقیقه خلاصه‌سازی در روز یا 20 دقیقه در ماه</li>
-        <li>✅ دانلود موزیک: 3 دانلود در ماه</li>
-        <li>✅ دانلود ویدئو: 3 دانلود در ماه (فقط تا کیفیت 480p)</li>
-        <li>❌ بدون ویژگی‌های پیشرفته مثل زیرنویس‌سازی و خلاصه</li>
+        <li>✅ ~2–3 short videos / month · enough to feel the magic</li>
+        <li>✅ Subtitle & transcript preview on the homepage</li>
+        <li>❌ Full SRT download stays locked — upgrade to export</li>
+        <li>⚠️ Watermark may appear · languages & tools are limited</li>
+        <li>🔔 Hit a wall? Upgrade unlocks uninterrupted batches for students, creators, and pros</li>
       </ul>
     `;
     plansGrid.appendChild(freeInfo);
@@ -615,36 +721,45 @@ function displayPlans(plans) {
     // Get download limits
     const audioLimit = plan.downloadAudioLimit !== undefined ? plan.downloadAudioLimit : null;
     const videoLimit = plan.downloadVideoLimit !== undefined ? plan.downloadVideoLimit : null;
-    const audioText = audioLimit ? `${audioLimit} دانلود در ماه` : 'نامحدود';
-    const videoText = videoLimit ? `${videoLimit} دانلود در ماه` : 'نامحدود';
-    
-    planCard.innerHTML = `
-      <div class="paid-plan-header">
-        <div class="paid-plan-name">${plan.name}</div>
-        ${plan.id === subscriptionInfo?.plan ? '<div class="current-badge">پلن فعلی</div>' : ''}
-      </div>
-      <div class="plan-billing-selector">
-        <label>انتخاب دوره:</label>
+    const audioText = audioLimit ? `${audioLimit} / month` : 'Unlimited';
+    const videoText = videoLimit ? `${videoLimit} / month` : 'Unlimited';
+    const usd = plan.priceUsd && plan.priceUsd.monthly > 0 ? plan.priceUsd.monthly : null;
+    const stripeKey = ['starter', 'pro', 'advanced'].includes(plan.id) ? plan.id : 'pro';
+    const usdLabel = usd != null ? `$${Number(usd).toFixed(2)}` : '';
+    const priceSectionHtml = usd
+      ? `<div class="plan-price-section" id="price-${plan.id}"><div class="plan-price"><span class="price-main">${usdLabel}</span><span class="plan-period">/ month · USD (Stripe)</span></div></div>`
+      : `<div class="plan-billing-selector">
+        <label>Billing:</label>
         <select class="billing-period-select" data-plan-id="${plan.id}" onchange="updatePlanPrice('${plan.id}', this.value)">
-          <option value="monthly">ماهانه</option>
-          <option value="quarterly">سه‌ماهه (10% تخفیف)</option>
-          <option value="semiannual">شش‌ماهه (15% تخفیف)</option>
-          <option value="annual">سالانه (25% تخفیف)</option>
+          <option value="monthly">Monthly</option>
+          <option value="quarterly">Quarterly (10% off)</option>
+          <option value="semiannual">Semi-annual (15% off)</option>
+          <option value="annual">Annual (25% off)</option>
         </select>
       </div>
       <div class="plan-price-section" id="price-${plan.id}">
         ${calculatePlanPriceHTML(plan, 'monthly')}
+      </div>`;
+
+    planCard.innerHTML = `
+      <div class="paid-plan-header">
+        <div class="paid-plan-name">${plan.nameEn || plan.name}</div>
+        ${plan.id === subscriptionInfo?.plan ? '<div class="current-badge">Current plan</div>' : ''}
       </div>
+      ${priceSectionHtml}
       <ul class="plan-features">
-        <li>${plan.monthlyLimit} دقیقه در ماه</li>
-        <li>✅ خلاصه‌سازی هوشمند</li>
-        <li>✅ زیرنویس SRT</li>
-        <li>✅ دانلود موزیک: ${audioText}</li>
-        <li>✅ دانلود ویدئو: ${videoText}</li>
+        <li>${planValueCopy(plan)}</li>
+        <li>✅ AI summaries &amp; key takeaways</li>
+        <li>✅ Full SRT subtitles (paid tiers)</li>
+        <li>✅ Audio downloads: ${audioText}</li>
+        <li>✅ Video downloads: ${videoText}</li>
       </ul>
+      ${usd && plan.id !== subscriptionInfo?.plan ? `
+      <button type="button" class="plan-btn stripe-pay" onclick="startStripeCheckout('${stripeKey}')">Subscribe with card (Stripe)</button>
+      ` : ''}
       <button class="plan-btn ${plan.id === subscriptionInfo?.plan ? 'current' : ''}" 
-              onclick="addToCart('${plan.id}', document.querySelector('[data-plan-id=\\'${plan.id}\\'] .billing-period-select').value)">
-        ${plan.id === subscriptionInfo?.plan ? 'پلن فعلی' : 'افزودن به سبد خرید'}
+              onclick="addToCartFromCard('${plan.id}')">
+        ${plan.id === subscriptionInfo?.plan ? 'Current plan' : (usd ? 'Or add legacy cart (IRR)' : 'Add to cart')}
       </button>
     `;
     
@@ -664,10 +779,10 @@ function calculatePlanPriceHTML(plan, billingPeriod) {
   
   return `
     <div class="plan-price">
-      <span class="price-main">${formatPrice(price)} تومان</span>
+      <span class="price-main">${formatPrice(price)} IRR</span>
       ${discount > 0 ? `
-        <span class="price-original">${formatPrice(originalPrice)} تومان</span>
-        <span class="price-discount">${discount}% تخفیف</span>
+        <span class="price-original">${formatPrice(originalPrice)} IRR</span>
+        <span class="price-discount">${discount}% off</span>
       ` : ''}
     </div>
     <div class="plan-period">${getPeriodName(billingPeriod)}</div>
@@ -703,25 +818,25 @@ function getPeriodMultiplier(period) {
 
 function getPeriodName(period) {
   const names = {
-    monthly: 'ماهانه',
-    quarterly: 'سه‌ماهه',
-    semiannual: 'شش‌ماهه',
-    annual: 'سالانه'
+    monthly: 'Monthly',
+    quarterly: 'Quarterly',
+    semiannual: 'Semi-annual',
+    annual: 'Annual'
   };
-  return names[period] || 'ماهانه';
+  return names[period] || 'Monthly';
 }
 
 function formatPrice(price) {
-  return new Intl.NumberFormat('fa-IR').format(price);
+  return new Intl.NumberFormat('en-US').format(price);
 }
 
 async function upgradePlan(planId, billingPeriod) {
   if (subscriptionInfo?.plan === planId) {
-    alert('شما در حال حاضر این پلن را دارید');
+    showDashboardBanner('You\'re already on this plan.', 'neutral');
     return;
   }
   
-  if (!confirm(`آیا می‌خواهید به پلن ${planId} ارتقا دهید؟`)) {
+  if (!confirm(`Upgrade to plan "${planId}"?`)) {
     return;
   }
   
@@ -739,15 +854,15 @@ async function upgradePlan(planId, billingPeriod) {
     });
     
     if (response.ok) {
-      alert('پلن شما با موفقیت ارتقا یافت!');
+      showDashboardBanner('Plan updated. Refreshing your account…', 'success');
       await loadSubscriptionInfo();
     } else {
       const error = await response.json();
-      alert(`خطا: ${error.message || 'ارتقای پلن ناموفق بود'}`);
+      showDashboardBanner(error.message || 'Could not change plan. Try again.', 'error');
     }
   } catch (error) {
     console.error('Error upgrading plan:', error);
-    alert('خطا در ارتقای پلن');
+    showDashboardBanner('Could not change plan. Check your connection and try again.', 'error');
   }
 }
 
@@ -755,7 +870,7 @@ async function loadUsageHistory() {
   const usageDetails = document.getElementById('usageDetails');
   if (!usageDetails) return;
   
-  usageDetails.innerHTML = '<p>در حال بارگذاری...</p>';
+  usageDetails.innerHTML = '<p class="dashboard-muted-loading">Loading activity…</p>';
   
   try {
     // Load usage history from API
@@ -772,7 +887,7 @@ async function loadUsageHistory() {
     }
     
     if (!subscriptionInfo || !subscriptionInfo.usage) {
-      usageDetails.innerHTML = '<p>در حال بارگذاری...</p>';
+      usageDetails.innerHTML = '<p class="dashboard-muted-loading">Loading activity…</p>';
       return;
     }
     
@@ -789,9 +904,9 @@ async function loadUsageHistory() {
     // Format history items
     const formatHistoryItem = (item) => {
       const date = new Date(item.date);
-      const dateStr = date.toLocaleDateString('fa-IR', { 
+      const dateStr = date.toLocaleDateString('en-US', { 
         year: 'numeric', 
-        month: 'long', 
+        month: 'short', 
         day: 'numeric',
         hour: '2-digit',
         minute: '2-digit'
@@ -801,19 +916,19 @@ async function loadUsageHistory() {
       let icon = '';
       switch(item.type) {
         case 'transcription':
-          typeLabel = 'تبدیل به متن';
+          typeLabel = 'Transcription';
           icon = '📋';
           break;
         case 'summarization':
-          typeLabel = 'خلاصه‌سازی';
+          typeLabel = 'Summary';
           icon = '📝';
           break;
         case 'downloadAudio':
-          typeLabel = 'دانلود موزیک';
+          typeLabel = 'Audio download';
           icon = '🎵';
           break;
         case 'downloadVideo':
-          typeLabel = 'دانلود ویدئو';
+          typeLabel = 'Video download';
           icon = '🎬';
           break;
         default:
@@ -821,9 +936,8 @@ async function loadUsageHistory() {
           icon = '📄';
       }
       
-      const title = item.metadata?.title || 'بدون عنوان';
+      const title = item.metadata?.title || 'Untitled';
       const quality = item.metadata?.quality ? ` (${item.metadata.quality})` : '';
-      const minutes = item.minutes > 0 ? ` - ${item.minutes} دقیقه` : '';
       
       return `
         <div class="history-item">
@@ -832,7 +946,6 @@ async function loadUsageHistory() {
             <div class="history-title">${title}${quality}</div>
             <div class="history-meta">
               <span class="history-type">${typeLabel}</span>
-              ${minutes ? `<span class="history-duration">${minutes}</span>` : ''}
               <span class="history-date">${dateStr}</span>
             </div>
           </div>
@@ -840,38 +953,42 @@ async function loadUsageHistory() {
       `;
     };
     
+    const planIdForUsage = subscriptionInfo.plan || 'free';
     let historyHTML = `
       <div class="usage-summary">
-        <h3>خلاصه استفاده این ماه</h3>
+        <h3>This month</h3>
         <div class="usage-stats">
           <div class="usage-stat-item">
-            <span class="usage-stat-label">دقیقه استفاده شده:</span>
-            <span class="usage-stat-value">${usage.monthly.minutes || 0} دقیقه</span>
+            <span class="usage-stat-label">Videos processed (~est.):</span>
+            <span class="usage-stat-value">~${videosUsedEstimate(usage.monthly.minutes || 0)}</span>
           </div>
           <div class="usage-stat-item">
-            <span class="usage-stat-label">حد مجاز:</span>
-            <span class="usage-stat-value">${subscriptionInfo.usage.monthlyLimit || 0} دقیقه</span>
+            <span class="usage-stat-label">Videos left (~est.):</span>
+            <span class="usage-stat-value">${isAdvancedFairUsePlan(planIdForUsage) ? 'Fair use pool' : `~${videosRemainingEstimate(usage.monthly.minutes || 0, subscriptionInfo.usage.monthlyLimit || 0)}`}</span>
           </div>
           ${usage.downloads ? `
           <div class="usage-stat-item">
-            <span class="usage-stat-label">دانلود موزیک:</span>
+            <span class="usage-stat-label">Audio downloads:</span>
             <span class="usage-stat-value">${usage.downloads.audio?.count || 0}${usage.downloads.audio?.limit ? ` / ${usage.downloads.audio.limit}` : ''}</span>
           </div>
           <div class="usage-stat-item">
-            <span class="usage-stat-label">دانلود ویدئو:</span>
+            <span class="usage-stat-label">Video downloads:</span>
             <span class="usage-stat-value">${usage.downloads.video?.count || 0}${usage.downloads.video?.limit ? ` / ${usage.downloads.video.limit}` : ''}</span>
           </div>
           ` : ''}
         </div>
+        <p class="info-text" style="margin-top:14px;font-size:14px;color:#666;max-width:560px;line-height:1.5;">
+          Numbers are friendly estimates: we map your real usage into ~<strong>5–10 minute</strong> “typical video” chunks. One long lecture can count as several chunks.
+        </p>
       </div>
       <div class="usage-history">
-        <h3>تاریخچه استفاده</h3>
+        <h3>Activity history</h3>
         ${history.length > 0 ? `
           <div class="history-list">
             ${history.map(formatHistoryItem).join('')}
           </div>
         ` : `
-          <p class="info-text">هنوز فعالیتی ثبت نشده است.</p>
+          <p class="info-text">No activity yet—run a job from the home page and it will show up here.</p>
         `}
       </div>
     `;
@@ -879,19 +996,54 @@ async function loadUsageHistory() {
     usageDetails.innerHTML = historyHTML;
   } catch (error) {
     console.error('Error loading usage history:', error);
-    usageDetails.innerHTML = '<p>خطا در بارگذاری تاریخچه استفاده</p>';
+    usageDetails.innerHTML = '<p class="dashboard-empty-note">Could not load activity. Refresh the page or try again shortly.</p>';
   }
 }
 
 // Shopping Cart Functions
+function addToCartFromCard(planId) {
+  const sel = document.querySelector(`select.billing-period-select[data-plan-id="${planId}"]`);
+  const period = sel && sel.value ? sel.value : 'monthly';
+  addToCart(planId, period);
+}
+
+async function startStripeCheckout(priceKey) {
+  const key = ['starter', 'pro', 'advanced'].includes(priceKey) ? priceKey : 'pro';
+  trackConversionEvent('upgrade_clicked', {
+    source: 'stripe_subscribe_button',
+    plan: key
+  });
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/stripe/create-checkout-session`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': currentSession
+      },
+      body: JSON.stringify({ priceKey: key })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok && data.url) {
+      window.location.href = data.url;
+    } else {
+      console.error('[dashboard] Stripe checkout error', response.status, data);
+      showDashboardBanner('Payment could not be started. Please try again.', 'error');
+    }
+  } catch (e) {
+    console.error('[dashboard] Stripe checkout failed', e);
+    showDashboardBanner('Payment could not be started. Please try again.', 'error');
+  }
+}
+window.startStripeCheckout = startStripeCheckout;
+
 function addToCart(planId, billingPeriod) {
   if (!subscriptionInfo) {
-    alert('لطفاً صبر کنید تا اطلاعات بارگذاری شود');
+    showDashboardBanner('Still loading your account—try again in a second.', 'info');
     return;
   }
   
   if (planId === subscriptionInfo?.plan) {
-    alert('شما در حال حاضر این پلن را دارید');
+    showDashboardBanner('You\'re already on this plan.', 'neutral');
     return;
   }
   
@@ -900,7 +1052,7 @@ function addToCart(planId, billingPeriod) {
     .then(data => {
       const plan = data.plans.find(p => p.id === planId);
       if (!plan) {
-        alert('پلن یافت نشد');
+        showDashboardBanner('That plan isn\'t available. Refresh the page.', 'error');
         return;
       }
       
@@ -927,7 +1079,7 @@ function addToCart(planId, billingPeriod) {
     })
     .catch(error => {
       console.error('Error loading plan:', error);
-      alert('خطا در بارگذاری اطلاعات پلن');
+      showDashboardBanner('Could not load plan details. Check your connection.', 'error');
     });
 }
 
@@ -957,7 +1109,7 @@ function updateCartBadge() {
 function showCartNotification() {
   const notification = document.createElement('div');
   notification.className = 'cart-notification';
-  notification.textContent = 'به سبد خرید اضافه شد!';
+  notification.textContent = 'Added to cart.';
   document.body.appendChild(notification);
   
   setTimeout(() => {
@@ -989,7 +1141,7 @@ function loadCartSection() {
   if (!cartItems || !cartSummary) return;
   
   if (shoppingCart.length === 0) {
-    cartItems.innerHTML = '<div class="empty-cart"><p>سبد خرید شما خالی است</p></div>';
+    cartItems.innerHTML = '<div class="empty-cart"><p>Your cart is empty.</p></div>';
     cartSummary.innerHTML = '';
     return;
   }
@@ -1005,14 +1157,14 @@ function loadCartSection() {
       <div class="cart-item">
         <div class="cart-item-info">
           <h4>${item.planName}</h4>
-          <p>دوره: ${getPeriodName(item.billingPeriod)}</p>
-          <p>محدودیت: ${item.monthlyLimit} دقیقه در ماه</p>
+          <p>Billing: ${getPeriodName(item.billingPeriod)}</p>
+          <p>~${Math.max(1, Math.round(item.monthlyLimit / AVG_VIDEO_MINUTES))} videos / month included (typical 5–10 min each)</p>
         </div>
         <div class="cart-item-price">
-          <div class="cart-item-price-main">${formatPrice(item.price)} تومان</div>
+          <div class="cart-item-price-main">${formatPrice(item.price)} IRR</div>
           ${item.discount > 0 ? `
-            <div class="cart-item-price-original">${formatPrice(item.originalPrice)} تومان</div>
-            <div class="cart-item-discount">${item.discount}% تخفیف</div>
+            <div class="cart-item-price-original">${formatPrice(item.originalPrice)} IRR</div>
+            <div class="cart-item-discount">${item.discount}% off</div>
           ` : ''}
         </div>
         <button class="cart-item-remove" onclick="removeFromCart(${item.id})">🗑️</button>
@@ -1023,31 +1175,31 @@ function loadCartSection() {
   cartSummary.innerHTML = `
     <div class="cart-summary-content">
       <div class="summary-row">
-        <span>جمع کل:</span>
-        <span>${formatPrice(total)} تومان</span>
+        <span>Subtotal:</span>
+        <span>${formatPrice(total)} IRR</span>
       </div>
       ${totalDiscount > 0 ? `
       <div class="summary-row discount">
-        <span>تخفیف:</span>
-        <span>-${formatPrice(totalDiscount)} تومان</span>
+        <span>Discount:</span>
+        <span>-${formatPrice(totalDiscount)} IRR</span>
       </div>
       ` : ''}
       <div class="summary-row total">
-        <span>مبلغ نهایی:</span>
-        <span>${formatPrice(total)} تومان</span>
+        <span>Total:</span>
+        <span>${formatPrice(total)} IRR</span>
       </div>
-      <button class="checkout-btn" onclick="checkout()">تسویه حساب</button>
+      <button class="checkout-btn" onclick="checkout()">Checkout</button>
     </div>
   `;
 }
 
 function checkout() {
   if (shoppingCart.length === 0) {
-    alert('سبد خرید شما خالی است');
+    showDashboardBanner('Your cart is empty—add a plan first.', 'neutral');
     return;
   }
   
-  if (!confirm(`آیا می‌خواهید ${shoppingCart.length} آیتم را خریداری کنید؟`)) {
+  if (!confirm(`Purchase ${shoppingCart.length} item(s)?`)) {
     return;
   }
   
@@ -1093,45 +1245,45 @@ function showInvoice(invoice) {
     <div class="invoice-modal" id="invoiceModal">
       <div class="invoice-modal-content">
         <div class="invoice-header">
-          <h2>فاکتور</h2>
+          <h2>Invoice</h2>
           <button class="close-btn" onclick="closeInvoiceModal()">✕</button>
         </div>
         <div class="invoice-body">
           <div class="invoice-info">
-            <p><strong>شماره فاکتور:</strong> ${invoice.id}</p>
-            <p><strong>تاریخ:</strong> ${new Date(invoice.date).toLocaleDateString('fa-IR')}</p>
-            <p><strong>زمان:</strong> ${new Date(invoice.date).toLocaleTimeString('fa-IR')}</p>
-            <p><strong>وضعیت:</strong> <span class="invoice-status ${invoice.status}">${getInvoiceStatusText(invoice.status)}</span></p>
+            <p><strong>Invoice #:</strong> ${invoice.id}</p>
+            <p><strong>Date:</strong> ${new Date(invoice.date).toLocaleDateString('en-US')}</p>
+            <p><strong>Time:</strong> ${new Date(invoice.date).toLocaleTimeString('en-US')}</p>
+            <p><strong>Status:</strong> <span class="invoice-status ${invoice.status}">${getInvoiceStatusText(invoice.status)}</span></p>
           </div>
           <div class="invoice-items">
-            <h3>آیتم‌ها:</h3>
+            <h3>Items</h3>
             ${invoice.items.map(item => `
               <div class="invoice-item">
                 <span>${item.planName} - ${getPeriodName(item.billingPeriod)}</span>
-                <span>${formatPrice(item.price)} تومان</span>
+                <span>${formatPrice(item.price)} IRR</span>
               </div>
             `).join('')}
           </div>
           <div class="invoice-total">
             <div class="total-row">
-              <span>جمع کل:</span>
-              <span>${formatPrice(invoice.total)} تومان</span>
+              <span>Subtotal:</span>
+              <span>${formatPrice(invoice.total)} IRR</span>
             </div>
             ${invoice.discount > 0 ? `
             <div class="total-row discount">
-              <span>تخفیف:</span>
-              <span>-${formatPrice(invoice.discount)} تومان</span>
+              <span>Discount:</span>
+              <span>-${formatPrice(invoice.discount)} IRR</span>
             </div>
             ` : ''}
             <div class="total-row final">
-              <span>مبلغ نهایی:</span>
-              <span>${formatPrice(invoice.total)} تومان</span>
+              <span>Total:</span>
+              <span>${formatPrice(invoice.total)} IRR</span>
             </div>
           </div>
           <div class="invoice-actions">
-            <button class="btn-download-pdf" onclick="downloadInvoicePDF(${invoice.id})">دانلود PDF</button>
+            <button class="btn-download-pdf" onclick="downloadInvoicePDF(${invoice.id})">Download PDF</button>
             ${invoice.status === 'pending' || invoice.status === 'cancelled' ? `
-            <button class="btn-delete-invoice" onclick="deleteInvoice(${invoice.id})">حذف فاکتور</button>
+            <button class="btn-delete-invoice" onclick="deleteInvoice(${invoice.id})">Delete invoice</button>
             ` : ''}
           </div>
         </div>
@@ -1153,20 +1305,20 @@ function closeInvoiceModal() {
 
 function getInvoiceStatusText(status) {
   const statusTexts = {
-    pending: 'در انتظار پرداخت',
-    paid: 'پرداخت شده',
-    cancelled: 'لغو شده'
+    pending: 'Pending payment',
+    paid: 'Paid',
+    cancelled: 'Cancelled'
   };
   return statusTexts[status] || status;
 }
 
 function downloadInvoicePDF(invoiceId) {
-  // This will be implemented with a PDF library
-  alert('دانلود PDF به زودی فعال می‌شود');
+  void invoiceId;
+  showDashboardBanner('PDF download isn\'t available yet. Use your email receipts or contact support.', 'info');
 }
 
 function deleteInvoice(invoiceId) {
-  if (!confirm('آیا مطمئن هستید که می‌خواهید این فاکتور را حذف کنید؟')) {
+  if (!confirm('Delete this invoice?')) {
     return;
   }
   
@@ -1202,7 +1354,7 @@ function loadFinancialSection() {
   }
   
   if (invoices.length === 0) {
-    financialInfo.innerHTML = '<div class="empty-state"><p>فاکتوری وجود ندارد</p></div>';
+    financialInfo.innerHTML = '<div class="empty-state"><p>No invoices yet.</p></div>';
     return;
   }
   
@@ -1216,16 +1368,16 @@ function loadFinancialSection() {
           </div>
           <div class="invoice-card-body">
             <div class="invoice-card-info">
-              <p><strong>تاریخ:</strong> ${new Date(invoice.date).toLocaleDateString('fa-IR')}</p>
-              <p><strong>زمان:</strong> ${new Date(invoice.date).toLocaleTimeString('fa-IR')}</p>
-              <p><strong>تعداد آیتم:</strong> ${invoice.items.length}</p>
-              <p><strong>مبلغ:</strong> ${formatPrice(invoice.total)} تومان</p>
+              <p><strong>Date:</strong> ${new Date(invoice.date).toLocaleDateString('en-US')}</p>
+              <p><strong>Time:</strong> ${new Date(invoice.date).toLocaleTimeString('en-US')}</p>
+              <p><strong>Items:</strong> ${invoice.items.length}</p>
+              <p><strong>Amount:</strong> ${formatPrice(invoice.total)} IRR</p>
             </div>
             <div class="invoice-card-actions">
-              <button class="btn-view-invoice" onclick="showInvoice(${JSON.stringify(invoice).replace(/"/g, '&quot;')})">مشاهده فاکتور</button>
-              <button class="btn-download-pdf" onclick="downloadInvoicePDF(${invoice.id})">دانلود PDF</button>
+              <button class="btn-view-invoice" onclick="showInvoice(${JSON.stringify(invoice).replace(/"/g, '&quot;')})">View invoice</button>
+              <button class="btn-download-pdf" onclick="downloadInvoicePDF(${invoice.id})">Download PDF</button>
               ${invoice.status === 'pending' || invoice.status === 'cancelled' ? `
-              <button class="btn-delete-invoice" onclick="deleteInvoice(${invoice.id})">حذف</button>
+              <button class="btn-delete-invoice" onclick="deleteInvoice(${invoice.id})">Delete</button>
               ` : ''}
             </div>
           </div>
@@ -1251,10 +1403,10 @@ function loadSupportSection() {
   
   supportTickets.innerHTML = `
     <div class="support-header">
-      <button class="btn-new-ticket" onclick="showNewTicketModal()">ثبت تیکت جدید</button>
+      <button class="btn-new-ticket" onclick="showNewTicketModal()">New ticket</button>
     </div>
     <div class="tickets-list">
-      ${tickets.length === 0 ? '<div class="empty-state"><p>تیکتی وجود ندارد</p></div>' : tickets.map(ticket => `
+      ${tickets.length === 0 ? '<div class="empty-state"><p>No support tickets yet.</p></div>' : tickets.map(ticket => `
         <div class="ticket-card">
           <div class="ticket-header">
             <div class="ticket-id">#${ticket.id}</div>
@@ -1263,7 +1415,7 @@ function loadSupportSection() {
           <div class="ticket-body">
             <h4>${ticket.subject}</h4>
             <p>${ticket.message.substring(0, 100)}...</p>
-            <p class="ticket-date">${new Date(ticket.date).toLocaleDateString('fa-IR')}</p>
+            <p class="ticket-date">${new Date(ticket.date).toLocaleDateString('en-US')}</p>
           </div>
         </div>
       `).join('')}
@@ -1276,22 +1428,22 @@ function showNewTicketModal() {
     <div class="ticket-modal" id="ticketModal">
       <div class="ticket-modal-content">
         <div class="ticket-modal-header">
-          <h2>ثبت تیکت جدید</h2>
+          <h2>New support ticket</h2>
           <button class="close-btn" onclick="closeTicketModal()">✕</button>
         </div>
         <div class="ticket-modal-body">
           <form id="newTicketForm" onsubmit="submitTicket(event)">
             <div class="form-group">
-              <label>موضوع:</label>
+              <label>Subject</label>
               <input type="text" name="subject" required>
             </div>
             <div class="form-group">
-              <label>پیام:</label>
+              <label>Message</label>
               <textarea name="message" rows="5" required></textarea>
             </div>
             <div class="form-actions">
-              <button type="submit" class="btn-submit">ثبت تیکت</button>
-              <button type="button" class="btn-cancel" onclick="closeTicketModal()">انصراف</button>
+              <button type="submit" class="btn-submit">Submit</button>
+              <button type="button" class="btn-cancel" onclick="closeTicketModal()">Cancel</button>
             </div>
           </form>
         </div>
@@ -1340,14 +1492,14 @@ function submitTicket(event) {
   
   closeTicketModal();
   loadSupportSection();
-  alert('تیکت شما با موفقیت ثبت شد');
+  showDashboardBanner('Thanks—we saved your ticket.', 'success');
 }
 
 function getTicketStatusText(status) {
   const statusTexts = {
-    open: 'باز',
-    closed: 'بسته',
-    pending: 'در انتظار'
+    open: 'Open',
+    closed: 'Closed',
+    pending: 'Pending'
   };
   return statusTexts[status] || status;
 }
@@ -1413,7 +1565,7 @@ function setupEventListeners() {
       }
     }
     localStorage.removeItem('cutup_session');
-    window.location.href = '/';
+    window.location.href = 'index.html';
   });
 }
 

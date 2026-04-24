@@ -6,7 +6,8 @@
   "main": "index.js",
   "scripts": {
     "dev": "vercel dev",
-    "deploy": "vercel --prod"
+    "deploy": "vercel --prod",
+    "db:migrate": "node api/db/migrate.mjs"
   },
   "keywords": [
     "chrome-extension",
@@ -22,12 +23,14 @@
   },
   "dependencies": {
     "busboy": "^1.6.0",
+    "cors": "^2.8.5",
+    "docx": "^8.5.0",
+    "express": "^4.18.2",
     "form-data": "^4.0.0",
+    "google-auth-library": "^9.0.0",
     "node-fetch": "^3.3.2",
     "openai": "^4.20.0",
-    "express": "^4.18.2",
-    "cors": "^2.8.5",
-    "google-auth-library": "^9.0.0",
-    "docx": "^8.5.0"
+    "pg": "^8.13.1",
+    "stripe": "^17.7.0"
   }
 }

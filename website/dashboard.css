@@ -2,7 +2,7 @@
 .dashboard-container {
   min-height: 100vh;
   background: var(--bg-gray);
-  font-family: 'Vazirmatn', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .dashboard-header {
@@ -55,12 +55,13 @@
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text-secondary);
-  padding: 6px 12px;
-  border-radius: 6px;
+  padding: 8px 14px;
+  min-height: 44px;
+  border-radius: 8px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   transition: all 0.2s;
-  font-family: 'Vazirmatn', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .logout-btn-header:hover {
@@ -1291,10 +1292,25 @@
 @media (max-width: 768px) {
   .dashboard-main {
     grid-template-columns: 1fr;
+    padding: 16px;
   }
   
   .dashboard-sidebar {
     position: static;
+    padding: 16px;
+  }
+
+  .sidebar-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .nav-item {
+    flex: 1 1 calc(50% - 8px);
+    justify-content: center;
+    min-height: 44px;
+    font-size: 13px;
   }
   
   .stats-grid {
@@ -1336,5 +1352,56 @@
   .paid-plan-card.featured .paid-plan-name {
     font-size: 26px;
   }
+}
+
+/* Non-blocking payment / status feedback (replaces alert) */
+.dashboard-muted-loading,
+.dashboard-empty-note {
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.dashboard-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10000;
+  padding: max(14px, env(safe-area-inset-top, 0px)) 20px 14px;
+  font-size: 15px;
+  font-weight: 500;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  transition: opacity 0.2s ease;
+}
+
+.dashboard-banner[hidden] {
+  display: none !important;
+}
+
+.dashboard-banner--success {
+  background: #ecfdf5;
+  color: #065f46;
+  border-bottom: 1px solid #6ee7b7;
+}
+
+.dashboard-banner--neutral {
+  background: #f8fafc;
+  color: #334155;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.dashboard-banner--info {
+  background: #eff6ff;
+  color: #1e40af;
+  border-bottom: 1px solid #93c5fd;
+}
+
+.dashboard-banner--error {
+  background: #fef2f2;
+  color: #991b1b;
+  border-bottom: 1px solid #fecaca;
 }
 

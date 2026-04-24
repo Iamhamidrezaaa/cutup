@@ -5,6 +5,7 @@
 import { handleCORS, setCORSHeaders } from './cors.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { requireSessionEmail } from './processing-enforcement.js';
 
 const execAsync = promisify(exec);
 
@@ -16,6 +17,9 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  const userEmail = requireSessionEmail(req, res);
+  if (!userEmail) return;
 
   try {
     const { videoId, url, platform } = req.body;
@@ -36,7 +40,7 @@ export default async function handler(req, res) {
       }
     }
 
-    console.log(`FORMATS: Getting formats for platform: ${detectedPlatform}, URL: ${url}`);
+    console.log(`FORMATS: user=${userEmail} platform=${detectedPlatform}, URL: ${url}`);
 
     // For TikTok and Instagram, use URL directly and return default formats
     if (detectedPlatform === 'tiktok' || detectedPlatform === 'instagram') {

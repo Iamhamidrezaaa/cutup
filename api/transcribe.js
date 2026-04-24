@@ -8,6 +8,14 @@ import fetchModule from 'node-fetch';
 import OpenAI from 'openai';
 import Busboy from 'busboy';
 import { transcribeLargeFile } from './chunk-processor.js';
+import {
+  requireSessionEmail,
+  enforceQuota,
+  estimateTranscriptionMinutesFromBytes,
+  billingMinutesFromWhisperSegments,
+  consumeTranscriptionUsage,
+  respondConsumeFailure
+} from './processing-enforcement.js';
 
 export default async function handler(req, res) {
   // Log immediately when function is called
@@ -87,6 +95,14 @@ export default async function handler(req, res) {
       });
     }
 
+    const userEmail = requireSessionEmail(req, res);
+    if (!userEmail) return;
+
+    const languageHint =
+      typeof req.body === 'object' && req.body && req.body.languageHint
+        ? req.body.languageHint
+        : null;
+
     // Check if request is multipart/form-data (file upload) or JSON
     const contentType = req.headers['content-type'] || '';
     let audioBuffer = null;
@@ -145,7 +161,7 @@ export default async function handler(req, res) {
       
     } else {
       // Handle JSON request (audioUrl or videoId)
-      const { audioUrl, videoId, languageHint } = req.body;
+      const { audioUrl, videoId } = req.body;
 
       if (!audioUrl && !videoId) {
         return res.status(400).json({ error: 'audioUrl, videoId, or file is required' });
@@ -182,6 +198,9 @@ export default async function handler(req, res) {
     if (!audioBuffer || audioBuffer.length === 0) {
       throw new Error('Audio buffer is empty');
     }
+
+    const preMinutes = estimateTranscriptionMinutesFromBytes(audioBuffer.length);
+    if (!(await enforceQuota(res, userEmail, 'transcription', preMinutes))) return;
 
     console.log(`TRANSCRIBE: Processing audio file, size: ${audioBuffer.length} bytes, type: ${mimeType}`);
     console.log('=== TRANSCRIBE V4.0: NO OpenAI SDK - Using node-fetch directly ===');
@@ -238,9 +257,9 @@ export default async function handler(req, res) {
           formData.append('model', 'whisper-1');
           // Use language hint if provided for faster processing
           // Whisper is faster when language is specified
-          if (req.body.languageHint) {
-            formData.append('language', req.body.languageHint);
-            console.log(`TRANSCRIBE: Using language hint: ${req.body.languageHint}`);
+          if (languageHint) {
+            formData.append('language', languageHint);
+            console.log(`TRANSCRIBE: Using language hint: ${languageHint}`);
           }
           formData.append('response_format', 'verbose_json'); // Get segments with timestamps
           
@@ -533,6 +552,13 @@ export default async function handler(req, res) {
         text: validSegments[validSegments.length - 1].text.substring(0, 50)
       });
     }
+
+    const billedMinutes = billingMinutesFromWhisperSegments(validSegments);
+    const consumed = await consumeTranscriptionUsage(userEmail, billedMinutes, {
+      route: 'transcribe',
+      precheckMinutes: preMinutes
+    });
+    if (respondConsumeFailure(res, consumed)) return;
 
     // Ensure CORS headers are set on success
     setCORSHeaders(res);
