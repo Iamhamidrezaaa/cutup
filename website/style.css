@@ -2118,3 +2118,261 @@ html[dir="ltr"] .user-dropdown {
   text-align: left;
 }
 
+/* ===== Premium SaaS UI Refresh ===== */
+:root {
+  --bg-page: #f7f8ff;
+  --surface: #ffffff;
+  --surface-muted: #f8faff;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --border: #e2e8f0;
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --secondary: #7c3aed;
+  --shadow-soft: 0 8px 30px rgba(15, 23, 42, 0.08);
+  --shadow-strong: 0 20px 50px rgba(79, 70, 229, 0.24);
+}
+
+body {
+  background: var(--bg-page);
+  color: var(--text-primary);
+}
+
+.container {
+  max-width: 1160px;
+}
+
+.hero,
+.download-section,
+.features,
+.how-it-works,
+.use-cases,
+.demo-sample {
+  padding-top: 96px;
+  padding-bottom: 96px;
+}
+
+.hero {
+  background:
+    radial-gradient(circle at 20% 10%, rgba(124, 58, 237, 0.18), transparent 42%),
+    radial-gradient(circle at 80% 18%, rgba(79, 70, 229, 0.16), transparent 45%),
+    linear-gradient(180deg, #f8f9ff 0%, #f4f7ff 100%);
+}
+
+.hero-title {
+  font-size: clamp(2.2rem, 5vw, 4rem);
+  font-weight: 800;
+  line-height: 1.06;
+  letter-spacing: -0.02em;
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.hero-description {
+  font-size: 1.12rem;
+  line-height: 1.85;
+  max-width: 760px;
+}
+
+.hero-quick-tool {
+  max-width: 700px;
+  padding: 24px;
+  border-radius: 18px;
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  box-shadow: var(--shadow-strong);
+}
+
+.btn,
+.download-btn-main,
+.download-option-btn,
+.copy-btn,
+.translate-srt-btn,
+.download-btn {
+  transition: transform 200ms ease, box-shadow 200ms ease, background-color 200ms ease, color 200ms ease, border-color 200ms ease;
+}
+
+.btn,
+.download-btn-main {
+  border-radius: 12px;
+  padding: 13px 24px;
+  font-weight: 700;
+}
+
+.btn-primary,
+.download-btn-main,
+.download-option-btn--primary,
+.download-btn,
+.translate-srt-btn {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+  color: #fff;
+  border: 1px solid transparent;
+}
+
+.btn-primary:hover,
+.download-btn-main:hover,
+.download-option-btn--primary:hover,
+.download-btn:hover,
+.translate-srt-btn:hover {
+  transform: translateY(-2px) scale(1.01);
+  box-shadow: 0 12px 30px rgba(79, 70, 229, 0.3);
+}
+
+.btn-secondary,
+.download-option-btn,
+.copy-btn {
+  border-radius: 12px;
+  border: 1px solid rgba(79, 70, 229, 0.35);
+  background: #fff;
+  color: var(--primary);
+}
+
+.btn-secondary:hover,
+.download-option-btn:hover,
+.copy-btn:hover {
+  transform: translateY(-2px) scale(1.01);
+  box-shadow: var(--shadow-soft);
+}
+
+.download-box {
+  max-width: 920px;
+  padding: 34px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: var(--shadow-soft);
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
+}
+
+.premium-output-panel {
+  border-radius: 16px;
+  border: 1px solid #dbe2ff;
+  background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
+  box-shadow: 0 14px 40px rgba(30, 41, 59, 0.08);
+}
+
+.result-header h2 {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.result-tabs {
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-muted);
+  gap: 6px;
+}
+
+.tab-btn {
+  border-radius: 9px;
+  border-bottom: 0;
+  font-weight: 600;
+}
+
+.tab-btn.active {
+  background: #fff;
+  color: var(--text-primary);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+.summary-text,
+.fulltext,
+.srt-preview {
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 12px;
+  font-size: 15px;
+  line-height: 1.9;
+}
+
+#summaryText:empty,
+#fulltext:empty,
+#srtPreview:empty {
+  min-height: 180px;
+  background:
+    linear-gradient(100deg, #f1f5f9 30%, #e2e8f0 50%, #f1f5f9 70%),
+    #f8fafc;
+  background-size: 220% 100%;
+  animation: loadingShimmer 1.5s linear infinite;
+}
+
+@keyframes loadingShimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -20% 0; }
+}
+
+.pricing-plans-grid {
+  gap: 28px;
+}
+
+.pricing-card {
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  padding: 26px;
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.05);
+  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+}
+
+.pricing-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-soft);
+}
+
+.pricing-card-pro {
+  position: relative;
+  border-color: rgba(79, 70, 229, 0.45);
+  box-shadow: 0 18px 45px rgba(79, 70, 229, 0.18);
+  background: linear-gradient(180deg, #ffffff 0%, #f6f5ff 100%);
+}
+
+.pricing-badge {
+  position: absolute;
+  top: -12px;
+  left: 24px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #fff;
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  box-shadow: 0 8px 20px rgba(79, 70, 229, 0.35);
+}
+
+.section-title {
+  font-size: clamp(1.8rem, 3vw, 2.6rem);
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  margin-bottom: 56px;
+}
+
+@media (max-width: 768px) {
+  .hero,
+  .download-section,
+  .features,
+  .how-it-works,
+  .use-cases,
+  .demo-sample {
+    padding-top: 72px;
+    padding-bottom: 72px;
+  }
+
+  .container {
+    padding: 0 18px;
+  }
+
+  .download-box {
+    padding: 20px;
+    border-radius: 16px;
+  }
+
+  .result-tabs {
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .tab-btn {
+    flex: 1 0 auto;
+  }
+}
+
