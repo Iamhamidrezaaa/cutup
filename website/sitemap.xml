@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://cutup.shop/</loc>
+  </url>
+  <url>
+    <loc>https://cutup.shop/blog.html</loc>
+  </url>
+  <url>
+    <loc>https://cutup.shop/subtitle-generator.html</loc>
+  </url>
+  <url>
+    <loc>https://cutup.shop/video-to-text.html</loc>
+  </url>
+  <url>
+    <loc>https://cutup.shop/translate-video.html</loc>
+  </url>
+
+  <!--
+    Manual blog post URLs:
+    Add one <url><loc>https://cutup.shop/blog.html?slug=your-slug</loc></url>
+    entry per published post until a dynamic sitemap endpoint is added.
+  -->
+</urlset>

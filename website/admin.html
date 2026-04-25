@@ -110,14 +110,20 @@
                 <button id="newPostBtn" class="btn">New post</button>
                 <button id="reloadPostsBtn" class="btn ghost">Reload posts</button>
               </div>
-              <p id="blogTableHint" class="sr-only">Blog posts table with title, slug, status, and update time.</p>
+              <p id="blogTableHint" class="sr-only">Blog posts table with cover, title, status, category, update time, and quick actions.</p>
               <div class="table-wrap"><table id="blogTable" aria-label="Blog posts table" aria-describedby="blogTableHint"></table></div>
             </div>
             <form id="blogForm" class="blog-form">
               <input type="hidden" id="postId">
               <div class="form-grid-2">
-                <label>Title<input id="postTitle" required></label>
-                <label>Slug<input id="postSlug" required></label>
+                <label>Title
+                  <input id="postTitle" required>
+                  <span class="field-hint">Required. Used for heading and SEO context.</span>
+                </label>
+                <label>Slug
+                  <input id="postSlug" required>
+                  <span class="field-hint">Required. Auto-generated until you edit it manually.</span>
+                </label>
               </div>
               <div class="form-grid-2">
                 <label>Status
@@ -131,22 +137,55 @@
               <label>Tags (comma separated)<input id="postTags"></label>
               <div class="cover-field-block">
                 <label>Cover image URL<input id="postCoverImageUrl" type="text" inputmode="url" autocomplete="off" placeholder="https://…"></label>
+                <span class="field-hint">Optional. Recommended ratio: 16:9.</span>
                 <p id="coverUrlHint" class="cover-url-hint" hidden></p>
                 <div id="coverPreviewWrap" class="cover-preview-wrap" hidden>
                   <img id="coverPreviewImg" class="cover-preview-img" alt="" width="120" height="72" loading="lazy" decoding="async">
+                  <p id="coverPreviewFallback" class="cover-preview-fallback" hidden>Preview unavailable</p>
                 </div>
               </div>
-              <label>Excerpt<textarea id="postExcerpt" rows="2"></textarea></label>
-              <label>Content<textarea id="postContent" rows="8"></textarea></label>
+              <label>Excerpt
+                <textarea id="postExcerpt" rows="2"></textarea>
+                <span id="excerptCounter" class="char-counter" data-min="120" data-max="160">0 chars</span>
+              </label>
+              <div class="markdown-editor-block">
+                <div class="editor-header-row">
+                  <div class="tab-toggle-group" role="tablist" aria-label="Editor mode">
+                    <button type="button" id="editorWriteTab" class="editor-tab-btn active" role="tab" aria-selected="true">Write</button>
+                    <button type="button" id="editorPreviewTab" class="editor-tab-btn" role="tab" aria-selected="false">Preview</button>
+                  </div>
+                  <div class="markdown-toolbar" aria-label="Markdown toolbar">
+                    <button type="button" class="btn ghost md-tool-btn" data-md="h1">H1</button>
+                    <button type="button" class="btn ghost md-tool-btn" data-md="h2">H2</button>
+                    <button type="button" class="btn ghost md-tool-btn" data-md="bold">Bold</button>
+                    <button type="button" class="btn ghost md-tool-btn" data-md="italic">Italic</button>
+                    <button type="button" class="btn ghost md-tool-btn" data-md="bullet">Bullet</button>
+                    <button type="button" class="btn ghost md-tool-btn" data-md="numbered">Numbered</button>
+                    <button type="button" class="btn ghost md-tool-btn" data-md="link">Link</button>
+                    <button type="button" class="btn ghost md-tool-btn" data-md="cta">CTA</button>
+                  </div>
+                </div>
+                <label class="editor-content-label">Content (Markdown)
+                  <textarea id="postContent" rows="10"></textarea>
+                  <span class="field-hint">Recommended for publish. Supports headings, lists, bold/italic, and links.</span>
+                </label>
+                <section id="editorPreviewPanel" class="editor-preview-panel post-content" hidden aria-live="polite"></section>
+              </div>
               <div class="form-grid-2">
-                <label>Meta title<input id="postMetaTitle"></label>
+                <label>Meta title
+                  <input id="postMetaTitle">
+                  <span id="metaTitleCounter" class="char-counter" data-min="50" data-max="60">0 chars</span>
+                </label>
                 <label>Canonical URL<input id="postCanonicalUrl"></label>
               </div>
               <div class="form-grid-2">
                 <label>OG title<input id="postOgTitle"></label>
                 <label>OG description<textarea id="postOgDescription" rows="2"></textarea></label>
               </div>
-              <label>Meta description<textarea id="postMetaDescription" rows="2"></textarea></label>
+              <label>Meta description
+                <textarea id="postMetaDescription" rows="2"></textarea>
+                <span id="metaDescriptionCounter" class="char-counter" data-min="140" data-max="160">0 chars</span>
+              </label>
               <div class="toolbar">
                 <button type="submit" class="btn">Save draft</button>
                 <button type="button" id="publishToggleBtn" class="btn ghost">Publish / Update</button>

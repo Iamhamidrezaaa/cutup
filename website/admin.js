@@ -2,6 +2,9 @@ const API_BASE_URL = 'https://cutup.shop';
 let currentSession = null;
 let currentUser = null;
 let blogPostsCache = [];
+let slugManuallyEdited = false;
+
+const MD_CTA_TEXT = 'Try it now — paste your video and generate subtitles in seconds.\nhttps://cutup.shop/#tool';
 
 function fmtDate(v) {
   if (!v) return '—';
@@ -49,11 +52,13 @@ function updateCoverPreview() {
   const wrap = document.getElementById('coverPreviewWrap');
   const img = document.getElementById('coverPreviewImg');
   const hint = document.getElementById('coverUrlHint');
+  const fallback = document.getElementById('coverPreviewFallback');
   if (!input || !wrap || !img || !hint) return;
   const raw = input.value.trim();
   hint.hidden = true;
   hint.textContent = '';
   img.style.display = '';
+  if (fallback) fallback.hidden = true;
   if (!raw) {
     wrap.hidden = true;
     img.removeAttribute('src');
@@ -71,14 +76,195 @@ function updateCoverPreview() {
   img.alt = 'Cover preview';
   img.onerror = () => {
     img.style.display = 'none';
+    if (fallback) fallback.hidden = false;
     hint.textContent = 'Image failed to load — check the URL.';
     hint.hidden = false;
   };
   img.onload = () => {
     img.style.display = '';
+    if (fallback) fallback.hidden = true;
     hint.hidden = true;
   };
   img.src = safe;
+}
+
+function slugifyTitle(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 80);
+}
+
+function evaluateLengthState(length, min, max) {
+  if (length === 0) return { label: `${length} chars`, cls: '' };
+  if (length < min) return { label: `${length} chars • too short`, cls: 'counter-short' };
+  if (length > max) return { label: `${length} chars • too long`, cls: 'counter-long' };
+  return { label: `${length} chars • good`, cls: 'counter-good' };
+}
+
+function updateCharCounter(counterId, inputId, min, max) {
+  const counter = document.getElementById(counterId);
+  const input = document.getElementById(inputId);
+  if (!counter || !input) return;
+  const state = evaluateLengthState(String(input.value || '').trim().length, min, max);
+  counter.textContent = state.label;
+  counter.classList.remove('counter-short', 'counter-good', 'counter-long');
+  if (state.cls) counter.classList.add(state.cls);
+}
+
+function updateSeoCounters() {
+  updateCharCounter('metaTitleCounter', 'postMetaTitle', 50, 60);
+  updateCharCounter('metaDescriptionCounter', 'postMetaDescription', 140, 160);
+  updateCharCounter('excerptCounter', 'postExcerpt', 120, 160);
+}
+
+function sanitizeUrlForMarkdown(url) {
+  const raw = String(url || '').trim();
+  if (!raw) return '';
+  try {
+    const u = new URL(raw, window.location.origin);
+    if (!['http:', 'https:', 'mailto:'].includes(u.protocol)) return '';
+    return u.href;
+  } catch {
+    return '';
+  }
+}
+
+function parseInlineMarkdownAdmin(text) {
+  let out = escapeHtml(text || '');
+  out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  out = out.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+  out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, label, href) => {
+    const safeHref = sanitizeUrlForMarkdown(href);
+    if (!safeHref) return escapeHtml(label);
+    const isExternal = /^https?:\/\//i.test(safeHref);
+    const rel = isExternal ? ' rel="noopener noreferrer nofollow"' : '';
+    const target = isExternal ? ' target="_blank"' : '';
+    return `<a href="${escapeHtml(safeHref)}"${target}${rel}>${escapeHtml(label)}</a>`;
+  });
+  return out;
+}
+
+function renderMarkdownPreview(raw) {
+  const lines = String(raw || '').replace(/\r\n/g, '\n').split('\n');
+  const parts = [];
+  let inUl = false;
+  let inOl = false;
+  let paragraph = [];
+
+  const closeLists = () => {
+    if (inUl) { parts.push('</ul>'); inUl = false; }
+    if (inOl) { parts.push('</ol>'); inOl = false; }
+  };
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    closeLists();
+    parts.push(`<p>${parseInlineMarkdownAdmin(paragraph.join(' '))}</p>`);
+    paragraph = [];
+  };
+
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushParagraph();
+      return;
+    }
+    if (/^###\s+/.test(trimmed)) {
+      flushParagraph();
+      parts.push(`<h3>${parseInlineMarkdownAdmin(trimmed.replace(/^###\s+/, ''))}</h3>`);
+      return;
+    }
+    if (/^##\s+/.test(trimmed)) {
+      flushParagraph();
+      parts.push(`<h2>${parseInlineMarkdownAdmin(trimmed.replace(/^##\s+/, ''))}</h2>`);
+      return;
+    }
+    if (/^#\s+/.test(trimmed)) {
+      flushParagraph();
+      parts.push(`<h1>${parseInlineMarkdownAdmin(trimmed.replace(/^#\s+/, ''))}</h1>`);
+      return;
+    }
+    if (/^[-*]\s+/.test(trimmed)) {
+      flushParagraph();
+      if (inOl) { parts.push('</ol>'); inOl = false; }
+      if (!inUl) { parts.push('<ul>'); inUl = true; }
+      parts.push(`<li>${parseInlineMarkdownAdmin(trimmed.replace(/^[-*]\s+/, ''))}</li>`);
+      return;
+    }
+    if (/^\d+\.\s+/.test(trimmed)) {
+      flushParagraph();
+      if (inUl) { parts.push('</ul>'); inUl = false; }
+      if (!inOl) { parts.push('<ol>'); inOl = true; }
+      parts.push(`<li>${parseInlineMarkdownAdmin(trimmed.replace(/^\d+\.\s+/, ''))}</li>`);
+      return;
+    }
+    closeLists();
+    paragraph.push(trimmed);
+  });
+
+  flushParagraph();
+  closeLists();
+  return parts.join('') || '<p class="muted">Nothing to preview yet.</p>';
+}
+
+function setEditorMode(mode = 'write') {
+  const writeTab = document.getElementById('editorWriteTab');
+  const previewTab = document.getElementById('editorPreviewTab');
+  const content = document.getElementById('postContent');
+  const preview = document.getElementById('editorPreviewPanel');
+  if (!writeTab || !previewTab || !content || !preview) return;
+  const isPreview = mode === 'preview';
+  writeTab.classList.toggle('active', !isPreview);
+  previewTab.classList.toggle('active', isPreview);
+  writeTab.setAttribute('aria-selected', String(!isPreview));
+  previewTab.setAttribute('aria-selected', String(isPreview));
+  content.hidden = isPreview;
+  preview.hidden = !isPreview;
+  if (isPreview) {
+    preview.innerHTML = renderMarkdownPreview(content.value || '');
+  } else {
+    content.focus();
+  }
+}
+
+function updatePreviewIfOpen() {
+  const preview = document.getElementById('editorPreviewPanel');
+  const content = document.getElementById('postContent');
+  if (!preview || !content || preview.hidden) return;
+  preview.innerHTML = renderMarkdownPreview(content.value || '');
+}
+
+function insertAtCursor(textarea, prefix, suffix = '', placeholder = '') {
+  if (!textarea) return;
+  const start = textarea.selectionStart ?? textarea.value.length;
+  const end = textarea.selectionEnd ?? textarea.value.length;
+  const selected = textarea.value.slice(start, end) || placeholder;
+  const before = textarea.value.slice(0, start);
+  const after = textarea.value.slice(end);
+  textarea.value = `${before}${prefix}${selected}${suffix}${after}`;
+  const cursor = start + prefix.length + selected.length + suffix.length;
+  textarea.focus();
+  textarea.setSelectionRange(cursor, cursor);
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function handleMarkdownTool(action) {
+  const ta = document.getElementById('postContent');
+  if (!ta) return;
+  if (action === 'h1') return insertAtCursor(ta, '# ', '', 'Heading');
+  if (action === 'h2') return insertAtCursor(ta, '## ', '', 'Subheading');
+  if (action === 'bold') return insertAtCursor(ta, '**', '**', 'bold text');
+  if (action === 'italic') return insertAtCursor(ta, '*', '*', 'italic text');
+  if (action === 'bullet') return insertAtCursor(ta, '- ', '', 'List item');
+  if (action === 'numbered') return insertAtCursor(ta, '1. ', '', 'List item');
+  if (action === 'link') return insertAtCursor(ta, '[', '](https://example.com)', 'link text');
+  if (action === 'cta') return insertAtCursor(ta, '\n', '\n', MD_CTA_TEXT);
 }
 
 function showBanner(message) {
@@ -267,7 +453,7 @@ function renderBlogTable(posts) {
   const el = document.getElementById('blogTable');
   if (!el) return;
   el.innerHTML = `
-    <thead><tr><th class="blog-thumb-cell">Cover</th><th>Title</th><th>Slug</th><th>Status</th><th>Category</th><th>Updated</th><th>Actions</th></tr></thead>
+    <thead><tr><th class="blog-thumb-cell">Cover</th><th>Title</th><th>Status</th><th>Category</th><th>Updated</th><th>Actions</th></tr></thead>
     <tbody>
       ${(posts.length ? posts : []).map((p) => {
         const cover = sanitizeAdminCoverUrl(p.coverImageUrl || '');
@@ -275,12 +461,22 @@ function renderBlogTable(posts) {
         const thumb = cover
           ? `<img class="blog-list-thumb" src="${escapeHtml(cover)}" alt="" loading="lazy" decoding="async">`
           : `<span class="blog-list-thumb-placeholder" title="No cover">${escapeHtml(phLabel)}</span>`;
+        const actions = [
+          `<button class="btn ghost blog-action-btn" data-edit-post="${p.id}">Edit</button>`,
+          p.status === 'published'
+            ? `<a class="btn ghost blog-action-btn" href="blog.html?slug=${encodeURIComponent(p.slug)}" target="_blank" rel="noopener noreferrer">View public</a>`
+            : '',
+          p.status === 'published'
+            ? `<button class="btn ghost blog-action-btn" data-unpublish-post="${p.id}">Unpublish</button>`
+            : `<button class="btn ghost blog-action-btn" data-publish-post="${p.id}">Publish</button>`
+        ].filter(Boolean).join('');
         return `<tr>
         <td class="blog-thumb-cell">${thumb}</td>
-        <td>${escapeHtml(p.title)}</td><td>${escapeHtml(p.slug)}</td><td>${statusBadge(p.status, p.status === 'published' ? 'ok' : 'neutral')}</td><td>${escapeHtml(p.category || '—')}</td><td>${fmtDate(p.updatedAt)}</td>
-        <td><button class="btn ghost" data-edit-post="${p.id}">Edit</button></td>
+        <td><div class="blog-title-cell"><strong>${escapeHtml(p.title)}</strong><span class="muted">${escapeHtml(p.slug)}</span></div></td>
+        <td>${statusBadge(p.status, p.status === 'published' ? 'ok' : 'neutral')}</td><td>${escapeHtml(p.category || '—')}</td><td>${fmtDate(p.updatedAt)}</td>
+        <td><div class="blog-actions-wrap">${actions}</div></td>
       </tr>`;
-      }).join('') || emptyRow(7, 'No blog posts yet. Create your first draft.')}
+      }).join('') || emptyRow(6, 'No blog posts yet. Create your first draft.')}
     </tbody>`;
   el.querySelectorAll('.blog-list-thumb').forEach((img) => {
     img.addEventListener('error', () => {
@@ -294,9 +490,16 @@ function renderBlogTable(posts) {
       if (post) fillBlogForm(post);
     });
   });
+  el.querySelectorAll('[data-publish-post]').forEach((btn) => {
+    btn.addEventListener('click', () => quickTogglePublish(btn.getAttribute('data-publish-post'), true));
+  });
+  el.querySelectorAll('[data-unpublish-post]').forEach((btn) => {
+    btn.addEventListener('click', () => quickTogglePublish(btn.getAttribute('data-unpublish-post'), false));
+  });
 }
 
 function fillBlogForm(post) {
+  slugManuallyEdited = Boolean(post?.slug);
   document.getElementById('postId').value = post.id || '';
   document.getElementById('postSlug').value = post.slug || '';
   document.getElementById('postTitle').value = post.title || '';
@@ -312,6 +515,8 @@ function fillBlogForm(post) {
   document.getElementById('postOgTitle').value = post.ogTitle || '';
   document.getElementById('postOgDescription').value = post.ogDescription || '';
   updateCoverPreview();
+  updateSeoCounters();
+  updatePreviewIfOpen();
 }
 
 function readBlogForm() {
@@ -332,6 +537,23 @@ function readBlogForm() {
     ogTitle: document.getElementById('postOgTitle').value.trim(),
     ogDescription: document.getElementById('postOgDescription').value.trim()
   };
+}
+
+async function quickTogglePublish(id, publish) {
+  if (!id) return;
+  try {
+    await apiPost('publishBlogPost', { id, publish });
+    showBanner(publish ? 'Post published successfully.' : 'Post moved to draft.');
+    await loadBlogPosts();
+    const currentId = document.getElementById('postId')?.value;
+    if (currentId && String(currentId) === String(id)) {
+      const updated = blogPostsCache.find((x) => String(x.id) === String(id));
+      if (updated) fillBlogForm(updated);
+    }
+  } catch (err) {
+    console.error('[admin] quick publish toggle error', err);
+    showBanner(err.message || 'Could not update post status.');
+  }
 }
 
 async function loadOverview() { renderOverview(await apiGet('overview')); }
@@ -396,13 +618,58 @@ function setupActions() {
   });
   document.getElementById('usersReloadBtn')?.addEventListener('click', () => loadUsers().catch((e) => showBanner(e.message)));
   document.getElementById('usageReloadBtn')?.addEventListener('click', () => loadUsage().catch((e) => showBanner(e.message)));
+  const titleEl = document.getElementById('postTitle');
+  const slugEl = document.getElementById('postSlug');
+  const contentEl = document.getElementById('postContent');
+  const writeTab = document.getElementById('editorWriteTab');
+  const previewTab = document.getElementById('editorPreviewTab');
+
   document.getElementById('reloadPostsBtn')?.addEventListener('click', () => loadBlogPosts().catch((e) => showBanner(e.message)));
-  document.getElementById('newPostBtn')?.addEventListener('click', () => fillBlogForm({ status: 'draft', tags: [] }));
+  document.getElementById('newPostBtn')?.addEventListener('click', () => {
+    slugManuallyEdited = false;
+    fillBlogForm({ status: 'draft', tags: [] });
+    setEditorMode('write');
+  });
   document.getElementById('postCoverImageUrl')?.addEventListener('input', () => updateCoverPreview());
+  document.getElementById('postMetaTitle')?.addEventListener('input', () => updateSeoCounters());
+  document.getElementById('postMetaDescription')?.addEventListener('input', () => updateSeoCounters());
+  document.getElementById('postExcerpt')?.addEventListener('input', () => updateSeoCounters());
+
+  titleEl?.addEventListener('input', () => {
+    if (!slugEl || slugManuallyEdited) return;
+    const next = slugifyTitle(titleEl.value);
+    if (next) slugEl.value = next;
+  });
+  slugEl?.addEventListener('input', () => {
+    slugManuallyEdited = true;
+  });
+
+  contentEl?.addEventListener('input', () => updatePreviewIfOpen());
+  writeTab?.addEventListener('click', () => setEditorMode('write'));
+  previewTab?.addEventListener('click', () => setEditorMode('preview'));
+  document.querySelectorAll('.md-tool-btn').forEach((btn) => {
+    btn.addEventListener('click', () => handleMarkdownTool(btn.getAttribute('data-md')));
+  });
+
+  const validateBlogPayload = (payload, forPublish = false) => {
+    if (!payload.title) {
+      showBanner('Title is required before saving.');
+      return false;
+    }
+    if (!payload.slug) {
+      showBanner('Slug is required before saving.');
+      return false;
+    }
+    if (forPublish && !String(payload.content || '').trim()) {
+      showBanner('Content is recommended before publishing.');
+    }
+    return true;
+  };
   document.getElementById('blogForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
       const payload = readBlogForm();
+      if (!validateBlogPayload(payload, false)) return;
       console.log('[admin] saveBlogPost payload', {
         id: payload.id,
         title: payload.title,
@@ -434,6 +701,7 @@ function setupActions() {
       if (!id) {
         const payload = readBlogForm();
         payload.status = 'published';
+        if (!validateBlogPayload(payload, true)) return;
         const saved = await apiPost('saveBlogPost', payload);
         if (saved?.id) document.getElementById('postId').value = String(saved.id);
         document.getElementById('postStatus').value = 'published';
@@ -445,6 +713,8 @@ function setupActions() {
         }
         return;
       }
+      const existingPayload = readBlogForm();
+      if (!validateBlogPayload(existingPayload, status !== 'published')) return;
       await apiPost('publishBlogPost', { id, publish: status !== 'published' });
       showBanner(status !== 'published' ? 'Post published successfully.' : 'Post moved to draft.');
       await loadBlogPosts();
@@ -453,6 +723,8 @@ function setupActions() {
       showBanner(err.message || 'Could not publish post.');
     }
   });
+  updateSeoCounters();
+  setEditorMode('write');
 }
 
 document.addEventListener('DOMContentLoaded', async () => {

@@ -169,6 +169,22 @@ function removeMetaNode(selector) {
   document.querySelector(selector)?.remove();
 }
 
+function upsertJsonLd(id, payload) {
+  if (!payload) return;
+  let script = document.querySelector(`script[data-jsonld="${id}"]`);
+  if (!script) {
+    script = document.createElement('script');
+    script.type = 'application/ld+json';
+    script.setAttribute('data-jsonld', id);
+    document.head.appendChild(script);
+  }
+  script.textContent = JSON.stringify(payload);
+}
+
+function removeJsonLd(id) {
+  document.querySelector(`script[data-jsonld="${id}"]`)?.remove();
+}
+
 function parseInlineMarkdown(text) {
   let out = escapeHtml(text || '');
   out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
@@ -263,6 +279,22 @@ function setSeoForPost(post) {
     removeMetaNode('meta[name="twitter:image:src"]');
     setMetaByName('twitter:card', 'summary');
   }
+  removeJsonLd('blog');
+  upsertJsonLd('blog-posting', {
+    '@context': 'https://schema.org',
+    '@type': 'BlogPosting',
+    headline: post.title || 'Cutup Blog',
+    description,
+    datePublished: post.publishedAt || post.updatedAt || undefined,
+    dateModified: post.updatedAt || post.publishedAt || undefined,
+    author: {
+      '@type': 'Organization',
+      name: 'Cutup'
+    },
+    image: ogImg || undefined,
+    url: pageUrl,
+    mainEntityOfPage: pageUrl
+  });
 }
 
 function setSeoForList() {
@@ -277,6 +309,18 @@ function setSeoForList() {
   removeMetaNode('meta[name="twitter:image"]');
   removeMetaNode('meta[name="twitter:image:src"]');
   setMetaByName('twitter:card', 'summary');
+  removeJsonLd('blog-posting');
+  upsertJsonLd('blog', {
+    '@context': 'https://schema.org',
+    '@type': 'Blog',
+    name: 'Cutup Blog',
+    url: pageUrl,
+    description: 'Insights, tutorials, and product updates from Cutup.',
+    publisher: {
+      '@type': 'Organization',
+      name: 'Cutup'
+    }
+  });
 }
 
 function renderPost(post) {

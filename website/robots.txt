@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+
+# Key pages
+Allow: /blog.html
+Allow: /subtitle-generator.html
+Allow: /video-to-text.html
+Allow: /translate-video.html
+
+Sitemap: https://cutup.shop/sitemap.xml

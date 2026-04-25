@@ -226,6 +226,11 @@ th { font-size: 12px; color: var(--muted); background: #f8fafc; position: sticky
 }
 .blog-form label { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
 .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.field-hint { font-size: 11px; color: #64748b; }
+.char-counter { font-size: 11px; color: #64748b; }
+.counter-short { color: #b45309; }
+.counter-good { color: #166534; }
+.counter-long { color: #b91c1c; }
 
 .cover-field-block { display: grid; gap: 6px; }
 .cover-url-hint {
@@ -238,19 +243,74 @@ th { font-size: 12px; color: var(--muted); background: #f8fafc; position: sticky
   border-radius: 10px;
   padding: 8px;
   background: #f8fafc;
-  width: fit-content;
+  width: min(100%, 320px);
   max-width: 100%;
 }
 .cover-preview-img {
   display: block;
-  max-width: min(280px, 100%);
+  width: 100%;
   height: auto;
   border-radius: 8px;
   object-fit: cover;
   aspect-ratio: 16 / 9;
   background: linear-gradient(135deg, #e0e7ff, #f5f3ff);
 }
+.cover-preview-fallback {
+  margin: 0;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px dashed #cbd5e1;
+  font-size: 12px;
+  color: #475569;
+  text-align: center;
+}
+.markdown-editor-block {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  background: #f8fafc;
+}
+.editor-header-row {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.tab-toggle-group { display: inline-flex; gap: 6px; }
+.editor-tab-btn {
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.editor-tab-btn.active {
+  border-color: #c4b5fd;
+  background: #ede9fe;
+  color: #3730a3;
+  font-weight: 600;
+}
+.markdown-toolbar { display: flex; gap: 6px; flex-wrap: wrap; }
+.md-tool-btn { font-size: 12px; padding: 6px 10px; }
+.editor-content-label { margin: 0; }
+.editor-preview-panel {
+  min-height: 140px;
+  max-height: 440px;
+  overflow: auto;
+  margin-top: 2px;
+}
+.editor-preview-panel h1,
+.editor-preview-panel h2,
+.editor-preview-panel h3 { line-height: 1.35; }
+.editor-preview-panel ul,
+.editor-preview-panel ol { padding-left: 20px; }
 .blog-thumb-cell { width: 52px; }
+.blog-title-cell { display: grid; gap: 2px; }
+.blog-actions-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
+.blog-action-btn { padding: 6px 10px; font-size: 12px; text-decoration: none; }
 .blog-list-thumb {
   width: 44px;
   height: 44px;
