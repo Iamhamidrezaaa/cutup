@@ -97,13 +97,24 @@ function renderList(posts) {
   grid.innerHTML = posts.map((post) => {
     const tags = normalizeTags(post.tags);
     const date = post.publishedAt || post.updatedAt;
+    const cover = sanitizeImageUrl(post.coverImageUrl || '');
+    const cat = String(post.category || '').trim();
+    const placeholderLabel = cat || 'Article';
+    const title = post.title || 'Untitled';
+    const thumb = cover
+      ? `<img class="post-card-thumb" src="${escapeHtml(cover)}" alt="${escapeHtml(title)}" loading="lazy" decoding="async">`
+      : '';
     return `
       <article class="post-card">
+        <a class="post-card-media" href="blog.html?slug=${encodeURIComponent(post.slug)}" aria-label="${escapeHtml(title)}">
+          ${thumb}
+          <div class="post-card-placeholder"><span>${escapeHtml(placeholderLabel)}</span></div>
+        </a>
         <div class="post-meta-line">
-          ${post.category ? `<span class="pill">${escapeHtml(post.category)}</span>` : ''}
+          ${cat ? `<span class="pill">${escapeHtml(cat)}</span>` : ''}
           <span>${escapeHtml(fmtDate(date))}</span>
         </div>
-        <h2>${escapeHtml(post.title || 'Untitled')}</h2>
+        <h2><a href="blog.html?slug=${encodeURIComponent(post.slug)}">${escapeHtml(title)}</a></h2>
         <p class="post-excerpt">${escapeHtml(post.excerpt || 'No excerpt provided yet.')}</p>
         <div class="post-meta-line">
           ${tags.slice(0, 4).map((t) => `<span class="pill">${escapeHtml(t)}</span>`).join('')}
@@ -112,6 +123,11 @@ function renderList(posts) {
       </article>
     `;
   }).join('');
+  grid.querySelectorAll('.post-card-thumb').forEach((img) => {
+    img.addEventListener('error', () => {
+      img.classList.add('post-card-thumb--broken');
+    });
+  });
 }
 
 function slugifyHeading(text) {
@@ -134,6 +150,23 @@ function sanitizeUrl(url) {
   } catch {
     return '';
   }
+}
+
+/** Cover / OG images: http(s) only — blocks javascript:, data:, etc. */
+function sanitizeImageUrl(url) {
+  const raw = String(url || '').trim();
+  if (!raw) return '';
+  try {
+    const parsed = new URL(raw, window.location.origin);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+    return parsed.href;
+  } catch {
+    return '';
+  }
+}
+
+function removeMetaNode(selector) {
+  document.querySelector(selector)?.remove();
 }
 
 function parseInlineMarkdown(text) {
@@ -219,6 +252,17 @@ function setSeoForPost(post) {
   setMetaByProperty('og:description', post.ogDescription || description);
   setMetaByProperty('og:url', pageUrl);
   setCanonical(post.canonicalUrl || pageUrl);
+  const ogImg = sanitizeImageUrl(post.coverImageUrl || '');
+  if (ogImg) {
+    setMetaByProperty('og:image', ogImg);
+    setMetaByName('twitter:image', ogImg);
+    setMetaByName('twitter:card', 'summary_large_image');
+  } else {
+    removeMetaNode('meta[property="og:image"]');
+    removeMetaNode('meta[name="twitter:image"]');
+    removeMetaNode('meta[name="twitter:image:src"]');
+    setMetaByName('twitter:card', 'summary');
+  }
 }
 
 function setSeoForList() {
@@ -229,6 +273,10 @@ function setSeoForList() {
   setMetaByProperty('og:description', 'Insights, tutorials, and product updates from Cutup.');
   setMetaByProperty('og:url', pageUrl);
   setCanonical(pageUrl);
+  removeMetaNode('meta[property="og:image"]');
+  removeMetaNode('meta[name="twitter:image"]');
+  removeMetaNode('meta[name="twitter:image:src"]');
+  setMetaByName('twitter:card', 'summary');
 }
 
 function renderPost(post) {
@@ -238,14 +286,22 @@ function renderPost(post) {
   listView.hidden = true;
   postView.hidden = false;
 
-  q('#postTitle').textContent = post.title || 'Untitled';
+  const postTitle = post.title || 'Untitled';
+  q('#postTitle').textContent = postTitle;
   const coverEl = q('#postCoverImage');
-  const coverUrl = sanitizeUrl(post.coverImageUrl || '');
+  const coverUrl = sanitizeImageUrl(post.coverImageUrl || '');
   if (coverEl) {
+    coverEl.onerror = null;
+    coverEl.onload = null;
     if (coverUrl) {
       coverEl.hidden = false;
+      coverEl.alt = postTitle;
+      coverEl.onerror = () => {
+        coverEl.hidden = true;
+        coverEl.removeAttribute('src');
+        coverEl.alt = '';
+      };
       coverEl.src = coverUrl;
-      coverEl.alt = `${post.title || 'Blog'} cover image`;
     } else {
       coverEl.hidden = true;
       coverEl.removeAttribute('src');

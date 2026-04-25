@@ -31,6 +31,56 @@ function emptyRow(colspan, message) {
   return `<tr><td class="empty-row" colspan="${colspan}">${escapeHtml(message)}</td></tr>`;
 }
 
+/** Allow only http(s) for cover images (blocks javascript:, data:, etc.). */
+function sanitizeAdminCoverUrl(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s) return '';
+  try {
+    const u = new URL(s);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+    return u.href;
+  } catch {
+    return '';
+  }
+}
+
+function updateCoverPreview() {
+  const input = document.getElementById('postCoverImageUrl');
+  const wrap = document.getElementById('coverPreviewWrap');
+  const img = document.getElementById('coverPreviewImg');
+  const hint = document.getElementById('coverUrlHint');
+  if (!input || !wrap || !img || !hint) return;
+  const raw = input.value.trim();
+  hint.hidden = true;
+  hint.textContent = '';
+  img.style.display = '';
+  if (!raw) {
+    wrap.hidden = true;
+    img.removeAttribute('src');
+    return;
+  }
+  const safe = sanitizeAdminCoverUrl(raw);
+  if (!safe) {
+    hint.textContent = 'Use a full https://… image URL. Other schemes are not allowed.';
+    hint.hidden = false;
+    wrap.hidden = true;
+    img.removeAttribute('src');
+    return;
+  }
+  wrap.hidden = false;
+  img.alt = 'Cover preview';
+  img.onerror = () => {
+    img.style.display = 'none';
+    hint.textContent = 'Image failed to load — check the URL.';
+    hint.hidden = false;
+  };
+  img.onload = () => {
+    img.style.display = '';
+    hint.hidden = true;
+  };
+  img.src = safe;
+}
+
 function showBanner(message) {
   const el = document.getElementById('adminBanner');
   if (!el) return;
@@ -217,13 +267,27 @@ function renderBlogTable(posts) {
   const el = document.getElementById('blogTable');
   if (!el) return;
   el.innerHTML = `
-    <thead><tr><th>Title</th><th>Slug</th><th>Status</th><th>Category</th><th>Updated</th><th>Actions</th></tr></thead>
+    <thead><tr><th class="blog-thumb-cell">Cover</th><th>Title</th><th>Slug</th><th>Status</th><th>Category</th><th>Updated</th><th>Actions</th></tr></thead>
     <tbody>
-      ${(posts.length ? posts : []).map((p) => `<tr>
+      ${(posts.length ? posts : []).map((p) => {
+        const cover = sanitizeAdminCoverUrl(p.coverImageUrl || '');
+        const phLabel = (p.category || '').trim().slice(0, 4) || '—';
+        const thumb = cover
+          ? `<img class="blog-list-thumb" src="${escapeHtml(cover)}" alt="" loading="lazy" decoding="async">`
+          : `<span class="blog-list-thumb-placeholder" title="No cover">${escapeHtml(phLabel)}</span>`;
+        return `<tr>
+        <td class="blog-thumb-cell">${thumb}</td>
         <td>${escapeHtml(p.title)}</td><td>${escapeHtml(p.slug)}</td><td>${statusBadge(p.status, p.status === 'published' ? 'ok' : 'neutral')}</td><td>${escapeHtml(p.category || '—')}</td><td>${fmtDate(p.updatedAt)}</td>
         <td><button class="btn ghost" data-edit-post="${p.id}">Edit</button></td>
-      </tr>`).join('') || emptyRow(6, 'No blog posts yet. Create your first draft.')}
+      </tr>`;
+      }).join('') || emptyRow(7, 'No blog posts yet. Create your first draft.')}
     </tbody>`;
+  el.querySelectorAll('.blog-list-thumb').forEach((img) => {
+    img.addEventListener('error', () => {
+      const td = img.closest('td');
+      if (td) td.innerHTML = '<span class="blog-list-thumb-placeholder" title="Bad image">!</span>';
+    });
+  });
   el.querySelectorAll('[data-edit-post]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const post = blogPostsCache.find((x) => String(x.id) === btn.getAttribute('data-edit-post'));
@@ -247,6 +311,7 @@ function fillBlogForm(post) {
   document.getElementById('postCanonicalUrl').value = post.canonicalUrl || '';
   document.getElementById('postOgTitle').value = post.ogTitle || '';
   document.getElementById('postOgDescription').value = post.ogDescription || '';
+  updateCoverPreview();
 }
 
 function readBlogForm() {
@@ -333,6 +398,7 @@ function setupActions() {
   document.getElementById('usageReloadBtn')?.addEventListener('click', () => loadUsage().catch((e) => showBanner(e.message)));
   document.getElementById('reloadPostsBtn')?.addEventListener('click', () => loadBlogPosts().catch((e) => showBanner(e.message)));
   document.getElementById('newPostBtn')?.addEventListener('click', () => fillBlogForm({ status: 'draft', tags: [] }));
+  document.getElementById('postCoverImageUrl')?.addEventListener('input', () => updateCoverPreview());
   document.getElementById('blogForm')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     try {

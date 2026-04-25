@@ -100,5 +100,6 @@ CREATE TABLE IF NOT EXISTS blog_posts (
 CREATE INDEX IF NOT EXISTS idx_blog_posts_status_published_at
   ON blog_posts(status, published_at DESC);
 
+-- Idempotent: safe if column already exists on older DBs.
 ALTER TABLE blog_posts
   ADD COLUMN IF NOT EXISTS cover_image_url TEXT;

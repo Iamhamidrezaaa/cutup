@@ -129,7 +129,13 @@
                 <label>Category<input id="postCategory"></label>
               </div>
               <label>Tags (comma separated)<input id="postTags"></label>
-              <label>Cover image URL<input id="postCoverImageUrl" placeholder="https://..."></label>
+              <div class="cover-field-block">
+                <label>Cover image URL<input id="postCoverImageUrl" type="text" inputmode="url" autocomplete="off" placeholder="https://…"></label>
+                <p id="coverUrlHint" class="cover-url-hint" hidden></p>
+                <div id="coverPreviewWrap" class="cover-preview-wrap" hidden>
+                  <img id="coverPreviewImg" class="cover-preview-img" alt="" width="120" height="72" loading="lazy" decoding="async">
+                </div>
+              </div>
               <label>Excerpt<textarea id="postExcerpt" rows="2"></textarea></label>
               <label>Content<textarea id="postContent" rows="8"></textarea></label>
               <div class="form-grid-2">

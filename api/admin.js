@@ -23,6 +23,19 @@ function parseAdminEmails() {
     .filter(Boolean);
 }
 
+/** Only http(s) cover URLs; strips javascript:, data:, etc. */
+function sanitizeBlogCoverImageUrl(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s) return '';
+  try {
+    const u = new URL(s);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+    return u.href.slice(0, 2048);
+  } catch {
+    return '';
+  }
+}
+
 function getSessionAndAdminEmail(req, res) {
   const sessionId = req.headers['x-session-id'] || req.query?.session || req.body?.session;
   if (!sessionId) {
@@ -109,7 +122,7 @@ export default async function handler(req, res) {
           id: p.id,
           slug: p.slug,
           title: p.title,
-          coverImageUrl: p.coverImageUrl,
+          coverImageUrl: sanitizeBlogCoverImageUrl(p.coverImageUrl),
           excerpt: p.excerpt,
           content: p.content,
           status: p.status,
@@ -224,7 +237,7 @@ export default async function handler(req, res) {
         canonicalUrl: String(raw.canonicalUrl || ''),
         ogTitle: String(raw.ogTitle || ''),
         ogDescription: String(raw.ogDescription || ''),
-        coverImageUrl: String(raw.coverImageUrl || '')
+        coverImageUrl: sanitizeBlogCoverImageUrl(raw.coverImageUrl)
       };
       if (!payload.slug) return res.status(400).json({ error: 'Slug is required', message: 'Please enter a slug.' });
       if (!payload.title) return res.status(400).json({ error: 'Title is required', message: 'Please enter a title.' });
