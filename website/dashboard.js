@@ -7,6 +7,7 @@ let subscriptionInfo = null;
 let plansCache = [];
 let historyCache = [];
 let savedOutputsCache = [];
+let savedOutputsFilter = 'all';
 
 function formatDateTime(dateValue) {
   if (!dateValue) return '—';
@@ -24,6 +25,15 @@ function formatDateTime(dateValue) {
 function safeText(value, fallback = '—') {
   const str = String(value ?? '').trim();
   return str || fallback;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function videosUsedEstimate(usedMinutes) {
@@ -68,6 +78,19 @@ function generateAvatar(text) {
 
 async function apiGet(url, options = {}) {
   const response = await fetch(url, options);
+  const data = await response.json().catch(() => ({}));
+  return { response, data };
+}
+
+async function apiPost(url, payload, options = {}) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {})
+    },
+    body: JSON.stringify(payload || {})
+  });
   const data = await response.json().catch(() => ({}));
   return { response, data };
 }
@@ -211,6 +234,10 @@ function renderOverview() {
   const dailyMinutes = usage.daily?.minutes || 0;
   const dailyLimit = usage.dailyLimit;
 
+  renderUpgradeWarning();
+  renderQuickActionCard();
+  renderInsights();
+
   document.getElementById('remainingVideos').textContent = remainingVideos;
   document.getElementById('audioDownloadUsage').textContent = `${audioCount}${audioLimit != null ? `/${audioLimit}` : ''}`;
   document.getElementById('videoDownloadUsage').textContent = `${videoCount}${videoLimit != null ? `/${videoLimit}` : ''}`;
@@ -268,6 +295,126 @@ function fallbackTitle(platform, sourceUrl = '') {
   return 'Generated output';
 }
 
+function normalizeSavedOutputType(type) {
+  const t = String(type || '').toLowerCase();
+  if (t === 'transcript' || t === 'transcription') return 'transcript';
+  if (t === 'summary' || t === 'summarization') return 'summary';
+  if (t === 'srt') return 'srt';
+  return t || 'transcript';
+}
+
+function openToolWithUrl(urlValue = '') {
+  const url = String(urlValue || '').trim();
+  if (url) {
+    localStorage.setItem('cutup_pending_url', url);
+  } else {
+    localStorage.removeItem('cutup_pending_url');
+  }
+  localStorage.setItem('cutup_pending_platform', 'youtube');
+  window.location.href = 'index.html#tool';
+}
+
+function isUnlimitedPlan() {
+  const planId = String(subscriptionInfo?.plan || '').toLowerCase();
+  return planId === 'business' || planId === 'advanced';
+}
+
+function getThisMonthActivityCount() {
+  const now = new Date();
+  const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  return historyCache.filter((item) => String(item.date || '').slice(0, 7) === ym).length;
+}
+
+function getMostUsedFeatureLabel() {
+  const counters = historyCache.reduce((acc, item) => {
+    const type = item.type === 'download'
+      ? (item.metadata?.kind === 'audio' ? 'downloadAudio' : item.metadata?.kind === 'video' ? 'downloadVideo' : 'download')
+      : item.type;
+    acc[type] = (acc[type] || 0) + 1;
+    return acc;
+  }, {});
+  const sorted = Object.entries(counters).sort((a, b) => b[1] - a[1]);
+  if (!sorted.length) return 'Start with your first transcript';
+  return formatHistoryType(sorted[0][0]);
+}
+
+function getLastActivityLabel() {
+  if (!historyCache.length) return 'Start with your first transcript';
+  const last = new Date(historyCache[0].date);
+  if (Number.isNaN(last.getTime())) return 'Start with your first transcript';
+  const diffMs = Date.now() - last.getTime();
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  if (diffHours < 1) return 'Less than 1 hour ago';
+  if (diffHours < 24) return `${diffHours} hours ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays} days ago`;
+}
+
+function renderQuickActionCard() {
+  const target = document.getElementById('quickActionCard');
+  if (!target) return;
+  target.innerHTML = `
+    <h2>Create a new output</h2>
+    <p class="dashboard-muted-loading">Paste a video URL and jump straight into transcript generation.</p>
+    <div class="quick-action-row">
+      <input id="quickActionUrl" class="quick-action-input" type="url" placeholder="https://www.youtube.com/watch?v=..." />
+      <button id="quickActionGenerate" class="plan-btn">Generate transcript</button>
+      <button id="quickActionOpenTool" class="plan-btn plan-btn--ghost">Open full tool</button>
+    </div>
+  `;
+  document.getElementById('quickActionGenerate')?.addEventListener('click', () => {
+    const value = document.getElementById('quickActionUrl')?.value || '';
+    openToolWithUrl(value);
+  });
+  document.getElementById('quickActionOpenTool')?.addEventListener('click', () => openToolWithUrl(''));
+}
+
+function renderInsights() {
+  const target = document.getElementById('insightsGrid');
+  if (!target || !subscriptionInfo) return;
+  const usage = subscriptionInfo.usage || {};
+  const monthVideos = videosUsedEstimate(usage.monthly?.minutes || 0);
+  const savedCount = savedOutputsCache.length;
+  const monthActivities = getThisMonthActivityCount();
+  const mostUsed = getMostUsedFeatureLabel();
+  target.innerHTML = `
+    <article class="insight-card"><h3>You processed ${monthVideos} videos this month</h3><p>Based on your billed minutes (~7 min/video).</p></article>
+    <article class="insight-card"><h3>Most used feature</h3><p>${mostUsed}</p></article>
+    <article class="insight-card"><h3>You saved ${savedCount} outputs</h3><p>${savedCount ? 'Reuse and export them anytime.' : 'Start with your first transcript.'}</p></article>
+    <article class="insight-card"><h3>Last activity</h3><p>${historyCache.length ? `${getLastActivityLabel()} · ${monthActivities} this month` : 'Start with your first transcript.'}</p></article>
+  `;
+}
+
+function renderUpgradeWarning() {
+  const target = document.getElementById('upgradeWarning');
+  if (!target || !subscriptionInfo) return;
+  if (isUnlimitedPlan()) {
+    target.innerHTML = `<div class="upgrade-warning upgrade-warning--neutral">You’re on an unlimited Business plan.</div>`;
+    return;
+  }
+  const usage = subscriptionInfo.usage || {};
+  const monthlyMinutes = Number(usage.monthly?.minutes || 0);
+  const monthlyLimit = Number(usage.monthlyLimit || 0);
+  const dailyMinutes = Number(usage.daily?.minutes || 0);
+  const dailyLimit = Number(usage.dailyLimit || 0);
+  const monthlyRatio = monthlyLimit > 0 ? monthlyMinutes / monthlyLimit : 0;
+  const dailyRatio = dailyLimit > 0 ? dailyMinutes / dailyLimit : 0;
+  const isFree = String(subscriptionInfo.plan || '').toLowerCase() === 'free';
+  if (monthlyRatio >= 0.8 || (isFree && (monthlyRatio >= 0.7 || dailyRatio >= 0.7))) {
+    target.innerHTML = `
+      <div class="upgrade-warning">
+        <div>You’ve used ${Math.max(1, Math.round(monthlyRatio * 100))}% of your monthly capacity. Upgrade to keep processing without interruptions.</div>
+        <button class="plan-btn" id="upgradeWarningBtn">Upgrade plan</button>
+      </div>
+    `;
+    document.getElementById('upgradeWarningBtn')?.addEventListener('click', () => {
+      document.querySelector('.nav-item[data-section="subscription"]')?.click();
+    });
+    return;
+  }
+  target.innerHTML = '';
+}
+
 function renderUsageSection() {
   const target = document.getElementById('usageDetails');
   if (!target || !subscriptionInfo) return;
@@ -292,6 +439,17 @@ function renderUsageSection() {
     const platform = platformLabel !== 'Unknown' ? ` · ${platformLabel}` : '';
     const minutesNote = Number(item.minutes) > 0 ? ` · ${Number(item.minutes).toFixed(1)} min` : '';
     const status = safeText(item.metadata?.status, 'completed');
+    const sourceUrlLabel = sourceUrl
+      ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">Open source</a>`
+      : '—';
+    const relatedSaved = savedOutputsCache.find((saved) => {
+      const sameSource = sourceUrl && saved.sourceUrl && String(saved.sourceUrl) === String(sourceUrl);
+      const sameTitle = title && saved.title && String(saved.title).trim() === String(title).trim();
+      return sameSource || sameTitle;
+    });
+    const relatedLink = relatedSaved
+      ? `<button class="history-link-btn" data-jump-saved="${relatedSaved.id}">View output</button>`
+      : '';
     return `
       <div class="history-item">
         <details>
@@ -303,6 +461,7 @@ function renderUsageSection() {
                 <span>${formatDateTime(item.date)}${platform}${minutesNote}</span>
               </div>
             </div>
+            <span class="history-expand-hint">Details</span>
           </summary>
           <div class="history-details">
             <div><strong>Platform:</strong> ${platformLabel}</div>
@@ -310,8 +469,9 @@ function renderUsageSection() {
             <div><strong>Date:</strong> ${formatDateTime(item.date)}</div>
             <div><strong>Duration:</strong> ${Number(item.minutes) > 0 ? `${Number(item.minutes).toFixed(1)} min` : '—'}</div>
             <div><strong>Title:</strong> ${title}</div>
-            <div><strong>Source URL:</strong> ${sourceUrl || '—'}</div>
+            <div><strong>Source URL:</strong> ${sourceUrlLabel}</div>
             <div><strong>Status:</strong> ${status}</div>
+            ${relatedLink ? `<div><strong>Saved output:</strong> ${relatedLink}</div>` : ''}
           </div>
         </details>
       </div>
@@ -331,9 +491,21 @@ function renderUsageSection() {
     </div>
     <div class="usage-history">
       <h3>Recent activity</h3>
+      <p class="dashboard-muted-loading">You have ${getThisMonthActivityCount()} activities this month.</p>
       ${items || '<p class="dashboard-empty-note">No recent activity yet.</p>'}
     </div>
   `;
+
+  target.querySelectorAll('[data-jump-saved]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const savedId = btn.getAttribute('data-jump-saved');
+      document.querySelector('.nav-item[data-section="saved"]')?.click();
+      setTimeout(() => {
+        const details = document.getElementById(`saved-output-view-${savedId}`);
+        if (details) details.open = true;
+      }, 120);
+    });
+  });
 }
 
 function renderSavedOutputs() {
@@ -342,47 +514,131 @@ function renderSavedOutputs() {
   if (!savedOutputsCache.length) {
     target.innerHTML = `
       <div class="empty-state">
-        <h3>Saved outputs</h3>
-        <p class="dashboard-empty-note">Saved outputs are coming soon. Your generated transcripts, summaries, and subtitle files will appear here.</p>
+        <h3>You don’t have any saved outputs yet.</h3>
+        <p class="dashboard-empty-note">Paste your first video and we’ll save transcripts, summaries, and subtitle files for you.</p>
+        <button id="savedEmptyGenerateBtn" class="plan-btn">Generate first transcript</button>
       </div>
     `;
+    document.getElementById('savedEmptyGenerateBtn')?.addEventListener('click', () => openToolWithUrl(''));
     return;
   }
 
-  const cards = savedOutputsCache.map((item) => {
+  const normalized = [...savedOutputsCache]
+    .sort((a, b) => Number(Boolean(b.isFavorite)) - Number(Boolean(a.isFavorite)))
+    .map((item) => ({
+    ...item,
+    _type: normalizeSavedOutputType(item.type)
+    }));
+  const filteredOutputs = savedOutputsFilter === 'all'
+    ? normalized
+    : normalized.filter((item) => item._type === savedOutputsFilter);
+  const counts = normalized.reduce((acc, item) => {
+    acc.all += 1;
+    acc[item._type] = (acc[item._type] || 0) + 1;
+    return acc;
+  }, { all: 0, transcript: 0, summary: 0, srt: 0 });
+
+  const cards = filteredOutputs.map((item) => {
     const title = safeText(item.title, fallbackTitle(item.platform, item.sourceUrl || ''));
     const created = formatDateTime(item.createdAt);
     const typeLabel = formatHistoryType(item.type);
     const platform = formatPlatformLabel(item.platform, item.sourceUrl || '');
     const content = safeText(item.content, '');
+    const favoriteIcon = item.isFavorite ? '★' : '☆';
     return `
-      <article class="usage-summary">
-        <h3>${title}</h3>
-        <p><strong>Type:</strong> ${typeLabel} · <strong>Platform:</strong> ${platform} · <strong>Language:</strong> ${safeText(item.language, 'original')}</p>
-        <p><strong>Created:</strong> ${created}</p>
-        <div class="preview-upgrade-actions">
-          <button class="plan-btn" data-view-output="${item.id}">View</button>
+      <article class="usage-summary saved-output-card">
+        <div class="saved-output-header">
+          <h3>${title}</h3>
+          <div class="saved-output-badges">
+            <span class="saved-output-badge">${typeLabel}</span>
+            <span class="saved-output-badge">${platform}</span>
+            <span class="saved-output-badge">${safeText(item.language, 'Original')}</span>
+          </div>
+        </div>
+        <p class="saved-output-date">${created}</p>
+        <div class="saved-output-actions">
+          <button class="plan-btn plan-btn--ghost" data-favorite-output="${item.id}" title="Pin output">${favoriteIcon}</button>
+          <button class="plan-btn plan-btn--ghost" data-rename-output="${item.id}">Rename</button>
+          <button class="plan-btn plan-btn--sm" data-view-output="${item.id}">View</button>
           <button class="plan-btn" data-copy-output="${item.id}">Copy</button>
           <button class="plan-btn" data-download-txt="${item.id}">Download TXT</button>
           ${item.type === 'srt' ? `<button class="plan-btn" data-download-srt="${item.id}">Download SRT</button>` : `<button class="plan-btn" data-download-docx="${item.id}">Download DOCX</button>`}
         </div>
-        <details id="saved-output-view-${item.id}" style="margin-top:10px;">
+        <details id="saved-output-view-${item.id}" class="saved-output-preview">
           <summary>Preview</summary>
-          <pre style="white-space: pre-wrap; margin-top:8px;">${content.replace(/</g, '&lt;')}</pre>
+          <pre>${escapeHtml(content)}</pre>
         </details>
       </article>
     `;
   }).join('');
 
   target.innerHTML = `
-    ${cards}
+    <div class="saved-output-filter-row">
+      <button class="saved-filter-btn ${savedOutputsFilter === 'all' ? 'active' : ''}" data-saved-filter="all">All (${counts.all})</button>
+      <button class="saved-filter-btn ${savedOutputsFilter === 'transcript' ? 'active' : ''}" data-saved-filter="transcript">Transcript (${counts.transcript})</button>
+      <button class="saved-filter-btn ${savedOutputsFilter === 'summary' ? 'active' : ''}" data-saved-filter="summary">Summary (${counts.summary})</button>
+      <button class="saved-filter-btn ${savedOutputsFilter === 'srt' ? 'active' : ''}" data-saved-filter="srt">SRT (${counts.srt})</button>
+    </div>
+    ${cards || '<p class="dashboard-empty-note">No saved outputs in this filter yet.</p>'}
   `;
+
+  target.querySelectorAll('[data-saved-filter]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      savedOutputsFilter = btn.getAttribute('data-saved-filter') || 'all';
+      renderSavedOutputs();
+    });
+  });
 
   target.querySelectorAll('[data-view-output]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const id = btn.getAttribute('data-view-output');
       const details = document.getElementById(`saved-output-view-${id}`);
-      if (details) details.open = true;
+      if (details) details.open = !details.open;
+    });
+  });
+  target.querySelectorAll('[data-rename-output]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-rename-output');
+      const item = savedOutputsCache.find((o) => String(o.id) === String(id));
+      if (!item) return;
+      const nextTitle = window.prompt('Rename output', safeText(item.title, ''));
+      if (nextTitle == null) return;
+      try {
+        const { response } = await apiPost(`${API_BASE_URL}/api/subscription?action=renameSavedOutput`, {
+          id,
+          title: nextTitle
+        }, {
+          headers: { 'X-Session-Id': currentSession }
+        });
+        if (!response.ok) throw new Error('rename_failed');
+        item.title = String(nextTitle || '').trim();
+        showDashboardBanner('Output renamed.', 'success');
+        renderSavedOutputs();
+      } catch (_e) {
+        showDashboardBanner('Could not rename this output right now.', 'error');
+      }
+    });
+  });
+  target.querySelectorAll('[data-favorite-output]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-favorite-output');
+      const item = savedOutputsCache.find((o) => String(o.id) === String(id));
+      if (!item) return;
+      const favorite = !Boolean(item.isFavorite);
+      try {
+        const { response } = await apiPost(`${API_BASE_URL}/api/subscription?action=toggleSavedOutputFavorite`, {
+          id,
+          favorite
+        }, {
+          headers: { 'X-Session-Id': currentSession }
+        });
+        if (!response.ok) throw new Error('favorite_failed');
+        item.isFavorite = favorite;
+        showDashboardBanner(favorite ? 'Pinned to top.' : 'Unpinned.', 'success');
+        renderSavedOutputs();
+      } catch (_e) {
+        showDashboardBanner('Could not update favorite state right now.', 'error');
+      }
     });
   });
   target.querySelectorAll('[data-copy-output]').forEach((btn) => {
@@ -482,9 +738,9 @@ function renderPlansSection() {
         </div>
         <p class="plan-price">${priceLabel}</p>
         <ul class="plan-features">
-          <li>${getPlanVideoEstimate(plan.monthlyLimit)}</li>
-          <li>Audio downloads: ${plan.downloadAudioLimit != null ? plan.downloadAudioLimit : 'Unlimited'}</li>
-          <li>Video downloads: ${plan.downloadVideoLimit != null ? plan.downloadVideoLimit : 'Unlimited'}</li>
+          <li class="plan-feature-row"><span>Monthly videos</span><strong>${getPlanVideoEstimate(plan.monthlyLimit).replace(' / month', '')}</strong></li>
+          <li class="plan-feature-row"><span>Audio downloads</span><strong>${plan.downloadAudioLimit != null ? plan.downloadAudioLimit : 'Unlimited'}</strong></li>
+          <li class="plan-feature-row"><span>Video downloads</span><strong>${plan.downloadVideoLimit != null ? plan.downloadVideoLimit : 'Unlimited'}</strong></li>
         </ul>
         <button class="plan-btn" data-upgrade-plan="${plan.id}" ${disableButton ? 'disabled' : ''}>${cta}</button>
       </article>

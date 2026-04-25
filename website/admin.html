@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cutup Admin</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <div class="admin-shell">
+    <header class="admin-header">
+      <div class="admin-header-brand">
+        <div class="admin-logo-dot"></div>
+        <div>
+          <h1>Cutup Admin</h1>
+          <p id="adminIdentity">Loading admin identity...</p>
+        </div>
+      </div>
+      <div class="admin-header-actions">
+        <a href="dashboard.html" class="btn ghost">Back to app</a>
+        <button id="adminLogoutBtn" class="btn">Logout</button>
+      </div>
+    </header>
+
+    <div class="admin-main">
+      <aside class="admin-sidebar">
+        <button class="nav-btn active" data-section="overview"><span>📊</span><span>Overview</span></button>
+        <button class="nav-btn" data-section="users"><span>👥</span><span>Users</span></button>
+        <button class="nav-btn" data-section="usage"><span>📈</span><span>Usage</span></button>
+        <button class="nav-btn" data-section="outputs"><span>🗂️</span><span>Saved outputs</span></button>
+        <button class="nav-btn" data-section="payments"><span>💳</span><span>Payments</span></button>
+        <button class="nav-btn" data-section="health"><span>🩺</span><span>System health</span></button>
+        <button class="nav-btn" data-section="blog"><span>📝</span><span>Blog CMS</span></button>
+      </aside>
+
+      <section class="admin-content">
+        <div id="adminBanner" class="admin-banner" hidden></div>
+
+        <section id="section-overview" class="panel active">
+          <h2>Overview</h2>
+          <div id="overviewCards" class="cards-grid"></div>
+        </section>
+
+        <section id="section-users" class="panel">
+          <h2>Users</h2>
+          <div class="toolbar">
+            <input id="usersSearch" type="search" placeholder="Search by email/name">
+            <select id="usersPlanFilter">
+              <option value="all">All plans</option>
+              <option value="free">Free</option>
+              <option value="starter">Starter</option>
+              <option value="pro">Pro</option>
+              <option value="advanced">Advanced</option>
+              <option value="business">Business</option>
+            </select>
+            <button id="usersReloadBtn" class="btn">Refresh</button>
+          </div>
+          <div class="table-wrap"><table id="usersTable"></table></div>
+        </section>
+
+        <section id="section-usage" class="panel">
+          <h2>Usage</h2>
+          <div class="toolbar">
+            <select id="usageTypeFilter">
+              <option value="all">All types</option>
+              <option value="transcription">Transcription</option>
+              <option value="summarization">Summarization</option>
+              <option value="srt">SRT</option>
+              <option value="download">Download</option>
+            </select>
+            <select id="usagePlatformFilter">
+              <option value="all">All platforms</option>
+              <option value="youtube">YouTube</option>
+              <option value="instagram">Instagram</option>
+              <option value="tiktok">TikTok</option>
+              <option value="upload">Upload</option>
+            </select>
+            <input id="usageStartDate" type="date">
+            <input id="usageEndDate" type="date">
+            <button id="usageReloadBtn" class="btn">Apply</button>
+          </div>
+          <div class="table-wrap"><table id="usageTable"></table></div>
+        </section>
+
+        <section id="section-outputs" class="panel">
+          <h2>Saved outputs</h2>
+          <div class="table-wrap"><table id="outputsTable"></table></div>
+        </section>
+
+        <section id="section-payments" class="panel">
+          <h2>Payments</h2>
+          <div id="paymentsPanel"></div>
+        </section>
+
+        <section id="section-health" class="panel">
+          <h2>System health</h2>
+          <div id="healthPanel"></div>
+        </section>
+
+        <section id="section-blog" class="panel">
+          <h2>Blog CMS</h2>
+          <div class="blog-layout">
+            <div>
+              <div class="toolbar">
+                <button id="newPostBtn" class="btn">New post</button>
+                <button id="reloadPostsBtn" class="btn ghost">Reload posts</button>
+              </div>
+              <div class="table-wrap"><table id="blogTable"></table></div>
+            </div>
+            <form id="blogForm" class="blog-form">
+              <input type="hidden" id="postId">
+              <div class="form-grid-2">
+                <label>Title<input id="postTitle" required></label>
+                <label>Slug<input id="postSlug" required></label>
+              </div>
+              <div class="form-grid-2">
+                <label>Status
+                  <select id="postStatus">
+                    <option value="draft">Draft</option>
+                    <option value="published">Published</option>
+                  </select>
+                </label>
+                <label>Category<input id="postCategory"></label>
+              </div>
+              <label>Tags (comma separated)<input id="postTags"></label>
+              <label>Excerpt<textarea id="postExcerpt" rows="2"></textarea></label>
+              <label>Content<textarea id="postContent" rows="8"></textarea></label>
+              <div class="form-grid-2">
+                <label>Meta title<input id="postMetaTitle"></label>
+                <label>Canonical URL<input id="postCanonicalUrl"></label>
+              </div>
+              <div class="form-grid-2">
+                <label>OG title<input id="postOgTitle"></label>
+                <label>OG description<textarea id="postOgDescription" rows="2"></textarea></label>
+              </div>
+              <label>Meta description<textarea id="postMetaDescription" rows="2"></textarea></label>
+              <div class="toolbar">
+                <button type="submit" class="btn">Save draft</button>
+                <button type="button" id="publishToggleBtn" class="btn ghost">Publish / Unpublish</button>
+              </div>
+            </form>
+          </div>
+        </section>
+      </section>
+    </div>
+  </div>
+  <script src="admin.js"></script>
+</body>
+</html>

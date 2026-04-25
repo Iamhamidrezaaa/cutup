@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS saved_outputs (
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   type VARCHAR(32) NOT NULL,
   title TEXT,
+  is_favorite BOOLEAN NOT NULL DEFAULT FALSE,
   platform VARCHAR(32),
   source_url TEXT,
   language VARCHAR(32),
@@ -68,3 +69,32 @@ CREATE TABLE IF NOT EXISTS saved_outputs (
 
 CREATE INDEX IF NOT EXISTS idx_saved_outputs_user_created
   ON saved_outputs(user_id, created_at DESC);
+
+ALTER TABLE saved_outputs
+  ADD COLUMN IF NOT EXISTS is_favorite BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_saved_outputs_user_favorite_created
+  ON saved_outputs(user_id, is_favorite DESC, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS blog_posts (
+  id BIGSERIAL PRIMARY KEY,
+  slug TEXT NOT NULL UNIQUE,
+  title TEXT NOT NULL,
+  excerpt TEXT,
+  content TEXT NOT NULL DEFAULT '',
+  status VARCHAR(16) NOT NULL DEFAULT 'draft',
+  category TEXT,
+  tags TEXT[] NOT NULL DEFAULT '{}',
+  meta_title TEXT,
+  meta_description TEXT,
+  canonical_url TEXT,
+  og_title TEXT,
+  og_description TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  published_at TIMESTAMPTZ,
+  CONSTRAINT blog_posts_status_check CHECK (status IN ('draft', 'published'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_blog_posts_status_published_at
+  ON blog_posts(status, published_at DESC);

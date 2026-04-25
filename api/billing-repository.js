@@ -270,6 +270,80 @@ async function insertUsageHistoryOnly(email, type, minutes, metadata = {}) {
 }
 const MAX_MINUTE_DELTA = 1440;
 
+async function applyUnlimitedUsageAtomic(email, deltaMinutes, usageType, metadata = {}) {
+  const delta = Number(deltaMinutes);
+  if (!Number.isFinite(delta) || delta === 0) return { ok: true };
+  const clamped = Math.min(Math.abs(delta), MAX_MINUTE_DELTA);
+  const direction = delta > 0 ? 1 : -1;
+  const applied = clamped * direction;
+
+  await ensureUserByEmail(email);
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const uRow = await client.query('SELECT id FROM users WHERE email = $1 FOR UPDATE', [email]);
+    if (!uRow.rows.length) {
+      await client.query('ROLLBACK');
+      return { ok: false, reason: 'User not found.' };
+    }
+    const userId = uRow.rows[0].id;
+    const usage = await lockUsageAndNormalizeClient(client, userId);
+    const nextMonthly = Math.max(0, usage.monthlyMinutes + applied);
+    const nextDaily = Math.max(0, usage.dailyMinutes + applied);
+    await client.query(
+      `UPDATE usage SET minutes_used = $2, daily_minutes_used = $3, last_reset_at = NOW() WHERE user_id = $1`,
+      [userId, nextMonthly, nextDaily]
+    );
+    await client.query(
+      `INSERT INTO usage_history (user_id, type, minutes, metadata)
+       VALUES ($1, $2, $3, $4::jsonb)`,
+      [userId, usageType, Math.abs(applied), JSON.stringify(metadata || {})]
+    );
+    await client.query('COMMIT');
+    return { ok: true };
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+async function incrementUnlimitedDownloadAtomic(email, kind, metadata = {}) {
+  await ensureUserByEmail(email);
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const uRow = await client.query('SELECT id FROM users WHERE email = $1 FOR UPDATE', [email]);
+    if (!uRow.rows.length) {
+      await client.query('ROLLBACK');
+      return { ok: false, reason: 'User not found.' };
+    }
+    const userId = uRow.rows[0].id;
+    const usage = await lockUsageAndNormalizeClient(client, userId);
+    const newAudio = kind === 'audio' ? usage.audioDownloads + 1 : usage.audioDownloads;
+    const newVideo = kind === 'video' ? usage.videoDownloads + 1 : usage.videoDownloads;
+    await client.query(
+      `UPDATE usage SET audio_downloads = $2, video_downloads = $3, last_reset_at = NOW() WHERE user_id = $1`,
+      [userId, newAudio, newVideo]
+    );
+    await client.query(
+      `INSERT INTO usage_history (user_id, type, minutes, metadata)
+       VALUES ($1, 'download', 0, $2::jsonb)`,
+      [userId, JSON.stringify({ ...metadata, kind })]
+    );
+    await client.query('COMMIT');
+    return { ok: true };
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 /**
  * Lock usage row, apply month/day resets, return current counters (inside an open transaction).
  */
@@ -347,11 +421,7 @@ function planFeatureKeyForUsageType(usageType) {
  */
 export async function applyUsageMinutesAtomic(email, deltaMinutes, usageType, metadata = {}) {
   if (email === UNLIMITED_EMAIL) {
-    const delta = Number(deltaMinutes);
-    if (Number.isFinite(delta) && delta !== 0) {
-      await insertUsageHistoryOnly(email, usageType, delta > 0 ? delta : -Math.abs(delta), metadata);
-    }
-    return { ok: true };
+    return applyUnlimitedUsageAtomic(email, deltaMinutes, usageType, metadata);
   }
   if (!email) return { ok: false, reason: 'User email required.' };
   if (!MINUTE_USAGE_TYPES.has(usageType)) {
@@ -470,10 +540,8 @@ export async function applyUsageMinutesAtomic(email, deltaMinutes, usageType, me
  */
 export async function consumeDownloadSlotAtomic(email, kind, metadata = {}) {
   if (email === UNLIMITED_EMAIL) {
-    if (kind === 'audio' || kind === 'video') {
-      await insertUsageHistoryOnly(email, 'download', 0, { ...metadata, kind });
-    }
-    return { ok: true };
+    if (kind !== 'audio' && kind !== 'video') return { ok: false, reason: 'Invalid download kind.' };
+    return incrementUnlimitedDownloadAtomic(email, kind, metadata);
   }
   if (kind !== 'audio' && kind !== 'video') {
     return { ok: false, reason: 'Invalid download kind.' };
@@ -655,7 +723,7 @@ export async function getSavedOutputsDb(email, limit = 100) {
     `SELECT s.* FROM saved_outputs s
      JOIN users u ON u.id = s.user_id
      WHERE u.email = $1
-     ORDER BY s.created_at DESC
+     ORDER BY s.is_favorite DESC, s.created_at DESC
      LIMIT $2`,
     [email, limit]
   );
@@ -667,10 +735,48 @@ export async function getSavedOutputsDb(email, limit = 100) {
     sourceUrl: row.source_url,
     language: row.language,
     content: row.content,
+    isFavorite: Boolean(row.is_favorite),
     metadata: row.metadata || {},
     createdAt: row.created_at?.toISOString ? row.created_at.toISOString() : row.created_at,
     updatedAt: row.updated_at?.toISOString ? row.updated_at.toISOString() : row.updated_at
   }));
+}
+
+export async function renameSavedOutputDb(email, outputId, title) {
+  if (!email || !outputId) return false;
+  await ensureUserByEmail(email);
+  const pool = getPool();
+  const trimmedTitle = String(title ?? '').trim().slice(0, 160);
+  const updated = await pool.query(
+    `UPDATE saved_outputs s
+     SET title = $3,
+         updated_at = NOW()
+     FROM users u
+     WHERE s.user_id = u.id
+       AND u.email = $1
+       AND s.id = $2::bigint
+     RETURNING s.id`,
+    [email, outputId, trimmedTitle || null]
+  );
+  return updated.rows.length > 0;
+}
+
+export async function toggleSavedOutputFavoriteDb(email, outputId, favorite) {
+  if (!email || !outputId) return false;
+  await ensureUserByEmail(email);
+  const pool = getPool();
+  const updated = await pool.query(
+    `UPDATE saved_outputs s
+     SET is_favorite = $3,
+         updated_at = NOW()
+     FROM users u
+     WHERE s.user_id = u.id
+       AND u.email = $1
+       AND s.id = $2::bigint
+     RETURNING s.id`,
+    [email, outputId, Boolean(favorite)]
+  );
+  return updated.rows.length > 0;
 }
 
 /**
@@ -701,6 +807,268 @@ export async function tryClaimStripeEventStandalone(eventId) {
 export async function releaseStripeWebhookClaim(eventId) {
   const pool = getPool();
   await pool.query('DELETE FROM stripe_webhook_events WHERE id = $1', [eventId]);
+}
+
+export async function getAdminOverviewDb() {
+  const pool = getPool();
+  const [usersRes, usageRes, outputsRes, downloadsRes, activeUsersRes] = await Promise.all([
+    pool.query('SELECT COUNT(*)::int AS count FROM users'),
+    pool.query('SELECT COALESCE(SUM(minutes_used), 0)::float AS total_minutes FROM usage'),
+    pool.query('SELECT COUNT(*)::int AS count FROM saved_outputs'),
+    pool.query(
+      `SELECT
+         COALESCE(SUM(audio_downloads), 0)::int AS audio_total,
+         COALESCE(SUM(video_downloads), 0)::int AS video_total
+       FROM usage`
+    ),
+    pool.query(
+      `SELECT COUNT(DISTINCT user_id)::int AS count
+       FROM usage_history
+       WHERE created_at >= date_trunc('month', NOW())`
+    )
+  ]);
+  const totalProcessedMinutes = Number(usageRes.rows[0]?.total_minutes || 0);
+  return {
+    totalUsers: Number(usersRes.rows[0]?.count || 0),
+    activeUsersThisMonth: Number(activeUsersRes.rows[0]?.count || 0),
+    totalProcessedMinutes,
+    totalVideosEstimate: Math.ceil(totalProcessedMinutes / 7),
+    totalSavedOutputs: Number(outputsRes.rows[0]?.count || 0),
+    totalAudioDownloads: Number(downloadsRes.rows[0]?.audio_total || 0),
+    totalVideoDownloads: Number(downloadsRes.rows[0]?.video_total || 0)
+  };
+}
+
+export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200 } = {}) {
+  const pool = getPool();
+  const filters = [];
+  const params = [];
+  if (search) {
+    params.push(`%${search.toLowerCase()}%`);
+    filters.push(`(LOWER(u.email) LIKE $${params.length})`);
+  }
+  if (plan && plan !== 'all') {
+    params.push(plan);
+    filters.push(`COALESCE(s.plan, 'free') = $${params.length}`);
+  }
+  params.push(Math.min(Math.max(Number(limit) || 200, 1), 500));
+  const whereSql = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+  const r = await pool.query(
+    `SELECT
+       u.email,
+       COALESCE(s.plan, 'free') AS plan,
+       COALESCE(s.status, 'active') AS status,
+       u.created_at,
+       us.minutes_used,
+       COALESCE(so.saved_count, 0)::int AS saved_outputs_count,
+       last_h.created_at AS last_activity_at
+     FROM users u
+     LEFT JOIN subscriptions s ON s.user_id = u.id
+     LEFT JOIN usage us ON us.user_id = u.id
+     LEFT JOIN (
+       SELECT user_id, COUNT(*) AS saved_count FROM saved_outputs GROUP BY user_id
+     ) so ON so.user_id = u.id
+     LEFT JOIN (
+       SELECT user_id, MAX(created_at) AS created_at FROM usage_history GROUP BY user_id
+     ) last_h ON last_h.user_id = u.id
+     ${whereSql}
+     ORDER BY u.created_at DESC
+     LIMIT $${params.length}`,
+    params
+  );
+  return r.rows.map((row) => ({
+    email: row.email,
+    name: row.email.split('@')[0],
+    plan: row.plan,
+    status: row.status,
+    createdAt: row.created_at?.toISOString ? row.created_at.toISOString() : row.created_at,
+    lastActivityAt: row.last_activity_at?.toISOString ? row.last_activity_at.toISOString() : row.last_activity_at,
+    usageMinutesThisMonth: Number(row.minutes_used || 0),
+    savedOutputsCount: Number(row.saved_outputs_count || 0)
+  }));
+}
+
+export async function getAdminUsageDb({ type = 'all', platform = 'all', startDate = '', endDate = '', limit = 300 } = {}) {
+  const pool = getPool();
+  const params = [];
+  const where = [];
+  if (type && type !== 'all') {
+    params.push(type);
+    where.push(`h.type = $${params.length}`);
+  }
+  if (platform && platform !== 'all') {
+    params.push(platform.toLowerCase());
+    where.push(`LOWER(COALESCE(h.metadata->>'platform', h.metadata->>'source', 'unknown')) = $${params.length}`);
+  }
+  if (startDate) {
+    params.push(startDate);
+    where.push(`h.created_at >= $${params.length}::timestamptz`);
+  }
+  if (endDate) {
+    params.push(endDate);
+    where.push(`h.created_at <= $${params.length}::timestamptz`);
+  }
+  params.push(Math.min(Math.max(Number(limit) || 300, 1), 1000));
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const r = await pool.query(
+    `SELECT
+       h.id,
+       h.type,
+       h.minutes,
+       h.metadata,
+       h.created_at,
+       u.email
+     FROM usage_history h
+     JOIN users u ON u.id = h.user_id
+     ${whereSql}
+     ORDER BY h.created_at DESC
+     LIMIT $${params.length}`,
+    params
+  );
+  return r.rows.map((row) => ({
+    id: String(row.id),
+    type: row.type,
+    minutes: Number(row.minutes || 0),
+    metadata: row.metadata || {},
+    createdAt: row.created_at?.toISOString ? row.created_at.toISOString() : row.created_at,
+    email: row.email
+  }));
+}
+
+export async function getAdminSavedOutputsDb({ limit = 300 } = {}) {
+  const pool = getPool();
+  const r = await pool.query(
+    `SELECT s.*, u.email
+     FROM saved_outputs s
+     JOIN users u ON u.id = s.user_id
+     ORDER BY s.is_favorite DESC, s.created_at DESC
+     LIMIT $1`,
+    [Math.min(Math.max(Number(limit) || 300, 1), 1000)]
+  );
+  return r.rows.map((row) => ({
+    id: String(row.id),
+    email: row.email,
+    type: row.type,
+    title: row.title,
+    platform: row.platform,
+    sourceUrl: row.source_url,
+    language: row.language,
+    content: row.content,
+    isFavorite: Boolean(row.is_favorite),
+    createdAt: row.created_at?.toISOString ? row.created_at.toISOString() : row.created_at
+  }));
+}
+
+export async function getAdminPaymentsSnapshotDb() {
+  const pool = getPool();
+  const [distributionRes, paidRes] = await Promise.all([
+    pool.query(`SELECT COALESCE(plan, 'free') AS plan, COUNT(*)::int AS count FROM subscriptions GROUP BY plan ORDER BY plan ASC`),
+    pool.query(`SELECT COUNT(*)::int AS count FROM subscriptions WHERE COALESCE(plan, 'free') <> 'free'`)
+  ]);
+  return {
+    planDistribution: distributionRes.rows.map((r) => ({ plan: r.plan, count: Number(r.count || 0) })),
+    paidUsers: Number(paidRes.rows[0]?.count || 0)
+  };
+}
+
+export async function listAdminBlogPostsDb(limit = 200) {
+  const pool = getPool();
+  const r = await pool.query(
+    `SELECT *
+     FROM blog_posts
+     ORDER BY updated_at DESC
+     LIMIT $1`,
+    [Math.min(Math.max(Number(limit) || 200, 1), 500)]
+  );
+  return r.rows.map((row) => ({
+    id: String(row.id),
+    slug: row.slug,
+    title: row.title,
+    excerpt: row.excerpt,
+    content: row.content,
+    status: row.status,
+    category: row.category,
+    tags: Array.isArray(row.tags) ? row.tags : [],
+    metaTitle: row.meta_title,
+    metaDescription: row.meta_description,
+    canonicalUrl: row.canonical_url,
+    ogTitle: row.og_title,
+    ogDescription: row.og_description,
+    createdAt: row.created_at?.toISOString ? row.created_at.toISOString() : row.created_at,
+    updatedAt: row.updated_at?.toISOString ? row.updated_at.toISOString() : row.updated_at,
+    publishedAt: row.published_at?.toISOString ? row.published_at.toISOString() : row.published_at
+  }));
+}
+
+export async function saveAdminBlogPostDb(payload = {}) {
+  const pool = getPool();
+  const {
+    id = null,
+    slug,
+    title,
+    excerpt = '',
+    content = '',
+    status = 'draft',
+    category = '',
+    tags = [],
+    metaTitle = '',
+    metaDescription = '',
+    canonicalUrl = '',
+    ogTitle = '',
+    ogDescription = ''
+  } = payload;
+  if (!slug || !title) {
+    throw new Error('slug_and_title_required');
+  }
+  const normalizedStatus = status === 'published' ? 'published' : 'draft';
+  const cleanTags = Array.isArray(tags)
+    ? tags.map((t) => String(t).trim()).filter(Boolean).slice(0, 30)
+    : [];
+  if (id) {
+    const updated = await pool.query(
+      `UPDATE blog_posts
+       SET slug = $2,
+           title = $3,
+           excerpt = $4,
+           content = $5,
+           status = $6,
+           category = $7,
+           tags = $8::text[],
+           meta_title = $9,
+           meta_description = $10,
+           canonical_url = $11,
+           og_title = $12,
+           og_description = $13,
+           updated_at = NOW(),
+           published_at = CASE WHEN $6 = 'published' AND published_at IS NULL THEN NOW() WHEN $6 = 'draft' THEN NULL ELSE published_at END
+       WHERE id = $1::bigint
+       RETURNING id`,
+      [id, slug, title, excerpt, content, normalizedStatus, category, cleanTags, metaTitle, metaDescription, canonicalUrl, ogTitle, ogDescription]
+    );
+    return String(updated.rows[0].id);
+  }
+  const inserted = await pool.query(
+    `INSERT INTO blog_posts
+      (slug, title, excerpt, content, status, category, tags, meta_title, meta_description, canonical_url, og_title, og_description, published_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7::text[],$8,$9,$10,$11,$12, CASE WHEN $5 = 'published' THEN NOW() ELSE NULL END)
+     RETURNING id`,
+    [slug, title, excerpt, content, normalizedStatus, category, cleanTags, metaTitle, metaDescription, canonicalUrl, ogTitle, ogDescription]
+  );
+  return String(inserted.rows[0].id);
+}
+
+export async function publishAdminBlogPostDb(id, publish = true) {
+  const pool = getPool();
+  const r = await pool.query(
+    `UPDATE blog_posts
+     SET status = $2,
+         updated_at = NOW(),
+         published_at = CASE WHEN $2 = 'published' THEN COALESCE(published_at, NOW()) ELSE NULL END
+     WHERE id = $1::bigint
+     RETURNING id`,
+    [id, publish ? 'published' : 'draft']
+  );
+  return r.rows.length > 0;
 }
 
 export async function canUseFeatureDb(email, feature, videoDurationMinutes = 0) {

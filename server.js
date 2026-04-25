@@ -100,7 +100,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Import and use API routes
-let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler;
+let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler, adminHandler;
 
 async function loadRoutes() {
   try {
@@ -179,6 +179,10 @@ async function loadRoutes() {
     const stripeCh = await import('./api/stripe-checkout.js');
     stripeCheckoutHandler = stripeCh.default;
     console.log('✅ Stripe checkout handler loaded');
+
+    const adminModule = await import('./api/admin.js');
+    adminHandler = adminModule.default;
+    console.log('✅ Admin handler loaded');
 
     console.log('All routes loaded successfully');
   } catch (err) {
@@ -328,6 +332,20 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
   return stripeCheckoutHandler(req, res);
 });
 
+app.get('/api/admin', async (req, res) => {
+  if (!adminHandler) {
+    return res.status(503).json({ error: 'Admin handler not loaded' });
+  }
+  return adminHandler(req, res);
+});
+
+app.post('/api/admin', async (req, res) => {
+  if (!adminHandler) {
+    return res.status(503).json({ error: 'Admin handler not loaded' });
+  }
+  return adminHandler(req, res);
+});
+
 // Error handler
 app.use((err, req, res, next) => {
   console.error('Error:', err);
@@ -368,6 +386,7 @@ loadRoutes().then(() => {
     console.log(`   POST /api/subscription?action=upgrade`);
     console.log(`   POST /api/stripe/create-checkout-session`);
     console.log(`   POST /api/stripe/webhook`);
+    console.log(`   GET  /api/admin?action=overview`);
   });
   
   server.on('error', (err) => {

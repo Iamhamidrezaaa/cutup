@@ -12,6 +12,8 @@ import {
   getUsageHistoryDb,
   saveOutputDb,
   getSavedOutputsDb,
+  renameSavedOutputDb,
+  toggleSavedOutputFavoriteDb,
   resetAudioDownloadsDb,
   upgradePlanLegacyDb,
   applyStripeSubscriptionDbFromCheckout,
@@ -152,9 +154,7 @@ export default async function handler(req, res) {
       }
 
       const plan = PLANS[planKey];
-      const usage = userId === SPECIAL_EMAIL
-        ? await zeroUsageShape()
-        : await getLegacyUsageShape(userId);
+      const usage = await getLegacyUsageShape(userId);
 
       const responseData = {
         plan: planKey,
@@ -202,7 +202,7 @@ export default async function handler(req, res) {
 
       if (!feature) {
         await ensureUserByEmail(userId);
-        const usage = userId === SPECIAL_EMAIL ? await zeroUsageShape() : await getLegacyUsageShape(userId);
+        const usage = await getLegacyUsageShape(userId);
         const subscriptionRow = userId === SPECIAL_EMAIL
           ? { plan: 'business' }
           : await getSubscriptionRowByEmail(userId);
@@ -256,6 +256,26 @@ export default async function handler(req, res) {
         metadata: metadata || {}
       });
       return res.json({ success: true, id });
+    }
+
+    if (method === 'POST' && action === 'renameSavedOutput') {
+      const { id, title } = body || {};
+      if (!id) {
+        return res.status(400).json({ error: 'id is required' });
+      }
+      const ok = await renameSavedOutputDb(userId, id, title);
+      if (!ok) return res.status(404).json({ error: 'Saved output not found' });
+      return res.json({ success: true });
+    }
+
+    if (method === 'POST' && action === 'toggleSavedOutputFavorite') {
+      const { id, favorite } = body || {};
+      if (!id || typeof favorite !== 'boolean') {
+        return res.status(400).json({ error: 'id and favorite are required' });
+      }
+      const ok = await toggleSavedOutputFavoriteDb(userId, id, favorite);
+      if (!ok) return res.status(404).json({ error: 'Saved output not found' });
+      return res.json({ success: true });
     }
 
     if (method === 'POST' && action === 'resetAudioDownloads') {
