@@ -10,6 +10,8 @@ import {
   getLegacyUsageShape,
   canUseFeatureDb,
   getUsageHistoryDb,
+  saveOutputDb,
+  getSavedOutputsDb,
   resetAudioDownloadsDb,
   upgradePlanLegacyDb,
   applyStripeSubscriptionDbFromCheckout,
@@ -225,11 +227,35 @@ export default async function handler(req, res) {
 
     if (method === 'GET' && action === 'history') {
       const limit = parseInt(query.limit, 10) || 100;
-      if (userId === SPECIAL_EMAIL) {
-        return res.json({ history: [], total: 0 });
-      }
       const history = await getUsageHistoryDb(userId, limit);
       return res.json({ history, total: history.length });
+    }
+
+    if (method === 'GET' && action === 'savedOutputs') {
+      const limit = parseInt(query.limit, 10) || 100;
+      const outputs = await getSavedOutputsDb(userId, limit);
+      return res.json({ outputs, total: outputs.length });
+    }
+
+    if (method === 'POST' && action === 'saveOutput') {
+      const { type, title, platform, sourceUrl, language, content, metadata } = body || {};
+      if (!type || !content) {
+        return res.status(400).json({ error: 'type and content are required' });
+      }
+      const allowedTypes = new Set(['transcript', 'summary', 'srt']);
+      if (!allowedTypes.has(type)) {
+        return res.status(400).json({ error: 'Invalid output type' });
+      }
+      const id = await saveOutputDb(userId, {
+        type,
+        title,
+        platform,
+        sourceUrl,
+        language,
+        content,
+        metadata: metadata || {}
+      });
+      return res.json({ success: true, id });
     }
 
     if (method === 'POST' && action === 'resetAudioDownloads') {

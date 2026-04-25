@@ -346,6 +346,11 @@ export default async function handler(req, res) {
         const consumed = await consumeTranscriptionUsage(userEmail, minutesRecorded, {
           source: 'youtube',
           mode: 'subtitles',
+          outputType: 'transcript',
+          platform: 'youtube',
+          title: videoTitle || null,
+          sourceUrl: (typeof youtubeUrl !== 'undefined' ? youtubeUrl : null),
+          durationSeconds: videoDuration || null,
           videoId: finalVideoId
         });
         if (respondConsumeFailure(res, consumed)) return;

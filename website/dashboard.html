@@ -37,7 +37,10 @@
           <div class="user-profile-header" id="userProfileHeader">
             <a href="#overview" class="user-profile-link" id="userProfileLink" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 12px; cursor: pointer;">
               <img src="" alt="Profile" class="user-avatar-header" id="userAvatarHeader">
-              <span class="user-name-header" id="userNameHeader"></span>
+              <div class="user-identity-copy">
+                <span class="user-name-header" id="userNameHeader"></span>
+                <span class="user-email-header" id="userEmailHeader"></span>
+              </div>
             </a>
             <button class="logout-btn-header" id="logoutBtnHeader">Log out</button>
           </div>
@@ -54,26 +57,21 @@
             <span class="nav-icon">📊</span>
             <span class="nav-text">Overview</span>
           </a>
-          <a href="#subscription" class="nav-item" data-section="subscription">
-            <span class="nav-icon">💳</span>
-            <span class="nav-text">Subscription</span>
-          </a>
           <a href="#usage" class="nav-item" data-section="usage">
             <span class="nav-icon">📈</span>
             <span class="nav-text">Usage</span>
           </a>
-          <a href="#cart" class="nav-item" data-section="cart">
-            <span class="nav-icon">🛒</span>
-            <span class="nav-text">Cart</span>
-            <span class="cart-badge" id="cartBadge" style="display: none;">0</span>
+          <a href="#saved" class="nav-item" data-section="saved">
+            <span class="nav-icon">🗂️</span>
+            <span class="nav-text">Saved outputs</span>
+          </a>
+          <a href="#subscription" class="nav-item" data-section="subscription">
+            <span class="nav-icon">💳</span>
+            <span class="nav-text">Plans</span>
           </a>
           <a href="#financial" class="nav-item" data-section="financial">
             <span class="nav-icon">💰</span>
             <span class="nav-text">Billing</span>
-          </a>
-          <a href="#support" class="nav-item" data-section="support">
-            <span class="nav-icon">🎫</span>
-            <span class="nav-text">Support</span>
           </a>
         </nav>
       </aside>
@@ -82,80 +80,57 @@
       <div class="dashboard-content">
         <!-- Overview Section -->
         <section class="dashboard-section active" id="overview-section">
-          <h1 class="section-title">Welcome</h1>
+          <h1 class="section-title">Account overview</h1>
           <div class="welcome-message" id="welcomeMessage"></div>
-          
-          <!-- Stats Cards -->
+
+          <div class="identity-strip" id="identityStrip"></div>
+
+          <div class="current-plan-card" id="currentPlanCard"></div>
+
           <div class="stats-grid">
-            <div class="stat-card">
-              <div class="stat-icon">🎬</div>
-              <div class="stat-content">
-                <div class="stat-value" id="usedMinutes">0</div>
-                <div class="stat-label" id="statUsedLabel">Videos processed (~this month)</div>
-              </div>
-            </div>
             <div class="stat-card">
               <div class="stat-icon">📊</div>
               <div class="stat-content">
-                <div class="stat-value" id="remainingMinutes">0</div>
+                <div class="stat-value" id="remainingVideos">0</div>
                 <div class="stat-label" id="statRemainingLabel">Videos left (~this month)</div>
               </div>
             </div>
             <div class="stat-card">
-              <div class="stat-icon">💳</div>
+              <div class="stat-icon">🎵</div>
               <div class="stat-content">
-                <div class="stat-value" id="currentPlan">Free</div>
-                <div class="stat-label">Current plan</div>
+                <div class="stat-value" id="audioDownloadUsage">0/0</div>
+                <div class="stat-label">Audio downloads</div>
               </div>
             </div>
             <div class="stat-card">
-              <div class="stat-icon">📅</div>
+              <div class="stat-icon">🎬</div>
               <div class="stat-content">
-                <div class="stat-value" id="expiryDate">-</div>
-                <div class="stat-label">Renewal / expiry</div>
+                <div class="stat-value" id="videoDownloadUsage">0/0</div>
+                <div class="stat-label">Video downloads</div>
               </div>
             </div>
           </div>
-
-          <!-- Usage Chart -->
-          <div class="chart-container">
-            <h2 class="chart-title">Usage (~videos)</h2>
-            <canvas id="usageChart"></canvas>
-          </div>
         </section>
 
-        <!-- Subscription Section -->
+        <section class="dashboard-section" id="usage-section">
+          <h1 class="section-title">Usage & activity</h1>
+          <div class="usage-details" id="usageDetails"></div>
+        </section>
+
+        <section class="dashboard-section" id="saved-section">
+          <h1 class="section-title">Saved outputs</h1>
+          <div class="saved-outputs" id="savedOutputs"></div>
+        </section>
+
         <section class="dashboard-section" id="subscription-section">
-          <h1 class="section-title">Subscription</h1>
+          <h1 class="section-title">Plans & upgrades</h1>
           <div class="subscription-info" id="subscriptionInfo"></div>
           <div class="plans-grid" id="plansGrid"></div>
         </section>
 
-        <!-- Cart Section -->
-        <section class="dashboard-section" id="cart-section" style="display: none;">
-          <h1 class="section-title">Cart</h1>
-          <div class="cart-content" id="cartContent">
-            <div class="cart-items" id="cartItems"></div>
-            <div class="cart-summary" id="cartSummary"></div>
-          </div>
-        </section>
-
-        <!-- Usage Section -->
-        <section class="dashboard-section" id="usage-section">
-          <h1 class="section-title">Usage</h1>
-          <div class="usage-details" id="usageDetails"></div>
-        </section>
-
-        <!-- Financial Section -->
         <section class="dashboard-section" id="financial-section">
           <h1 class="section-title">Billing</h1>
           <div class="financial-info" id="financialInfo"></div>
-        </section>
-
-        <!-- Support Section -->
-        <section class="dashboard-section" id="support-section">
-          <h1 class="section-title">Support</h1>
-          <div class="support-tickets" id="supportTickets"></div>
         </section>
       </div>
     </main>
@@ -186,21 +161,6 @@
       <div class="footer-bottom">
         <div class="footer-copyright">
           <p>&copy; 2026 Cutup. All rights reserved.</p>
-        </div>
-        <div class="footer-enamad">
-          <a 
-            referrerpolicy="origin" 
-            target="_blank" 
-            href="https://trustseal.enamad.ir/?id=696822&Code=jUnfgpgbYBkCq6pWiydVQ6Vvj74q0ODv"
-            class="enamad-link"
-          >
-            <img 
-              referrerpolicy="origin" 
-              src="https://trustseal.enamad.ir/logo.aspx?id=696822&Code=jUnfgpgbYBkCq6pWiydVQ6Vvj74q0ODv" 
-              alt="eNamad trust seal" 
-              class="enamad-logo"
-            />
-          </a>
         </div>
       </div>
     </div>

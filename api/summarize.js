@@ -47,7 +47,7 @@ export default async function handler(req, res) {
       client.apiKey = apiKey;
     }
 
-    const { text, language } = req.body;
+    const { text, language, metadata } = req.body;
 
     if (!text || text.trim().length === 0) {
       return res.status(400).json({ error: 'Text is required' });
@@ -76,7 +76,14 @@ export default async function handler(req, res) {
 
     const consumed = await consumeSummarizationUsage(userEmail, billMinutes, {
       route: 'summarize',
-      textLength: text.length
+      textLength: text.length,
+      outputType: 'summary',
+      platform: metadata?.platform || null,
+      title: metadata?.title || null,
+      sourceUrl: metadata?.sourceUrl || null,
+      durationSeconds: metadata?.durationSeconds || null,
+      filename: metadata?.filename || null,
+      ...((metadata && typeof metadata === 'object') ? metadata : {})
     });
     if (respondConsumeFailure(res, consumed)) return;
 

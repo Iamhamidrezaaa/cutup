@@ -1405,3 +1405,180 @@
   border-bottom: 1px solid #fecaca;
 }
 
+.user-identity-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.user-email-header {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.identity-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.identity-strip > div {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.current-plan-card {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.current-plan-card h2 {
+  margin: 0 0 10px;
+  font-size: 20px;
+}
+
+.current-plan-card p {
+  margin: 8px 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.dashboard-error-surface {
+  background: #fef2f2 !important;
+  color: #991b1b !important;
+}
+
+.plans-grid {
+  margin-top: 24px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+  align-items: stretch;
+}
+
+.paid-plan-card.current-plan {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12);
+}
+
+.paid-plan-card {
+  transform: none;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.paid-plan-card .plan-features {
+  flex: 1;
+}
+
+.paid-plan-card.featured {
+  transform: none;
+}
+
+.plan-price {
+  margin: 0 0 12px;
+  color: var(--primary);
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.plan-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+@media (max-width: 1024px) {
+  .identity-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .plans-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard-content {
+    padding: 16px;
+  }
+
+  .header-content {
+    padding: 0 16px;
+  }
+
+  .user-profile-link {
+    gap: 8px !important;
+  }
+
+  .user-avatar-header {
+    width: 34px;
+    height: 34px;
+  }
+
+  .user-name-header {
+    font-size: 13px;
+  }
+
+  .user-email-header {
+    font-size: 11px;
+  }
+
+  .paid-plan-card {
+    width: 100%;
+    max-width: 100%;
+    padding: 20px;
+  }
+
+  .plans-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .usage-history,
+  .usage-summary,
+  .current-plan-card {
+    padding: 16px;
+  }
+
+  .history-item {
+    padding: 12px;
+  }
+}
+
+.history-item {
+  cursor: pointer;
+}
+
+.history-item details {
+  width: 100%;
+}
+
+.history-item summary {
+  list-style: none;
+}
+
+.history-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.history-details {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+  font-size: 13px;
+  color: var(--text-secondary);
+  display: grid;
+  gap: 6px;
+}
+

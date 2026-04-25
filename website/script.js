@@ -145,14 +145,126 @@ function getLanguageName(code) {
   return 'Original language';
 }
 
+const TRANSLATION_LANGUAGE_OPTIONS = [
+  // Required order by product request
+  { code: 'en', label: 'English' },
+  { code: 'es', label: 'Espanol' },
+  { code: 'zh', label: '中文' },
+  { code: 'hi', label: 'हिन्दी' },
+  { code: 'fa', label: 'فارسی' },
+
+  // Then sorted broadly by global usage (high -> lower, >= ~2M speakers)
+  { code: 'ar', label: 'العربية' },
+  { code: 'fr', label: 'Francais' },
+  { code: 'bn', label: 'বাংলা' },
+  { code: 'ru', label: 'Русский' },
+  { code: 'pt', label: 'Portugues' },
+  { code: 'ur', label: 'اردو' },
+  { code: 'id', label: 'Bahasa Indonesia' },
+  { code: 'de', label: 'Deutsch' },
+  { code: 'ja', label: '日本語' },
+  { code: 'sw', label: 'Kiswahili' },
+  { code: 'mr', label: 'मराठी' },
+  { code: 'te', label: 'తెలుగు' },
+  { code: 'tr', label: 'Turkce' },
+  { code: 'ta', label: 'தமிழ்' },
+  { code: 'vi', label: 'Tieng Viet' },
+  { code: 'ko', label: '한국어' },
+  { code: 'it', label: 'Italiano' },
+  { code: 'th', label: 'ไทย' },
+  { code: 'gu', label: 'ગુજરાતી' },
+  { code: 'pl', label: 'Polski' },
+  { code: 'uk', label: 'Українська' },
+  { code: 'kn', label: 'ಕನ್ನಡ' },
+  { code: 'ml', label: 'മലയാളം' },
+  { code: 'or', label: 'ଓଡ଼ିଆ' },
+  { code: 'pa', label: 'ਪੰਜਾਬੀ' },
+  { code: 'ro', label: 'Romana' },
+  { code: 'nl', label: 'Nederlands' },
+  { code: 'ps', label: 'پښتو' },
+  { code: 'az', label: 'Azərbaycanca' },
+  { code: 'am', label: 'Amharic' },
+  { code: 'my', label: 'မြန်မာ' },
+  { code: 'yo', label: 'Yoruba' },
+  { code: 'ig', label: 'Igbo' },
+  { code: 'sd', label: 'سنڌي' },
+  { code: 'ne', label: 'नेपाली' },
+  { code: 'si', label: 'සිංහල' },
+  { code: 'km', label: 'ខ្មែរ' },
+  { code: 'ku', label: 'Kurdi' },
+  { code: 'uz', label: 'Ozbek' },
+  { code: 'su', label: 'Sunda' },
+  { code: 'ha', label: 'Hausa' },
+  { code: 'ny', label: 'Chichewa' },
+  { code: 'mg', label: 'Malagasy' },
+  { code: 'xh', label: 'isiXhosa' },
+  { code: 'zu', label: 'isiZulu' },
+  { code: 'af', label: 'Afrikaans' },
+  { code: 'he', label: 'עברית' },
+  { code: 'cs', label: 'Cestina' },
+  { code: 'el', label: 'Ελληνικά' },
+  { code: 'sv', label: 'Svenska' },
+  { code: 'hu', label: 'Magyar' },
+  { code: 'be', label: 'Беларуская' },
+  { code: 'bg', label: 'Български' },
+  { code: 'sr', label: 'Српски' },
+  { code: 'da', label: 'Dansk' },
+  { code: 'fi', label: 'Suomi' },
+  { code: 'no', label: 'Norsk' },
+  { code: 'sk', label: 'Slovencina' },
+  { code: 'ka', label: 'ქართული' },
+  { code: 'hy', label: 'Հայերեն' },
+  { code: 'sq', label: 'Shqip' },
+  { code: 'hr', label: 'Hrvatski' },
+  { code: 'bs', label: 'Bosanski' },
+  { code: 'sl', label: 'Slovenscina' },
+  { code: 'lt', label: 'Lietuviu' },
+  { code: 'lo', label: 'ລາວ' },
+  { code: 'ht', label: 'Kreyol Ayisyen' },
+  { code: 'ca', label: 'Catala' }
+];
+
+function getTranslationOriginalLabel() {
+  const detectedLabel = getLanguageName(window.cutupDetectedSourceLanguage);
+  return detectedLabel && detectedLabel !== 'Original language' ? `${detectedLabel} (Original)` : 'Original language';
+}
+
+function buildLanguageOptionsMarkup() {
+  const originalLabel = getTranslationOriginalLabel();
+  const dynamicOptions = TRANSLATION_LANGUAGE_OPTIONS.map((lang) => (
+    `<option value="${lang.code}">${lang.label}</option>`
+  )).join('');
+  return `<option value="original">${originalLabel}</option>${dynamicOptions}`;
+}
+
+function populateLanguageSelects() {
+  const languageSelectIds = [
+    'fulltextLanguage',
+    'summaryLanguage',
+    'srtLanguage',
+    'summaryLanguageSelect',
+    'fullTextLanguageSelect',
+    'srtLanguageSelect'
+  ];
+  const optionsMarkup = buildLanguageOptionsMarkup();
+  languageSelectIds.forEach((id) => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const previousValue = sel.value;
+    sel.innerHTML = optionsMarkup;
+    const hasPreviousValue = previousValue && (previousValue === 'original' || TRANSLATION_LANGUAGE_OPTIONS.some((lang) => lang.code === previousValue));
+    sel.value = hasPreviousValue ? previousValue : 'original';
+  });
+}
+
 function setDetectedSourceLanguage(codeOrName) {
   window.cutupDetectedSourceLanguage = normalizeLangCode(codeOrName);
   updateTranslationOriginalLabel();
 }
 
 function updateTranslationOriginalLabel() {
-  const label = getLanguageName(window.cutupDetectedSourceLanguage);
-  ['fulltextLanguage', 'summaryLanguage', 'srtLanguage'].forEach((id) => {
+  const label = getTranslationOriginalLabel();
+  ['fulltextLanguage', 'summaryLanguage', 'srtLanguage', 'summaryLanguageSelect', 'fullTextLanguageSelect', 'srtLanguageSelect'].forEach((id) => {
     const sel = document.getElementById(id);
     const opt = sel && sel.querySelector('option[value="original"]');
     if (opt) opt.textContent = label;
@@ -884,6 +996,7 @@ let youtubeUrlInput, audioFileInput, downloadVideoBtnMain, downloadAudioBtnMain;
 let downloadSubtitleBtnMain, summarizeBtnMain, fullTextBtnMain, downloadMessage;
 
 document.addEventListener('DOMContentLoaded', () => {
+  populateLanguageSelects();
   youtubeUrlInput = document.getElementById('youtubeUrlInput');
   audioFileInput = document.getElementById('audioFileInput');
   downloadVideoBtnMain = document.getElementById('downloadVideoBtnMain');
@@ -1748,7 +1861,11 @@ async function processSummarizeFile(file, sessionId) {
     // Transcribe using transcribeAudio (like extension)
     const estimatedTranscriptionTime = estimateTranscriptionDuration(file.size, null);
     startProgressTracking(10, 70, estimatedTranscriptionTime, 'Reading your file…', 'Transcribing…');
-    const transcription = await transcribeAudio(file, null, sessionId);
+    const transcription = await transcribeAudio(file, null, sessionId, {
+      platform: 'upload',
+      filename: file.name || 'uploaded-file',
+      sourceUrl: 'upload://local-file'
+    });
     stopProgressTracking(70, 'Transcription complete');
     
     // Summarize (unlimited for all tiers)
@@ -1756,7 +1873,11 @@ async function processSummarizeFile(file, sessionId) {
     startProgressTracking(70, 99, estimatedSummaryTime, 'Writing summary…', 'Writing summary…');
     let summary = null;
     try {
-      summary = await summarizeText(transcription.text, normalizeSummaryLanguage(transcription.language), sessionId);
+      summary = await summarizeText(transcription.text, normalizeSummaryLanguage(transcription.language), sessionId, {
+        platform: 'upload',
+        title: file.name || 'Uploaded file',
+        sourceUrl: 'upload://local-file'
+      });
       stopProgressTracking(99, 'Summary generated');
     } catch (error) {
       console.error('Error in summarization:', error);
@@ -1779,7 +1900,10 @@ async function processSummarizeFile(file, sessionId) {
       activeTab: 'summary',
       outputMode: 'fulltext',
       previewMode: isPreviewMode,
-      videoDurationSeconds: estimatedDurationMinutes * 60
+      videoDurationSeconds: estimatedDurationMinutes * 60,
+      title: file.name || 'Uploaded file',
+      platform: 'upload',
+      sourceUrl: 'upload://local-file'
     });
     trackEvent('transcript_generated', { mode: 'summary', source: 'file', auth: !!sessionId, preview: isPreviewMode });
     
@@ -1845,13 +1969,21 @@ async function processFullTextFile(file, sessionId, activeTab = 'fulltext') {
     // Transcribe using transcribeAudio (like extension)
     const estimatedTranscriptionTime = estimateTranscriptionDuration(file.size, null);
     startProgressTracking(10, 99, estimatedTranscriptionTime, 'Reading your file…', 'Transcribing…');
-    const transcription = await transcribeAudio(file, null, sessionId);
+    const transcription = await transcribeAudio(file, null, sessionId, {
+      platform: 'upload',
+      filename: file.name || 'uploaded-file',
+      sourceUrl: 'upload://local-file'
+    });
     stopProgressTracking(99, 'Transcription complete');
     
     // Summary is best-effort; transcript/SRT should still succeed if it fails
     let summary = null;
     try {
-      summary = await summarizeText(transcription.text, normalizeSummaryLanguage(transcription.language), sessionId);
+      summary = await summarizeText(transcription.text, normalizeSummaryLanguage(transcription.language), sessionId, {
+        platform: 'upload',
+        title: file.name || 'Uploaded file',
+        sourceUrl: 'upload://local-file'
+      });
     } catch (summaryErr) {
       console.warn('Summary generation failed for file flow:', summaryErr);
       summary = { unavailable: true, message: 'Summary could not be generated for this file.' };
@@ -1868,7 +2000,10 @@ async function processFullTextFile(file, sessionId, activeTab = 'fulltext') {
       activeTab,
       outputMode: activeTab === 'srt' ? 'srt' : 'fulltext',
       previewMode: isPreviewMode,
-      videoDurationSeconds: estimatedDurationMinutes * 60
+      videoDurationSeconds: estimatedDurationMinutes * 60,
+      title: file.name || 'Uploaded file',
+      platform: 'upload',
+      sourceUrl: 'upload://local-file'
     });
     trackEvent('transcript_generated', { mode: 'fulltext', source: 'file', auth: !!sessionId, preview: isPreviewMode });
     
@@ -1973,7 +2108,7 @@ async function extractYouTubeAudio(url, sessionId = null) {
 }
 
 // Transcribe audio (like extension)
-async function transcribeAudio(audioUrlOrFile, languageHint = null, sessionId = null) {
+async function transcribeAudio(audioUrlOrFile, languageHint = null, sessionId = null, contextMeta = {}) {
   try {
     let response;
     
@@ -1996,7 +2131,7 @@ async function transcribeAudio(audioUrlOrFile, languageHint = null, sessionId = 
       // Handle JSON request (audioUrl)
       console.log('TRANSCRIBE: Sending request to', `${API_BASE_URL}/api/transcribe`);
       
-      const body = { audioUrl: audioUrlOrFile, languageHint };
+      const body = { audioUrl: audioUrlOrFile, languageHint, metadata: contextMeta };
       
       console.log('TRANSCRIBE: Body size:', JSON.stringify(body).length, 'bytes');
       
@@ -2073,11 +2208,11 @@ async function transcribeAudio(audioUrlOrFile, languageHint = null, sessionId = 
 }
 
 // Summarize text (like extension)
-async function summarizeText(text, language = null, sessionId = null) {
+async function summarizeText(text, language = null, sessionId = null, contextMeta = {}) {
   console.log('SUMMARIZE: Sending request, text length:', text.length, 'language:', language);
   
   try {
-    const payload = { text };
+    const payload = { text, metadata: contextMeta };
     if (language != null && language !== '') {
       payload.language = language;
     }
@@ -2296,7 +2431,11 @@ async function processSummarize(url, sessionId, platform = 'youtube') {
       // Transcription takes longer: estimate based on video duration
       const estimatedTranscriptionTime = estimateTranscriptionDuration(null, durationSeconds);
       startProgressTracking(25, 70, estimatedTranscriptionTime, platform === 'youtube' ? 'Preparing audio…' : 'Preparing media…', 'Transcribing…');
-      transcription = await transcribeAudio(audioUrl, null, sessionId);
+      transcription = await transcribeAudio(audioUrl, null, sessionId, {
+        platform,
+        title: youtubeResult.title || `${getPlatformName(platform)} video`,
+        sourceUrl: url
+      });
       stopProgressTracking(70, 'Transcription complete');
     }
     
@@ -2305,7 +2444,11 @@ async function processSummarize(url, sessionId, platform = 'youtube') {
     startProgressTracking(70, 99, estimatedSummaryTime, 'Writing summary…', 'Writing summary…');
     let summary = null;
     try {
-      summary = await summarizeText(transcription.text, normalizeSummaryLanguage(transcription.language), sessionId);
+      summary = await summarizeText(transcription.text, normalizeSummaryLanguage(transcription.language), sessionId, {
+        platform,
+        title: youtubeResult.title || `${getPlatformName(platform)} video`,
+        sourceUrl: url
+      });
       stopProgressTracking(99, 'Summary generated');
     } catch (error) {
       console.error('Error in summarization:', error);
@@ -2330,7 +2473,10 @@ async function processSummarize(url, sessionId, platform = 'youtube') {
       activeTab: 'summary',
       outputMode: 'fulltext',
       previewMode: isPreviewMode,
-      videoDurationSeconds: youtubeResult.duration || 0
+      videoDurationSeconds: youtubeResult.duration || 0,
+      title: youtubeResult.title || `${getPlatformName(platform)} video`,
+      platform,
+      sourceUrl: url
     });
     trackEvent('transcript_generated', { mode: 'summary', source: 'url', auth: !!sessionId, preview: isPreviewMode });
     
@@ -2417,14 +2563,22 @@ async function processFullText(url, sessionId, platform = 'youtube', activeTab =
       console.log(`${platform.toUpperCase()}: No subtitles available, transcribing audio`);
       const estimatedTranscriptionTime = estimateTranscriptionDuration(null, durationSeconds);
       startProgressTracking(25, 99, estimatedTranscriptionTime, platform === 'youtube' ? 'Preparing audio…' : 'Preparing media…', 'Transcribing…');
-      transcription = await transcribeAudio(audioUrl, null, sessionId);
+      transcription = await transcribeAudio(audioUrl, null, sessionId, {
+        platform,
+        title: youtubeResult.title || `${getPlatformName(platform)} video`,
+        sourceUrl: url
+      });
       stopProgressTracking(99, 'Transcription complete');
     }
     
     // Summary is best-effort; transcript/SRT should still succeed if it fails
     let summary = null;
     try {
-      summary = await summarizeText(transcription.text, normalizeSummaryLanguage(transcription.language), sessionId);
+      summary = await summarizeText(transcription.text, normalizeSummaryLanguage(transcription.language), sessionId, {
+        platform,
+        title: youtubeResult.title || `${getPlatformName(platform)} video`,
+        sourceUrl: url
+      });
     } catch (summaryErr) {
       console.warn('Summary generation failed for URL flow:', summaryErr);
       summary = { unavailable: true, message: 'Summary could not be generated for this file.' };
@@ -2443,7 +2597,10 @@ async function processFullText(url, sessionId, platform = 'youtube', activeTab =
       activeTab,
       outputMode: activeTab === 'srt' ? 'srt' : 'fulltext',
       previewMode: isPreviewMode,
-      videoDurationSeconds: youtubeResult.duration || 0
+      videoDurationSeconds: youtubeResult.duration || 0,
+      title: youtubeResult.title || `${getPlatformName(platform)} video`,
+      platform,
+      sourceUrl: url
     });
     trackEvent('transcript_generated', { mode: 'fulltext', source: 'url', auth: !!sessionId, preview: isPreviewMode });
     
@@ -2760,6 +2917,9 @@ function displayResults(summary, fullText, segments = null, options = {}) {
     summary,
     fullText,
     segments: segments || [],
+    title: options.title || null,
+    platform: options.platform || (typeof currentPlatform !== 'undefined' ? currentPlatform : null),
+    sourceUrl: options.sourceUrl || (typeof getCurrentUrl === 'function' ? getCurrentUrl() : null),
     lastDisplayOptions: {
       originalLanguage: options.originalLanguage,
       isYouTubeSubtitle: options.isYouTubeSubtitle,
@@ -2768,6 +2928,23 @@ function displayResults(summary, fullText, segments = null, options = {}) {
       videoDurationSeconds: options.videoDurationSeconds
     }
   };
+
+  if (!previewMode) {
+    const sessionId = localStorage.getItem('cutup_session');
+    if (sessionId) {
+      persistSavedOutputs(sessionId, {
+        title: options.title || null,
+        platform: options.platform || (typeof currentPlatform !== 'undefined' ? currentPlatform : null),
+        sourceUrl: options.sourceUrl || (typeof getCurrentUrl === 'function' ? getCurrentUrl() : null),
+        language: options.originalLanguage || null,
+        transcript: previewFullText || '',
+        summary,
+        srt: window.currentSrtContent || ''
+      }).catch((err) => {
+        console.warn('Could not persist saved outputs:', err?.message || err);
+      });
+    }
+  }
 
   // Clear processing message
   const downloadMessage = document.getElementById('downloadMessage');
@@ -2780,6 +2957,78 @@ function displayResults(summary, fullText, segments = null, options = {}) {
   setTimeout(() => {
     resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, 100);
+}
+
+async function persistSavedOutputs(sessionId, payload) {
+  if (!sessionId || !payload) return;
+  const baseMeta = {
+    platform: payload.platform || 'unknown',
+    sourceUrl: payload.sourceUrl || '',
+    title: payload.title || null
+  };
+  const queue = [];
+  if (payload.transcript && payload.transcript.trim()) {
+    queue.push({
+      type: 'transcript',
+      title: payload.title || null,
+      platform: payload.platform || null,
+      sourceUrl: payload.sourceUrl || null,
+      language: payload.language || null,
+      content: payload.transcript,
+      metadata: { ...baseMeta, outputType: 'transcript' }
+    });
+  }
+  const summaryText = (() => {
+    if (!payload.summary) return '';
+    if (typeof payload.summary === 'string') return payload.summary;
+    if (typeof payload.summary === 'object' && payload.summary.summary) return payload.summary.summary;
+    return '';
+  })();
+  if (summaryText.trim()) {
+    queue.push({
+      type: 'summary',
+      title: payload.title || null,
+      platform: payload.platform || null,
+      sourceUrl: payload.sourceUrl || null,
+      language: payload.language || null,
+      content: summaryText,
+      metadata: { ...baseMeta, outputType: 'summary' }
+    });
+  }
+  if (payload.srt && payload.srt.trim()) {
+    queue.push({
+      type: 'srt',
+      title: payload.title || null,
+      platform: payload.platform || null,
+      sourceUrl: payload.sourceUrl || null,
+      language: payload.language || null,
+      content: payload.srt,
+      metadata: { ...baseMeta, outputType: 'srt' }
+    });
+  }
+
+  for (const item of queue) {
+    await fetch(`${API_BASE_URL}/api/subscription?action=saveOutput`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': sessionId
+      },
+      body: JSON.stringify(item)
+    });
+  }
+}
+
+function getTranslationMetadata(outputType = 'srt') {
+  const last = window.cutupLastTranscription || {};
+  const sourceUrl = last.sourceUrl || (typeof getCurrentUrl === 'function' ? getCurrentUrl() : '');
+  const platform = last.platform || (typeof currentPlatform !== 'undefined' ? currentPlatform : 'unknown');
+  return {
+    outputType,
+    platform,
+    title: last.title || null,
+    sourceUrl: sourceUrl || null
+  };
 }
 
 // Switch tab function (result section tabs only)
@@ -2949,7 +3198,8 @@ async function translateFulltextContent(sessionId, originalLanguage) {
       body: JSON.stringify({
         srtContent: `1\n00:00:00,000 --> 00:00:10,000\n${fulltext}\n\n`,
         targetLanguage: targetLanguage,
-        sourceLanguage: originalLanguage || 'auto'
+        sourceLanguage: originalLanguage || 'auto',
+        metadata: getTranslationMetadata('transcript')
       })
     });
     
@@ -3017,7 +3267,8 @@ async function translateSummaryContent(sessionId, originalLanguage) {
       body: JSON.stringify({
         srtContent: `1\n00:00:00,000 --> 00:00:10,000\n${summary}\n\n`,
         targetLanguage: targetLanguage,
-        sourceLanguage: originalLanguage || 'auto'
+        sourceLanguage: originalLanguage || 'auto',
+        metadata: getTranslationMetadata('summary')
       })
     });
     
@@ -3082,7 +3333,8 @@ async function translateSrtContent(sessionId, originalLanguage) {
       body: JSON.stringify({
         srtContent: srtContent,
         targetLanguage: targetLanguage,
-        sourceLanguage: originalLanguage || 'auto'
+        sourceLanguage: originalLanguage || 'auto',
+        metadata: getTranslationMetadata('srt')
       })
     });
     
@@ -3324,6 +3576,7 @@ function showSummaryModal(summary, keyPoints, fullText, title, sessionId, origin
       </div>
     `;
     document.body.appendChild(modal);
+    populateLanguageSelects();
     
     // Close modal
     modal.querySelector('.quality-modal-close').addEventListener('click', () => {
@@ -3389,7 +3642,8 @@ async function translateSummary(sessionId, originalLanguage) {
       body: JSON.stringify({
         srtContent: `1\n00:00:00,000 --> 00:00:10,000\n${summaryText}\n\n`,
         targetLanguage: targetLanguage,
-        sourceLanguage: originalLanguage || window.cutupDetectedSourceLanguage || 'auto'
+        sourceLanguage: originalLanguage || window.cutupDetectedSourceLanguage || 'auto',
+        metadata: getTranslationMetadata('summary')
       })
     });
     
@@ -3450,6 +3704,7 @@ function showFullTextModal(fullText, title, sessionId, originalLanguage) {
       </div>
     `;
     document.body.appendChild(modal);
+    populateLanguageSelects();
     
     // Close modal
     modal.querySelector('.quality-modal-close').addEventListener('click', () => {
@@ -3505,7 +3760,8 @@ async function translateFullText(sessionId, originalLanguage) {
         body: JSON.stringify({
           srtContent: `1\n00:00:00,000 --> 00:00:10,000\n${chunk}\n\n`,
           targetLanguage: targetLanguage,
-          sourceLanguage: originalLanguage || window.cutupDetectedSourceLanguage || 'auto'
+          sourceLanguage: originalLanguage || window.cutupDetectedSourceLanguage || 'auto',
+          metadata: getTranslationMetadata('transcript')
         })
       });
       
@@ -3533,77 +3789,22 @@ async function translateFullText(sessionId, originalLanguage) {
 // Save to dashboard
 async function saveToDashboard(sessionId, data) {
   try {
-    console.log('[script] saveToDashboard called with:', data);
-    
-    // Save to localStorage history for dashboard to pick up
-    const resultId = Date.now();
-    const resultData = {
-      id: resultId,
-      ...data,
-      date: new Date().toISOString(),
-      sessionId: sessionId,
-      // Add minutes if it's a usage type
-      minutes: data.duration ? Math.ceil(data.duration / 60) : (data.minutes || 0)
-    };
-    
-    console.log('[script] Prepared resultData:', resultData);
-    
-    // Get existing history
-    const raw = localStorage.getItem(DASHBOARD_HISTORY_KEY);
-    console.log('[script] Existing history raw (key: ' + DASHBOARD_HISTORY_KEY + '):', raw);
-    console.log('[script] Current origin:', window.location.origin);
-    
-    let history = [];
-    if (raw) {
-      try {
-        history = JSON.parse(raw);
-        console.log('[script] Parsed existing history, length:', history.length);
-      } catch (e) {
-        console.error('[script] Error parsing existing history:', e);
-        history = [];
-      }
-    }
-    
-    // Add new item to beginning
-    history.unshift(resultData);
-    console.log('[script] Added new item, history length now:', history.length);
-    
-    // Limit to 1000 items
-    if (history.length > 1000) {
-      history.pop();
-    }
-    
-    // Save back to localStorage
-    const historyString = JSON.stringify(history);
-    localStorage.setItem(DASHBOARD_HISTORY_KEY, historyString);
-    console.log('[script] Saved to localStorage, key:', DASHBOARD_HISTORY_KEY);
-    console.log('[script] Current origin:', window.location.origin);
-    console.log('[script] History length:', history.length);
-    console.log('[script] Saved to dashboard:', resultData);
-    
-    // Verify it was saved
-    const verify = localStorage.getItem(DASHBOARD_HISTORY_KEY);
-    if (verify) {
-      const verifyParsed = JSON.parse(verify);
-      console.log('[script] ✅ Verification: localStorage contains', verifyParsed.length, 'items');
-      console.log('[script] First item type:', verifyParsed[0]?.type);
-      console.log('[script] All localStorage keys:', Object.keys(localStorage));
-    } else {
-      console.error('[script] ❌ ERROR: Could not verify save!');
-      console.error('[script] All localStorage keys:', Object.keys(localStorage));
-    }
-    
-    // Signal activity
-    localStorage.setItem('cutup_last_activity', Date.now().toString());
-    
-    // Dispatch event for dashboard to listen
-    const customEvent = new CustomEvent('cutupDownloadRecorded', { detail: resultData });
-    window.dispatchEvent(customEvent);
-    console.log('[script] Dispatched cutupDownloadRecorded event');
-    
+    if (!sessionId || !data) return;
+    const platform = data.platform || (typeof currentPlatform !== 'undefined' ? currentPlatform : 'unknown');
+    const sourceUrl = data.sourceUrl || (typeof getCurrentUrl === 'function' ? getCurrentUrl() : '');
+    const title = data.title || null;
+
+    await persistSavedOutputs(sessionId, {
+      title,
+      platform,
+      sourceUrl,
+      language: data.language || null,
+      transcript: data.transcription || '',
+      summary: data.summary || null,
+      srt: data.srtContent || ''
+    });
   } catch (error) {
     console.error('[script] Error saving to dashboard:', error);
-    console.error('[script] Error stack:', error.stack);
   }
 }
 
@@ -3625,6 +3826,7 @@ function showQualityModal(formats, url, sessionId, isPro, isStarter, userPlan, t
       </div>
     `;
     document.body.appendChild(modal);
+    populateLanguageSelects();
     
     // Close modal handlers
     modal.querySelector('.quality-modal-close').addEventListener('click', () => {
@@ -3760,7 +3962,14 @@ function updateProgressBar(downloaded = 0, total = 0, percent = 0, statusText = 
   
   // Update status text if provided
   if (statusText && progressTitle) {
-    progressTitle.textContent = statusText;
+    const normalizedStatus = (() => {
+      const value = String(statusText).toLowerCase();
+      if (value.includes('download')) return 'Downloading...';
+      if (value.includes('audio') || value.includes('extract')) return 'Extracting audio...';
+      if (value.includes('transcrib')) return 'Transcribing...';
+      return statusText;
+    })();
+    progressTitle.textContent = normalizedStatus;
   }
   
   // Only show file size if total > 0 (download operation)
@@ -4474,7 +4683,8 @@ async function translateSRT(sessionId) {
       body: JSON.stringify({
         srtContent: window.originalSrtContent,
         targetLanguage: targetLanguage,
-        sourceLanguage: window.originalSrtLanguage || window.cutupDetectedSourceLanguage || 'auto'
+        sourceLanguage: window.originalSrtLanguage || window.cutupDetectedSourceLanguage || 'auto',
+        metadata: getTranslationMetadata('srt')
       })
     });
     
@@ -4609,5 +4819,96 @@ window.addEventListener('resize', () => {
   if (window.innerWidth <= 768) {
     initFeaturesSlider();
   }
+});
+
+function setupMobileHeaderMenu() {
+  const toggle = document.getElementById('navMenuToggle');
+  const links = document.getElementById('navLinks');
+  if (!toggle || !links) return;
+
+  const closeMenu = () => {
+    links.classList.remove('is-open');
+    toggle.setAttribute('aria-expanded', 'false');
+  };
+
+  toggle.addEventListener('click', () => {
+    const nextState = !links.classList.contains('is-open');
+    links.classList.toggle('is-open', nextState);
+    toggle.setAttribute('aria-expanded', String(nextState));
+  });
+
+  links.querySelectorAll('a, button').forEach((item) => {
+    item.addEventListener('click', () => {
+      if (window.innerWidth < 640) closeMenu();
+    });
+  });
+
+  window.addEventListener('resize', () => {
+    if (window.innerWidth >= 640) closeMenu();
+  });
+}
+
+function setupMobileStickyActions() {
+  const stickyBar = document.getElementById('mobileStickyActions');
+  const resultSection = document.getElementById('resultSection');
+  const fullBtn = document.getElementById('stickyFullTranscriptBtn');
+  const srtBtn = document.getElementById('stickySrtBtn');
+  const downloadBtn = document.getElementById('stickyDownloadBtn');
+  if (!stickyBar || !resultSection || !fullBtn || !srtBtn || !downloadBtn) return;
+
+  const updateStickyVisibility = () => {
+    const hasResult = resultSection.style.display !== 'none' && resultSection.textContent.trim().length > 0;
+    const isMobile = window.innerWidth < 640;
+    stickyBar.classList.toggle('visible', isMobile && hasResult);
+    document.body.classList.toggle('has-mobile-sticky-actions', isMobile && hasResult);
+    stickyBar.setAttribute('aria-hidden', String(!(isMobile && hasResult)));
+  };
+
+  fullBtn.addEventListener('click', () => {
+    switchTab('fulltext');
+    resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  srtBtn.addEventListener('click', () => {
+    const activePlatformTab = document.querySelector('.platform-tab.active')?.dataset.tab || 'youtube';
+    const map = {
+      youtube: 'downloadSubtitleBtnMain',
+      instagram: 'downloadSubtitleBtnInstagram',
+      tiktok: 'downloadSubtitleBtnTiktok',
+      audiofile: 'downloadSubtitleBtnAudiofile'
+    };
+    const srtActionButton = document.getElementById(map[activePlatformTab] || map.youtube);
+    if (srtActionButton) {
+      srtActionButton.click();
+      return;
+    }
+    switchTab('srt');
+  });
+
+  downloadBtn.addEventListener('click', () => {
+    const active = document.querySelector('#resultSection .tab-content.active');
+    if (!active) return;
+    if (active.id === 'summary-tab') {
+      document.getElementById('downloadSummaryTxtBtn')?.click();
+      return;
+    }
+    if (active.id === 'srt-tab') {
+      document.getElementById('downloadSrtBtn')?.click();
+      return;
+    }
+    document.getElementById('downloadFulltextTxtBtn')?.click();
+  });
+
+  const observer = new MutationObserver(updateStickyVisibility);
+  observer.observe(resultSection, { attributes: true, childList: true, subtree: true });
+
+  window.addEventListener('resize', updateStickyVisibility);
+  document.addEventListener('visibilitychange', updateStickyVisibility);
+  updateStickyVisibility();
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  setupMobileHeaderMenu();
+  setupMobileStickyActions();
 });
 

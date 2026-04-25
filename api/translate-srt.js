@@ -34,7 +34,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const { srtContent, targetLanguage, sourceLanguage } = req.body;
+    const { srtContent, targetLanguage, sourceLanguage, metadata } = req.body;
 
     if (!srtContent || !targetLanguage) {
       return res.status(400).json({ error: 'srtContent and targetLanguage are required' });
@@ -64,7 +64,14 @@ export default async function handler(req, res) {
     const consumed = await consumeSrtUsage(userEmail, srtMinutes, {
       route: 'translate-srt',
       segmentCount: translatedSegments.length,
-      targetLanguage
+      targetLanguage,
+      outputType: 'srt',
+      platform: metadata?.platform || null,
+      title: metadata?.title || null,
+      sourceUrl: metadata?.sourceUrl || null,
+      durationSeconds: translatedSegments.length ? Math.ceil(translatedSegments[translatedSegments.length - 1].end || 0) : null,
+      filename: metadata?.filename || null,
+      ...((metadata && typeof metadata === 'object') ? metadata : {})
     });
     if (respondConsumeFailure(res, consumed)) return;
 

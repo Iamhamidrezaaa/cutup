@@ -51,3 +51,20 @@ CREATE TABLE IF NOT EXISTS usage_history (
 );
 
 CREATE INDEX IF NOT EXISTS idx_usage_history_user_created ON usage_history(user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS saved_outputs (
+  id BIGSERIAL PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type VARCHAR(32) NOT NULL,
+  title TEXT,
+  platform VARCHAR(32),
+  source_url TEXT,
+  language VARCHAR(32),
+  content TEXT NOT NULL,
+  metadata JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_saved_outputs_user_created
+  ON saved_outputs(user_id, created_at DESC);

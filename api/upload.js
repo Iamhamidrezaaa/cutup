@@ -321,7 +321,12 @@ export default async function handler(req, res) {
     const consumed = await consumeTranscriptionUsage(userEmail, billedMinutes, {
       route: 'upload',
       filename: filename || 'audio',
-      precheckMinutes: preMinutes
+      precheckMinutes: preMinutes,
+      outputType: 'transcript',
+      platform: 'upload',
+      title: filename || 'Uploaded file',
+      sourceUrl: 'upload://local-file',
+      durationSeconds: validSegments.length ? Math.ceil(validSegments[validSegments.length - 1].end || 0) : null
     });
     if (respondConsumeFailure(res, consumed)) return;
     

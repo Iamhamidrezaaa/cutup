@@ -102,6 +102,10 @@ export default async function handler(req, res) {
       typeof req.body === 'object' && req.body && req.body.languageHint
         ? req.body.languageHint
         : null;
+    const requestMetadata =
+      typeof req.body === 'object' && req.body && req.body.metadata && typeof req.body.metadata === 'object'
+        ? req.body.metadata
+        : {};
 
     // Check if request is multipart/form-data (file upload) or JSON
     const contentType = req.headers['content-type'] || '';
@@ -482,9 +486,28 @@ export default async function handler(req, res) {
     }
 
     const billedMinutes = billingMinutesFromWhisperSegments(validSegments);
+    const sourceUrl =
+      typeof req.body === 'object' && req.body && typeof req.body.audioUrl === 'string'
+        ? req.body.audioUrl
+        : '';
+    const guessedPlatform = sourceUrl.includes('youtube')
+      ? 'youtube'
+      : sourceUrl.includes('instagram')
+        ? 'instagram'
+        : sourceUrl.includes('tiktok')
+          ? 'tiktok'
+          : sourceUrl
+            ? 'url'
+            : 'upload';
     const consumed = await consumeTranscriptionUsage(userEmail, billedMinutes, {
       route: 'transcribe',
-      precheckMinutes: preMinutes
+      precheckMinutes: preMinutes,
+      outputType: 'transcript',
+      platform: requestMetadata.platform || guessedPlatform,
+      title: requestMetadata.title || null,
+      sourceUrl: requestMetadata.sourceUrl || sourceUrl || null,
+      durationSeconds: validSegments.length ? Math.ceil(validSegments[validSegments.length - 1].end || 0) : null,
+      ...requestMetadata
     });
     if (respondConsumeFailure(res, consumed)) return;
 

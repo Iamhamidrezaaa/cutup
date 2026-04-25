@@ -255,6 +255,19 @@ export async function upgradePlanLegacyDb(email, plan, billingPeriod) {
 }
 
 const MINUTE_USAGE_TYPES = new Set(['transcription', 'summarization', 'srt']);
+
+async function insertUsageHistoryOnly(email, type, minutes, metadata = {}) {
+  if (!email) return;
+  await ensureUserByEmail(email);
+  const pool = getPool();
+  const userRes = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+  if (!userRes.rows.length) return;
+  await pool.query(
+    `INSERT INTO usage_history (user_id, type, minutes, metadata)
+     VALUES ($1, $2, $3, $4::jsonb)`,
+    [userRes.rows[0].id, type, Number(minutes) || 0, JSON.stringify(metadata || {})]
+  );
+}
 const MAX_MINUTE_DELTA = 1440;
 
 /**
@@ -333,7 +346,13 @@ function planFeatureKeyForUsageType(usageType) {
  * deltaMinutes may be negative for internal adjustments only (refunds).
  */
 export async function applyUsageMinutesAtomic(email, deltaMinutes, usageType, metadata = {}) {
-  if (email === UNLIMITED_EMAIL) return { ok: true };
+  if (email === UNLIMITED_EMAIL) {
+    const delta = Number(deltaMinutes);
+    if (Number.isFinite(delta) && delta !== 0) {
+      await insertUsageHistoryOnly(email, usageType, delta > 0 ? delta : -Math.abs(delta), metadata);
+    }
+    return { ok: true };
+  }
   if (!email) return { ok: false, reason: 'User email required.' };
   if (!MINUTE_USAGE_TYPES.has(usageType)) {
     return { ok: false, reason: 'Invalid usage type.' };
@@ -450,7 +469,12 @@ export async function applyUsageMinutesAtomic(email, deltaMinutes, usageType, me
  * Atomically check download entitlement and increment slot + history (type "download", metadata.kind).
  */
 export async function consumeDownloadSlotAtomic(email, kind, metadata = {}) {
-  if (email === UNLIMITED_EMAIL) return { ok: true };
+  if (email === UNLIMITED_EMAIL) {
+    if (kind === 'audio' || kind === 'video') {
+      await insertUsageHistoryOnly(email, 'download', 0, { ...metadata, kind });
+    }
+    return { ok: true };
+  }
   if (kind !== 'audio' && kind !== 'video') {
     return { ok: false, reason: 'Invalid download kind.' };
   }
@@ -564,6 +588,88 @@ export async function getUsageHistoryDb(email, limit = 100) {
     minutes: Number(row.minutes),
     date: row.created_at.toISOString(),
     metadata: row.metadata || {}
+  }));
+}
+
+export async function saveOutputDb(email, payload = {}) {
+  const {
+    type,
+    title = null,
+    platform = null,
+    sourceUrl = null,
+    language = null,
+    content,
+    metadata = {}
+  } = payload;
+
+  if (!email || !type || !content) return null;
+  await ensureUserByEmail(email);
+  const pool = getPool();
+  const userRes = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+  if (!userRes.rows.length) return null;
+  const userId = userRes.rows[0].id;
+
+  const dedupeWindowMinutes = 120;
+  const existing = await pool.query(
+    `SELECT id FROM saved_outputs
+     WHERE user_id = $1
+       AND type = $2
+       AND COALESCE(source_url, '') = COALESCE($3, '')
+       AND COALESCE(title, '') = COALESCE($4, '')
+       AND created_at > NOW() - ($5 || ' minutes')::interval
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [userId, type, sourceUrl, title, dedupeWindowMinutes]
+  );
+
+  if (existing.rows.length > 0) {
+    const id = existing.rows[0].id;
+    await pool.query(
+      `UPDATE saved_outputs
+       SET platform = $2,
+           language = $3,
+           content = $4,
+           metadata = $5::jsonb,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [id, platform, language, content, JSON.stringify(metadata || {})]
+    );
+    return String(id);
+  }
+
+  const inserted = await pool.query(
+    `INSERT INTO saved_outputs
+      (user_id, type, title, platform, source_url, language, content, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+     RETURNING id`,
+    [userId, type, title, platform, sourceUrl, language, content, JSON.stringify(metadata || {})]
+  );
+  return String(inserted.rows[0].id);
+}
+
+export async function getSavedOutputsDb(email, limit = 100) {
+  if (!email) return [];
+  await ensureUserByEmail(email);
+  const pool = getPool();
+  const rows = await pool.query(
+    `SELECT s.* FROM saved_outputs s
+     JOIN users u ON u.id = s.user_id
+     WHERE u.email = $1
+     ORDER BY s.created_at DESC
+     LIMIT $2`,
+    [email, limit]
+  );
+  return rows.rows.map((row) => ({
+    id: String(row.id),
+    type: row.type,
+    title: row.title,
+    platform: row.platform,
+    sourceUrl: row.source_url,
+    language: row.language,
+    content: row.content,
+    metadata: row.metadata || {},
+    createdAt: row.created_at?.toISOString ? row.created_at.toISOString() : row.created_at,
+    updatedAt: row.updated_at?.toISOString ? row.updated_at.toISOString() : row.updated_at
   }));
 }
 
