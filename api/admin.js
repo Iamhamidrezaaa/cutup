@@ -101,6 +101,31 @@ export default async function handler(req, res) {
 
   const action = req.query?.action || req.body?.action;
   try {
+    if (req.method === 'GET' && action === 'blogPosts' && String(req.query?.public || '') === '1') {
+      const posts = await listAdminBlogPostsDb(req.query.limit || 300);
+      const published = posts
+        .filter((p) => p.status === 'published')
+        .map((p) => ({
+          id: p.id,
+          slug: p.slug,
+          title: p.title,
+          coverImageUrl: p.coverImageUrl,
+          excerpt: p.excerpt,
+          content: p.content,
+          status: p.status,
+          category: p.category,
+          tags: p.tags || [],
+          metaTitle: p.metaTitle,
+          metaDescription: p.metaDescription,
+          canonicalUrl: p.canonicalUrl,
+          ogTitle: p.ogTitle,
+          ogDescription: p.ogDescription,
+          publishedAt: p.publishedAt,
+          updatedAt: p.updatedAt
+        }));
+      return res.json({ posts: published, total: published.length });
+    }
+
     const adminEmail = getSessionAndAdminEmail(req, res);
     if (!adminEmail) return;
 
@@ -183,7 +208,35 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST' && action === 'saveBlogPost') {
-      const id = await saveAdminBlogPostDb(req.body || {});
+      const raw = req.body && typeof req.body === 'object' ? req.body : {};
+      const payload = {
+        id: raw.id || null,
+        slug: String(raw.slug || '').trim(),
+        title: String(raw.title || '').trim(),
+        excerpt: String(raw.excerpt || ''),
+        content: String(raw.content || ''),
+        status: raw.status === 'published' ? 'published' : 'draft',
+        category: String(raw.category || '').trim(),
+        tags: Array.isArray(raw.tags) ? raw.tags : [],
+        metaTitle: String(raw.metaTitle || ''),
+        metaDescription: String(raw.metaDescription || ''),
+        canonicalUrl: String(raw.canonicalUrl || ''),
+        ogTitle: String(raw.ogTitle || ''),
+        ogDescription: String(raw.ogDescription || ''),
+        coverImageUrl: String(raw.coverImageUrl || '')
+      };
+      if (!payload.slug) return res.status(400).json({ error: 'Slug is required', message: 'Please enter a slug.' });
+      if (!payload.title) return res.status(400).json({ error: 'Title is required', message: 'Please enter a title.' });
+      console.log('[admin] saveBlogPost request', {
+        id: payload.id,
+        slug: payload.slug,
+        status: payload.status,
+        titleLength: payload.title.length,
+        contentLength: payload.content.length,
+        category: payload.category,
+        tagsCount: payload.tags.length
+      });
+      const id = await saveAdminBlogPostDb(payload);
       return res.json({ success: true, id });
     }
 
@@ -198,7 +251,10 @@ export default async function handler(req, res) {
 
     return res.status(404).json({ error: 'Not found' });
   } catch (error) {
-    console.error('[admin] error:', error?.message || error);
-    return res.status(500).json({ error: 'Admin request failed. Please try again.' });
+    console.error('[admin] error:', error);
+    return res.status(500).json({
+      error: 'Admin request failed. Please try again.',
+      message: error?.message || 'unknown_error'
+    });
   }
 }

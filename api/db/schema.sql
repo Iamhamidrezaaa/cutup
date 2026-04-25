@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS blog_posts (
   id BIGSERIAL PRIMARY KEY,
   slug TEXT NOT NULL UNIQUE,
   title TEXT NOT NULL,
+  cover_image_url TEXT,
   excerpt TEXT,
   content TEXT NOT NULL DEFAULT '',
   status VARCHAR(16) NOT NULL DEFAULT 'draft',
@@ -98,3 +99,6 @@ CREATE TABLE IF NOT EXISTS blog_posts (
 
 CREATE INDEX IF NOT EXISTS idx_blog_posts_status_published_at
   ON blog_posts(status, published_at DESC);
+
+ALTER TABLE blog_posts
+  ADD COLUMN IF NOT EXISTS cover_image_url TEXT;

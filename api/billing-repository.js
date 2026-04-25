@@ -984,6 +984,7 @@ export async function listAdminBlogPostsDb(limit = 200) {
     id: String(row.id),
     slug: row.slug,
     title: row.title,
+    coverImageUrl: row.cover_image_url,
     excerpt: row.excerpt,
     content: row.content,
     status: row.status,
@@ -1006,6 +1007,7 @@ export async function saveAdminBlogPostDb(payload = {}) {
     id = null,
     slug,
     title,
+    coverImageUrl = '',
     excerpt = '',
     content = '',
     status = 'draft',
@@ -1025,36 +1027,79 @@ export async function saveAdminBlogPostDb(payload = {}) {
     ? tags.map((t) => String(t).trim()).filter(Boolean).slice(0, 30)
     : [];
   if (id) {
-    const updated = await pool.query(
-      `UPDATE blog_posts
-       SET slug = $2,
-           title = $3,
-           excerpt = $4,
-           content = $5,
-           status = $6,
-           category = $7,
-           tags = $8::text[],
-           meta_title = $9,
-           meta_description = $10,
-           canonical_url = $11,
-           og_title = $12,
-           og_description = $13,
-           updated_at = NOW(),
-           published_at = CASE WHEN $6 = 'published' AND published_at IS NULL THEN NOW() WHEN $6 = 'draft' THEN NULL ELSE published_at END
-       WHERE id = $1::bigint
-       RETURNING id`,
-      [id, slug, title, excerpt, content, normalizedStatus, category, cleanTags, metaTitle, metaDescription, canonicalUrl, ogTitle, ogDescription]
-    );
-    return String(updated.rows[0].id);
+    console.log('[blog] update post', { id, slug, status: normalizedStatus, hasCover: Boolean(coverImageUrl) });
+    try {
+      const updated = await pool.query(
+        `UPDATE blog_posts
+         SET slug = $2,
+             title = $3,
+             cover_image_url = $4,
+             excerpt = $5,
+             content = $6,
+             status = $7,
+             category = $8,
+             tags = $9::text[],
+             meta_title = $10,
+             meta_description = $11,
+             canonical_url = $12,
+             og_title = $13,
+             og_description = $14,
+             updated_at = NOW(),
+             published_at = CASE WHEN $7 = 'published' AND published_at IS NULL THEN NOW() WHEN $7 = 'draft' THEN NULL ELSE published_at END
+         WHERE id = $1::bigint
+         RETURNING id`,
+        [id, slug, title, coverImageUrl, excerpt, content, normalizedStatus, category, cleanTags, metaTitle, metaDescription, canonicalUrl, ogTitle, ogDescription]
+      );
+      return String(updated.rows[0].id);
+    } catch (err) {
+      // Backward-compatible fallback when DB migration for cover_image_url is not applied yet.
+      if (!String(err?.message || '').toLowerCase().includes('cover_image_url')) throw err;
+      console.warn('[blog] cover_image_url missing, retrying update without cover column');
+      const updated = await pool.query(
+        `UPDATE blog_posts
+         SET slug = $2,
+             title = $3,
+             excerpt = $4,
+             content = $5,
+             status = $6,
+             category = $7,
+             tags = $8::text[],
+             meta_title = $9,
+             meta_description = $10,
+             canonical_url = $11,
+             og_title = $12,
+             og_description = $13,
+             updated_at = NOW(),
+             published_at = CASE WHEN $6 = 'published' AND published_at IS NULL THEN NOW() WHEN $6 = 'draft' THEN NULL ELSE published_at END
+         WHERE id = $1::bigint
+         RETURNING id`,
+        [id, slug, title, excerpt, content, normalizedStatus, category, cleanTags, metaTitle, metaDescription, canonicalUrl, ogTitle, ogDescription]
+      );
+      return String(updated.rows[0].id);
+    }
   }
-  const inserted = await pool.query(
-    `INSERT INTO blog_posts
-      (slug, title, excerpt, content, status, category, tags, meta_title, meta_description, canonical_url, og_title, og_description, published_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7::text[],$8,$9,$10,$11,$12, CASE WHEN $5 = 'published' THEN NOW() ELSE NULL END)
-     RETURNING id`,
-    [slug, title, excerpt, content, normalizedStatus, category, cleanTags, metaTitle, metaDescription, canonicalUrl, ogTitle, ogDescription]
-  );
-  return String(inserted.rows[0].id);
+  console.log('[blog] insert post', { slug, status: normalizedStatus, hasCover: Boolean(coverImageUrl) });
+  try {
+    const inserted = await pool.query(
+      `INSERT INTO blog_posts
+        (slug, title, cover_image_url, excerpt, content, status, category, tags, meta_title, meta_description, canonical_url, og_title, og_description, published_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::text[],$9,$10,$11,$12,$13, CASE WHEN $6 = 'published' THEN NOW() ELSE NULL END)
+       RETURNING id`,
+      [slug, title, coverImageUrl, excerpt, content, normalizedStatus, category, cleanTags, metaTitle, metaDescription, canonicalUrl, ogTitle, ogDescription]
+    );
+    return String(inserted.rows[0].id);
+  } catch (err) {
+    if (!String(err?.message || '').toLowerCase().includes('cover_image_url')) throw err;
+    console.warn('[blog] cover_image_url missing, retrying insert without cover column');
+    const inserted = await pool.query(
+      `INSERT INTO blog_posts
+        (slug, title, excerpt, content, status, category, tags, meta_title, meta_description, canonical_url, og_title, og_description, published_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::text[],$8,$9,$10,$11,$12, CASE WHEN $5 = 'published' THEN NOW() ELSE NULL END)
+       RETURNING id`,
+      [slug, title, excerpt, content, normalizedStatus, category, cleanTags, metaTitle, metaDescription, canonicalUrl, ogTitle, ogDescription]
+    );
+    return String(inserted.rows[0].id);
+  }
 }
 
 export async function publishAdminBlogPostDb(id, publish = true) {

@@ -53,11 +53,16 @@ async function apiGet(action, params = {}) {
 async function apiPost(action, payload = {}) {
   const response = await fetch(`${API_BASE_URL}/api/admin?action=${encodeURIComponent(action)}`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json', 'X-Session-Id': currentSession },
     body: JSON.stringify({ ...payload, session: currentSession })
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || 'Request failed');
+  if (!response.ok) {
+    const message = data.message || data.error || `Request failed (${response.status})`;
+    console.error('[admin] apiPost failed', { action, status: response.status, payload, response: data });
+    throw new Error(message);
+  }
   return data;
 }
 
@@ -232,6 +237,7 @@ function fillBlogForm(post) {
   document.getElementById('postSlug').value = post.slug || '';
   document.getElementById('postTitle').value = post.title || '';
   document.getElementById('postExcerpt').value = post.excerpt || '';
+  document.getElementById('postCoverImageUrl').value = post.coverImageUrl || '';
   document.getElementById('postContent').value = post.content || '';
   document.getElementById('postStatus').value = post.status || 'draft';
   document.getElementById('postCategory').value = post.category || '';
@@ -249,6 +255,7 @@ function readBlogForm() {
     slug: document.getElementById('postSlug').value.trim(),
     title: document.getElementById('postTitle').value.trim(),
     excerpt: document.getElementById('postExcerpt').value.trim(),
+    coverImageUrl: document.getElementById('postCoverImageUrl').value.trim(),
     content: document.getElementById('postContent').value,
     status: document.getElementById('postStatus').value,
     category: document.getElementById('postCategory').value.trim(),
@@ -329,22 +336,42 @@ function setupActions() {
     e.preventDefault();
     try {
       const payload = readBlogForm();
+      console.log('[admin] saveBlogPost payload', {
+        title: payload.title,
+        slug: payload.slug,
+        contentLength: String(payload.content || '').length,
+        status: payload.status,
+        category: payload.category,
+        tagsCount: Array.isArray(payload.tags) ? payload.tags.length : 0
+      });
       await apiPost('saveBlogPost', payload);
       showBanner('Post saved.');
       await loadBlogPosts();
     } catch (err) {
+      console.error('[admin] saveBlogPost error', err);
       showBanner(err.message || 'Could not save post.');
     }
   });
   document.getElementById('publishToggleBtn')?.addEventListener('click', async () => {
     const id = document.getElementById('postId')?.value;
     const status = document.getElementById('postStatus')?.value;
-    if (!id) return showBanner('Select a post first.');
     try {
+      if (!id) {
+        // New post publish flow: publish directly from current form data.
+        const payload = readBlogForm();
+        payload.status = 'published';
+        const saved = await apiPost('saveBlogPost', payload);
+        if (saved?.id) document.getElementById('postId').value = String(saved.id);
+        document.getElementById('postStatus').value = 'published';
+        showBanner('Post published successfully.');
+        await loadBlogPosts();
+        return;
+      }
       await apiPost('publishBlogPost', { id, publish: status !== 'published' });
-      showBanner('Publish state updated.');
+      showBanner(status !== 'published' ? 'Post published successfully.' : 'Post moved to draft.');
       await loadBlogPosts();
     } catch (err) {
+      console.error('[admin] publishBlogPost error', err);
       showBanner(err.message || 'Could not publish post.');
     }
   });

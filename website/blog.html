@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cutup Blog</title>
+  <meta name="description" content="Insights, tutorials, and product updates from Cutup.">
+  <link rel="canonical" href="https://cutup.shop/blog.html">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Cutup Blog">
+  <meta property="og:description" content="Insights, tutorials, and product updates from Cutup.">
+  <meta property="og:url" content="https://cutup.shop/blog.html">
+  <meta name="theme-color" content="#5b4ce6">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="blog.css">
+</head>
+<body>
+  <header class="blog-header">
+    <div class="container header-inner">
+      <a class="brand" href="index.html">Cutup</a>
+      <nav class="header-links">
+        <a href="index.html">Home</a>
+        <a href="blog.html" aria-current="page">Blog</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="blogRoot" class="container">
+    <section id="blogListView">
+      <div class="blog-hero">
+        <h1>Cutup Blog</h1>
+        <p>Guides, product updates, and growth content for creators.</p>
+      </div>
+      <section class="blog-filters" aria-label="Blog filters">
+        <input id="searchInput" type="search" placeholder="Search articles">
+        <select id="categoryFilter">
+          <option value="all">All categories</option>
+        </select>
+        <select id="tagFilter">
+          <option value="all">All tags</option>
+        </select>
+      </section>
+      <section id="blogGrid" class="blog-grid" aria-live="polite"></section>
+    </section>
+
+    <article id="blogPostView" class="blog-post-view" hidden>
+      <a href="blog.html" class="back-link">← Back to blog</a>
+      <header class="post-header">
+        <img id="postCoverImage" class="post-cover-image" alt="" hidden>
+        <h1 id="postTitle"></h1>
+        <div id="postMeta" class="post-meta"></div>
+      </header>
+      <div class="post-layout">
+        <aside class="post-toc-wrap">
+          <div class="post-toc" id="postToc"></div>
+          <button id="copyLinkBtn" class="copy-link-btn" type="button">Copy article link</button>
+        </aside>
+        <section id="postContent" class="post-content"></section>
+      </div>
+    </article>
+  </main>
+
+  <script src="blog.js"></script>
+</body>
+</html>
