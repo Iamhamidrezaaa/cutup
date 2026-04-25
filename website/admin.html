@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="admin.css">
 </head>
 <body>
+  <a href="#adminMainContent" class="skip-link">Skip to main content</a>
   <div class="admin-shell">
     <header class="admin-header">
       <div class="admin-header-brand">
@@ -18,24 +19,24 @@
         </div>
       </div>
       <div class="admin-header-actions">
-        <a href="dashboard.html" class="btn ghost">Back to app</a>
-        <button id="adminLogoutBtn" class="btn">Logout</button>
+        <a href="dashboard.html" class="btn ghost" aria-label="Back to user dashboard">Back to app</a>
+        <button id="adminLogoutBtn" class="btn" aria-label="Log out from admin dashboard">Logout</button>
       </div>
     </header>
 
     <div class="admin-main">
       <aside class="admin-sidebar">
-        <button class="nav-btn active" data-section="overview"><span>📊</span><span>Overview</span></button>
-        <button class="nav-btn" data-section="users"><span>👥</span><span>Users</span></button>
-        <button class="nav-btn" data-section="usage"><span>📈</span><span>Usage</span></button>
-        <button class="nav-btn" data-section="outputs"><span>🗂️</span><span>Saved outputs</span></button>
-        <button class="nav-btn" data-section="payments"><span>💳</span><span>Payments</span></button>
-        <button class="nav-btn" data-section="health"><span>🩺</span><span>System health</span></button>
-        <button class="nav-btn" data-section="blog"><span>📝</span><span>Blog CMS</span></button>
+        <button class="nav-btn active" data-section="overview" aria-label="Open Overview section"><span aria-hidden="true">📊</span><span>Overview</span></button>
+        <button class="nav-btn" data-section="users" aria-label="Open Users section"><span aria-hidden="true">👥</span><span>Users</span></button>
+        <button class="nav-btn" data-section="usage" aria-label="Open Usage section"><span aria-hidden="true">📈</span><span>Usage</span></button>
+        <button class="nav-btn" data-section="outputs" aria-label="Open Saved outputs section"><span aria-hidden="true">🗂️</span><span>Saved outputs</span></button>
+        <button class="nav-btn" data-section="payments" aria-label="Open Payments section"><span aria-hidden="true">💳</span><span>Payments</span></button>
+        <button class="nav-btn" data-section="health" aria-label="Open System health section"><span aria-hidden="true">🩺</span><span>System health</span></button>
+        <button class="nav-btn" data-section="blog" aria-label="Open Blog CMS section"><span aria-hidden="true">📝</span><span>Blog CMS</span></button>
       </aside>
 
-      <section class="admin-content">
-        <div id="adminBanner" class="admin-banner" hidden></div>
+      <section class="admin-content" id="adminMainContent" tabindex="-1">
+        <div id="adminBanner" class="admin-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
         <section id="section-overview" class="panel active">
           <h2>Overview</h2>
@@ -44,6 +45,7 @@
 
         <section id="section-users" class="panel">
           <h2>Users</h2>
+          <p id="usersTableHint" class="sr-only">Users table with account, plan, and usage information.</p>
           <div class="toolbar">
             <input id="usersSearch" type="search" placeholder="Search by email/name">
             <select id="usersPlanFilter">
@@ -56,11 +58,12 @@
             </select>
             <button id="usersReloadBtn" class="btn">Refresh</button>
           </div>
-          <div class="table-wrap"><table id="usersTable"></table></div>
+          <div class="table-wrap"><table id="usersTable" aria-label="Users table" aria-describedby="usersTableHint"></table></div>
         </section>
 
         <section id="section-usage" class="panel">
           <h2>Usage</h2>
+          <p id="usageTableHint" class="sr-only">Usage activity table with operation type, user, source, and date.</p>
           <div class="toolbar">
             <select id="usageTypeFilter">
               <option value="all">All types</option>
@@ -80,12 +83,13 @@
             <input id="usageEndDate" type="date">
             <button id="usageReloadBtn" class="btn">Apply</button>
           </div>
-          <div class="table-wrap"><table id="usageTable"></table></div>
+          <div class="table-wrap"><table id="usageTable" aria-label="Usage activity table" aria-describedby="usageTableHint"></table></div>
         </section>
 
         <section id="section-outputs" class="panel">
           <h2>Saved outputs</h2>
-          <div class="table-wrap"><table id="outputsTable"></table></div>
+          <p id="outputsTableHint" class="sr-only">Saved outputs table with user, content type, and timestamps.</p>
+          <div class="table-wrap"><table id="outputsTable" aria-label="Saved outputs table" aria-describedby="outputsTableHint"></table></div>
         </section>
 
         <section id="section-payments" class="panel">
@@ -106,7 +110,8 @@
                 <button id="newPostBtn" class="btn">New post</button>
                 <button id="reloadPostsBtn" class="btn ghost">Reload posts</button>
               </div>
-              <div class="table-wrap"><table id="blogTable"></table></div>
+              <p id="blogTableHint" class="sr-only">Blog posts table with title, slug, status, and update time.</p>
+              <div class="table-wrap"><table id="blogTable" aria-label="Blog posts table" aria-describedby="blogTableHint"></table></div>
             </div>
             <form id="blogForm" class="blog-form">
               <input type="hidden" id="postId">
@@ -145,6 +150,18 @@
       </section>
     </div>
   </div>
+  <script>
+    (function applyTableHeaderScope() {
+      const setScope = () => {
+        document.querySelectorAll('table thead th').forEach((th) => {
+          if (!th.hasAttribute('scope')) th.setAttribute('scope', 'col');
+        });
+      };
+      setScope();
+      const observer = new MutationObserver(setScope);
+      observer.observe(document.body, { childList: true, subtree: true });
+    })();
+  </script>
   <script src="admin.js"></script>
 </body>
 </html>
