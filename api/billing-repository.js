@@ -1001,6 +1001,17 @@ export async function listAdminBlogPostsDb(limit = 200) {
   }));
 }
 
+async function resolveAdminBlogPostTargetId(pool, explicitId, slug) {
+  const idStr = explicitId != null && String(explicitId).trim() !== '' ? String(explicitId).trim() : '';
+  if (idStr) {
+    const byId = await pool.query('SELECT id FROM blog_posts WHERE id = $1::bigint LIMIT 1', [idStr]);
+    if (byId.rows.length) return String(byId.rows[0].id);
+  }
+  const bySlug = await pool.query('SELECT id FROM blog_posts WHERE slug = $1::text LIMIT 1', [slug]);
+  if (bySlug.rows.length) return String(bySlug.rows[0].id);
+  return null;
+}
+
 export async function saveAdminBlogPostDb(payload = {}) {
   const pool = getPool();
   const {
@@ -1026,29 +1037,36 @@ export async function saveAdminBlogPostDb(payload = {}) {
   const cleanTags = Array.isArray(tags)
     ? tags.map((t) => String(t).trim()).filter(Boolean).slice(0, 30)
     : [];
-  if (id) {
-    console.log('[blog] update post', { id, slug, status: normalizedStatus, hasCover: Boolean(coverImageUrl) });
+  const publishedAtParam = normalizedStatus === 'published' ? new Date() : null;
+
+  const targetId = await resolveAdminBlogPostTargetId(pool, id, slug);
+
+  if (targetId) {
+    console.log('[blog] update post', { id: targetId, slug, status: normalizedStatus, hasCover: Boolean(coverImageUrl) });
     try {
       const updated = await pool.query(
         `UPDATE blog_posts
-         SET slug = $2,
-             title = $3,
-             cover_image_url = $4,
-             excerpt = $5,
-             content = $6,
-             status = $7,
-             category = $8,
+         SET slug = $2::text,
+             title = $3::text,
+             cover_image_url = $4::text,
+             excerpt = $5::text,
+             content = $6::text,
+             status = $7::text,
+             category = $8::text,
              tags = $9::text[],
-             meta_title = $10,
-             meta_description = $11,
-             canonical_url = $12,
-             og_title = $13,
-             og_description = $14,
+             meta_title = $10::text,
+             meta_description = $11::text,
+             canonical_url = $12::text,
+             og_title = $13::text,
+             og_description = $14::text,
              updated_at = NOW(),
-             published_at = CASE WHEN $7 = 'published' AND published_at IS NULL THEN NOW() WHEN $7 = 'draft' THEN NULL ELSE published_at END
+             published_at = CASE
+               WHEN $15::text = 'published' THEN COALESCE(published_at, NOW())
+               ELSE NULL::timestamptz
+             END
          WHERE id = $1::bigint
          RETURNING id`,
-        [id, slug, title, coverImageUrl, excerpt, content, normalizedStatus, category, cleanTags, metaTitle, metaDescription, canonicalUrl, ogTitle, ogDescription]
+        [targetId, slug, title, coverImageUrl, excerpt, content, normalizedStatus, category, cleanTags, metaTitle, metaDescription, canonicalUrl, ogTitle, ogDescription, normalizedStatus]
       );
       return String(updated.rows[0].id);
     } catch (err) {
@@ -1057,23 +1075,26 @@ export async function saveAdminBlogPostDb(payload = {}) {
       console.warn('[blog] cover_image_url missing, retrying update without cover column');
       const updated = await pool.query(
         `UPDATE blog_posts
-         SET slug = $2,
-             title = $3,
-             excerpt = $4,
-             content = $5,
-             status = $6,
-             category = $7,
+         SET slug = $2::text,
+             title = $3::text,
+             excerpt = $4::text,
+             content = $5::text,
+             status = $6::text,
+             category = $7::text,
              tags = $8::text[],
-             meta_title = $9,
-             meta_description = $10,
-             canonical_url = $11,
-             og_title = $12,
-             og_description = $13,
+             meta_title = $9::text,
+             meta_description = $10::text,
+             canonical_url = $11::text,
+             og_title = $12::text,
+             og_description = $13::text,
              updated_at = NOW(),
-             published_at = CASE WHEN $6 = 'published' AND published_at IS NULL THEN NOW() WHEN $6 = 'draft' THEN NULL ELSE published_at END
+             published_at = CASE
+               WHEN $14::text = 'published' THEN COALESCE(published_at, NOW())
+               ELSE NULL::timestamptz
+             END
          WHERE id = $1::bigint
          RETURNING id`,
-        [id, slug, title, excerpt, content, normalizedStatus, category, cleanTags, metaTitle, metaDescription, canonicalUrl, ogTitle, ogDescription]
+        [targetId, slug, title, excerpt, content, normalizedStatus, category, cleanTags, metaTitle, metaDescription, canonicalUrl, ogTitle, ogDescription, normalizedStatus]
       );
       return String(updated.rows[0].id);
     }
@@ -1083,9 +1104,9 @@ export async function saveAdminBlogPostDb(payload = {}) {
     const inserted = await pool.query(
       `INSERT INTO blog_posts
         (slug, title, cover_image_url, excerpt, content, status, category, tags, meta_title, meta_description, canonical_url, og_title, og_description, published_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::text[],$9,$10,$11,$12,$13, CASE WHEN $6 = 'published' THEN NOW() ELSE NULL END)
+       VALUES ($1::text,$2::text,$3::text,$4::text,$5::text,$6::text,$7::text,$8::text[],$9::text,$10::text,$11::text,$12::text,$13::text,$14::timestamptz)
        RETURNING id`,
-      [slug, title, coverImageUrl, excerpt, content, normalizedStatus, category, cleanTags, metaTitle, metaDescription, canonicalUrl, ogTitle, ogDescription]
+      [slug, title, coverImageUrl, excerpt, content, normalizedStatus, category, cleanTags, metaTitle, metaDescription, canonicalUrl, ogTitle, ogDescription, publishedAtParam]
     );
     return String(inserted.rows[0].id);
   } catch (err) {
@@ -1094,9 +1115,9 @@ export async function saveAdminBlogPostDb(payload = {}) {
     const inserted = await pool.query(
       `INSERT INTO blog_posts
         (slug, title, excerpt, content, status, category, tags, meta_title, meta_description, canonical_url, og_title, og_description, published_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7::text[],$8,$9,$10,$11,$12, CASE WHEN $5 = 'published' THEN NOW() ELSE NULL END)
+       VALUES ($1::text,$2::text,$3::text,$4::text,$5::text,$6::text,$7::text[],$8::text,$9::text,$10::text,$11::text,$12::text,$13::timestamptz)
        RETURNING id`,
-      [slug, title, excerpt, content, normalizedStatus, category, cleanTags, metaTitle, metaDescription, canonicalUrl, ogTitle, ogDescription]
+      [slug, title, excerpt, content, normalizedStatus, category, cleanTags, metaTitle, metaDescription, canonicalUrl, ogTitle, ogDescription, publishedAtParam]
     );
     return String(inserted.rows[0].id);
   }
@@ -1104,14 +1125,20 @@ export async function saveAdminBlogPostDb(payload = {}) {
 
 export async function publishAdminBlogPostDb(id, publish = true) {
   const pool = getPool();
+  const statusText = publish ? 'published' : 'draft';
+  const idStr = id != null && String(id).trim() !== '' ? String(id).trim() : '';
+  if (!idStr) return false;
   const r = await pool.query(
     `UPDATE blog_posts
-     SET status = $2,
+     SET status = $2::text,
          updated_at = NOW(),
-         published_at = CASE WHEN $2 = 'published' THEN COALESCE(published_at, NOW()) ELSE NULL END
+         published_at = CASE
+           WHEN $3::text = 'published' THEN COALESCE(published_at, NOW())
+           ELSE NULL::timestamptz
+         END
      WHERE id = $1::bigint
      RETURNING id`,
-    [id, publish ? 'published' : 'draft']
+    [idStr, statusText, statusText]
   );
   return r.rows.length > 0;
 }

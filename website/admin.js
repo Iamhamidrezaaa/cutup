@@ -250,8 +250,9 @@ function fillBlogForm(post) {
 }
 
 function readBlogForm() {
+  const postIdRaw = document.getElementById('postId')?.value?.trim();
   return {
-    id: document.getElementById('postId').value || null,
+    id: postIdRaw || null,
     slug: document.getElementById('postSlug').value.trim(),
     title: document.getElementById('postTitle').value.trim(),
     excerpt: document.getElementById('postExcerpt').value.trim(),
@@ -337,6 +338,7 @@ function setupActions() {
     try {
       const payload = readBlogForm();
       console.log('[admin] saveBlogPost payload', {
+        id: payload.id,
         title: payload.title,
         slug: payload.slug,
         contentLength: String(payload.content || '').length,
@@ -344,9 +346,16 @@ function setupActions() {
         category: payload.category,
         tagsCount: Array.isArray(payload.tags) ? payload.tags.length : 0
       });
-      await apiPost('saveBlogPost', payload);
+      const saved = await apiPost('saveBlogPost', payload);
+      if (saved?.id) {
+        document.getElementById('postId').value = String(saved.id);
+      }
       showBanner('Post saved.');
       await loadBlogPosts();
+      if (saved?.id) {
+        const post = blogPostsCache.find((x) => String(x.id) === String(saved.id));
+        if (post) fillBlogForm(post);
+      }
     } catch (err) {
       console.error('[admin] saveBlogPost error', err);
       showBanner(err.message || 'Could not save post.');
@@ -357,7 +366,6 @@ function setupActions() {
     const status = document.getElementById('postStatus')?.value;
     try {
       if (!id) {
-        // New post publish flow: publish directly from current form data.
         const payload = readBlogForm();
         payload.status = 'published';
         const saved = await apiPost('saveBlogPost', payload);
@@ -365,6 +373,10 @@ function setupActions() {
         document.getElementById('postStatus').value = 'published';
         showBanner('Post published successfully.');
         await loadBlogPosts();
+        if (saved?.id) {
+          const post = blogPostsCache.find((x) => String(x.id) === String(saved.id));
+          if (post) fillBlogForm(post);
+        }
         return;
       }
       await apiPost('publishBlogPost', { id, publish: status !== 'published' });

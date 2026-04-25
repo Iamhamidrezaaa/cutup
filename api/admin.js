@@ -209,8 +209,9 @@ export default async function handler(req, res) {
 
     if (req.method === 'POST' && action === 'saveBlogPost') {
       const raw = req.body && typeof req.body === 'object' ? req.body : {};
+      const rawId = raw.id != null && String(raw.id).trim() !== '' ? String(raw.id).trim() : null;
       const payload = {
-        id: raw.id || null,
+        id: rawId,
         slug: String(raw.slug || '').trim(),
         title: String(raw.title || '').trim(),
         excerpt: String(raw.excerpt || ''),
@@ -244,6 +245,8 @@ export default async function handler(req, res) {
       const id = req.body?.id;
       const publish = Boolean(req.body?.publish);
       if (!id) return res.status(400).json({ error: 'id is required' });
+      const nextStatus = publish ? 'published' : 'draft';
+      console.log('[admin-blog] publish target', { id, status: nextStatus });
       const ok = await publishAdminBlogPostDb(id, publish);
       if (!ok) return res.status(404).json({ error: 'Post not found' });
       return res.json({ success: true });
