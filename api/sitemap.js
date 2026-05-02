@@ -1,4 +1,5 @@
 import { getPool, isBillingDbConfigured } from './db/pool.js';
+import { SEO_GUIDE_TYPES } from './seo-guide-config.js';
 
 const BASE_URL = 'https://cutup.shop';
 const STATIC_PATHS = [
@@ -11,6 +12,7 @@ const STATIC_PATHS = [
   '/tools.html?type=youtube-to-text',
   '/tools.html?type=instagram-subtitles',
   '/tools.html?type=tiktok-caption-generator',
+  ...SEO_GUIDE_TYPES.map((t) => `/tools/${t}-guide.html`),
 ];
 
 function toLastmod(value) {

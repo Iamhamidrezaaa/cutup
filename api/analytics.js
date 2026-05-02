@@ -18,6 +18,9 @@ const ALLOWED_EVENTS = new Set([
   'email_sent',
   'email_clicked',
   'referral_signup',
+  'seo_page_view',
+  'seo_cta_click',
+  'seo_conversion',
 ]);
 
 function readJsonBody(req) {

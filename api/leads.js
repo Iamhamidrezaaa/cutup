@@ -35,7 +35,7 @@ export default async function leadsHandler(req, res) {
   if (!EMAIL_RE.test(email)) {
     return res.status(400).json({ ok: false, error: 'invalid_email' });
   }
-  if (source !== 'soft_unlock' && source !== 'save_action') {
+  if (source !== 'soft_unlock' && source !== 'save_action' && source !== 'seo_guide') {
     return res.status(400).json({ ok: false, error: 'invalid_source' });
   }
 

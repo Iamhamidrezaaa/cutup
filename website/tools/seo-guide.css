@@ -1,0 +1,235 @@
+.seo-guide-body {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 0 3rem;
+}
+
+.seo-guide-body h1 {
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  font-weight: 800;
+  line-height: 1.2;
+  margin: 0 0 1rem;
+  color: var(--text-primary);
+}
+
+.seo-guide-lead {
+  font-size: 1.05rem;
+  color: var(--text-secondary);
+  margin: 0 0 1.5rem;
+}
+
+.seo-guide-body section {
+  margin: 2rem 0;
+}
+
+.seo-guide-body h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0 0 0.75rem;
+  color: var(--text-primary);
+}
+
+.seo-guide-body p {
+  margin: 0 0 1rem;
+  color: var(--text-secondary);
+}
+
+.seo-guide-cta {
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  margin: 1.5rem 0;
+}
+
+.seo-guide-cta--soft {
+  background: linear-gradient(180deg, #f8fafc 0%, #fff 100%);
+}
+
+.seo-guide-cta--strong {
+  border-color: var(--primary);
+  background: linear-gradient(135deg, #eef2ff 0%, #fff 100%);
+}
+
+.seo-guide-cta p {
+  margin: 0 0 0.75rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.seo-guide-cta a {
+  display: inline-block;
+  padding: 0.6rem 1.1rem;
+  border-radius: 8px;
+  font-weight: 600;
+  background: var(--primary);
+  color: #fff !important;
+  text-decoration: none !important;
+}
+
+.seo-guide-cta a:hover {
+  background: var(--primary-hover);
+}
+
+.seo-guide-cta a.btn-secondary {
+  background: #fff;
+  color: var(--primary) !important;
+  border: 1px solid var(--border);
+  margin-left: 0.5rem;
+}
+
+.seo-guide-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--text-secondary);
+}
+
+.seo-guide-list li {
+  margin-bottom: 0.5rem;
+}
+
+.seo-guide-faq details {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.5rem;
+  background: var(--card);
+}
+
+.seo-guide-faq summary {
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+
+.seo-guide-faq p {
+  margin: 0.75rem 0 0;
+  font-size: 0.95rem;
+}
+
+.seo-related {
+  padding: 1.25rem;
+  border-radius: var(--radius);
+  background: #f1f5f9;
+  border: 1px solid var(--border);
+}
+
+.seo-related ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.seo-email-capture {
+  margin: 2rem 0;
+  padding: 1.25rem;
+  border-radius: var(--radius);
+  border: 1px dashed var(--border);
+  background: #fff;
+}
+
+.seo-email-capture label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.seo-email-capture input[type='email'] {
+  width: 100%;
+  max-width: 320px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 1rem;
+}
+
+.seo-email-capture button {
+  margin-top: 0.75rem;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: none;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.seo-email-capture .seo-email-msg {
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+  color: var(--muted);
+}
+
+.seo-exit-banner {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1200;
+  padding: 1rem;
+  background: #0f172a;
+  color: #f8fafc;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.15);
+  display: none;
+}
+
+.seo-exit-banner.seo-exit-banner--visible {
+  display: block;
+}
+
+.seo-exit-banner-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.seo-exit-banner a {
+  color: #a5b4fc !important;
+  font-weight: 600;
+}
+
+.seo-exit-close {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 1.25rem;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.seo-loading {
+  color: var(--muted);
+  padding: 2rem 0;
+}
+
+.seo-viral-wrap {
+  margin: 2rem 0;
+}
+
+.cutup-viral-actions .btn {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  cursor: pointer;
+  border: none;
+  margin-right: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.cutup-viral-actions .btn-secondary {
+  background: #fff;
+  color: var(--primary);
+  border: 1px solid var(--border);
+}
+
+.cutup-viral-actions .btn-primary {
+  background: var(--primary);
+  color: #fff;
+}

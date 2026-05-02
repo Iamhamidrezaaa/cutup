@@ -40,6 +40,10 @@
       "dest": "/api/payment-verify.js"
     },
     {
+      "src": "/sitemap.xml",
+      "dest": "/api/sitemap.js"
+    },
+    {
       "src": "/api/analytics",
       "dest": "/api/analytics.js"
     },
