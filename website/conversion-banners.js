@@ -106,6 +106,8 @@
     schedule();
   }
 
+  var __cutupConversionBannersMounted = false;
+
   function run(mode) {
     stripEmailClickParams();
     var host = document.getElementById('cutupInlineNotify');
@@ -131,6 +133,8 @@
 
   if (typeof window !== 'undefined') {
     window.cutupInitConversionBanners = function (opts) {
+      if (__cutupConversionBannersMounted) return;
+      __cutupConversionBannersMounted = true;
       run((opts && opts.mode) || 'landing');
     };
   }
@@ -139,7 +143,9 @@
     function auto() {
       if (!document.getElementById('cutupInlineNotify')) return;
       if (document.querySelector('.dashboard-container')) return;
-      run('landing');
+      if (typeof window.cutupInitConversionBanners === 'function') {
+        window.cutupInitConversionBanners({ mode: 'landing' });
+      }
     }
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', auto);

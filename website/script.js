@@ -1799,6 +1799,9 @@ function showUserProfile(user) {
   if (typeof window.cutupMaybeTrackReferralSignup === 'function') {
     window.cutupMaybeTrackReferralSignup();
   }
+  if (typeof window.cutupRunGrowthOrchestrator === 'function') {
+    window.cutupRunGrowthOrchestrator('after_login');
+  }
 }
 
 // Generate avatar from name/email
@@ -3919,8 +3922,8 @@ function displayResults(summary, fullText, segments = null, options = {}) {
     renderRetentionPanels();
   }
 
-  if (typeof window.cutupShowViralReferralAfterResult === 'function') {
-    window.cutupShowViralReferralAfterResult();
+  if (typeof window.cutupRunGrowthOrchestrator === 'function') {
+    window.cutupRunGrowthOrchestrator('after_result');
   }
 
   if (!previewMode) {

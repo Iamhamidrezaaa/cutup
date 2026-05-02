@@ -211,7 +211,27 @@
       clearInterval(indexPaywallTimer);
       indexPaywallTimer = null;
     }
-    const segment = getUserSegment({});
+    let segment = getUserSegment({});
+    try {
+      const g =
+        typeof window !== 'undefined' && window.cutupGrowthMonetizationOverride
+          ? String(window.cutupGrowthMonetizationOverride)
+          : '';
+      const forceDisc =
+        typeof window !== 'undefined' && window.cutupGrowthForceDiscount === true;
+      if (g === 'HARD') {
+        if (forceDisc) {
+          segment = 'hot';
+          ensureOfferExpiryIfHot('hot');
+        } else {
+          segment = 'warm';
+        }
+      } else if (g === 'SOFT' && segment === 'cold') {
+        segment = 'warm';
+      }
+    } catch (_e) {
+      /* noop */
+    }
     if (segment === 'cold') {
       host.innerHTML = '';
       host.hidden = true;
@@ -262,6 +282,7 @@
   if (typeof window !== 'undefined') {
     window.getUserSegment = getUserSegment;
     window.getHotDiscountCodeForCheckout = getHotDiscountCode;
+    window.cutupMountIndexPricingPaywall = mountIndexPaywall;
     window.cutupMarkPaywallPaymentFailed = function () {
       try {
         localStorage.setItem(PAYMENT_FAILED_KEY, String(Date.now()));
