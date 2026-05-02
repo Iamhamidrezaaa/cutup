@@ -262,13 +262,17 @@
     }
   }
 
-  function cutupRunGrowthOrchestrator(reason) {
+  async function cutupRunGrowthOrchestrator(reason) {
     if (typeof document === 'undefined') return;
     const staticState = getGrowthState();
-    const state =
-      typeof window.cutupAdaptGrowthState === 'function'
-        ? window.cutupAdaptGrowthState(staticState)
-        : staticState;
+    var state = staticState;
+    if (typeof window.cutupAdaptGrowthState === 'function') {
+      try {
+        state = await window.cutupAdaptGrowthState(staticState);
+      } catch (_e) {
+        state = staticState;
+      }
+    }
     applyGrowthTriggers(state, reason);
   }
 
@@ -282,7 +286,7 @@
     if (typeof window.cutupInitConversionBanners === 'function') {
       window.cutupInitConversionBanners({ mode: 'landing' });
     }
-    cutupRunGrowthOrchestrator('load');
+    void cutupRunGrowthOrchestrator('load');
   }
 
   if (typeof document !== 'undefined') {

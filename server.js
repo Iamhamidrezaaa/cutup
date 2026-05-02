@@ -105,7 +105,7 @@ app.get('/api/health', (req, res) => {
 app.get('/sitemap.xml', async (req, res) => sitemapHandler(req, res));
 
 // Import and use API routes
-let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, analyticsHandler, adminHandler, toolsContentHandler, pingGoogleHandler, retentionHandler, leadsHandler, cronConversionEmailsHandler;
+let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, analyticsHandler, adminHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, cronConversionEmailsHandler;
 
 async function loadRoutes() {
   try {
@@ -202,6 +202,12 @@ async function loadRoutes() {
     const pingGoogleModule = await import('./api/ping-google.js');
     pingGoogleHandler = pingGoogleModule.default;
     console.log('✅ Ping Google handler loaded');
+
+    const growthDecisionModule = await import('./api/growth-decision.js');
+    growthDecisionHandler = growthDecisionModule.default;
+    const growthTrackModule = await import('./api/growth-track.js');
+    growthTrackHandler = growthTrackModule.default;
+    console.log('✅ Growth Brain handlers loaded');
 
     const retentionModule = await import('./api/retention.js');
     retentionHandler = retentionModule.default;
@@ -433,6 +439,20 @@ app.get('/api/ping-google', async (req, res) => {
     return res.status(503).json({ error: 'Ping Google handler not loaded' });
   }
   return pingGoogleHandler(req, res);
+});
+
+app.get('/api/growth/decision', async (req, res) => {
+  if (!growthDecisionHandler) {
+    return res.status(503).json({ error: 'Growth decision handler not loaded' });
+  }
+  return growthDecisionHandler(req, res);
+});
+
+app.post('/api/growth/track', async (req, res) => {
+  if (!growthTrackHandler) {
+    return res.status(503).json({ ok: false });
+  }
+  return growthTrackHandler(req, res);
 });
 
 app.post('/api/retention', async (req, res) => {

@@ -1647,7 +1647,7 @@ export async function getAdminPricingAbMetricsDb() {
   return { funnelByVariant, byPlan: planRows };
 }
 
-const LEAD_SOURCES = new Set(['soft_unlock', 'save_action']);
+const LEAD_SOURCES = new Set(['soft_unlock', 'save_action', 'seo_guide']);
 const CONVERSION_EMAIL_KINDS = new Set(['lead_ready', 'abandon_pay', 'active_use']);
 
 function normalizeLeadEmail(email) {
@@ -1744,4 +1744,63 @@ export async function findActiveFreeUsageNudgeCandidates({ limit = 40 } = {}) {
     [lim]
   );
   return r.rows;
+}
+
+const GROWTH_STRATEGIES = ['HARD', 'SOFT', 'REFERRAL', 'DISCOUNT'];
+
+export async function ensureGrowthStrategyStatsSeeded() {
+  if (!isBillingDbConfigured()) return;
+  const pool = getPool();
+  for (const s of GROWTH_STRATEGIES) {
+    await pool.query(
+      `INSERT INTO growth_strategy_stats (strategy) VALUES ($1) ON CONFLICT (strategy) DO NOTHING`,
+      [s]
+    );
+  }
+}
+
+export async function getGrowthStrategyStatsRows() {
+  if (!isBillingDbConfigured()) return [];
+  await ensureGrowthStrategyStatsSeeded();
+  const pool = getPool();
+  const r = await pool.query(
+    `SELECT strategy, impressions, conversions, revenue, updated_at
+     FROM growth_strategy_stats ORDER BY strategy`
+  );
+  return r.rows.map((row) => ({
+    strategy: row.strategy,
+    impressions: Number(row.impressions) || 0,
+    conversions: Number(row.conversions) || 0,
+    revenue: Number(row.revenue) || 0,
+    updated_at: row.updated_at,
+  }));
+}
+
+export async function trackGrowthStrategyEvent({ strategy, event, value }) {
+  if (!isBillingDbConfigured()) return { ok: true, skipped: true };
+  const s = String(strategy || '').toUpperCase();
+  if (!GROWTH_STRATEGIES.includes(s)) return { ok: false, error: 'invalid_strategy' };
+  const ev = String(event || '').toLowerCase();
+  await ensureGrowthStrategyStatsSeeded();
+  const pool = getPool();
+  if (ev === 'impression') {
+    await pool.query(
+      `UPDATE growth_strategy_stats SET impressions = impressions + 1, updated_at = NOW() WHERE strategy = $1`,
+      [s]
+    );
+  } else if (ev === 'conversion') {
+    await pool.query(
+      `UPDATE growth_strategy_stats SET conversions = conversions + 1, updated_at = NOW() WHERE strategy = $1`,
+      [s]
+    );
+  } else if (ev === 'revenue') {
+    const amt = value != null && Number.isFinite(Number(value)) ? Number(value) : 1;
+    await pool.query(
+      `UPDATE growth_strategy_stats SET revenue = revenue + $2, updated_at = NOW() WHERE strategy = $1`,
+      [s, amt]
+    );
+  } else {
+    return { ok: false, error: 'invalid_event' };
+  }
+  return { ok: true };
 }

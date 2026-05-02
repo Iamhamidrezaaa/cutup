@@ -28,6 +28,14 @@
       "dest": "/api/ping-google.js"
     },
     {
+      "src": "/api/growth/decision",
+      "dest": "/api/growth-decision.js"
+    },
+    {
+      "src": "/api/growth/track",
+      "dest": "/api/growth-track.js"
+    },
+    {
       "src": "/api/retention",
       "dest": "/api/retention.js"
     },

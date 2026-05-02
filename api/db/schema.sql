@@ -195,7 +195,7 @@ CREATE TABLE IF NOT EXISTS leads (
   source VARCHAR(32) NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT leads_source_check CHECK (source IN ('soft_unlock', 'save_action'))
+  CONSTRAINT leads_source_check CHECK (source IN ('soft_unlock', 'save_action', 'seo_guide'))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS leads_email_uidx ON leads (email);
@@ -210,3 +210,20 @@ CREATE TABLE IF NOT EXISTS conversion_email_log (
 
 CREATE INDEX IF NOT EXISTS idx_conversion_email_log_email_created
   ON conversion_email_log (email, created_at DESC);
+
+-- Growth Brain: centralized strategy performance (not payment/subscription tables)
+CREATE TABLE IF NOT EXISTS growth_strategy_stats (
+  id SERIAL PRIMARY KEY,
+  strategy VARCHAR(16) NOT NULL UNIQUE,
+  impressions BIGINT NOT NULL DEFAULT 0,
+  conversions BIGINT NOT NULL DEFAULT 0,
+  revenue NUMERIC(14, 2) NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_growth_strategy_stats_updated
+  ON growth_strategy_stats (updated_at DESC);
+
+-- Relax leads source for SEO capture (idempotent on fresh DB)
+ALTER TABLE leads DROP CONSTRAINT IF EXISTS leads_source_check;
+ALTER TABLE leads ADD CONSTRAINT leads_source_check CHECK (source IN ('soft_unlock', 'save_action', 'seo_guide'));

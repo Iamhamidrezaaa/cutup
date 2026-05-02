@@ -1,5 +1,5 @@
 /**
- * Client-side growth performance + adaptive strategy (no payment/subscription/analytics schema changes).
+ * Growth Brain: backend decision + local fallback + client cache (does not alter payment/subscription/analytics pipelines).
  */
 (function () {
   const PERF_KEY = 'cutup_growth_performance';
@@ -81,7 +81,7 @@
     return best;
   }
 
-  function cutupAdaptGrowthState(state) {
+  function adaptGrowthStateLocal(state) {
     if (!growthOptHasTrustworthySamples()) {
       console.log('[growth-opt] selected strategy:', 'fallback');
       return state;
@@ -89,10 +89,6 @@
 
     const best = getBestStrategy();
     console.log('[growth-opt] selected strategy:', best || 'tie');
-
-    if (state.risk === 'HIGH' && state.incentive === 'DISCOUNT') {
-      return state;
-    }
 
     const perf = readPerformance();
     function rate(k) {
@@ -142,6 +138,98 @@
     return s;
   }
 
+  function buildGrowthDecisionQuery() {
+    var segment = 'cold';
+    try {
+      if (typeof getUserSegment === 'function') {
+        segment = getUserSegment({}) || 'cold';
+      }
+    } catch (_e) {
+      segment = 'cold';
+    }
+    var usage = 0;
+    try {
+      var raw = localStorage.getItem('cutup_usage_stats');
+      if (raw) usage = Number(JSON.parse(raw).totalUses) || 0;
+    } catch (_e2) {
+      usage = 0;
+    }
+    var q =
+      'segment=' +
+      encodeURIComponent(String(segment)) +
+      '&usage=' +
+      encodeURIComponent(String(usage));
+    try {
+      var ist = localStorage.getItem('cutup_intent_score');
+      if (ist != null && String(ist).trim() !== '') {
+        var n = Number(ist);
+        if (!Number.isNaN(n)) q += '&intent_score=' + encodeURIComponent(String(n));
+      }
+    } catch (_e3) {
+      /* noop */
+    }
+    return q;
+  }
+
+  function cutupGrowthBrainTrack(payload) {
+    try {
+      var base = '';
+      try {
+        base = window.location && window.location.origin ? window.location.origin : '';
+      } catch (_e) {
+        base = '';
+      }
+      if (!base || base === 'null') base = 'https://cutup.shop';
+      fetch(base + '/api/growth/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {}),
+        keepalive: true,
+      }).catch(function () {});
+    } catch (_e2) {}
+  }
+
+  async function cutupAdaptGrowthState(state) {
+    if (state.risk === 'HIGH' && state.incentive === 'DISCOUNT') {
+      return state;
+    }
+
+    var local = adaptGrowthStateLocal(state);
+
+    try {
+      var base = '';
+      try {
+        base = window.location && window.location.origin ? window.location.origin : '';
+      } catch (_e) {
+        base = '';
+      }
+      if (!base || base === 'null') base = 'https://cutup.shop';
+      var res = await fetch(base + '/api/growth/decision?' + buildGrowthDecisionQuery(), {
+        credentials: 'omit',
+        cache: 'no-store',
+      });
+      if (!res.ok) {
+        return local;
+      }
+      var j = await res.json();
+      if (!j || j.error === 'rate_limited') {
+        return local;
+      }
+      if (j.monetization == null || j.incentive == null) {
+        return local;
+      }
+      console.log('[growth-brain] decision', j.source || '', j.strategy);
+      return {
+        intent: state.intent,
+        risk: state.risk,
+        monetization: j.monetization,
+        incentive: j.incentive,
+      };
+    } catch (_err) {
+      return local;
+    }
+  }
+
   function cutupGrowthRecordImpression(state, fired) {
     if (!fired) return;
     var perf = readPerformance();
@@ -178,6 +266,22 @@
 
     writePerformance(perf);
     console.log('[growth-opt] performance', perf);
+
+    if (fired.paywallVisible && growthPaywall && state.monetization === 'HARD') {
+      cutupGrowthBrainTrack({ strategy: 'HARD', event: 'impression' });
+    }
+    if (fired.paywallVisible && growthPaywall && state.monetization === 'SOFT') {
+      cutupGrowthBrainTrack({ strategy: 'SOFT', event: 'impression' });
+    }
+    if (fired.discountVisible) {
+      cutupGrowthBrainTrack({ strategy: 'DISCOUNT', event: 'impression' });
+    }
+    if (fired.referralFired) {
+      cutupGrowthBrainTrack({ strategy: 'REFERRAL', event: 'impression' });
+    }
+    if (fired.softHintFired && state.monetization === 'SOFT' && !fired.paywallVisible) {
+      cutupGrowthBrainTrack({ strategy: 'SOFT', event: 'impression' });
+    }
   }
 
   function cutupGrowthRecordPaymentSuccess() {
@@ -192,11 +296,13 @@
     perf[k].converted++;
     writePerformance(perf);
     console.log('[growth-opt] performance', perf);
+    cutupGrowthBrainTrack({ strategy: k, event: 'revenue', value: 1 });
   }
 
   if (typeof window !== 'undefined') {
     window.getBestStrategy = getBestStrategy;
     window.cutupAdaptGrowthState = cutupAdaptGrowthState;
+    window.cutupGrowthBrainTrack = cutupGrowthBrainTrack;
     window.cutupGrowthRecordImpression = cutupGrowthRecordImpression;
     window.cutupGrowthRecordPaymentSuccess = cutupGrowthRecordPaymentSuccess;
     window.cutupGrowthOptConversionRate = conversionRate;

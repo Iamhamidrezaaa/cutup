@@ -146,6 +146,9 @@
     try {
       if (typeof sendAnalyticsEvent !== 'function') return;
       sendAnalyticsEvent('discount_used', { plan: planKey || null });
+      if (typeof window.cutupGrowthBrainTrack === 'function') {
+        window.cutupGrowthBrainTrack({ strategy: 'DISCOUNT', event: 'conversion' });
+      }
     } catch (_e) {
       /* noop */
     }
