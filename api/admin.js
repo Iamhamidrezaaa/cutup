@@ -11,6 +11,7 @@ import {
   getAdminUsageDb,
   getAdminSavedOutputsDb,
   getAdminPaymentsSnapshotDb,
+  getAdminPricingAbMetricsDb,
   listAdminBlogPostsDb,
   saveAdminBlogPostDb,
   publishAdminBlogPostDb
@@ -21,6 +22,17 @@ function parseAdminEmails() {
     .split(',')
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
+}
+
+/** Fire-and-forget sitemap ping after blog publish (does not block admin response). */
+function triggerGoogleSitemapPing() {
+  const base = (process.env.PUBLIC_SITE_URL || 'https://cutup.shop').replace(/\/$/, '');
+  const url = `${base}/api/ping-google`;
+  const ac = new AbortController();
+  const tid = setTimeout(() => ac.abort(), 8000);
+  fetch(url, { signal: ac.signal })
+    .catch(() => {})
+    .finally(() => clearTimeout(tid));
 }
 
 /** Only http(s) cover URLs; strips javascript:, data:, etc. */
@@ -194,6 +206,11 @@ export default async function handler(req, res) {
       });
     }
 
+    if (req.method === 'GET' && action === 'pricingAb') {
+      const metrics = await getAdminPricingAbMetricsDb();
+      return res.json(metrics);
+    }
+
     if (req.method === 'GET' && action === 'health') {
       const db = await dbHealth();
       const events = await getAdminUsageDb({ limit: 20 });
@@ -262,6 +279,9 @@ export default async function handler(req, res) {
       console.log('[admin-blog] publish target', { id, status: nextStatus });
       const ok = await publishAdminBlogPostDb(id, publish);
       if (!ok) return res.status(404).json({ error: 'Post not found' });
+      if (publish) {
+        triggerGoogleSitemapPing();
+      }
       return res.json({ success: true });
     }
 

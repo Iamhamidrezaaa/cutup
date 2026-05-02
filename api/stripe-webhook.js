@@ -2,7 +2,8 @@ import Stripe from 'stripe';
 import {
   isBillingDbConfigured,
   tryClaimStripeEventStandalone,
-  releaseStripeWebhookClaim
+  releaseStripeWebhookClaim,
+  syncPaymentSuccessByExternalId
 } from './billing-repository.js';
 import {
   applyStripeCheckoutCompleted,
@@ -110,6 +111,11 @@ export default async function handler(req, res) {
         }
         if (email) {
           await applyStripeCheckoutCompleted(email, plan, custId || null, subId || null, periodEnd);
+          console.log('[payment] upgraded', email, plan, s.id);
+          const synced = await syncPaymentSuccessByExternalId('stripe', s.id);
+          if (synced) {
+            console.log('[payment] verified', s.id, email, 'webhook');
+          }
           console.log('[stripe-webhook] checkout.session.completed', plan, email, s.id);
         } else {
           console.warn('[stripe-webhook] checkout.session.completed without email', s.id);

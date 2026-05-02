@@ -105,7 +105,7 @@ app.get('/api/health', (req, res) => {
 app.get('/sitemap.xml', async (req, res) => sitemapHandler(req, res));
 
 // Import and use API routes
-let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler, adminHandler;
+let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, analyticsHandler, adminHandler, toolsContentHandler, pingGoogleHandler, retentionHandler, leadsHandler, cronConversionEmailsHandler;
 
 async function loadRoutes() {
   try {
@@ -185,9 +185,37 @@ async function loadRoutes() {
     stripeCheckoutHandler = stripeCh.default;
     console.log('✅ Stripe checkout handler loaded');
 
+    const paymentCreateModule = await import('./api/payment-create.js');
+    paymentCreateHandler = paymentCreateModule.default;
+    const paymentVerifyModule = await import('./api/payment-verify.js');
+    paymentVerifyHandler = paymentVerifyModule.default;
+    console.log('✅ Payment create/verify handlers loaded');
+
     const adminModule = await import('./api/admin.js');
     adminHandler = adminModule.default;
     console.log('✅ Admin handler loaded');
+
+    const toolsContentModule = await import('./api/tools-content.js');
+    toolsContentHandler = toolsContentModule.default;
+    console.log('✅ Tools content handler loaded');
+
+    const pingGoogleModule = await import('./api/ping-google.js');
+    pingGoogleHandler = pingGoogleModule.default;
+    console.log('✅ Ping Google handler loaded');
+
+    const retentionModule = await import('./api/retention.js');
+    retentionHandler = retentionModule.default;
+    console.log('✅ Retention handler loaded');
+
+    const analyticsModule = await import('./api/analytics.js');
+    analyticsHandler = analyticsModule.default;
+    console.log('✅ Analytics handler loaded');
+
+    const leadsModule = await import('./api/leads.js');
+    leadsHandler = leadsModule.default;
+    const cronConvModule = await import('./api/cron-conversion-emails.js');
+    cronConversionEmailsHandler = cronConvModule.default;
+    console.log('✅ Leads + conversion cron handlers loaded');
 
     console.log('All routes loaded successfully');
   } catch (err) {
@@ -337,6 +365,48 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
   return stripeCheckoutHandler(req, res);
 });
 
+app.post('/api/payment/create', async (req, res) => {
+  if (!paymentCreateHandler) {
+    return res.status(503).json({ error: 'Payment create not loaded' });
+  }
+  return paymentCreateHandler(req, res);
+});
+
+app.post('/api/payment/verify', async (req, res) => {
+  if (!paymentVerifyHandler) {
+    return res.status(503).json({ error: 'Payment verify not loaded' });
+  }
+  return paymentVerifyHandler(req, res);
+});
+
+app.post('/api/analytics', async (req, res) => {
+  if (!analyticsHandler) {
+    return res.status(503).json({ ok: false });
+  }
+  return analyticsHandler(req, res);
+});
+
+app.post('/api/leads', async (req, res) => {
+  if (!leadsHandler) {
+    return res.status(503).json({ ok: false });
+  }
+  return leadsHandler(req, res);
+});
+
+app.get('/api/cron/conversion-emails', async (req, res) => {
+  if (!cronConversionEmailsHandler) {
+    return res.status(503).json({ ok: false });
+  }
+  return cronConversionEmailsHandler(req, res);
+});
+
+app.post('/api/cron/conversion-emails', async (req, res) => {
+  if (!cronConversionEmailsHandler) {
+    return res.status(503).json({ ok: false });
+  }
+  return cronConversionEmailsHandler(req, res);
+});
+
 app.get('/api/admin', async (req, res) => {
   if (!adminHandler) {
     return res.status(503).json({ error: 'Admin handler not loaded' });
@@ -349,6 +419,27 @@ app.post('/api/admin', async (req, res) => {
     return res.status(503).json({ error: 'Admin handler not loaded' });
   }
   return adminHandler(req, res);
+});
+
+app.get('/api/tools-content', async (req, res) => {
+  if (!toolsContentHandler) {
+    return res.status(503).json({ error: 'Tools content handler not loaded' });
+  }
+  return toolsContentHandler(req, res);
+});
+
+app.get('/api/ping-google', async (req, res) => {
+  if (!pingGoogleHandler) {
+    return res.status(503).json({ error: 'Ping Google handler not loaded' });
+  }
+  return pingGoogleHandler(req, res);
+});
+
+app.post('/api/retention', async (req, res) => {
+  if (!retentionHandler) {
+    return res.status(503).json({ error: 'Retention handler not loaded' });
+  }
+  return retentionHandler(req, res);
 });
 
 // Error handler
@@ -390,6 +481,11 @@ loadRoutes().then(() => {
     console.log(`   POST /api/subscription?action=check`);
     console.log(`   POST /api/subscription?action=upgrade`);
     console.log(`   POST /api/stripe/create-checkout-session`);
+    console.log(`   POST /api/payment/create`);
+    console.log(`   POST /api/payment/verify`);
+    console.log(`   POST /api/analytics`);
+    console.log(`   POST /api/leads`);
+    console.log(`   GET  /api/cron/conversion-emails`);
     console.log(`   POST /api/stripe/webhook`);
     console.log(`   GET  /api/admin?action=overview`);
   });

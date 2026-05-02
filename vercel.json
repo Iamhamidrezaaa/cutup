@@ -18,6 +18,44 @@
     {
       "src": "/api/summarize",
       "dest": "/api/summarize.js"
+    },
+    {
+      "src": "/api/tools-content",
+      "dest": "/api/tools-content.js"
+    },
+    {
+      "src": "/api/ping-google",
+      "dest": "/api/ping-google.js"
+    },
+    {
+      "src": "/api/retention",
+      "dest": "/api/retention.js"
+    },
+    {
+      "src": "/api/payment/create",
+      "dest": "/api/payment-create.js"
+    },
+    {
+      "src": "/api/payment/verify",
+      "dest": "/api/payment-verify.js"
+    },
+    {
+      "src": "/api/analytics",
+      "dest": "/api/analytics.js"
+    },
+    {
+      "src": "/api/leads",
+      "dest": "/api/leads.js"
+    },
+    {
+      "src": "/api/cron/conversion-emails",
+      "dest": "/api/cron-conversion-emails.js"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/conversion-emails",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

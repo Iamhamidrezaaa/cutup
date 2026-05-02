@@ -337,6 +337,124 @@ th { font-size: 12px; color: var(--muted); background: #f8fafc; position: sticky
   overflow: hidden;
 }
 
+.seo-soft-warn {
+  margin: 0;
+  font-size: 12px;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.seo-soft-suggest {
+  margin: 0;
+  font-size: 12px;
+  color: #3730a3;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.seo-soft-suggest code {
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.content-checklist-panel {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  background: linear-gradient(180deg, #fafbff 0%, #fff 100%);
+}
+.content-checklist-title {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e1b4b;
+  letter-spacing: -0.01em;
+}
+.content-checklist-sub {
+  margin: 0 0 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.content-checklist-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+.content-checklist-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+}
+.content-checklist-item.is-ok {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+.content-checklist-item.is-warn {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+.content-checklist-icon {
+  flex-shrink: 0;
+  width: 1.25em;
+  font-weight: 800;
+  text-align: center;
+}
+.content-checklist-item.is-ok .content-checklist-icon { color: var(--ok); }
+.content-checklist-item.is-warn .content-checklist-icon { color: var(--warn); }
+.content-checklist-detail {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.checklist-cta-warn {
+  margin-top: 10px;
+}
+
+.internal-link-helper {
+  display: grid;
+  gap: 8px;
+}
+.internal-link-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.internal-link-suggestions[hidden] { display: none !important; }
+.internal-suggest-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.internal-suggest-row span {
+  flex: 1 1 140px;
+  color: var(--text);
+  font-weight: 500;
+}
+.internal-suggest-row .btn {
+  font-size: 11px;
+  padding: 6px 10px;
+}
+
 @media (max-width: 1260px) {
   .cards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

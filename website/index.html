@@ -22,6 +22,7 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div id="cutupInlineNotify" class="cutup-inline-notify" role="region" aria-label="Notifications" hidden></div>
   <header class="header">
     <nav class="nav">
       <div class="container">
@@ -46,14 +47,9 @@
             <a href="#pricing" class="nav-link">Pricing</a>
             <a href="#faq" class="nav-link">FAQ</a>
             <div class="auth-section" id="authSection">
-              <button type="button" class="nav-link login-btn" id="loginBtn">
-                <svg width="18" height="18" viewBox="0 0 24 24" style="margin-left: 6px;">
-                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                </svg>
-                Continue with Google
+              <button type="button" class="nav-link login-btn google-btn" id="loginBtn">
+                <img class="google-icon" src="google-g.svg" width="18" height="18" alt="" decoding="async" />
+                <span class="google-btn-label">Continue with Google</span>
               </button>
               <div class="user-profile" id="userProfile" style="display: none;">
                 <div class="user-profile-trigger" id="userProfileTrigger">
@@ -237,6 +233,33 @@ Here's the fastest path from link to publish-ready captions.
     <section class="download-section" id="tool">
       <div class="container">
         <p class="tool-section-lead"><strong>Step 1:</strong> Paste a link or upload a file. <strong>Step 2:</strong> Tap <strong>Generate Subtitles</strong> or <strong>Full Transcript</strong>—preview appears without login. Video/audio download stays optional.</p>
+
+        <div class="monetization-paywall" id="monetizationPaywall" hidden data-state="hidden">
+          <div class="monetization-paywall-inner">
+            <p class="monetization-paywall-msg" id="monetizationPaywallMsg" role="status"></p>
+            <div class="monetization-paywall-actions">
+              <a href="dashboard.html" class="btn btn-primary monetization-upgrade-btn pricing-dashboard-cta" id="monetizationUpgradeBtn" data-cutup-plan="">Upgrade</a>
+              <a href="#pricing" class="btn btn-secondary" id="monetizationPricingLink">See pricing</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="retention-strip" id="retentionStrip">
+          <div class="retention-panel retention-continue" id="retentionContinueBanner" hidden>
+            <p class="retention-continue-text" id="retentionContinueText">Continue your last video?</p>
+            <button type="button" class="btn btn-secondary retention-continue-btn" id="retentionContinueBtn">Continue</button>
+          </div>
+          <p class="retention-usage-hint" id="retentionUsageHint" hidden aria-live="polite"></p>
+          <div class="retention-panel retention-upgrade-hint" id="retentionUpgradeHint" hidden>
+            <span class="retention-upgrade-msg" id="retentionUpgradeMsg">Need faster processing or longer videos?</span>
+            <a href="#pricing" class="retention-upgrade-link" id="retentionUpgradeLink">Upgrade</a>
+          </div>
+          <div class="retention-recent" id="retentionRecentWrap" hidden>
+            <h3 class="retention-recent-title">Your recent activity</h3>
+            <ul class="retention-recent-list" id="retentionRecentList" role="list"></ul>
+          </div>
+        </div>
+
         <div class="download-box">
           <!-- Platform Tabs -->
           <div class="platform-tabs-container">
@@ -427,6 +450,7 @@ Here's the fastest path from link to publish-ready captions.
                 <button class="copy-btn" id="copyBtn" title="Copy active tab">📋 Copy</button>
               </div>
             </div>
+            <p class="retention-habit-hint" id="retentionHabitHint" hidden role="note">Try another video — paste another link above to continue.</p>
             
             <div class="preview-upgrade-banner" id="previewUpgradeBanner" style="display: none;">
               <p class="preview-upgrade-eyebrow">You’re one step away</p>
@@ -435,6 +459,19 @@ Here's the fastest path from link to publish-ready captions.
               <div class="preview-upgrade-actions">
                 <button type="button" class="download-btn preview-upgrade-cta" id="unlockPreviewBtn">Unlock full output</button>
                 <a href="#pricing" class="btn btn-secondary preview-upgrade-plans">See plans</a>
+              </div>
+            </div>
+
+            <div class="conversion-save-block" id="conversionSaveBlock" hidden>
+              <h3 class="conversion-save-title">Save your transcript</h3>
+              <p class="conversion-save-hint" id="conversionSaveHintLoggedIn" hidden>Signed in—this output is saved to your history.</p>
+              <div class="conversion-save-email-row" id="conversionSaveEmailRow">
+                <label class="conversion-save-label" for="conversionSaveEmail">Email</label>
+                <input type="email" id="conversionSaveEmail" class="conversion-save-email" autocomplete="email" placeholder="you@example.com" />
+              </div>
+              <div class="conversion-save-actions">
+                <button type="button" class="download-btn" id="conversionSaveBtn">Save</button>
+                <button type="button" class="btn btn-secondary" id="conversionSkipSaveBtn">Continue without saving</button>
               </div>
             </div>
             
@@ -477,7 +514,20 @@ Here's the fastest path from link to publish-ready captions.
                     <button class="download-btn" id="downloadFulltextTxtBtn">📥 Download TXT</button>
                     <button class="download-btn" id="downloadFulltextDocxBtn">📄 Download DOCX</button>
                   </div>
-                  <p class="fulltext" id="fulltext" style="line-height: 1.8; text-align: left; padding: 16px; background: #f5f5f5; border-radius: 8px; max-height: 500px; overflow-y: auto;"></p>
+                  <div class="fulltext-soft-lock-wrap" id="fulltextSoftLockWrap">
+                    <div class="fulltext-soft-lock-scroll">
+                      <p class="fulltext" id="fulltext" style="line-height: 1.8; text-align: left; padding: 16px; background: #f5f5f5; border-radius: 8px;"></p>
+                    </div>
+                    <div class="fulltext-soft-lock-veil" id="fulltextSoftLockVeil" hidden aria-hidden="true">
+                      <div class="fulltext-soft-lock-veil-inner">
+                        <p class="fulltext-soft-lock-heading" id="fulltextSoftLockHeading">Unlock full transcript</p>
+                        <div class="fulltext-soft-lock-ctas">
+                          <button type="button" class="download-btn" id="fulltextSoftLockLoginBtn">Log in</button>
+                          <button type="button" class="btn btn-secondary" id="fulltextSoftLockSaveBtn">Save</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div class="tab-content" id="summary-tab">
@@ -661,6 +711,7 @@ Here's the fastest path from link to publish-ready captions.
 
     <section id="pricing" class="features">
       <div class="container">
+        <div id="cutupPricingPaywall" class="cutup-pricing-paywall" hidden></div>
         <h2 class="section-title">Pricing that speaks your language</h2>
         <p class="hero-description" style="text-align: center; max-width: 760px; margin: -32px auto 24px;">
           Save hours of manual work: we bill in <strong>video-sized outcomes</strong>, not jargon. Pick a tier by how much you publish—creators, students, and teams all start with the same instant preview.
@@ -692,7 +743,7 @@ Here's the fastest path from link to publish-ready captions.
               <li>Up to 2 languages</li>
               <li>Summaries enabled</li>
             </ul>
-            <a href="dashboard.html" class="btn btn-primary" style="margin-top: auto; display: inline-block;">Upgrade in dashboard</a>
+            <a href="dashboard.html" class="btn btn-primary pricing-dashboard-cta" style="margin-top: auto; display: inline-block;" data-cutup-plan="starter">Upgrade in dashboard</a>
           </div>
           <div class="feature-card pricing-card pricing-card-pro">
             <span class="pricing-badge">Most Popular</span>
@@ -707,10 +758,10 @@ Here's the fastest path from link to publish-ready captions.
               <li>Faster queue times</li>
               <li>Better TXT / DOCX exports</li>
             </ul>
-            <a href="dashboard.html" class="btn btn-primary" style="margin-top: auto; display: inline-block;">Subscribe with card</a>
+            <a href="dashboard.html" class="btn btn-primary pricing-dashboard-cta" style="margin-top: auto; display: inline-block;" data-cutup-plan="pro">Subscribe with card</a>
           </div>
           <div class="feature-card pricing-card">
-            <h3 class="feature-title">Advanced · $39.99/mo</h3>
+            <h3 class="feature-title">Business · $39.99/mo</h3>
             <p class="feature-description" style="font-weight: 600; color: var(--primary);">~80–100 videos / month</p>
             <p class="feature-description pricing-access-note">Cancel anytime · Instant access after upgrade</p>
             <p class="feature-description">Heavy publishing schedules get priority routing, generous fair-use headroom, and every premium export option unlocked.</p>
@@ -719,7 +770,7 @@ Here's the fastest path from link to publish-ready captions.
               <li>Fair-use pool (no scary fine print in-app)</li>
               <li>Full feature access</li>
             </ul>
-            <a href="dashboard.html" class="btn btn-primary" style="margin-top: auto; display: inline-block;">Go Advanced</a>
+            <a href="dashboard.html" class="btn btn-primary pricing-dashboard-cta" style="margin-top: auto; display: inline-block;" data-cutup-plan="advanced">Go Business</a>
           </div>
         </div>
         <p class="hero-description" style="text-align: center; max-width: 720px; margin: 28px auto 0; font-size: 14px; color: #666;">
@@ -738,7 +789,7 @@ Here's the fastest path from link to publish-ready captions.
           </div>
           <div class="step" style="text-align: left;">
             <h3 class="step-title">Which payments do you support?</h3>
-            <p class="step-description">International cards via Stripe for Starter, Pro, and Advanced (<strong>$9.99</strong> / <strong>$19.99</strong> / <strong>$39.99</strong> per month). Optional legacy IRR cart remains in the dashboard where applicable.</p>
+            <p class="step-description">International cards via Stripe for Starter, Pro, and Business (<strong>$9.99</strong> / <strong>$19.99</strong> / <strong>$39.99</strong> per month). Optional legacy IRR cart remains in the dashboard where applicable.</p>
           </div>
           <div class="step" style="text-align: left;">
             <h3 class="step-title">Can I translate subtitles?</h3>
@@ -751,7 +802,20 @@ Here's the fastest path from link to publish-ready captions.
     <div class="mobile-sticky-actions" id="mobileStickyActions" aria-hidden="true">
       <button type="button" class="mobile-sticky-btn" id="stickyFullTranscriptBtn">Full Transcript</button>
       <button type="button" class="mobile-sticky-btn" id="stickySrtBtn">SRT</button>
-      <button type="button" class="mobile-sticky-btn mobile-sticky-btn-primary" id="stickyDownloadBtn">Download</button>
+      <button type="button" class="mobile-sticky-btn mobile-sticky-btn-primary" id="stickyDownloadBtn" data-sticky-primary="download" aria-label="Download">Download</button>
+    </div>
+
+    <div class="conversion-exit-modal" id="conversionExitModal" hidden aria-hidden="true">
+      <button type="button" class="conversion-exit-modal__backdrop" id="conversionExitBackdrop" aria-label="Close dialog"></button>
+      <div class="conversion-exit-modal__panel" role="dialog" aria-modal="true" aria-labelledby="conversionExitTitle" tabindex="-1">
+        <h2 class="conversion-exit-modal__title" id="conversionExitTitle">Don’t lose your transcript</h2>
+        <p class="conversion-exit-modal__sub">Save a copy or grab the text before you go.</p>
+        <div class="conversion-exit-actions">
+          <button type="button" class="download-btn" id="conversionExitSaveBtn">Save it</button>
+          <button type="button" class="btn btn-secondary" id="conversionExitCopyBtn">Copy it</button>
+        </div>
+        <button type="button" class="conversion-exit-close" id="conversionExitCloseBtn" aria-label="Close">×</button>
+      </div>
     </div>
 
   </main>
@@ -786,6 +850,9 @@ Here's the fastest path from link to publish-ready captions.
     </div>
   </footer>
 
+  <script src="analytics-client.js"></script>
+  <script src="conversion-banners.js"></script>
+  <script src="pricing-segmentation.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

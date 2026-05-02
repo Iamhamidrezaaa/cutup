@@ -22,6 +22,7 @@
 </head>
 <body>
   <div class="dashboard-container">
+    <div id="cutupInlineNotify" class="cutup-inline-notify" role="region" aria-label="Notifications" hidden></div>
     <!-- Header -->
     <header class="dashboard-header">
       <div class="header-content">
@@ -130,6 +131,7 @@
         <section class="dashboard-section" id="subscription-section">
           <h1 class="section-title">Plans & upgrades</h1>
           <div class="subscription-info" id="subscriptionInfo"></div>
+          <div id="cutupDashboardPricingPaywall" class="cutup-pricing-paywall" hidden></div>
           <div class="plans-grid" id="plansGrid"></div>
         </section>
 
@@ -171,6 +173,9 @@
     </div>
   </footer>
 
+  <script src="analytics-client.js"></script>
+  <script src="conversion-banners.js"></script>
+  <script src="pricing-segmentation.js"></script>
   <script src="dashboard.js?v=20250110-2"></script>
 </body>
 </html>

@@ -1,12 +1,16 @@
 import { getPool, isBillingDbConfigured } from './db/pool.js';
 
 const BASE_URL = 'https://cutup.shop';
-const STATIC_URLS = [
-  `${BASE_URL}/`,
-  `${BASE_URL}/blog.html`,
-  `${BASE_URL}/subtitle-generator.html`,
-  `${BASE_URL}/video-to-text.html`,
-  `${BASE_URL}/translate-video.html`
+const STATIC_PATHS = [
+  '/',
+  '/blog.html',
+  '/subtitle-generator.html',
+  '/video-to-text.html',
+  '/translate-video.html',
+  '/tools.html',
+  '/tools.html?type=youtube-to-text',
+  '/tools.html?type=instagram-subtitles',
+  '/tools.html?type=tiktok-caption-generator',
 ];
 
 function toLastmod(value) {
@@ -26,17 +30,23 @@ function escapeXml(text) {
 }
 
 function buildSitemapXml(postRows = []) {
+  const staticLastmod = new Date().toISOString().slice(0, 10);
   const urls = [
-    ...STATIC_URLS.map((loc) => ({ loc, lastmod: '' })),
+    ...STATIC_PATHS.map((path) => ({
+      loc: `${BASE_URL}${path}`,
+      lastmod: staticLastmod,
+    })),
     ...postRows.map((row) => ({
       loc: `${BASE_URL}/blog.html?slug=${encodeURIComponent(String(row.slug || ''))}`,
-      lastmod: toLastmod(row.published_at || row.updated_at)
-    }))
+      lastmod: toLastmod(row.published_at || row.updated_at) || staticLastmod,
+    })),
   ];
-  const body = urls.map((item) => {
-    const lastmodTag = item.lastmod ? `\n    <lastmod>${escapeXml(item.lastmod)}</lastmod>` : '';
-    return `  <url>\n    <loc>${escapeXml(item.loc)}</loc>${lastmodTag}\n  </url>`;
-  }).join('\n');
+  const body = urls
+    .map((item) => {
+      const lm = escapeXml(item.lastmod || staticLastmod);
+      return `  <url>\n    <loc>${escapeXml(item.loc)}</loc>\n    <lastmod>${lm}</lastmod>\n  </url>`;
+    })
+    .join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>\n`;
 }
 

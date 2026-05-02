@@ -187,6 +187,43 @@ export default async function handler(req, res) {
       return res.json(responseData);
     }
 
+    if (method === 'GET' && action === 'check') {
+      await ensureUserByEmail(userId);
+      const feature = String(query.feature || 'transcription');
+      const videoDurationMinutes = Math.max(0, Number.parseFloat(String(query.videoDurationMinutes || '0')) || 0);
+
+      const check = await canUseFeature(userId, feature, videoDurationMinutes);
+
+      const subscriptionRow =
+        userId === SPECIAL_EMAIL ? { plan: 'business' } : await getSubscriptionRowByEmail(userId);
+      const planKey = subscriptionRow?.plan || 'free';
+      const plan = PLANS[planKey];
+      const usage = await getLegacyUsageShape(userId);
+
+      let nearLimit = false;
+      if (planKey === 'free' && plan) {
+        const dLim = plan.dailyLimit;
+        const mLim = plan.monthlyLimit;
+        const dUsed = Number(usage.daily?.minutes) || 0;
+        const mUsed = Number(usage.monthly?.minutes) || 0;
+        if (dLim != null && dLim > 0 && dUsed / dLim >= 0.8) nearLimit = true;
+        if (mLim != null && mLim > 0 && mUsed / mLim >= 0.8) nearLimit = true;
+      }
+
+      return res.json({
+        allowed: check.allowed !== false,
+        reason: check.reason || null,
+        nearLimit,
+        plan: planKey,
+        usage: {
+          daily: usage.daily,
+          monthly: usage.monthly,
+          dailyLimit: plan?.dailyLimit ?? null,
+          monthlyLimit: plan?.monthlyLimit ?? null
+        }
+      });
+    }
+
     if (method === 'POST' && action === 'check') {
       let requestBody = body;
       if (typeof body === 'string') {

@@ -122,6 +122,688 @@ function getResultCopyText() {
   return '';
 }
 
+/* ========== Conversion layer (save CTA, soft lock, exit intent, sticky modes) ========== */
+const CUTUP_LEAD_EMAIL_KEY = 'cutup_lead_email';
+const CUTUP_SOFT_UNLOCK_KEY = 'cutup_soft_unlock';
+
+function submitCutupLead(email, source) {
+  const em = String(email || '')
+    .trim()
+    .toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return;
+  const src = source === 'save_action' ? 'save_action' : 'soft_unlock';
+  try {
+    fetch(`${API_BASE_URL}/api/leads`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: em, source: src }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    /* ignore */
+  }
+}
+const CUTUP_EXIT_INTENT_KEY = 'cutup_exit_intent_once';
+const CUTUP_SAVE_DISMISS_PREFIX = 'cutup_save_dismissed:';
+const LONG_TRANSCRIPT_SOFT_LOCK_CHARS = 1700;
+
+let cutupStickyGeneratedAt = 0;
+let cutupStickyLastScrollAt = 0;
+let cutupStickyPrimaryState = 'download';
+let cutupExitIntentTimer = null;
+
+function cutupIsLoggedIn() {
+  try {
+    return !!localStorage.getItem('cutup_session');
+  } catch {
+    return false;
+  }
+}
+
+function cutupSoftUnlockSet() {
+  try {
+    sessionStorage.setItem(CUTUP_SOFT_UNLOCK_KEY, '1');
+  } catch {
+    /* ignore */
+  }
+}
+
+function cutupSoftUnlockActive() {
+  try {
+    if (cutupIsLoggedIn()) return true;
+    return sessionStorage.getItem(CUTUP_SOFT_UNLOCK_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function cutupConversionResultDismissKey() {
+  const k = window.cutupLastTranscription?.cacheKey;
+  return k ? `${CUTUP_SAVE_DISMISS_PREFIX}${k}` : '';
+}
+
+function refreshConversionSaveBlockUI() {
+  const emailRow = document.getElementById('conversionSaveEmailRow');
+  const hint = document.getElementById('conversionSaveHintLoggedIn');
+  const emailInput = document.getElementById('conversionSaveEmail');
+  if (cutupIsLoggedIn()) {
+    if (emailRow) emailRow.hidden = true;
+    if (hint) hint.hidden = false;
+  } else {
+    if (emailRow) emailRow.hidden = false;
+    if (hint) hint.hidden = true;
+    if (emailInput) {
+      try {
+        const saved = localStorage.getItem(CUTUP_LEAD_EMAIL_KEY);
+        if (saved && !emailInput.value) emailInput.value = saved;
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+}
+
+function showConversionSaveBlock() {
+  const block = document.getElementById('conversionSaveBlock');
+  if (!block) return;
+  const dismissKey = cutupConversionResultDismissKey();
+  try {
+    if (dismissKey && sessionStorage.getItem(dismissKey) === '1') {
+      block.hidden = true;
+      return;
+    }
+  } catch {
+    /* ignore */
+  }
+  block.hidden = false;
+  refreshConversionSaveBlockUI();
+}
+
+function hideConversionSaveBlockDismissed() {
+  const block = document.getElementById('conversionSaveBlock');
+  if (block) block.hidden = true;
+  const dismissKey = cutupConversionResultDismissKey();
+  if (dismissKey) {
+    try {
+      sessionStorage.setItem(dismissKey, '1');
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function copyConversionTranscript() {
+  const text = getResultCopyText();
+  if (!text) {
+    showMessage('Nothing to copy on this tab yet.', 'info');
+    return;
+  }
+  navigator.clipboard.writeText(text).then(() => {
+    showMessage('Copied to clipboard.', 'success');
+  }).catch(() => {
+    showMessage('Copy failed.', 'error');
+  });
+}
+
+function runConversionSaveAction(source) {
+  console.log('[conversion] save clicked', source || '');
+  if (cutupIsLoggedIn()) {
+    showMessage('You’re signed in—find this transcript in your dashboard history.', 'success');
+    cutupSoftUnlockSet();
+    updateFulltextSoftLockVeil();
+    return;
+  }
+  const emailInput = document.getElementById('conversionSaveEmail');
+  const email = String(emailInput?.value || '').trim().toLowerCase();
+  if (!emailInput || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    showMessage('Add a valid email so we can remind you where to find this later.', 'info');
+    emailInput?.focus();
+    return;
+  }
+  try {
+    localStorage.setItem(CUTUP_LEAD_EMAIL_KEY, email);
+  } catch {
+    /* ignore */
+  }
+  console.log('[conversion] email entered');
+  cutupSoftUnlockSet();
+  updateFulltextSoftLockVeil();
+  submitCutupLead(email, 'soft_unlock');
+  showMessage('Thanks—we saved your email on this device. Sign in anytime to sync history.', 'success');
+}
+
+function updateFulltextSoftLockVeil() {
+  const veil = document.getElementById('fulltextSoftLockVeil');
+  const wrap = document.getElementById('fulltextSoftLockWrap');
+  if (!veil || !wrap) return;
+
+  if (cutupSoftUnlockActive()) {
+    veil.hidden = true;
+    veil.setAttribute('aria-hidden', 'true');
+    wrap.classList.remove('fulltext-soft-lock-wrap--locked');
+    return;
+  }
+
+  const len = (document.getElementById('fulltext')?.textContent || '').trim().length;
+  const previewBanner = document.getElementById('previewUpgradeBanner');
+  const previewOn = previewBanner && previewBanner.style.display === 'block';
+  const shouldLock =
+    !previewOn &&
+    !cutupIsLoggedIn() &&
+    len >= LONG_TRANSCRIPT_SOFT_LOCK_CHARS;
+
+  if (!shouldLock) {
+    veil.hidden = true;
+    veil.setAttribute('aria-hidden', 'true');
+    wrap.classList.remove('fulltext-soft-lock-wrap--locked');
+    return;
+  }
+
+  veil.hidden = false;
+  veil.setAttribute('aria-hidden', 'false');
+  wrap.classList.add('fulltext-soft-lock-wrap--locked');
+}
+
+function initConversionLayerAfterResults() {
+  showConversionSaveBlock();
+  updateFulltextSoftLockVeil();
+  cutupStickyGeneratedAt = Date.now();
+  cutupStickyLastScrollAt = Date.now();
+  setStickyPrimaryMode('download');
+}
+
+function cutupResultSectionVisible() {
+  const resultSection = document.getElementById('resultSection');
+  return !!(resultSection && resultSection.style.display !== 'none');
+}
+
+function closeConversionExitModal() {
+  const modal = document.getElementById('conversionExitModal');
+  if (!modal) return;
+  modal.hidden = true;
+  modal.setAttribute('aria-hidden', 'true');
+  const prev = modal._cutupPrevFocus;
+  if (prev && typeof prev.focus === 'function') {
+    try {
+      prev.focus({ preventScroll: true });
+    } catch {
+      /* ignore */
+    }
+  }
+  modal._cutupPrevFocus = null;
+}
+
+function openConversionExitModal() {
+  if (window.innerWidth < 768) return;
+  if (!window.matchMedia('(pointer: fine)').matches) return;
+  if (!cutupResultSectionVisible()) return;
+  try {
+    if (sessionStorage.getItem(CUTUP_EXIT_INTENT_KEY) === '1') return;
+  } catch {
+    return;
+  }
+  const modal = document.getElementById('conversionExitModal');
+  const panel = modal?.querySelector('.conversion-exit-modal__panel');
+  if (!modal || !panel) return;
+  try {
+    sessionStorage.setItem(CUTUP_EXIT_INTENT_KEY, '1');
+  } catch {
+    /* ignore */
+  }
+  console.log('[conversion] exit intent shown');
+  modal._cutupPrevFocus = document.activeElement;
+  modal.hidden = false;
+  modal.setAttribute('aria-hidden', 'false');
+  try {
+    panel.focus({ preventScroll: true });
+  } catch {
+    /* ignore */
+  }
+}
+
+function setStickyPrimaryMode(mode) {
+  const allowed = ['download', 'tryAnother', 'saveResult'];
+  if (!allowed.includes(mode)) return;
+  cutupStickyPrimaryState = mode;
+  const btn = document.getElementById('stickyDownloadBtn');
+  if (!btn) return;
+  const labels = {
+    download: 'Download',
+    tryAnother: 'Try another video',
+    saveResult: 'Save your result',
+  };
+  btn.textContent = labels[mode];
+  btn.setAttribute('aria-label', labels[mode]);
+  btn.dataset.stickyPrimary = mode;
+}
+
+function refreshStickyPrimaryMode() {
+  const resultSection = document.getElementById('resultSection');
+  if (!resultSection) return;
+  const hasResult = resultSection.style.display !== 'none' && resultSection.textContent.trim().length > 0;
+  const isMobile = window.innerWidth < 640;
+  if (!hasResult || !isMobile || !cutupStickyGeneratedAt) return;
+
+  const now = Date.now();
+  const sinceGen = now - cutupStickyGeneratedAt;
+  const sinceScroll = now - cutupStickyLastScrollAt;
+
+  if (sinceGen < 4000) {
+    setStickyPrimaryMode('download');
+  } else if (sinceScroll < 2200) {
+    setStickyPrimaryMode('tryAnother');
+  } else if (sinceScroll > 7500) {
+    setStickyPrimaryMode('saveResult');
+  } else {
+    setStickyPrimaryMode('tryAnother');
+  }
+}
+
+function setupConversionLayerInteractions() {
+  document.getElementById('conversionSaveBtn')?.addEventListener('click', () => {
+    runConversionSaveAction('save_block');
+  });
+  document.getElementById('conversionSkipSaveBtn')?.addEventListener('click', () => {
+    hideConversionSaveBlockDismissed();
+  });
+  document.getElementById('fulltextSoftLockLoginBtn')?.addEventListener('click', () => {
+    document.getElementById('loginBtn')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => document.getElementById('loginBtn')?.focus({ preventScroll: true }), 400);
+  });
+  document.getElementById('fulltextSoftLockSaveBtn')?.addEventListener('click', () => {
+    document.getElementById('conversionSaveBlock')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => {
+      if (!cutupIsLoggedIn()) {
+        document.getElementById('conversionSaveEmail')?.focus({ preventScroll: true });
+      } else {
+        document.getElementById('conversionSaveBtn')?.focus({ preventScroll: true });
+      }
+    }, 350);
+  });
+
+  document.getElementById('conversionExitBackdrop')?.addEventListener('click', closeConversionExitModal);
+  document.getElementById('conversionExitCloseBtn')?.addEventListener('click', closeConversionExitModal);
+  document.getElementById('conversionExitSaveBtn')?.addEventListener('click', () => {
+    closeConversionExitModal();
+    runConversionSaveAction('exit_modal');
+    document.getElementById('conversionSaveBlock')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  document.getElementById('conversionExitCopyBtn')?.addEventListener('click', () => {
+    copyConversionTranscript();
+    closeConversionExitModal();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const modal = document.getElementById('conversionExitModal');
+    if (modal && !modal.hidden) {
+      e.preventDefault();
+      closeConversionExitModal();
+    }
+  });
+
+  document.addEventListener(
+    'mousemove',
+    (e) => {
+      if (window.innerWidth < 768) return;
+      if (!window.matchMedia('(pointer: fine)').matches) return;
+      if (!cutupResultSectionVisible()) return;
+      try {
+        if (sessionStorage.getItem(CUTUP_EXIT_INTENT_KEY) === '1') return;
+      } catch {
+        return;
+      }
+      if (e.clientY > 20) return;
+      if (cutupExitIntentTimer) clearTimeout(cutupExitIntentTimer);
+      cutupExitIntentTimer = setTimeout(() => {
+        cutupExitIntentTimer = null;
+        openConversionExitModal();
+      }, 380);
+    },
+    { passive: true }
+  );
+}
+
+/* ========== Retention: recent activity, usage stats, upgrade hint ========== */
+const CUTUP_RECENT_ACTIVITY_KEY = 'cutup_recent_activity';
+const CUTUP_USAGE_STATS_KEY = 'cutup_usage_stats';
+const CUTUP_LAST_SESSION_KEY = 'cutup_last_session';
+const CUTUP_GUEST_ID_KEY = 'cutup_guest_id';
+
+let retentionUpgradeHintLogged = false;
+let retentionSyncRecentTimer = null;
+let retentionSyncRecentDedupeKey = '';
+let retentionSyncRecentDedupeAt = 0;
+let retentionGuestModeLogged = false;
+
+function ensureCutupGuestId() {
+  try {
+    let g = localStorage.getItem(CUTUP_GUEST_ID_KEY);
+    if (g && /^[a-zA-Z0-9._-]{8,80}$/.test(g)) return g;
+    g =
+      typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID().replace(/-/g, '').slice(0, 24)
+        : `g${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+    localStorage.setItem(CUTUP_GUEST_ID_KEY, g);
+    return g;
+  } catch {
+    return `g${Date.now()}`;
+  }
+}
+
+function retentionSessionHeaders() {
+  const h = { 'Content-Type': 'application/json' };
+  const sid = localStorage.getItem('cutup_session');
+  if (sid) h['X-Session-Id'] = sid;
+  return h;
+}
+
+function fireRetentionSync(body) {
+  try {
+    const payload = { ...body, timestamp: body.timestamp || Date.now() };
+    if (!cutupIsLoggedIn()) {
+      payload.guestId = ensureCutupGuestId();
+      if (!retentionGuestModeLogged) {
+        retentionGuestModeLogged = true;
+        console.log('[retention-sync] guest mode');
+      }
+    }
+    fetch(`${API_BASE_URL}/api/retention`, {
+      method: 'POST',
+      headers: retentionSessionHeaders(),
+      body: JSON.stringify(payload),
+      keepalive: true,
+    })
+      .then((r) => {
+        if (r.ok) console.log('[retention-sync] sent', body.type);
+      })
+      .catch(() => {});
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Server sync: usage immediately; recent debounced + deduped (invalid http URLs skipped). */
+function scheduleRetentionServerSync({ url, platform, title }) {
+  const ts = Date.now();
+  fireRetentionSync({ type: 'usage', timestamp: ts });
+
+  if (!/^https?:\/\//i.test(String(url || ''))) return;
+
+  const dedupeKey = `${String(platform || '')}|${String(url).trim()}`;
+  if (dedupeKey === retentionSyncRecentDedupeKey && ts - retentionSyncRecentDedupeAt < 10000) {
+    return;
+  }
+
+  clearTimeout(retentionSyncRecentTimer);
+  retentionSyncRecentTimer = setTimeout(() => {
+    retentionSyncRecentTimer = null;
+    retentionSyncRecentDedupeKey = dedupeKey;
+    retentionSyncRecentDedupeAt = Date.now();
+    fireRetentionSync({
+      type: 'recent',
+      url: String(url).trim(),
+      platform: String(platform || 'youtube').slice(0, 32),
+      title: title != null ? String(title).slice(0, 500) : '',
+      timestamp: ts,
+    });
+  }, 800);
+}
+
+async function retentionMergeGuestIfNeeded(sessionId) {
+  const guestId = localStorage.getItem(CUTUP_GUEST_ID_KEY);
+  if (!guestId || !sessionId) return;
+  try {
+    const r = await fetch(`${API_BASE_URL}/api/retention`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Session-Id': sessionId },
+      body: JSON.stringify({ type: 'merge', guestId, timestamp: Date.now() }),
+      keepalive: true,
+    });
+    if (r.ok) {
+      const j = await r.json().catch(() => ({}));
+      if (j.merged) {
+        console.log('[retention-sync] merged');
+        localStorage.removeItem(CUTUP_GUEST_ID_KEY);
+        retentionGuestModeLogged = false;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function readRecentActivity() {
+  try {
+    const raw = localStorage.getItem(CUTUP_RECENT_ACTIVITY_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(arr)) return [];
+    return arr.filter((x) => x && x.url && /^https?:\/\//i.test(String(x.url)));
+  } catch {
+    return [];
+  }
+}
+
+function readUsageStats() {
+  try {
+    const raw = localStorage.getItem(CUTUP_USAGE_STATS_KEY);
+    if (!raw) return { totalUses: 0, lastUsedAt: 0, useTimestamps: [] };
+    const o = JSON.parse(raw);
+    return {
+      totalUses: Number(o.totalUses) || 0,
+      lastUsedAt: Number(o.lastUsedAt) || 0,
+      useTimestamps: Array.isArray(o.useTimestamps) ? o.useTimestamps.map(Number).filter(Boolean) : [],
+    };
+  } catch {
+    return { totalUses: 0, lastUsedAt: 0, useTimestamps: [] };
+  }
+}
+
+function bumpUsageStats() {
+  const s = readUsageStats();
+  const now = Date.now();
+  const dayAgo = now - 24 * 60 * 60 * 1000;
+  const timestamps = [...s.useTimestamps.filter((t) => t > dayAgo), now];
+  const next = {
+    totalUses: (s.totalUses || 0) + 1,
+    lastUsedAt: now,
+    useTimestamps: timestamps.slice(-40),
+  };
+  try {
+    localStorage.setItem(CUTUP_USAGE_STATS_KEY, JSON.stringify(next));
+  } catch {
+    /* ignore */
+  }
+  return next;
+}
+
+function retentionUsesLast24h(stats) {
+  const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+  return (stats.useTimestamps || []).filter((t) => t > dayAgo).length;
+}
+
+function retentionShouldShowUpgrade(stats) {
+  const n = stats.totalUses || 0;
+  const u24 = retentionUsesLast24h(stats);
+  return n >= 3 || u24 >= 2;
+}
+
+function retentionShortTitle(url, title) {
+  const t = String(title || '').trim();
+  if (t) return t.length > 72 ? `${t.slice(0, 69)}…` : t;
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, '');
+    const path = u.pathname === '/' ? '' : u.pathname;
+    const s = `${host}${path}`.slice(0, 64);
+    return s.length < String(url).length ? s : String(url).slice(0, 64);
+  } catch {
+    return String(url).slice(0, 64);
+  }
+}
+
+function recordRetentionAfterResults(opts) {
+  const stats = bumpUsageStats();
+  const url = String(opts.sourceUrl || '').trim();
+  const platform = opts.platform || (typeof currentPlatform !== 'undefined' ? currentPlatform : 'youtube') || 'youtube';
+  const title = retentionShortTitle(url, opts.title);
+
+  if (/^https?:\/\//i.test(url)) {
+    const list = readRecentActivity();
+    const entry = { url, platform, title, ts: Date.now() };
+    const filtered = list.filter((x) => !(x.url === url && x.platform === platform));
+    filtered.unshift(entry);
+    const trimmed = filtered.slice(0, 5);
+    try {
+      localStorage.setItem(CUTUP_RECENT_ACTIVITY_KEY, JSON.stringify(trimmed));
+      localStorage.setItem(CUTUP_LAST_SESSION_KEY, JSON.stringify({ url, platform, title, ts: Date.now() }));
+    } catch {
+      /* ignore */
+    }
+    console.log('[retention] recent used', { platform, urlLen: url.length });
+  }
+
+  renderRetentionPanels(stats);
+  scheduleRetentionServerSync({ url, platform, title });
+}
+
+function retentionSwitchPlatformWithUrl(platform, url) {
+  const p = platform || 'youtube';
+  currentPlatform = p;
+
+  document.querySelectorAll('.platform-tab').forEach((tab) => {
+    tab.classList.toggle('active', tab.dataset.tab === p);
+  });
+
+  document.querySelectorAll('#tool .download-box > .tab-content').forEach((content) => {
+    content.classList.remove('active');
+  });
+  const activeTab = document.getElementById(`${p}-tab`);
+  if (activeTab) activeTab.classList.add('active');
+
+  const allOptions = ['downloadOptionsYoutube', 'downloadOptionsInstagram', 'downloadOptionsTiktok', 'downloadOptionsAudiofile'];
+  allOptions.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+
+  if (p === 'youtube' || p === 'instagram' || p === 'tiktok') {
+    const inputId = p === 'youtube' ? 'youtubeUrlInput' : `${p}UrlInput`;
+    const urlInput = document.getElementById(inputId);
+    if (urlInput && url) urlInput.value = url;
+    checkInput();
+    urlInput?.focus({ preventScroll: false });
+  } else if (p === 'audiofile') {
+    checkInput();
+    document.getElementById('audioFileInput')?.focus({ preventScroll: true });
+  } else {
+    checkInput();
+  }
+
+  document.getElementById('tool')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function renderContinueBanner() {
+  const wrap = document.getElementById('retentionContinueBanner');
+  if (!wrap) return;
+  let last = null;
+  try {
+    const raw = localStorage.getItem(CUTUP_LAST_SESSION_KEY);
+    last = raw ? JSON.parse(raw) : null;
+  } catch {
+    last = null;
+  }
+  const maxAge = 7 * 24 * 60 * 60 * 1000;
+  const ok =
+    last &&
+    last.url &&
+    /^https?:\/\//i.test(String(last.url)) &&
+    Date.now() - (Number(last.ts) || 0) < maxAge;
+  wrap.hidden = !ok;
+}
+
+function renderUsageHint(stats) {
+  const el = document.getElementById('retentionUsageHint');
+  if (!el) return;
+  const n = stats.totalUses || 0;
+  if (n < 1) {
+    el.hidden = true;
+    el.textContent = '';
+    return;
+  }
+  el.textContent = n === 1 ? 'You’ve used this once.' : `You’ve used this ${n} times.`;
+  el.hidden = false;
+}
+
+function renderUpgradeHint(stats) {
+  const wrap = document.getElementById('retentionUpgradeHint');
+  if (!wrap) return;
+  const show = retentionShouldShowUpgrade(stats);
+  wrap.hidden = !show;
+  if (show && !retentionUpgradeHintLogged) {
+    retentionUpgradeHintLogged = true;
+    console.log('[retention] upgrade shown');
+  }
+}
+
+function renderRecentActivityList() {
+  const wrap = document.getElementById('retentionRecentWrap');
+  const ul = document.getElementById('retentionRecentList');
+  if (!wrap || !ul) return;
+  const list = readRecentActivity();
+  ul.textContent = '';
+  if (!list.length) {
+    wrap.hidden = true;
+    return;
+  }
+  wrap.hidden = false;
+  list.forEach((item) => {
+    const li = document.createElement('li');
+    li.className = 'retention-recent-item';
+    const label = document.createElement('span');
+    label.className = 'retention-recent-label';
+    label.textContent = item.title || item.url || 'Link';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-secondary retention-recent-continue';
+    btn.textContent = 'Continue';
+    btn.dataset.url = String(item.url || '');
+    btn.dataset.platform = String(item.platform || 'youtube');
+    btn.addEventListener('click', () => {
+      console.log('[retention] recent used', { action: 'continue_row', platform: btn.dataset.platform });
+      retentionSwitchPlatformWithUrl(btn.dataset.platform, btn.dataset.url);
+    });
+    li.appendChild(label);
+    li.appendChild(btn);
+    ul.appendChild(li);
+  });
+}
+
+function renderRetentionPanels(stats) {
+  const s = stats || readUsageStats();
+  renderUsageHint(s);
+  renderUpgradeHint(s);
+  renderRecentActivityList();
+  renderContinueBanner();
+}
+
+function setupRetentionInteractions() {
+  document.getElementById('retentionContinueBtn')?.addEventListener('click', () => {
+    let last = null;
+    try {
+      last = JSON.parse(localStorage.getItem(CUTUP_LAST_SESSION_KEY) || 'null');
+    } catch {
+      last = null;
+    }
+    console.log('[retention] continue clicked');
+    if (last?.url) {
+      retentionSwitchPlatformWithUrl(last.platform || 'youtube', last.url);
+    }
+  });
+
+  renderRetentionPanels();
+}
+
 /** ISO 639-1 code for API hints, or null if unknown. */
 function normalizeLangCode(code) {
   if (code == null || code === '') return null;
@@ -573,6 +1255,8 @@ async function loadUserProfile() {
         currentSession = sessionId;
         // Load subscription info and update UI
         await updateButtonsBasedOnSubscription(sessionId);
+        await retentionMergeGuestIfNeeded(sessionId);
+        await monetizationRefreshPaywallPassive();
       } else {
         console.warn('[script] No user in response, showing login button');
         showLoginButton();
@@ -872,13 +1556,24 @@ function setButtonsForPaidPlan(audioExceeded = false, videoExceeded = false, mon
 }
 
 function showLoginButton() {
+  try {
+    window.cutupUserEmail = '';
+  } catch {
+    /* ignore */
+  }
   document.getElementById('loginBtn').style.display = 'block';
   document.getElementById('userProfile').style.display = 'none';
+  resetGoogleButtonState();
 }
 
 function showUserProfile(user) {
   console.log('[script] showUserProfile called with:', user);
-  
+  try {
+    window.cutupUserEmail = user && user.email ? String(user.email).trim() : '';
+  } catch {
+    window.cutupUserEmail = '';
+  }
+
   const loginBtn = document.getElementById('loginBtn');
   const userProfile = document.getElementById('userProfile');
   const avatar = document.getElementById('userAvatar');
@@ -964,10 +1659,14 @@ function showUserProfile(user) {
       currentSession = null;
       userProfile.classList.remove('active');
       showLoginButton();
+      updateFulltextSoftLockVeil();
+      refreshConversionSaveBlockUI();
     });
   }
   
   console.log('[script] User profile displayed successfully');
+  updateFulltextSoftLockVeil();
+  refreshConversionSaveBlockUI();
 }
 
 // Generate avatar from name/email
@@ -988,6 +1687,23 @@ function generateAvatar(text) {
 }
 
 // Login button click - setup in DOMContentLoaded
+
+function resetGoogleButtonState() {
+  const btn = document.querySelector('.google-btn');
+  if (!btn) return;
+  btn.disabled = false;
+  btn.classList.remove('loading');
+  const label = btn.querySelector('.google-btn-label');
+  if (label) label.textContent = 'Continue with Google';
+}
+
+window.addEventListener('pageshow', () => {
+  resetGoogleButtonState();
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) resetGoogleButtonState();
+});
 
 // Logout button is now handled in showUserProfile function
 
@@ -1014,11 +1730,11 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
     e.stopPropagation();
     
-    // Disable button to prevent double clicks
     btn.disabled = true;
-    const originalText = btn.innerHTML;
-    btn.innerHTML = 'Connecting...';
-    
+    btn.classList.add('loading');
+    const label = btn.querySelector('.google-btn-label');
+    if (label) label.textContent = 'Connecting...';
+
     try {
       console.log('[script] Login button clicked, fetching auth URL from /api/oauth/google/start...');
       const response = await fetch(`${API_BASE_URL}/api/oauth/google/start`, { 
@@ -1048,8 +1764,7 @@ document.addEventListener('DOMContentLoaded', () => {
       window.location.href = data.authUrl;
     } catch (error) {
       console.error('[script] Google login failed:', error);
-      btn.disabled = false;
-      btn.innerHTML = originalText;
+      resetGoogleButtonState();
       alert('Google sign-in failed. Please try again.');
     }
   });
@@ -1606,6 +2321,13 @@ async function handleSummarize() {
     }
       return;
     }
+
+  const estMin = file ? Math.max(1, Math.ceil((file.size / 1024 / 1024) * 1.2)) : AVG_VIDEO_MINUTES;
+  const monGate = await monetizationPreflightBeforeProcess(sessionId, estMin);
+  if (!monGate.allowed) {
+    showMessage(monGate.reason || LIMIT_UPGRADE_FALLBACK, 'error');
+    return;
+  }
     
   if (file && (currentPlatform === 'audiofile' || !url || url.startsWith('📁'))) {
     trackEvent('link_submitted', { platform: 'file', mode: 'summary', auth: !!sessionId });
@@ -1636,6 +2358,13 @@ async function handleFullText(activeTab = 'fulltext') {
     }
       return;
     }
+
+  const estMin = file ? Math.max(1, Math.ceil((file.size / 1024 / 1024) * 1.2)) : AVG_VIDEO_MINUTES;
+  const monGate = await monetizationPreflightBeforeProcess(sessionId, estMin);
+  if (!monGate.allowed) {
+    showMessage(monGate.reason || LIMIT_UPGRADE_FALLBACK, 'error');
+    return;
+  }
     
   if (file && (currentPlatform === 'audiofile' || !url || url.startsWith('📁'))) {
     trackEvent('link_submitted', { platform: 'file', mode: 'fulltext', auth: !!sessionId });
@@ -1672,7 +2401,8 @@ async function handleSrtSubtitles() {
       displayResults(cached.summary, cached.fullText, cached.segments || [], {
         ...cached.lastDisplayOptions,
         outputMode: 'srt',
-        activeTab: 'srt'
+        activeTab: 'srt',
+        cacheReplay: true
       });
       return;
     }
@@ -1684,7 +2414,8 @@ async function handleSrtSubtitles() {
     displayResults(cached.summary, cached.fullText, cached.segments || [], {
       ...cached.lastDisplayOptions,
       outputMode: 'srt',
-      activeTab: 'srt'
+      activeTab: 'srt',
+      cacheReplay: true
     });
     return;
   }
@@ -1788,6 +2519,118 @@ function formatSRTTime(seconds) {
   const milliseconds = Math.floor((seconds % 1) * 1000);
   
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')},${String(milliseconds).padStart(3, '0')}`;
+}
+
+/* ========== Monetization: preflight GET check + inline paywall ========== */
+let monetizationNearLimitLogged = false;
+
+function setMonetizationUpgradeHref() {
+  const a = document.getElementById('monetizationUpgradeBtn');
+  if (!a) return;
+  const sid = localStorage.getItem('cutup_session');
+  a.href = sid ? `dashboard.html?session=${encodeURIComponent(sid)}` : 'dashboard.html';
+}
+
+function applyMonetizationPaywallFromServer(data) {
+  const wrap = document.getElementById('monetizationPaywall');
+  const msg = document.getElementById('monetizationPaywallMsg');
+  if (!wrap || !msg) return;
+
+  if (!data) {
+    wrap.hidden = true;
+    wrap.dataset.state = 'hidden';
+    msg.textContent = '';
+    return;
+  }
+
+  const blocked = data.allowed === false;
+  const near = !!data.nearLimit && !blocked;
+
+  if (blocked) {
+    wrap.hidden = false;
+    wrap.dataset.state = 'blocked';
+    msg.textContent = 'You’ve reached your limit';
+    setMonetizationUpgradeHref();
+    return;
+  }
+
+  if (near) {
+    wrap.hidden = false;
+    wrap.dataset.state = 'near';
+    msg.textContent = 'You’re almost out of free credits';
+    setMonetizationUpgradeHref();
+    return;
+  }
+
+  wrap.hidden = true;
+  wrap.dataset.state = 'hidden';
+  msg.textContent = '';
+}
+
+async function monetizationFetchCheckGET(sessionId, videoDurationMinutes) {
+  if (!sessionId) return null;
+  const params = new URLSearchParams({
+    action: 'check',
+    session: sessionId,
+    feature: 'transcription',
+    videoDurationMinutes: String(Math.max(0, Math.round(Number(videoDurationMinutes) || 0)))
+  });
+  const r = await fetch(`${API_BASE_URL}/api/subscription?${params.toString()}`, {
+    headers: { 'X-Session-Id': sessionId }
+  });
+  if (!r.ok) return null;
+  return r.json();
+}
+
+/** Before processing (logged-in): GET check; block without calling transcribe APIs. */
+async function monetizationPreflightBeforeProcess(sessionId, estimatedMinutes) {
+  if (!sessionId) {
+    applyMonetizationPaywallFromServer(null);
+    return { allowed: true };
+  }
+
+  const est = Math.max(1, Math.round(Number(estimatedMinutes) || AVG_VIDEO_MINUTES));
+  const data = await monetizationFetchCheckGET(sessionId, est);
+  if (!data) {
+    applyMonetizationPaywallFromServer(null);
+    return { allowed: false, reason: USER_PLAN_VERIFY_FAIL };
+  }
+
+  applyMonetizationPaywallFromServer(data);
+
+  if (data.allowed === false) {
+    console.log('[monetization] limit reached');
+    const reason = data.reason ? humanizeLimitReason(String(data.reason)) : LIMIT_UPGRADE_FALLBACK;
+    return { allowed: false, reason };
+  }
+
+  if (data.nearLimit && !monetizationNearLimitLogged) {
+    monetizationNearLimitLogged = true;
+    console.log('[monetization] near limit');
+  }
+
+  return { allowed: true };
+}
+
+/** Refresh paywall when plan usage changes (e.g. after login) — uses typical job size. */
+async function monetizationRefreshPaywallPassive() {
+  const sessionId = localStorage.getItem('cutup_session');
+  if (!sessionId) {
+    applyMonetizationPaywallFromServer(null);
+    return;
+  }
+  const data = await monetizationFetchCheckGET(sessionId, AVG_VIDEO_MINUTES);
+  if (data) applyMonetizationPaywallFromServer(data);
+}
+
+function setupMonetizationPaywallUi() {
+  setMonetizationUpgradeHref();
+  document.getElementById('monetizationUpgradeBtn')?.addEventListener('click', () => {
+    console.log('[monetization] upgrade clicked');
+  });
+  document.getElementById('monetizationPricingLink')?.addEventListener('click', () => {
+    console.log('[monetization] upgrade clicked');
+  });
 }
 
 // Check subscription limit before processing
@@ -2929,6 +3772,21 @@ function displayResults(summary, fullText, segments = null, options = {}) {
     }
   };
 
+  const habitHint = document.getElementById('retentionHabitHint');
+  if (habitHint) habitHint.hidden = false;
+
+  initConversionLayerAfterResults();
+
+  if (!options.cacheReplay) {
+    recordRetentionAfterResults({
+      sourceUrl: options.sourceUrl || (typeof getCurrentUrl === 'function' ? getCurrentUrl() : ''),
+      platform: options.platform || (typeof currentPlatform !== 'undefined' ? currentPlatform : 'youtube'),
+      title: options.title || null,
+    });
+  } else {
+    renderRetentionPanels();
+  }
+
   if (!previewMode) {
     const sessionId = localStorage.getItem('cutup_session');
     if (sessionId) {
@@ -3007,8 +3865,9 @@ async function persistSavedOutputs(sessionId, payload) {
     });
   }
 
+  let submittedLeadForTranscript = false;
   for (const item of queue) {
-    await fetch(`${API_BASE_URL}/api/subscription?action=saveOutput`, {
+    const res = await fetch(`${API_BASE_URL}/api/subscription?action=saveOutput`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -3016,6 +3875,14 @@ async function persistSavedOutputs(sessionId, payload) {
       },
       body: JSON.stringify(item)
     });
+    if (!res.ok) continue;
+    if (item.type === 'transcript' && !submittedLeadForTranscript) {
+      const em = typeof window.cutupUserEmail === 'string' ? window.cutupUserEmail.trim() : '';
+      if (em) {
+        submitCutupLead(em, 'save_action');
+        submittedLeadForTranscript = true;
+      }
+    }
   }
 }
 
@@ -3047,6 +3914,10 @@ function switchTab(tabName) {
   
   if (tabBtn) tabBtn.classList.add('active');
   if (tabContent) tabContent.classList.add('active');
+
+  if (tabName === 'fulltext') {
+    updateFulltextSoftLockVeil();
+  }
 }
 
 // Generate SRT from segments
@@ -3214,6 +4085,7 @@ async function translateFulltextContent(sessionId, originalLanguage) {
     if (fulltextEl) {
       fulltextEl.textContent = translatedText;
     }
+    updateFulltextSoftLockVeil();
     
   } catch (error) {
     console.error('Error:', error);
@@ -3914,6 +4786,9 @@ function showQualityModal(formats, url, sessionId, isPro, isStarter, userPlan, t
 
 // Show progress bar
 function showProgressBar(title = 'Working on it…', showFileSize = true) {
+  const habitHint = document.getElementById('retentionHabitHint');
+  if (habitHint) habitHint.hidden = true;
+
   const progressContainer = document.getElementById('downloadProgressContainer');
   const progressTitle = document.getElementById('progressTitle');
   const progressFill = document.getElementById('progressFill');
@@ -4886,6 +5761,24 @@ function setupMobileStickyActions() {
   });
 
   downloadBtn.addEventListener('click', () => {
+    if (cutupStickyPrimaryState === 'tryAnother') {
+      document.getElementById('tool')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setTimeout(() => document.getElementById('youtubeUrlInput')?.focus(), 450);
+      cutupStickyLastScrollAt = Date.now();
+      refreshStickyPrimaryMode();
+      return;
+    }
+    if (cutupStickyPrimaryState === 'saveResult') {
+      document.getElementById('conversionSaveBlock')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(() => {
+        if (!cutupIsLoggedIn()) {
+          document.getElementById('conversionSaveEmail')?.focus({ preventScroll: true });
+        } else {
+          document.getElementById('conversionSaveBtn')?.focus({ preventScroll: true });
+        }
+      }, 400);
+      return;
+    }
     const active = document.querySelector('#resultSection .tab-content.active');
     if (!active) return;
     if (active.id === 'summary-tab') {
@@ -4899,16 +5792,37 @@ function setupMobileStickyActions() {
     document.getElementById('downloadFulltextTxtBtn')?.click();
   });
 
-  const observer = new MutationObserver(updateStickyVisibility);
+  const observer = new MutationObserver(() => {
+    updateStickyVisibility();
+    refreshStickyPrimaryMode();
+  });
   observer.observe(resultSection, { attributes: true, childList: true, subtree: true });
 
-  window.addEventListener('resize', updateStickyVisibility);
-  document.addEventListener('visibilitychange', updateStickyVisibility);
+  window.addEventListener('scroll', () => {
+    cutupStickyLastScrollAt = Date.now();
+    refreshStickyPrimaryMode();
+  }, { passive: true });
+
+  window.addEventListener('resize', () => {
+    updateStickyVisibility();
+    refreshStickyPrimaryMode();
+  });
+  document.addEventListener('visibilitychange', () => {
+    updateStickyVisibility();
+    refreshStickyPrimaryMode();
+  });
+  setInterval(() => {
+    refreshStickyPrimaryMode();
+  }, 900);
   updateStickyVisibility();
+  refreshStickyPrimaryMode();
 }
 
 window.addEventListener('DOMContentLoaded', () => {
   setupMobileHeaderMenu();
   setupMobileStickyActions();
+  setupConversionLayerInteractions();
+  setupRetentionInteractions();
+  setupMonetizationPaywallUi();
 });
 

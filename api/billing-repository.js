@@ -1217,3 +1217,531 @@ export async function canUseFeatureDb(email, feature, videoDurationMinutes = 0) 
 
   return { allowed: true };
 }
+
+/** DB user UUID for billing row, or null. */
+export async function getUserIdByEmail(email) {
+  if (!email || !isBillingDbConfigured()) return null;
+  const pool = getPool();
+  const r = await pool.query('SELECT id FROM users WHERE lower(email) = lower($1) LIMIT 1', [email]);
+  return r.rows[0]?.id || null;
+}
+
+function trimRetentionRecentForOwner(client, userId, guestKey) {
+  if (userId) {
+    return client.query(
+      `DELETE FROM retention_recent_activity a
+       USING (
+         SELECT id FROM (
+           SELECT id,
+                  ROW_NUMBER() OVER (ORDER BY created_at DESC) AS rn
+           FROM retention_recent_activity
+           WHERE user_id = $1::uuid AND guest_key IS NULL
+         ) sub
+         WHERE sub.rn > 5
+       ) d
+       WHERE a.id = d.id`,
+      [userId]
+    );
+  }
+  return client.query(
+    `DELETE FROM retention_recent_activity a
+     USING (
+       SELECT id FROM (
+         SELECT id,
+                ROW_NUMBER() OVER (ORDER BY created_at DESC) AS rn
+         FROM retention_recent_activity
+         WHERE guest_key = $1 AND user_id IS NULL
+       ) sub
+       WHERE sub.rn > 5
+     ) d
+     WHERE a.id = d.id`,
+    [guestKey]
+  );
+}
+
+export async function retentionInsertRecent({ userId, guestKey, url, title, platform, createdAt }) {
+  if (!isBillingDbConfigured()) return;
+  if (!url || (!userId && !guestKey)) return;
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `INSERT INTO retention_recent_activity (user_id, guest_key, url, title, platform, created_at)
+       VALUES ($1::uuid, $2, $3, $4, $5, COALESCE(to_timestamp($6::bigint / 1000.0), NOW()))`,
+      [userId, guestKey, url, title || null, platform || null, createdAt || Date.now()]
+    );
+    await trimRetentionRecentForOwner(client, userId, guestKey);
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+export async function retentionIncrementUsage({ userId, guestKey, lastUsedAtMs }) {
+  if (!isBillingDbConfigured()) return;
+  if (!userId && !guestKey) return;
+  const pool = getPool();
+  const ts = lastUsedAtMs ? new Date(Number(lastUsedAtMs)) : new Date();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    if (userId) {
+      const ex = await client.query(
+        'SELECT id, count FROM retention_usage_stats WHERE user_id = $1::uuid FOR UPDATE',
+        [userId]
+      );
+      if (ex.rows.length) {
+        await client.query(
+          `UPDATE retention_usage_stats
+           SET count = count + 1, last_used_at = GREATEST(last_used_at, $2::timestamptz)
+           WHERE user_id = $1::uuid`,
+          [userId, ts]
+        );
+      } else {
+        await client.query(
+          `INSERT INTO retention_usage_stats (user_id, guest_key, count, last_used_at)
+           VALUES ($1::uuid, NULL, 1, $2::timestamptz)`,
+          [userId, ts]
+        );
+      }
+    } else {
+      const ex = await client.query(
+        'SELECT id, count FROM retention_usage_stats WHERE guest_key = $1 FOR UPDATE',
+        [guestKey]
+      );
+      if (ex.rows.length) {
+        await client.query(
+          `UPDATE retention_usage_stats
+           SET count = count + 1, last_used_at = GREATEST(last_used_at, $2::timestamptz)
+           WHERE guest_key = $1`,
+          [guestKey, ts]
+        );
+      } else {
+        await client.query(
+          `INSERT INTO retention_usage_stats (user_id, guest_key, count, last_used_at)
+           VALUES (NULL, $1, 1, $2::timestamptz)`,
+          [guestKey, ts]
+        );
+      }
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Attach guest retention rows to the logged-in user. Clears guest_key on recent rows;
+ * adds guest usage count to user row (or creates it).
+ */
+export async function mergeRetentionGuestToUser(guestKey, email) {
+  if (!isBillingDbConfigured() || !guestKey || !email) {
+    return { merged: false, reason: 'skip' };
+  }
+  await ensureUserByEmail(email);
+  const userId = await getUserIdByEmail(email);
+  if (!userId) return { merged: false, reason: 'no_user' };
+
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    await client.query(
+      `UPDATE retention_recent_activity
+       SET user_id = $1::uuid, guest_key = NULL
+       WHERE guest_key = $2 AND user_id IS NULL`,
+      [userId, guestKey]
+    );
+
+    const g = await client.query(
+      'SELECT id, count, last_used_at FROM retention_usage_stats WHERE guest_key = $1 AND user_id IS NULL FOR UPDATE',
+      [guestKey]
+    );
+    if (g.rows.length) {
+      const add = Number(g.rows[0].count) || 0;
+      const glu = g.rows[0].last_used_at;
+      await client.query('DELETE FROM retention_usage_stats WHERE id = $1', [g.rows[0].id]);
+
+      const u = await client.query(
+        'SELECT id, count, last_used_at FROM retention_usage_stats WHERE user_id = $1::uuid FOR UPDATE',
+        [userId]
+      );
+      if (u.rows.length) {
+        await client.query(
+          `UPDATE retention_usage_stats
+           SET count = count + $2, last_used_at = GREATEST(last_used_at, $3::timestamptz)
+           WHERE user_id = $1::uuid`,
+          [userId, add, glu]
+        );
+      } else {
+        await client.query(
+          `INSERT INTO retention_usage_stats (user_id, guest_key, count, last_used_at)
+           VALUES ($1::uuid, NULL, $2, $3::timestamptz)`,
+          [userId, Math.max(1, add), glu]
+        );
+      }
+    }
+
+    await trimRetentionRecentForOwner(client, userId, null);
+
+    await client.query('COMMIT');
+    return { merged: true };
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+/** Pending payment row; plan_key is source of truth for upgrades (not amount). */
+export async function insertPaymentPending({ email, provider, amount, currency, externalId, planKey, discountCode }) {
+  const userId = await ensureUserByEmail(email);
+  const pool = getPool();
+  const pk = planKey && PLANS[planKey] ? String(planKey).slice(0, 32) : null;
+  const dc = discountCode ? String(discountCode).slice(0, 32) : null;
+  const r = await pool.query(
+    `INSERT INTO payments (user_id, provider, status, amount, currency, external_id, plan_key, discount_code)
+     VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7)
+     RETURNING id`,
+    [
+      userId,
+      String(provider || 'stripe').slice(0, 64),
+      amount != null ? Number(amount) : null,
+      String(currency || 'USD').slice(0, 8),
+      externalId ? String(externalId).slice(0, 255) : null,
+      pk,
+      dc
+    ]
+  );
+  return r.rows[0].id;
+}
+
+/** Pending longer than 30 minutes → failed (abandoned checkout). */
+export async function markPendingPaymentExpiredIfStale(email, paymentId) {
+  const pool = getPool();
+  const r = await pool.query(
+    `UPDATE payments p SET status = 'failed', updated_at = NOW()
+     FROM users u
+     WHERE p.id = $1::uuid AND p.user_id = u.id AND u.email = $2
+       AND p.status = 'pending'
+       AND p.created_at < NOW() - INTERVAL '30 minutes'
+     RETURNING p.id`,
+    [paymentId, email]
+  );
+  if (r.rowCount > 0) {
+    console.log('[payment] expired', paymentId, email);
+    return true;
+  }
+  return false;
+}
+
+export async function updatePaymentExternalId(paymentId, email, externalId) {
+  const pool = getPool();
+  const r = await pool.query(
+    `UPDATE payments p SET external_id = $3, updated_at = NOW()
+     FROM users u WHERE p.id = $1::uuid AND p.user_id = u.id AND u.email = $2
+     RETURNING p.id`,
+    [paymentId, email, String(externalId).slice(0, 255)]
+  );
+  return r.rowCount > 0;
+}
+
+export async function getPaymentForUserById(paymentId, email) {
+  const pool = getPool();
+  const r = await pool.query(
+    `SELECT p.* FROM payments p
+     JOIN users u ON u.id = p.user_id
+     WHERE p.id = $1::uuid AND u.email = $2`,
+    [paymentId, email]
+  );
+  return r.rows[0] || null;
+}
+
+/**
+ * After provider confirms payment: upgrade subscription and mark payment success.
+ * Idempotent if already success. Only upgrades from pending.
+ */
+export async function finalizePendingPaymentSuccess(
+  email,
+  paymentId,
+  planKey,
+  stripeCustomerId,
+  stripeSubscriptionId,
+  currentPeriodEnd
+) {
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const lock = await client.query(
+      `SELECT p.id, p.status, p.user_id, p.plan_key FROM payments p
+       JOIN users u ON u.id = p.user_id
+       WHERE p.id = $1::uuid AND u.email = $2 FOR UPDATE`,
+      [paymentId, email]
+    );
+    if (!lock.rows.length) {
+      await client.query('ROLLBACK');
+      return { ok: false, error: 'not_found' };
+    }
+    const row = lock.rows[0];
+    if (row.status === 'success') {
+      await client.query('COMMIT');
+      return { ok: true, idempotent: true };
+    }
+    if (row.status !== 'pending') {
+      await client.query('ROLLBACK');
+      return { ok: false, error: row.status };
+    }
+    const fromDb = row.plan_key ? String(row.plan_key).toLowerCase() : '';
+    const fromArg = planKey ? String(planKey).toLowerCase() : '';
+    const pk =
+      fromDb && PLANS[fromDb]
+        ? fromDb
+        : fromArg && PLANS[fromArg]
+          ? fromArg
+          : null;
+    if (!pk) {
+      await client.query('ROLLBACK');
+      return { ok: false, error: 'invalid_plan' };
+    }
+    const userId = row.user_id;
+    await client.query(
+      `UPDATE subscriptions SET
+        plan = $2,
+        status = 'active',
+        billing_period = 'monthly',
+        stripe_customer_id = COALESCE($3, stripe_customer_id),
+        stripe_subscription_id = COALESCE($4, stripe_subscription_id),
+        current_period_end = $5,
+        updated_at = NOW()
+       WHERE user_id = $1`,
+      [userId, pk, stripeCustomerId || null, stripeSubscriptionId || null, currentPeriodEnd]
+    );
+    await client.query(
+      `UPDATE payments SET status = 'success', updated_at = NOW() WHERE id = $1::uuid`,
+      [paymentId]
+    );
+    await client.query('COMMIT');
+    console.log('[payment] upgraded', paymentId, email, pk);
+    return { ok: true, upgraded: true };
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+/** Webhook or async path: subscription already upgraded; only flip payment row from pending. */
+export async function syncPaymentSuccessByExternalId(provider, externalId) {
+  const pool = getPool();
+  const r = await pool.query(
+    `UPDATE payments SET status = 'success', updated_at = NOW()
+     WHERE provider = $1 AND external_id = $2 AND status = 'pending'`,
+    [String(provider).slice(0, 64), String(externalId).slice(0, 255)]
+  );
+  return r.rowCount;
+}
+
+export async function markPaymentTerminalStatus(email, paymentId, status) {
+  if (!['failed', 'canceled'].includes(status)) return 0;
+  const pool = getPool();
+  const r = await pool.query(
+    `UPDATE payments p SET status = $3, updated_at = NOW()
+     FROM users u WHERE p.id = $1::uuid AND p.user_id = u.id AND u.email = $2 AND p.status = 'pending'`,
+    [paymentId, email, status]
+  );
+  return r.rowCount;
+}
+
+export async function resolveUserIdForAnalytics(email) {
+  if (!email) return null;
+  const pool = getPool();
+  const r = await pool.query('SELECT id FROM users WHERE email = $1', [String(email).toLowerCase().slice(0, 320)]);
+  return r.rows[0]?.id || null;
+}
+
+export async function insertAnalyticsEvent({ userId, guestId, event, variant, plan }) {
+  const pool = getPool();
+  const v = variant === 'B' ? 'B' : 'A';
+  const ev = String(event || '').slice(0, 64);
+  const pl = plan != null && String(plan).trim() !== '' ? String(plan).slice(0, 32) : null;
+  const gid = guestId ? String(guestId).slice(0, 64) : null;
+  await pool.query(
+    `INSERT INTO analytics_events (user_id, guest_id, event, variant, plan)
+     VALUES ($1::uuid, $2, $3, $4, $5)`,
+    [userId || null, gid, ev, v, pl]
+  );
+}
+
+export async function getAdminPricingAbMetricsDb() {
+  const pool = getPool();
+  const funnel = await pool.query(`
+    SELECT variant,
+      COUNT(*) FILTER (WHERE event = 'pricing_viewed')::int AS views,
+      COUNT(*) FILTER (WHERE event = 'upgrade_clicked')::int AS clicks,
+      COUNT(*) FILTER (WHERE event = 'payment_started')::int AS started,
+      COUNT(*) FILTER (WHERE event = 'payment_success')::int AS payments,
+      COUNT(*) FILTER (WHERE event = 'payment_failed')::int AS failed
+    FROM analytics_events
+    WHERE variant IN ('A', 'B')
+    GROUP BY variant
+    ORDER BY variant
+  `);
+  const byPlan = await pool.query(`
+    SELECT variant,
+      COALESCE(NULLIF(TRIM(plan), ''), '—') AS plan,
+      COUNT(*) FILTER (WHERE event = 'upgrade_clicked')::int AS clicks,
+      COUNT(*) FILTER (WHERE event = 'payment_started')::int AS started,
+      COUNT(*) FILTER (WHERE event = 'payment_success')::int AS payments
+    FROM analytics_events
+    WHERE variant IN ('A', 'B')
+    GROUP BY variant, COALESCE(NULLIF(TRIM(plan), ''), '—')
+    HAVING COUNT(*) FILTER (WHERE event IN ('upgrade_clicked', 'payment_started', 'payment_success')) > 0
+    ORDER BY variant, plan
+  `);
+  const mapFunnel = (rows) =>
+    rows.map((r) => {
+      const views = Number(r.views) || 0;
+      const payments = Number(r.payments) || 0;
+      return {
+        variant: r.variant,
+        views,
+        clicks: Number(r.clicks) || 0,
+        started: Number(r.started) || 0,
+        payments,
+        failed: Number(r.failed) || 0,
+        conversionPct: views > 0 ? Math.round((payments / views) * 10000) / 100 : null
+      };
+    });
+  const funnelMapped = mapFunnel(funnel.rows);
+  const byVariant = Object.fromEntries(funnelMapped.map((x) => [x.variant, x]));
+  const funnelByVariant = ['A', 'B'].map(
+    (v) =>
+      byVariant[v] || {
+        variant: v,
+        views: 0,
+        clicks: 0,
+        started: 0,
+        payments: 0,
+        failed: 0,
+        conversionPct: null
+      }
+  );
+  const planRows = byPlan.rows.map((r) => ({
+    variant: r.variant,
+    plan: r.plan,
+    clicks: Number(r.clicks) || 0,
+    started: Number(r.started) || 0,
+    payments: Number(r.payments) || 0
+  }));
+  return { funnelByVariant, byPlan: planRows };
+}
+
+const LEAD_SOURCES = new Set(['soft_unlock', 'save_action']);
+const CONVERSION_EMAIL_KINDS = new Set(['lead_ready', 'abandon_pay', 'active_use']);
+
+function normalizeLeadEmail(email) {
+  return String(email || '')
+    .trim()
+    .toLowerCase()
+    .slice(0, 320);
+}
+
+/**
+ * Insert lead if email is new. Returns whether a new row was inserted.
+ */
+export async function insertLeadIfNew(email, source) {
+  const em = normalizeLeadEmail(email);
+  if (!em || !LEAD_SOURCES.has(String(source || ''))) {
+    return { inserted: false, email: em, error: 'invalid' };
+  }
+  const pool = getPool();
+  const r = await pool.query(
+    `INSERT INTO leads (email, source) VALUES ($1, $2)
+     ON CONFLICT (email) DO NOTHING
+     RETURNING id`,
+    [em, source]
+  );
+  return { inserted: r.rowCount > 0, email: em };
+}
+
+export async function wasConversionEmailSentRecently(email, hours = 24) {
+  const em = normalizeLeadEmail(email);
+  if (!em) return true;
+  const pool = getPool();
+  const h = Math.max(1, Math.min(168, Number(hours) || 24));
+  const r = await pool.query(
+    `SELECT 1 FROM conversion_email_log
+     WHERE email = $1 AND created_at > NOW() - (INTERVAL '1 hour' * $2::int)
+     LIMIT 1`,
+    [em, h]
+  );
+  return r.rows.length > 0;
+}
+
+export async function logConversionEmailSent(email, kind) {
+  const em = normalizeLeadEmail(email);
+  const k = String(kind || '').slice(0, 32);
+  if (!em || !CONVERSION_EMAIL_KINDS.has(k)) return;
+  const pool = getPool();
+  await pool.query(`INSERT INTO conversion_email_log (email, kind) VALUES ($1, $2)`, [em, k]);
+}
+
+/**
+ * Users who started checkout 30+ min ago with no later payment_success, still on free plan.
+ */
+export async function findAbandonedCheckoutCandidates({ limit = 40 } = {}) {
+  const pool = getPool();
+  const lim = Math.max(1, Math.min(200, Number(limit) || 40));
+  const r = await pool.query(
+    `WITH last_started AS (
+       SELECT user_id, MAX(created_at) AS started_at
+       FROM analytics_events
+       WHERE event = 'payment_started'
+         AND user_id IS NOT NULL
+         AND created_at < NOW() - INTERVAL '30 minutes'
+         AND created_at > NOW() - INTERVAL '14 days'
+       GROUP BY user_id
+     )
+     SELECT u.email::text AS email, u.id AS user_id, ls.started_at
+     FROM last_started ls
+     JOIN users u ON u.id = ls.user_id
+     JOIN subscriptions s ON s.user_id = u.id AND s.plan = 'free'
+     WHERE NOT EXISTS (
+       SELECT 1 FROM analytics_events ok
+       WHERE ok.user_id = ls.user_id
+         AND ok.event = 'payment_success'
+         AND ok.created_at > ls.started_at
+     )
+     LIMIT $1`,
+    [lim]
+  );
+  return r.rows;
+}
+
+/**
+ * Free-plan users with server retention usage count >= 3.
+ */
+export async function findActiveFreeUsageNudgeCandidates({ limit = 40 } = {}) {
+  const pool = getPool();
+  const lim = Math.max(1, Math.min(200, Number(limit) || 40));
+  const r = await pool.query(
+    `SELECT u.email::text AS email, u.id AS user_id, r.count AS usage_count
+     FROM users u
+     JOIN subscriptions s ON s.user_id = u.id AND s.plan = 'free'
+     JOIN retention_usage_stats r ON r.user_id = u.id AND r.count >= 3
+     LIMIT $1`,
+    [lim]
+  );
+  return r.rows;
+}

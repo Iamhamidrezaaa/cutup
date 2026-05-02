@@ -53,7 +53,7 @@
               <option value="free">Free</option>
               <option value="starter">Starter</option>
               <option value="pro">Pro</option>
-              <option value="advanced">Advanced</option>
+              <option value="advanced">Business</option>
               <option value="business">Business</option>
             </select>
             <button id="usersReloadBtn" class="btn">Refresh</button>
@@ -138,6 +138,7 @@
               <div class="cover-field-block">
                 <label>Cover image URL<input id="postCoverImageUrl" type="text" inputmode="url" autocomplete="off" placeholder="https://…"></label>
                 <span class="field-hint">Optional. Recommended ratio: 16:9.</span>
+                <p id="coverImageSeoHint" class="seo-soft-warn" hidden>Articles with images perform better — add a cover image URL.</p>
                 <p id="coverUrlHint" class="cover-url-hint" hidden></p>
                 <div id="coverPreviewWrap" class="cover-preview-wrap" hidden>
                   <img id="coverPreviewImg" class="cover-preview-img" alt="" width="120" height="72" loading="lazy" decoding="async">
@@ -169,7 +170,18 @@
                   <textarea id="postContent" rows="10"></textarea>
                   <span class="field-hint">Recommended for publish. Supports headings, lists, bold/italic, and links.</span>
                 </label>
+                <p id="inlineImageSeoHint" class="seo-soft-suggest" hidden>Suggestion: add an inline image with <code>![alt text](image-url)</code></p>
+                <div class="internal-link-helper">
+                  <button type="button" id="suggestInternalLinksBtn" class="btn ghost">Suggest internal links</button>
+                  <div id="internalLinkSuggestions" class="internal-link-suggestions" hidden></div>
+                </div>
                 <section id="editorPreviewPanel" class="editor-preview-panel post-content" hidden aria-live="polite"></section>
+              </div>
+              <div id="contentChecklistPanel" class="content-checklist-panel" aria-label="Content quality checklist">
+                <h3 class="content-checklist-title">Content checklist</h3>
+                <p class="content-checklist-sub">Guidance only — saving is never blocked.</p>
+                <ul id="contentChecklistList" class="content-checklist-list"></ul>
+                <p id="contentChecklistCtaWarn" class="seo-soft-warn checklist-cta-warn" hidden>No CTA found — consider adding one</p>
               </div>
               <div class="form-grid-2">
                 <label>Meta title

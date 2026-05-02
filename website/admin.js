@@ -6,6 +6,26 @@ let slugManuallyEdited = false;
 
 const MD_CTA_TEXT = 'Try it now — paste your video and generate subtitles in seconds.\nhttps://cutup.shop/#tool';
 
+const CHECKLIST_MIN_WORDS = 800;
+const CHECKLIST_MIN_H23 = 3;
+const INTERNAL_HOST_RE = /cutup\.shop/i;
+const MD_IMAGE_RE = /!\[[^\]]*\]\([^)]+\)/;
+const INTERNAL_SUGGEST_MAX_LINKS = 3;
+const STOP_WORDS = new Set([
+  'a', 'an', 'the', 'and', 'or', 'but', 'if', 'then', 'else', 'when', 'at', 'from', 'by', 'for', 'with',
+  'about', 'into', 'through', 'during', 'before', 'after', 'under', 'again', 'further', 'once', 'here', 'there',
+  'all', 'each', 'few', 'more', 'most', 'other', 'some', 'such', 'only', 'same', 'than', 'too', 'very', 'just',
+  'also', 'not', 'no', 'in', 'on', 'to', 'is', 'are', 'was', 'were', 'been', 'being', 'have', 'has', 'had',
+  'does', 'did', 'doing', 'would', 'could', 'should', 'may', 'might', 'must', 'shall', 'can', 'will',
+  'this', 'that', 'these', 'those', 'what', 'which', 'who', 'whom', 'its', 'our', 'your', 'their', 'they',
+  'them', 'we', 'you', 'he', 'she', 'it', 'my', 'me', 'him', 'her', 'us', 'of', 'as', 'any', 'both', 'per',
+  'via', 'how', 'why', 'where', 'well', 'back', 'down', 'out', 'off', 'over', 'such', 'than', 'then', 'them',
+  'very', 'was', 'were', 'what', 'when', 'which', 'while', 'with', 'have', 'your', 'make', 'made', 'many',
+  'much', 'like', 'know', 'just', 'get', 'got', 'new', 'now', 'old', 'see', 'two', 'way', 'use', 'used',
+  'want', 'work', 'year', 'day', 'one', 'two', 'into', 'onto', 'upon', 'near', 'next', 'still', 'even',
+  'ever', 'never', 'both', 'each', 'every', 'own', 'same', 'so', 'than', 'too', 'very', 'just', 'don', 'doesn'
+]);
+
 function fmtDate(v) {
   if (!v) return '—';
   const d = new Date(v);
@@ -254,6 +274,343 @@ function insertAtCursor(textarea, prefix, suffix = '', placeholder = '') {
   textarea.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
+function insertRawAtCursor(textarea, chunk) {
+  if (!textarea || chunk == null) return;
+  const start = textarea.selectionStart ?? textarea.value.length;
+  const end = textarea.selectionEnd ?? textarea.value.length;
+  const before = textarea.value.slice(0, start);
+  const after = textarea.value.slice(end);
+  textarea.value = `${before}${chunk}${after}`;
+  const cursor = start + chunk.length;
+  textarea.focus();
+  textarea.setSelectionRange(cursor, cursor);
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function countMarkdownWords(md) {
+  let t = String(md || '');
+  t = t.replace(/```[\s\S]*?```/g, ' ');
+  t = t.replace(/!\[[^\]]*\]\([^)]*\)/g, ' ');
+  t = t.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1');
+  t = t.replace(/^#{1,6}\s+/gm, ' ');
+  t = t.replace(/^[-*]\s+/gm, ' ');
+  t = t.replace(/^\d+\.\s+/gm, ' ');
+  t = t.replace(/\*\*|__/g, ' ');
+  t = t.replace(/[*_`]/g, ' ');
+  t = t.trim();
+  if (!t) return 0;
+  return t.split(/\s+/).filter(Boolean).length;
+}
+
+function countH2H3Headings(md) {
+  const lines = String(md || '').split(/\r?\n/);
+  let n = 0;
+  for (const line of lines) {
+    const s = line.trim();
+    if (/^###\s+/.test(s)) n += 1;
+    else if (/^##\s+/.test(s)) n += 1;
+  }
+  return n;
+}
+
+function extractMarkdownLinkTargets(md) {
+  const urls = [];
+  const re = /\[([^\]]*)\]\(([^)]+)\)/g;
+  let m;
+  while ((m = re.exec(md)) !== null) {
+    urls.push(String(m[2] || '').trim());
+  }
+  return urls;
+}
+
+function hasInternalCutupLink(urls) {
+  return urls.some((u) => INTERNAL_HOST_RE.test(u));
+}
+
+function hasExternalHttpLink(urls) {
+  return urls.some((u) => /^https?:\/\//i.test(u) && !INTERNAL_HOST_RE.test(u));
+}
+
+function hasCtaInMarkdown(content) {
+  const s = String(content || '');
+  if (/cutup\.shop[^)\s]*#tool/i.test(s)) return true;
+  if (/cutup\.shop\/#tool/i.test(s)) return true;
+  if (/try\s+it\s+now/i.test(s) && INTERNAL_HOST_RE.test(s)) return true;
+  if (/subtitles?\s+in\s+seconds/i.test(s) && INTERNAL_HOST_RE.test(s)) return true;
+  return false;
+}
+
+function extractKeywordFreq(text) {
+  const freq = new Map();
+  String(text || '')
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 4 && !STOP_WORDS.has(w))
+    .forEach((w) => freq.set(w, (freq.get(w) || 0) + 1));
+  return freq;
+}
+
+function sortedKeywordsByWeight(freq) {
+  return [...freq.entries()]
+    .filter(([w]) => w.length > 4)
+    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)
+    .map(([w]) => w);
+}
+
+function scorePostForInternalSuggest(post, freq) {
+  let score = 0;
+  const title = String(post.title || '').toLowerCase();
+  const slugJoined = String(post.slug || '').toLowerCase().replace(/[-_]/g, ' ');
+  const slugParts = String(post.slug || '').toLowerCase().split(/[-_]/);
+  for (const [w, c] of freq) {
+    if (w.length <= 4) continue;
+    if (title.includes(w)) score += c * 4;
+    if (slugJoined.includes(w)) score += c * 3;
+    if (slugParts.some((p) => p === w)) score += c * 2;
+  }
+  return score;
+}
+
+function findMatchedPhrase(post, keywordsSorted) {
+  const title = String(post.title || '');
+  const titleLower = title.toLowerCase();
+  const slug = String(post.slug || '').toLowerCase();
+  for (const kw of keywordsSorted) {
+    const idx = titleLower.indexOf(kw);
+    if (idx !== -1) return title.slice(idx, idx + kw.length);
+  }
+  for (const kw of keywordsSorted) {
+    if (slug.includes(kw)) return kw.charAt(0).toUpperCase() + kw.slice(1);
+  }
+  const t = title.trim();
+  if (t) return t;
+  return String(post.slug || '').replace(/-/g, ' ') || 'Read more';
+}
+
+function countBlogRelativeLinks(content) {
+  const re = /blog\.html\?slug=[^)\s\]"'>]+/gi;
+  return (String(content || '').match(re) || []).length;
+}
+
+function slugLinkedInMarkdown(content, slug) {
+  const want = String(slug || '');
+  if (!want) return false;
+  const re = /blog\.html\?slug=([^)\s\]"'>]+)/gi;
+  let m;
+  while ((m = re.exec(content)) !== null) {
+    let found = m[1];
+    try {
+      found = decodeURIComponent(found);
+    } catch {
+      /* keep raw */
+    }
+    if (found === want) return true;
+  }
+  return false;
+}
+
+function formatMarkdownInternalBlogLink(phrase, slug) {
+  const lb = String(phrase || 'Post').replace(/\]/g, '\\]');
+  const s = String(slug || '').trim();
+  if (!s) return '';
+  return `[${lb}](/blog.html?slug=${encodeURIComponent(s)})`;
+}
+
+function markdownSafeLink(label, url) {
+  const safeUrl = sanitizeUrlForMarkdown(url);
+  if (!safeUrl) return '';
+  const lb = String(label || 'Read more').replace(/\]/g, '\\]');
+  return `[${lb}](${safeUrl})`;
+}
+
+function pickInternalLinkSuggestions(currentId, currentSlug, content, titleHint) {
+  const freq = extractKeywordFreq(`${content}\n${titleHint || ''}`);
+  const keywordsSorted = sortedKeywordsByWeight(freq);
+  const others = blogPostsCache.filter((p) => {
+    if (String(p.id) === String(currentId) && currentId) return false;
+    if (currentSlug && String(p.slug || '') === currentSlug) return false;
+    return true;
+  });
+  const scored = others
+    .map((p) => ({ post: p, sc: scorePostForInternalSuggest(p, freq) }))
+    .sort((a, b) => b.sc - a.sc);
+  const picks = [];
+  const seen = new Set();
+  for (const { post, sc } of scored) {
+    if (picks.length >= 3) break;
+    if (sc <= 0) continue;
+    const slug = String(post.slug || '');
+    if (!slug || seen.has(slug)) continue;
+    seen.add(slug);
+    picks.push({ post, phrase: findMatchedPhrase(post, keywordsSorted) });
+  }
+  if (picks.length < 3) {
+    const byDate = [...others].filter((p) => !seen.has(String(p.slug || '')));
+    byDate.sort((a, b) => new Date(b.updatedAt || b.publishedAt || 0) - new Date(a.updatedAt || a.publishedAt || 0));
+    for (const p of byDate) {
+      if (picks.length >= 3) break;
+      const slug = String(p.slug || '');
+      if (!slug || seen.has(slug)) continue;
+      seen.add(slug);
+      picks.push({ post: p, phrase: p.title || slug.replace(/-/g, ' ') || 'Read more' });
+    }
+  }
+  return picks.slice(0, 3);
+}
+
+function updateContentChecklist() {
+  const listEl = document.getElementById('contentChecklistList');
+  const ctaWarn = document.getElementById('contentChecklistCtaWarn');
+  const coverSeo = document.getElementById('coverImageSeoHint');
+  const inlineImg = document.getElementById('inlineImageSeoHint');
+  if (!listEl) return;
+
+  const content = document.getElementById('postContent')?.value ?? '';
+  const excerpt = document.getElementById('postExcerpt')?.value?.trim() ?? '';
+  const metaTitle = document.getElementById('postMetaTitle')?.value?.trim() ?? '';
+  const metaDesc = document.getElementById('postMetaDescription')?.value?.trim() ?? '';
+  const coverRaw = document.getElementById('postCoverImageUrl')?.value?.trim() ?? '';
+  const coverOk = Boolean(sanitizeAdminCoverUrl(coverRaw));
+
+  const words = countMarkdownWords(content);
+  const h23 = countH2H3Headings(content);
+  const linkUrls = extractMarkdownLinkTargets(content);
+  const internalOk = hasInternalCutupLink(linkUrls);
+  const externalOk = hasExternalHttpLink(linkUrls);
+  const ctaOk = hasCtaInMarkdown(content);
+
+  const rows = [
+    {
+      ok: words >= CHECKLIST_MIN_WORDS,
+      label: 'At least 800 words',
+      detail: `${words} words (target ${CHECKLIST_MIN_WORDS}+)`
+    },
+    {
+      ok: h23 >= CHECKLIST_MIN_H23,
+      label: 'At least 3 headings (H2/H3)',
+      detail: `${h23} H2/H3 headings (target ${CHECKLIST_MIN_H23}+)`
+    },
+    {
+      ok: internalOk || /blog\.html\?slug=/i.test(content),
+      label: 'At least 1 internal link (cutup.shop)',
+      detail: internalOk || /blog\.html\?slug=/i.test(content)
+        ? 'Found (site or /blog.html?slug=…)'
+        : 'Add [label](https://cutup.shop/…) or [/blog.html?slug=…]'
+    },
+    {
+      ok: externalOk,
+      label: 'At least 1 external link',
+      detail: externalOk ? 'Found (http/https, non-cutup)' : 'Add [label](https://example.com)'
+    },
+    {
+      ok: ctaOk,
+      label: 'Contains CTA (tool link or CTA copy)',
+      detail: ctaOk ? 'CTA or cutup.shop/#tool detected' : 'Link to #tool or “Try it now” + cutup.shop'
+    },
+    {
+      ok: excerpt.length > 0,
+      label: 'Excerpt is filled',
+      detail: excerpt.length ? `${excerpt.length} characters` : 'Empty'
+    },
+    {
+      ok: metaTitle.length > 0,
+      label: 'Meta title exists',
+      detail: metaTitle.length ? `${metaTitle.length} characters` : 'Empty'
+    },
+    {
+      ok: metaDesc.length > 0,
+      label: 'Meta description exists',
+      detail: metaDesc.length ? `${metaDesc.length} characters` : 'Empty'
+    }
+  ];
+
+  listEl.innerHTML = rows.map((r) => `
+    <li class="content-checklist-item ${r.ok ? 'is-ok' : 'is-warn'}">
+      <span class="content-checklist-icon" aria-hidden="true">${r.ok ? '✓' : '!'}</span>
+      <div>
+        <span>${escapeHtml(r.label)}</span>
+        <span class="content-checklist-detail">${escapeHtml(r.detail)}</span>
+      </div>
+    </li>
+  `).join('');
+
+  if (ctaWarn) {
+    ctaWarn.hidden = ctaOk;
+  }
+  if (coverSeo) {
+    coverSeo.hidden = coverOk;
+  }
+  if (inlineImg) {
+    inlineImg.hidden = MD_IMAGE_RE.test(content);
+  }
+}
+
+function runSuggestInternalLinks() {
+  const ta = document.getElementById('postContent');
+  const wrap = document.getElementById('internalLinkSuggestions');
+  if (!ta || !wrap) return;
+  const currentId = document.getElementById('postId')?.value?.trim() || '';
+  const currentSlug = document.getElementById('postSlug')?.value?.trim() || '';
+  const titleHint = document.getElementById('postTitle')?.value || '';
+  const picks = pickInternalLinkSuggestions(currentId, currentSlug, ta.value, titleHint);
+  wrap.innerHTML = '';
+  wrap.hidden = false;
+  if (!picks.length) {
+    const p = document.createElement('p');
+    p.className = 'muted';
+    p.textContent = 'No other posts to suggest yet.';
+    wrap.append(p);
+    return;
+  }
+  const syncButtonState = (btn, slug) => {
+    const body = ta.value;
+    const atCap = countBlogRelativeLinks(body) >= INTERNAL_SUGGEST_MAX_LINKS;
+    const dup = slugLinkedInMarkdown(body, slug);
+    btn.disabled = atCap || dup;
+    if (atCap) btn.title = `Maximum ${INTERNAL_SUGGEST_MAX_LINKS} internal blog links from suggestions.`;
+    else if (dup) btn.title = 'This post is already linked.';
+    else btn.removeAttribute('title');
+  };
+
+  picks.forEach(({ post, phrase }) => {
+    const row = document.createElement('div');
+    row.className = 'internal-suggest-row';
+    const slug = String(post.slug || '');
+    row.setAttribute('data-suggest-slug', slug);
+    const span = document.createElement('span');
+    span.textContent = post.title || post.slug || 'Post';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn ghost';
+    btn.textContent = 'Insert link';
+    syncButtonState(btn, slug);
+    btn.addEventListener('click', () => {
+      if (countBlogRelativeLinks(ta.value) >= INTERNAL_SUGGEST_MAX_LINKS) {
+        showBanner(`You can add at most ${INTERNAL_SUGGEST_MAX_LINKS} internal links this way.`);
+        return;
+      }
+      if (slugLinkedInMarkdown(ta.value, slug)) {
+        showBanner('That post is already linked in the content.');
+        return;
+      }
+      const md = formatMarkdownInternalBlogLink(phrase, slug);
+      if (!md) return;
+      insertRawAtCursor(ta, `\n${md}\n`);
+      updatePreviewIfOpen();
+      updateContentChecklist();
+      wrap.querySelectorAll('.internal-suggest-row').forEach((r) => {
+        const b = r.querySelector('button');
+        const s = r.getAttribute('data-suggest-slug') || '';
+        if (b) syncButtonState(b, s);
+      });
+    });
+    row.append(span, btn);
+    wrap.append(row);
+  });
+}
+
 function handleMarkdownTool(action) {
   const ta = document.getElementById('postContent');
   if (!ta) return;
@@ -395,16 +752,52 @@ function renderOutputsTable(rows) {
     </tbody>`;
 }
 
-function renderPaymentsPanel(data) {
+function renderPaymentsPanel(data, abData) {
   const stripe = data.stripeConfig || {};
   const dist = data.planDistribution || [];
+  const ab = abData && typeof abData === 'object' ? abData : {};
+  const funnel = Array.isArray(ab.funnelByVariant) ? ab.funnelByVariant : [];
+  const byPlan = Array.isArray(ab.byPlan) ? ab.byPlan : [];
   const container = document.getElementById('paymentsPanel');
   if (!container) return;
   container.innerHTML = `
     <div class="cards-grid">
-      <article class="card"><h3>Paid users</h3><p>${escapeHtml(data.paidUsers)}</p><div class="metric-subtle">Starter / Pro / Advanced / Business</div></article>
+      <article class="card"><h3>Paid users</h3><p>${escapeHtml(data.paidUsers)}</p><div class="metric-subtle">Starter / Pro / Business (Stripe) · custom Business accounts</div></article>
       <article class="card"><h3>Revenue</h3><p>—</p><div class="metric-subtle">${escapeHtml(data.revenueNote)}</div></article>
     </div>
+    <h3>Pricing A/B test</h3>
+    <p class="metric-subtle">Full funnel: pricing_viewed → upgrade_clicked → payment_started → payment_success. Conversion = payments ÷ views (same variant).</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Variant</th><th>Views</th><th>Clicks</th><th>Started</th><th>Payments</th><th>Failed verify</th><th>Conv. %</th></tr></thead>
+      <tbody>
+        ${funnel.length
+          ? funnel.map((r) => `<tr>
+            <td>${statusBadge(String(r.variant || '—'))}</td>
+            <td>${escapeHtml(r.views)}</td>
+            <td>${escapeHtml(r.clicks)}</td>
+            <td>${escapeHtml(r.started)}</td>
+            <td>${escapeHtml(r.payments)}</td>
+            <td>${escapeHtml(r.failed)}</td>
+            <td>${r.conversionPct != null ? escapeHtml(r.conversionPct) + '%' : '<span class="muted">—</span>'}</td>
+          </tr>`).join('')
+          : emptyRow(7, 'No pricing experiment events yet.')}
+      </tbody>
+    </table></div>
+    <h4>By plan (clicks / started / payments)</h4>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Variant</th><th>Plan</th><th>Clicks</th><th>Started</th><th>Payments</th></tr></thead>
+      <tbody>
+        ${byPlan.length
+          ? byPlan.map((r) => `<tr>
+            <td>${statusBadge(String(r.variant || '—'))}</td>
+            <td>${escapeHtml(r.plan)}</td>
+            <td>${escapeHtml(r.clicks)}</td>
+            <td>${escapeHtml(r.started)}</td>
+            <td>${escapeHtml(r.payments)}</td>
+          </tr>`).join('')
+          : emptyRow(5, 'No per-plan breakdown yet.')}
+      </tbody>
+    </table></div>
     <h3>Plan distribution</h3>
     <div class="table-wrap"><table>
       <thead><tr><th>Plan</th><th>Users</th></tr></thead>
@@ -517,6 +910,12 @@ function fillBlogForm(post) {
   updateCoverPreview();
   updateSeoCounters();
   updatePreviewIfOpen();
+  const sug = document.getElementById('internalLinkSuggestions');
+  if (sug) {
+    sug.hidden = true;
+    sug.innerHTML = '';
+  }
+  updateContentChecklist();
 }
 
 function readBlogForm() {
@@ -573,7 +972,10 @@ async function loadUsage() {
   renderUsageTable(data.activities || []);
 }
 async function loadOutputs() { renderOutputsTable((await apiGet('savedOutputs')).outputs || []); }
-async function loadPayments() { renderPaymentsPanel(await apiGet('payments')); }
+async function loadPayments() {
+  const [pay, ab] = await Promise.all([apiGet('payments'), apiGet('pricingAb')]);
+  renderPaymentsPanel(pay, ab);
+}
 async function loadHealth() { renderHealthPanel(await apiGet('health')); }
 async function loadBlogPosts() {
   const data = await apiGet('blogPosts');
@@ -629,11 +1031,24 @@ function setupActions() {
     slugManuallyEdited = false;
     fillBlogForm({ status: 'draft', tags: [] });
     setEditorMode('write');
+    const sug = document.getElementById('internalLinkSuggestions');
+    if (sug) {
+      sug.hidden = true;
+      sug.innerHTML = '';
+    }
   });
-  document.getElementById('postCoverImageUrl')?.addEventListener('input', () => updateCoverPreview());
-  document.getElementById('postMetaTitle')?.addEventListener('input', () => updateSeoCounters());
-  document.getElementById('postMetaDescription')?.addEventListener('input', () => updateSeoCounters());
-  document.getElementById('postExcerpt')?.addEventListener('input', () => updateSeoCounters());
+  document.getElementById('postMetaTitle')?.addEventListener('input', () => {
+    updateSeoCounters();
+    updateContentChecklist();
+  });
+  document.getElementById('postMetaDescription')?.addEventListener('input', () => {
+    updateSeoCounters();
+    updateContentChecklist();
+  });
+  document.getElementById('postExcerpt')?.addEventListener('input', () => {
+    updateSeoCounters();
+    updateContentChecklist();
+  });
 
   titleEl?.addEventListener('input', () => {
     if (!slugEl || slugManuallyEdited) return;
@@ -644,12 +1059,20 @@ function setupActions() {
     slugManuallyEdited = true;
   });
 
-  contentEl?.addEventListener('input', () => updatePreviewIfOpen());
+  contentEl?.addEventListener('input', () => {
+    updatePreviewIfOpen();
+    updateContentChecklist();
+  });
+  document.getElementById('postCoverImageUrl')?.addEventListener('input', () => {
+    updateCoverPreview();
+    updateContentChecklist();
+  });
   writeTab?.addEventListener('click', () => setEditorMode('write'));
   previewTab?.addEventListener('click', () => setEditorMode('preview'));
   document.querySelectorAll('.md-tool-btn').forEach((btn) => {
     btn.addEventListener('click', () => handleMarkdownTool(btn.getAttribute('data-md')));
   });
+  document.getElementById('suggestInternalLinksBtn')?.addEventListener('click', () => runSuggestInternalLinks());
 
   const validateBlogPayload = (payload, forPublish = false) => {
     if (!payload.title) {
@@ -725,6 +1148,7 @@ function setupActions() {
   });
   updateSeoCounters();
   setEditorMode('write');
+  updateContentChecklist();
 }
 
 document.addEventListener('DOMContentLoaded', async () => {

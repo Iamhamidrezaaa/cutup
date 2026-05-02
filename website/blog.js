@@ -1,7 +1,16 @@
 const API_BASE_URL = 'https://cutup.shop';
 const BLOG_ENDPOINT = `${API_BASE_URL}/api/admin?action=blogPosts&public=1`;
+const ARTICLE_CTA_URL = 'https://cutup.shop/#tool';
 
 let postsCache = [];
+let tocScrollCleanup = null;
+
+const STICKY_CTA_SCROLL_SHOW_RATIO = 0.25;
+const STICKY_CTA_TOP_HIDE_PX = 48;
+let stickyArticleCtaRaf = null;
+let stickyArticleCtaOnScroll = null;
+let stickyArticleCtaOnResize = null;
+let stickyArticleCtaVisible = false;
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -90,44 +99,281 @@ function getFilteredPosts(posts) {
   });
 }
 
-function renderList(posts) {
-  const grid = q('#blogGrid');
-  if (!grid) return;
-  if (!posts.length) return renderEmptyState();
-  grid.innerHTML = posts.map((post) => {
-    const tags = normalizeTags(post.tags);
-    const date = post.publishedAt || post.updatedAt;
-    const cover = sanitizeImageUrl(post.coverImageUrl || '');
-    const cat = String(post.category || '').trim();
-    const placeholderLabel = cat || 'Article';
-    const title = post.title || 'Untitled';
-    const thumb = cover
-      ? `<img class="post-card-thumb" src="${escapeHtml(cover)}" alt="${escapeHtml(title)}" loading="lazy" decoding="async">`
-      : '';
-    return `
-      <article class="post-card">
-        <a class="post-card-media" href="blog.html?slug=${encodeURIComponent(post.slug)}" aria-label="${escapeHtml(title)}">
-          ${thumb}
-          <div class="post-card-placeholder"><span>${escapeHtml(placeholderLabel)}</span></div>
-        </a>
-        <div class="post-meta-line">
-          ${cat ? `<span class="pill">${escapeHtml(cat)}</span>` : ''}
-          <span>${escapeHtml(fmtDate(date))}</span>
-        </div>
-        <h2><a href="blog.html?slug=${encodeURIComponent(post.slug)}">${escapeHtml(title)}</a></h2>
-        <p class="post-excerpt">${escapeHtml(post.excerpt || 'No excerpt provided yet.')}</p>
-        <div class="post-meta-line">
-          ${tags.slice(0, 4).map((t) => `<span class="pill">${escapeHtml(t)}</span>`).join('')}
-        </div>
-        <a class="read-more" href="blog.html?slug=${encodeURIComponent(post.slug)}">Read more</a>
-      </article>
-    `;
-  }).join('');
-  grid.querySelectorAll('.post-card-thumb').forEach((img) => {
+function postCardMarkup(post, { related = false } = {}) {
+  const tags = normalizeTags(post.tags);
+  const date = post.publishedAt || post.updatedAt;
+  const cover = sanitizeImageUrl(post.coverImageUrl || '');
+  const cat = String(post.category || '').trim();
+  const placeholderLabel = cat || 'Article';
+  const title = post.title || 'Untitled';
+  const slugQ = encodeURIComponent(post.slug || '');
+  const thumb = cover
+    ? `<img class="post-card-thumb" src="${escapeHtml(cover)}" alt="${escapeHtml(title)}" loading="lazy" decoding="async">`
+    : '';
+  const extraClasses = related ? ' post-card--related' : '';
+  const excerptBlock = related
+    ? ''
+    : `<p class="post-excerpt">${escapeHtml(post.excerpt || 'No excerpt provided yet.')}</p>
+      <div class="post-meta-line">
+        ${tags.slice(0, 4).map((t) => `<span class="pill">${escapeHtml(t)}</span>`).join('')}
+      </div>`;
+  const metaLine = related
+    ? `<div class="post-meta-line"><span>${escapeHtml(fmtDate(date))}</span></div>`
+    : `<div class="post-meta-line">
+        ${cat ? `<span class="pill">${escapeHtml(cat)}</span>` : ''}
+        <span>${escapeHtml(fmtDate(date))}</span>
+      </div>`;
+  return `
+    <article class="post-card${extraClasses}">
+      <a class="post-card-media" href="blog.html?slug=${slugQ}" aria-label="${escapeHtml(title)}">
+        ${thumb}
+        <div class="post-card-placeholder"><span>${escapeHtml(placeholderLabel)}</span></div>
+      </a>
+      ${metaLine}
+      <h2><a href="blog.html?slug=${slugQ}">${escapeHtml(title)}</a></h2>
+      ${excerptBlock}
+      <a class="read-more" href="blog.html?slug=${slugQ}">Read more</a>
+    </article>
+  `;
+}
+
+function wirePostCardThumbs(root) {
+  root?.querySelectorAll('.post-card-thumb').forEach((img) => {
     img.addEventListener('error', () => {
       img.classList.add('post-card-thumb--broken');
     });
   });
+}
+
+function renderList(posts) {
+  const grid = q('#blogGrid');
+  if (!grid) return;
+  if (!posts.length) return renderEmptyState();
+  grid.innerHTML = posts.map(postCardMarkup).join('');
+  wirePostCardThumbs(grid);
+}
+
+function buildCtaCard() {
+  const wrap = document.createElement('aside');
+  wrap.className = 'post-cta';
+  wrap.setAttribute('aria-label', 'Promotional call to action');
+  const titleEl = document.createElement('p');
+  titleEl.className = 'post-cta-title';
+  titleEl.textContent = 'Turn your video into subtitles in seconds';
+  const btn = document.createElement('a');
+  btn.className = 'post-cta-btn';
+  const safeHref = sanitizeUrl(ARTICLE_CTA_URL);
+  btn.href = safeHref || ARTICLE_CTA_URL;
+  btn.textContent = 'Try it now';
+  try {
+    const u = new URL(btn.href, window.location.href);
+    if (u.origin !== window.location.origin) {
+      btn.target = '_blank';
+      btn.rel = 'noopener noreferrer';
+    }
+  } catch {
+    /* keep defaults */
+  }
+  wrap.append(titleEl, btn);
+  return wrap;
+}
+
+function rawArticleHasCtaSignals(markdown) {
+  const s = String(markdown || '');
+  return s.includes('cutup.shop') || s.includes('#tool');
+}
+
+function injectArticleCtas(contentEl, rawMarkdown) {
+  if (!contentEl) return;
+  if (rawArticleHasCtaSignals(rawMarkdown)) return;
+
+  const paragraphs = [...contentEl.querySelectorAll(':scope > p')];
+  const cta = buildCtaCard();
+  if (paragraphs.length >= 2) {
+    paragraphs[1].insertAdjacentElement('afterend', cta);
+  } else if (paragraphs.length === 1) {
+    paragraphs[0].insertAdjacentElement('afterend', cta);
+  } else {
+    contentEl.appendChild(cta);
+  }
+}
+
+function pickRelatedPosts(current, allPosts, limit = 3) {
+  const slug = String(current.slug || '');
+  const cat = String(current.category || '').trim();
+  const others = allPosts.filter((p) => String(p.slug || '') !== slug);
+  const sameCat = cat ? others.filter((p) => String(p.category || '').trim() === cat) : [];
+  const picked = [];
+  for (const p of sameCat) {
+    if (picked.length >= limit) break;
+    picked.push(p);
+  }
+  for (const p of others) {
+    if (picked.length >= limit) break;
+    if (picked.includes(p)) continue;
+    picked.push(p);
+  }
+  return picked.slice(0, limit);
+}
+
+function renderRelatedPostsGrid(current, allPosts) {
+  const section = q('#relatedSection');
+  const grid = q('#relatedGrid');
+  if (!section || !grid) return;
+  const related = pickRelatedPosts(current, allPosts, 3);
+  if (!related.length) {
+    section.hidden = true;
+    grid.innerHTML = '';
+    return;
+  }
+  section.hidden = false;
+  grid.innerHTML = related.map((p) => postCardMarkup(p, { related: true })).join('');
+  wirePostCardThumbs(grid);
+}
+
+function getDocumentScrollRatio() {
+  const root = document.documentElement;
+  const scrollTop = window.scrollY ?? root.scrollTop ?? 0;
+  const viewport = root.clientHeight || window.innerHeight || 1;
+  const scrollable = Math.max(0, root.scrollHeight - viewport);
+  if (scrollable <= 0) return 0;
+  return Math.min(1, scrollTop / scrollable);
+}
+
+function syncStickyArticleCtaButton(bar) {
+  const btn = bar?.querySelector?.('.sticky-article-cta__btn');
+  if (!btn) return;
+  const safe = sanitizeUrl(ARTICLE_CTA_URL) || ARTICLE_CTA_URL;
+  btn.setAttribute('href', safe);
+  try {
+    const u = new URL(btn.href, window.location.href);
+    if (u.origin !== window.location.origin) {
+      btn.target = '_blank';
+      btn.rel = 'noopener noreferrer';
+    } else {
+      btn.removeAttribute('target');
+      btn.removeAttribute('rel');
+    }
+  } catch {
+    btn.removeAttribute('target');
+    btn.removeAttribute('rel');
+  }
+}
+
+function teardownStickyArticleCta() {
+  if (stickyArticleCtaRaf != null) {
+    cancelAnimationFrame(stickyArticleCtaRaf);
+    stickyArticleCtaRaf = null;
+  }
+  if (stickyArticleCtaOnScroll) {
+    window.removeEventListener('scroll', stickyArticleCtaOnScroll);
+    stickyArticleCtaOnScroll = null;
+  }
+  if (stickyArticleCtaOnResize) {
+    window.removeEventListener('resize', stickyArticleCtaOnResize);
+    stickyArticleCtaOnResize = null;
+  }
+  stickyArticleCtaVisible = false;
+  document.body.classList.remove('has-sticky-article-cta--visible');
+  const bar = q('#stickyArticleCta');
+  if (bar) {
+    bar.classList.remove('is-visible');
+    bar.hidden = true;
+    bar.setAttribute('aria-hidden', 'true');
+  }
+}
+
+function setupStickyArticleCta() {
+  teardownStickyArticleCta();
+  const bar = q('#stickyArticleCta');
+  if (!bar) return;
+  syncStickyArticleCtaButton(bar);
+  bar.hidden = false;
+  bar.setAttribute('aria-hidden', 'true');
+  bar.classList.remove('is-visible');
+
+  const applyVisibility = () => {
+    const y = window.scrollY ?? document.documentElement.scrollTop ?? 0;
+    const ratio = getDocumentScrollRatio();
+    if (y < STICKY_CTA_TOP_HIDE_PX) {
+      stickyArticleCtaVisible = false;
+    } else if (ratio >= STICKY_CTA_SCROLL_SHOW_RATIO) {
+      stickyArticleCtaVisible = true;
+    }
+    const show = stickyArticleCtaVisible;
+    bar.classList.toggle('is-visible', show);
+    bar.setAttribute('aria-hidden', show ? 'false' : 'true');
+    document.body.classList.toggle('has-sticky-article-cta--visible', show);
+  };
+
+  const schedule = () => {
+    if (stickyArticleCtaRaf != null) return;
+    stickyArticleCtaRaf = requestAnimationFrame(() => {
+      stickyArticleCtaRaf = null;
+      applyVisibility();
+    });
+  };
+
+  stickyArticleCtaOnScroll = schedule;
+  stickyArticleCtaOnResize = schedule;
+  window.addEventListener('scroll', stickyArticleCtaOnScroll, { passive: true });
+  window.addEventListener('resize', stickyArticleCtaOnResize, { passive: true });
+  schedule();
+}
+
+function teardownTocScroll() {
+  if (typeof tocScrollCleanup === 'function') {
+    tocScrollCleanup();
+    tocScrollCleanup = null;
+  }
+}
+
+function bindTocScrollSpy(tocRoot, postContent) {
+  teardownTocScroll();
+  if (!tocRoot || !postContent) return;
+  const links = [...tocRoot.querySelectorAll('a.post-toc-link[href^="#"]')];
+  const headings = [...postContent.querySelectorAll('h1[id], h2[id], h3[id]')];
+  if (!links.length || !headings.length) return;
+
+  const setActive = (id) => {
+    links.forEach((a) => {
+      const href = a.getAttribute('href') || '';
+      const target = href.startsWith('#') ? href.slice(1) : '';
+      a.classList.toggle('is-active', Boolean(id) && target === id);
+    });
+  };
+
+  const scrollOffset = 96;
+  const onScroll = () => {
+    let current = headings[0]?.id || '';
+    for (const h of headings) {
+      if (h.getBoundingClientRect().top <= scrollOffset) current = h.id;
+    }
+    setActive(current);
+  };
+
+  const onClick = (e) => {
+    const a = e.target.closest('a.post-toc-link');
+    if (!a || !tocRoot.contains(a)) return;
+    const href = a.getAttribute('href');
+    if (!href || !href.startsWith('#')) return;
+    const id = decodeURIComponent(href.slice(1));
+    if (!id) return;
+    const el = document.getElementById(id);
+    if (!el || !postContent.contains(el)) return;
+    e.preventDefault();
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setActive(id);
+  };
+
+  tocRoot.addEventListener('click', onClick);
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+
+  tocScrollCleanup = () => {
+    tocRoot.removeEventListener('click', onClick);
+    window.removeEventListener('scroll', onScroll);
+  };
 }
 
 function slugifyHeading(text) {
@@ -360,19 +606,30 @@ function renderPost(post) {
     ${tags.map((t) => `<span class="pill">${escapeHtml(t)}</span>`).join('')}
   `;
 
-  const parsed = renderArticleContent(post.content || '');
-  q('#postContent').innerHTML = parsed.html || '<p>No content available.</p>';
+  const rawPostBody = post.content || '';
+  const parsed = renderArticleContent(rawPostBody);
+  const contentEl = q('#postContent');
+  contentEl.innerHTML = parsed.html || '<p>No content available.</p>';
+  injectArticleCtas(contentEl, rawPostBody);
+
   const tocEl = q('#postToc');
   if (parsed.toc.length) {
     tocEl.innerHTML = `
       <p class="post-toc-title">On this page</p>
-      ${parsed.toc.map((item) => `<a href="#${escapeHtml(item.id)}">${escapeHtml(item.label)}</a>`).join('')}
+      ${parsed.toc.map((item) => `<a class="post-toc-link" href="#${escapeHtml(item.id)}">${escapeHtml(item.label)}</a>`).join('')}
     `;
   } else {
     tocEl.innerHTML = `<p class="post-toc-title">On this page</p><span>No sections</span>`;
   }
 
+  teardownTocScroll();
+  if (parsed.toc.length) bindTocScrollSpy(tocEl, contentEl);
+
+  renderRelatedPostsGrid(post, postsCache);
+
   setSeoForPost(post);
+
+  setupStickyArticleCta();
 }
 
 async function loadPosts() {
@@ -413,6 +670,8 @@ async function bootstrap() {
   const listView = q('#blogListView');
   const postView = q('#blogPostView');
   if (!listView || !postView) return;
+  teardownTocScroll();
+  teardownStickyArticleCta();
   q('#blogGrid').innerHTML = '<div class="empty-state">Loading articles...</div>';
   try {
     postsCache = await loadPosts();
@@ -425,16 +684,20 @@ async function bootstrap() {
         setSeoForList();
         postView.hidden = true;
         listView.hidden = false;
+        q('#relatedSection')?.setAttribute('hidden', '');
+        teardownStickyArticleCta();
         renderEmptyState('Article not found. Check back on the blog list.');
       }
       return;
     }
     setSeoForList();
+    q('#relatedSection')?.setAttribute('hidden', '');
     hydrateFilters(postsCache);
     setupListInteractions();
     renderList(postsCache);
   } catch (_e) {
     setSeoForList();
+    q('#relatedSection')?.setAttribute('hidden', '');
     renderEmptyState('No articles yet. Check back soon.');
   }
 }

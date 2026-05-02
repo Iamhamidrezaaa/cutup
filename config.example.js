@@ -15,7 +15,16 @@ module.exports = {
   STRIPE_PRICE_PRO: 'price_xxx',
   STRIPE_PRICE_ADVANCED: 'price_xxx',
   // Return URLs for Stripe Checkout. For local dev use e.g. http://localhost:3001 (same PORT as server). If unset with sk_test_ key, server defaults to http://localhost:PORT.
-  FRONTEND_URL: 'https://cutup.shop'
+  FRONTEND_URL: 'https://cutup.shop',
+  // Conversion emails (optional). Without SMTP_HOST + SMTP_FROM, leads are stored but no mail is sent.
+  SMTP_HOST: '',
+  SMTP_PORT: '587',
+  SMTP_SECURE: 'false',
+  SMTP_USER: '',
+  SMTP_PASS: '',
+  SMTP_FROM: '"Cutup" <hello@cutup.shop>',
+  // Protect GET/POST /api/cron/conversion-emails (Vercel Cron sends Authorization: Bearer <secret>)
+  CRON_SECRET: ''
 };
 
 // توجه: این فایل در .gitignore است و commit نمی‌شود

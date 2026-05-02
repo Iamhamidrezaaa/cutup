@@ -1,5 +1,43 @@
 const API_BASE_URL = 'https://cutup.shop';
 const AVG_VIDEO_MINUTES = 7;
+const PAYMENT_RETRY_KEY = 'cutup_payment_retry';
+let cutupDashboardPricingViewedSent = false;
+
+function peekPaymentRetryPlanKey() {
+  try {
+    const t = sessionStorage.getItem(PAYMENT_RETRY_KEY);
+    if (!t) return null;
+    const o = JSON.parse(t);
+    return o?.planKey || null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+function emitPaymentSuccessAnalytics() {
+  const paidPlan = peekPaymentRetryPlanKey();
+  clearPaymentRetryContext();
+  try {
+    if (typeof window.cutupClearPaywallPaymentFailed === 'function') window.cutupClearPaywallPaymentFailed();
+  } catch (_e) {
+    /* noop */
+  }
+  if (typeof sendAnalyticsEvent === 'function') {
+    sendAnalyticsEvent('payment_success', { plan: paidPlan, sessionId: currentSession });
+  }
+}
+
+function emitPaymentFailedAnalytics() {
+  const pk = peekPaymentRetryPlanKey();
+  try {
+    if (typeof window.cutupMarkPaywallPaymentFailed === 'function') window.cutupMarkPaywallPaymentFailed();
+  } catch (_e) {
+    /* noop */
+  }
+  if (typeof sendAnalyticsEvent === 'function') {
+    sendAnalyticsEvent('payment_failed', { plan: pk, sessionId: currentSession });
+  }
+}
 
 let currentSession = null;
 let currentUser = null;
@@ -36,6 +74,20 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+const DASHBOARD_PLAN_RANK = { free: 0, starter: 1, pro: 2, advanced: 3, business: 4 };
+
+function dashboardPlanRank(planId) {
+  const id = String(planId || '').toLowerCase();
+  return DASHBOARD_PLAN_RANK[id] !== undefined ? DASHBOARD_PLAN_RANK[id] : 0;
+}
+
+/** Display-only label (Stripe tier `advanced` is shown as Business). */
+function displayPlanTitle(planId, nameFallback) {
+  const id = String(planId || '').toLowerCase();
+  if (id === 'advanced') return 'Business';
+  return safeText(nameFallback, id || 'Free');
+}
+
 function videosUsedEstimate(usedMinutes) {
   return Math.max(0, Math.ceil((Number(usedMinutes) || 0) / AVG_VIDEO_MINUTES));
 }
@@ -45,7 +97,7 @@ function videosRemainingEstimate(usedMinutes, limitMinutes) {
   return Math.floor(remMin / AVG_VIDEO_MINUTES);
 }
 
-function showDashboardBanner(message, variant = 'info') {
+function showDashboardBanner(message, variant = 'info', opts = {}) {
   let el = document.getElementById('dashboardBanner');
   if (!el) {
     el = document.createElement('div');
@@ -54,13 +106,90 @@ function showDashboardBanner(message, variant = 'info') {
     el.setAttribute('aria-live', 'polite');
     document.body.insertBefore(el, document.body.firstChild);
   }
-  el.textContent = message;
-  el.className = `dashboard-banner dashboard-banner--${variant}`;
+  if (opts.spinner) {
+    el.innerHTML = `<span class="dashboard-payment-spinner" aria-hidden="true"></span> ${escapeHtml(message)}`;
+  } else {
+    el.textContent = message;
+  }
+  el.className = `dashboard-banner dashboard-banner--${variant}${opts.spinner ? ' dashboard-banner--with-spinner' : ''}`;
   el.hidden = false;
   clearTimeout(el._hideT);
-  el._hideT = setTimeout(() => {
-    el.hidden = true;
-  }, 9000);
+  if (!opts.persistent) {
+    el._hideT = setTimeout(() => {
+      el.hidden = true;
+    }, 9000);
+  }
+}
+
+function inferPaymentProvider() {
+  if (typeof window !== 'undefined' && window.CUTUP_PAYMENT_PROVIDER) {
+    return window.CUTUP_PAYMENT_PROVIDER === 'yekpay' ? 'yekpay' : 'stripe';
+  }
+  try {
+    const lang = (navigator.language || navigator.languages?.[0] || '').toLowerCase();
+    if (lang.startsWith('fa')) return 'yekpay';
+  } catch (_e) {
+    /* noop */
+  }
+  return 'stripe';
+}
+
+function rememberPaymentRetryContext(planKey, provider) {
+  try {
+    sessionStorage.setItem(PAYMENT_RETRY_KEY, JSON.stringify({ planKey, provider }));
+  } catch (_e) {
+    /* noop */
+  }
+}
+
+function clearPaymentRetryContext() {
+  try {
+    sessionStorage.removeItem(PAYMENT_RETRY_KEY);
+  } catch (_e) {
+    /* noop */
+  }
+}
+
+function getPaywallFailureMessage() {
+  try {
+    const seg = typeof getUserSegment === 'function' ? getUserSegment({ subscriptionInfo }) : 'cold';
+    if (seg === 'hot') return 'Still want access? Try again with discount.';
+  } catch (_e) {
+    /* noop */
+  }
+  return 'Payment failed or canceled.';
+}
+
+function showPaymentFailedWithRetry(message, variant = 'error') {
+  let el = document.getElementById('dashboardBanner');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'dashboardBanner';
+    el.setAttribute('role', 'status');
+    el.setAttribute('aria-live', 'polite');
+    document.body.insertBefore(el, document.body.firstChild);
+  }
+  el.innerHTML = `<div class="dashboard-banner-retry-row"><span class="dashboard-banner-msg">${escapeHtml(message)}</span><button type="button" class="dashboard-payment-retry-btn" id="dashboardPaymentRetryBtn">Try again</button></div>`;
+  el.className = `dashboard-banner dashboard-banner--${variant} dashboard-banner--with-retry`;
+  el.hidden = false;
+  clearTimeout(el._hideT);
+  const btn = document.getElementById('dashboardPaymentRetryBtn');
+  btn?.addEventListener('click', () => {
+    try {
+      const raw = sessionStorage.getItem(PAYMENT_RETRY_KEY);
+      const ctx = raw ? JSON.parse(raw) : null;
+      if (ctx?.planKey && ctx?.provider) {
+        console.log('[payment] retry started', ctx.planKey, ctx.provider);
+        startPaymentCheckout(ctx.planKey, ctx.provider);
+      } else {
+        document.querySelector('.nav-item[data-section="plans"]')?.click();
+        showDashboardBanner('Choose a plan below and start checkout again.', 'neutral');
+      }
+    } catch (_e) {
+      document.querySelector('.nav-item[data-section="plans"]')?.click();
+      showDashboardBanner('Choose a plan below and start checkout again.', 'neutral');
+    }
+  });
 }
 
 function showDashboardLevelError(message) {
@@ -146,22 +275,27 @@ function getSessionFromLocation() {
   const authSuccess = params.get('auth');
   const sessionId = params.get('session');
   const paymentResult = params.get('payment');
+  const paymentId = params.get('payment_id');
+  const checkoutSessionId = params.get('checkout_session_id');
+  const authority = params.get('authority');
+
   if (authSuccess === 'success' && sessionId) {
     localStorage.setItem('cutup_session', sessionId);
   }
 
-  if (paymentResult === 'success') {
-    setTimeout(() => showDashboardBanner('Payment received. We refreshed your plan status.', 'success'), 250);
-  } else if (paymentResult === 'cancel') {
-    setTimeout(() => showDashboardBanner('Checkout was cancelled. No charge was made.', 'neutral'), 250);
-  }
+  const paymentReturn = {
+    result: paymentResult,
+    paymentId,
+    checkoutSessionId,
+    authority
+  };
 
   const activeSession = sessionId || localStorage.getItem('cutup_session');
   if (paymentResult || authSuccess === 'success') {
     const cleanQuery = activeSession ? `?session=${encodeURIComponent(activeSession)}` : '';
     window.history.replaceState({}, document.title, `${window.location.pathname}${cleanQuery}`);
   }
-  return activeSession;
+  return { activeSession, paymentReturn };
 }
 
 async function loadUserProfile() {
@@ -247,7 +381,7 @@ function renderOverview() {
     const showUpgrade = ['free', 'starter'].includes((subscriptionInfo.plan || '').toLowerCase());
     currentPlanCard.innerHTML = `
       <h2>Current plan</h2>
-      <p><strong>${safeText(subscriptionInfo.planName, 'Free')}</strong> · ${subscriptionInfo.subscription?.billingPeriod || 'monthly'}</p>
+      <p><strong>${displayPlanTitle(subscriptionInfo.plan, subscriptionInfo.planName)}</strong> · ${subscriptionInfo.subscription?.billingPeriod || 'monthly'}</p>
       <p>Status: <strong>Active</strong></p>
       <p>Included usage: <strong>${getPlanVideoEstimate(monthlyLimit)}</strong> (based on ~7 mins/video)</p>
       <p>Audio downloads: <strong>${audioCount}${audioLimit != null ? `/${audioLimit}` : ' (unlimited)'}</strong></p>
@@ -705,12 +839,16 @@ function renderPlansSection() {
 
   const stripeReady = plansCache.some((p) => Number(p?.priceUsd?.monthly) > 0);
   const publicPlanIds = new Set(plansCache.map((p) => p.id));
-  const currentPlanId = subscriptionInfo?.plan || 'free';
+  const currentPlanId = String(subscriptionInfo?.plan || 'free').toLowerCase();
   const isCurrentPlanPrivate = !publicPlanIds.has(currentPlanId);
+  let currentRank = dashboardPlanRank(currentPlanId);
+  if (isCurrentPlanPrivate) {
+    currentRank = Math.max(currentRank, dashboardPlanRank('business'));
+  }
   subscriptionInfoEl.innerHTML = `
     <div class="usage-summary">
       <h3>Choose a plan</h3>
-      <p class="dashboard-muted-loading">Current: <strong>${safeText(subscriptionInfo?.planName, 'Free')}</strong></p>
+      <p class="dashboard-muted-loading">Current: <strong>${displayPlanTitle(subscriptionInfo?.plan, subscriptionInfo?.planName)}</strong></p>
       ${isCurrentPlanPrivate ? '<p class="dashboard-empty-note">You are currently on a Business plan.</p>' : ''}
       ${stripeReady ? '' : '<p class="dashboard-empty-note">Payments are not available yet.</p>'}
     </div>
@@ -719,21 +857,44 @@ function renderPlansSection() {
   const order = ['free', 'starter', 'pro', 'advanced'];
   const sortedPlans = [...plansCache].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
   plansGrid.innerHTML = sortedPlans.map((plan) => {
-    const isCurrent = plan.id === subscriptionInfo?.plan;
+    const pid = plan.id;
+    const planRank = dashboardPlanRank(pid);
+    const isCurrent = String(pid).toLowerCase() === currentPlanId;
+    const isLowerTier = planRank < currentRank;
     const usd = Number(plan?.priceUsd?.monthly || 0);
-    const cta = plan.id === 'starter'
-      ? 'Upgrade to Starter'
-      : plan.id === 'pro'
-        ? 'Upgrade to Pro'
-        : plan.id === 'advanced'
-          ? 'Upgrade to Advanced'
-          : 'Free tier';
-    const disableButton = isCurrent || plan.id === 'free' || !stripeReady;
+    const displayName = displayPlanTitle(pid, plan.nameEn || plan.name);
+
+    let cta;
+    let disableButton;
+    let cardExtraClass = '';
+
+    if (isCurrent) {
+      cta = 'Current plan';
+      disableButton = true;
+    } else if (isLowerTier) {
+      cta = 'Not available';
+      disableButton = true;
+      cardExtraClass = 'disabled-plan';
+    } else if (pid === 'free') {
+      cta = 'Free tier';
+      disableButton = true;
+    } else {
+      cta =
+        pid === 'starter'
+          ? 'Upgrade to Starter'
+          : pid === 'pro'
+            ? 'Upgrade to Pro'
+            : pid === 'advanced'
+              ? 'Upgrade to Business'
+              : 'Upgrade';
+      disableButton = !stripeReady;
+    }
+
     const priceLabel = usd > 0 ? `$${usd.toFixed(2)} / month` : 'Price unavailable';
     return `
-      <article class="paid-plan-card ${plan.id === 'pro' ? 'featured' : ''} ${isCurrent ? 'current-plan' : ''}">
+      <article class="paid-plan-card ${pid === 'pro' ? 'featured' : ''} ${isCurrent ? 'current-plan' : ''} ${cardExtraClass}">
         <div class="paid-plan-header">
-          <h3 class="paid-plan-name">${safeText(plan.nameEn, plan.name || plan.id)}</h3>
+          <h3 class="paid-plan-name">${escapeHtml(displayName)}</h3>
           ${isCurrent ? '<span class="current-badge">Current</span>' : ''}
         </div>
         <p class="plan-price">${priceLabel}</p>
@@ -742,18 +903,48 @@ function renderPlansSection() {
           <li class="plan-feature-row"><span>Audio downloads</span><strong>${plan.downloadAudioLimit != null ? plan.downloadAudioLimit : 'Unlimited'}</strong></li>
           <li class="plan-feature-row"><span>Video downloads</span><strong>${plan.downloadVideoLimit != null ? plan.downloadVideoLimit : 'Unlimited'}</strong></li>
         </ul>
-        <button class="plan-btn" data-upgrade-plan="${plan.id}" ${disableButton ? 'disabled' : ''}>${cta}</button>
+        <button class="plan-btn" data-upgrade-plan="${pid}" ${disableButton ? 'disabled' : ''}>${cta}</button>
       </article>
     `;
   }).join('');
+
+  const paymentProvider = inferPaymentProvider();
 
   plansGrid.querySelectorAll('button[data-upgrade-plan]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const planId = btn.getAttribute('data-upgrade-plan');
       if (!planId || !currentSession) return;
-      startStripeCheckout(planId);
+      if (typeof sendAnalyticsEvent === 'function') {
+        sendAnalyticsEvent('upgrade_clicked', { plan: planId, sessionId: currentSession });
+      }
+      try {
+        if (
+          typeof getHotDiscountCodeForCheckout === 'function' &&
+          getHotDiscountCodeForCheckout({ subscriptionInfo })
+        ) {
+          if (typeof window.cutupPaywallOfferClicked === 'function') window.cutupPaywallOfferClicked();
+        }
+      } catch (_e) {
+        /* noop */
+      }
+      startPaymentCheckout(planId, paymentProvider);
     });
   });
+
+  try {
+    if (typeof window.renderDashboardPaywall === 'function') window.renderDashboardPaywall(subscriptionInfo);
+  } catch (_e) {
+    /* noop */
+  }
+
+  if (
+    typeof sendAnalyticsEvent === 'function' &&
+    !cutupDashboardPricingViewedSent &&
+    plansGrid.querySelector('button[data-upgrade-plan]')
+  ) {
+    cutupDashboardPricingViewedSent = true;
+    sendAnalyticsEvent('pricing_viewed', { plan: null, sessionId: currentSession });
+  }
 }
 
 function renderBillingSection() {
@@ -765,7 +956,7 @@ function renderBillingSection() {
   target.innerHTML = `
     <div class="usage-summary">
       <h3>Billing state</h3>
-      <p><strong>Plan:</strong> ${safeText(subscriptionInfo?.planName, 'Free')}</p>
+      <p><strong>Plan:</strong> ${displayPlanTitle(subscriptionInfo?.plan, subscriptionInfo?.planName)}</p>
       <p><strong>Billing period:</strong> ${safeText(subscriptionInfo?.subscription?.billingPeriod, 'monthly')}</p>
       <p><strong>Renewal / expiry:</strong> ${subscriptionEnd}</p>
       <p><strong>Payment status:</strong> ${paymentStatus}</p>
@@ -776,24 +967,48 @@ function renderBillingSection() {
   `;
 }
 
-async function startStripeCheckout(planKey) {
+async function startPaymentCheckout(planKey, provider = 'stripe') {
   try {
-    const { response, data } = await apiGet(`${API_BASE_URL}/api/stripe/create-checkout-session`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Session-Id': currentSession
-      },
-      body: JSON.stringify({ priceKey: planKey })
+    let discount = null;
+    try {
+      if (typeof getHotDiscountCodeForCheckout === 'function') {
+        discount = getHotDiscountCodeForCheckout({ subscriptionInfo });
+      }
+    } catch (_e) {
+      discount = null;
+    }
+    const body = { planKey, provider, ...(discount ? { discount } : {}) };
+    const { response, data } = await apiPost(`${API_BASE_URL}/api/payment/create`, body, {
+      headers: { 'X-Session-Id': currentSession },
     });
-    if (response.ok && data.url) {
-      window.location.href = data.url;
+    if (data?.error === 'Payment provider not configured') {
+      showDashboardBanner('Payment provider not configured.', 'error');
+      return;
+    }
+    const redirect = data.redirect_url || data.url;
+    if (response.ok && redirect) {
+      if (typeof sendAnalyticsEvent === 'function') {
+        sendAnalyticsEvent('payment_started', { plan: planKey, sessionId: currentSession });
+      }
+      if (discount && typeof window.cutupPaywallDiscountUsed === 'function') {
+        window.cutupPaywallDiscountUsed(planKey);
+      }
+      rememberPaymentRetryContext(planKey, provider);
+      window.location.href = redirect;
       return;
     }
     showDashboardBanner('Payments are not available yet.', 'neutral');
   } catch (_e) {
     showDashboardBanner('Could not start payment right now. Please try again.', 'error');
   }
+}
+
+async function startStripeCheckout(planKey) {
+  return startPaymentCheckout(planKey, 'stripe');
+}
+
+async function startYekpayCheckout(planKey) {
+  return startPaymentCheckout(planKey, 'yekpay');
 }
 
 async function refreshDashboardData({ silent = false } = {}) {
@@ -827,7 +1042,8 @@ async function refreshDashboardData({ silent = false } = {}) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-  currentSession = getSessionFromLocation();
+  const { activeSession, paymentReturn } = getSessionFromLocation();
+  currentSession = activeSession;
   if (!currentSession) {
     window.location.href = 'index.html';
     return;
@@ -836,6 +1052,90 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupNavigation();
   setupEventListeners();
   await refreshDashboardData();
+
+  const pr = paymentReturn;
+  if (pr.result === 'return') {
+    if (pr.paymentId && pr.authority) {
+      showDashboardBanner('Verifying your payment...', 'info', { spinner: true, persistent: true });
+      try {
+        const { response, data } = await apiPost(
+          `${API_BASE_URL}/api/payment/verify`,
+          {
+            payment_id: pr.paymentId,
+            provider_reference: pr.authority,
+            provider: 'yekpay'
+          },
+          { headers: { 'X-Session-Id': currentSession } }
+        );
+        await refreshDashboardData({ silent: true });
+        if (response.ok && (data.success === true || data.status === 'success')) {
+          emitPaymentSuccessAnalytics();
+          showDashboardBanner('Payment successful. Your plan is now active.', 'success');
+        } else if (data.status === 'expired') {
+          emitPaymentFailedAnalytics();
+          showPaymentFailedWithRetry(getPaywallFailureMessage());
+        } else {
+          emitPaymentFailedAnalytics();
+          showPaymentFailedWithRetry(getPaywallFailureMessage());
+          console.log('[payment] failed', data);
+        }
+      } catch (e) {
+        await refreshDashboardData({ silent: true });
+        emitPaymentFailedAnalytics();
+        showPaymentFailedWithRetry(getPaywallFailureMessage());
+        console.log('[payment] failed', e);
+      }
+    } else {
+      emitPaymentFailedAnalytics();
+      showPaymentFailedWithRetry(getPaywallFailureMessage());
+    }
+  } else if (pr.result === 'success' && pr.paymentId && pr.checkoutSessionId) {
+    showDashboardBanner('Processing payment', 'info');
+    try {
+      const { response, data } = await apiPost(
+        `${API_BASE_URL}/api/payment/verify`,
+        { payment_id: pr.paymentId, provider_reference: pr.checkoutSessionId },
+        { headers: { 'X-Session-Id': currentSession } }
+      );
+      await refreshDashboardData({ silent: true });
+      if (response.ok && (data.success === true || data.status === 'success')) {
+        emitPaymentSuccessAnalytics();
+        showDashboardBanner('Payment successful', 'success');
+      } else if (data.status === 'pending') {
+        showDashboardBanner('Processing payment', 'neutral');
+      } else if (data.status === 'expired') {
+        emitPaymentFailedAnalytics();
+        showPaymentFailedWithRetry(getPaywallFailureMessage());
+      } else {
+        emitPaymentFailedAnalytics();
+        showPaymentFailedWithRetry(getPaywallFailureMessage());
+        console.log('[payment] failed', data);
+      }
+    } catch (e) {
+      await refreshDashboardData({ silent: true });
+      emitPaymentFailedAnalytics();
+      showPaymentFailedWithRetry(getPaywallFailureMessage());
+      console.log('[payment] failed', e);
+    }
+  } else if (pr.result === 'success') {
+    clearPaymentRetryContext();
+    showDashboardBanner('Payment successful', 'success');
+  } else if (pr.result === 'failed') {
+    emitPaymentFailedAnalytics();
+    showPaymentFailedWithRetry(getPaywallFailureMessage());
+  } else if (pr.result === 'cancel') {
+    showPaymentFailedWithRetry('Checkout was cancelled. No charge was made.', 'neutral');
+  } else if (pr.result === 'pending') {
+    showDashboardBanner('Processing payment', 'neutral');
+  }
+
+  try {
+    if (typeof window.cutupInitConversionBanners === 'function') {
+      window.cutupInitConversionBanners({ mode: 'dashboard' });
+    }
+  } catch (_e) {
+    /* noop */
+  }
 
   setInterval(() => {
     refreshDashboardData({ silent: true });
