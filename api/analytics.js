@@ -17,6 +17,7 @@ const ALLOWED_EVENTS = new Set([
   'discount_used',
   'email_sent',
   'email_clicked',
+  'referral_signup',
 ]);
 
 function readJsonBody(req) {
@@ -52,7 +53,11 @@ export default async function handler(req, res) {
   let variant = String(body?.variant ?? 'A').toUpperCase();
   if (variant !== 'A' && variant !== 'B') variant = 'A';
 
-  const planRaw = body?.plan;
+  const refSignup =
+    event === 'referral_signup' && body?.referrer != null && String(body.referrer).trim() !== ''
+      ? body.referrer
+      : null;
+  const planRaw = refSignup != null ? refSignup : body?.plan;
   const plan =
     planRaw != null && String(planRaw).trim() !== '' ? String(planRaw).trim().slice(0, 32) : null;
 

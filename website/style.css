@@ -169,6 +169,16 @@ body {
   pointer-events: none;
 }
 
+/* Index pricing: locked plan CTAs (script.js applyCutupPricingPlanLocks) */
+.disabled-plan {
+  opacity: 0.5;
+}
+
+.disabled-plan-btn {
+  pointer-events: none !important;
+  cursor: not-allowed !important;
+}
+
 .login-btn:hover {
   background: #f8f9fa;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
@@ -3697,6 +3707,47 @@ body {
   font-size: 14px;
   color: #64748b;
   line-height: 1.5;
+}
+
+.cutup-viral-referral {
+  margin: var(--space-12) 0 var(--space-16);
+  padding: var(--space-14) var(--space-16);
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.cutup-viral-title {
+  margin: 0 0 6px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.cutup-viral-incentive,
+.cutup-viral-sub {
+  margin: 0 0 var(--space-8);
+  font-size: 14px;
+  color: #475569;
+  line-height: 1.45;
+}
+
+.cutup-viral-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+  margin-top: var(--space-10);
+}
+
+.cutup-viral-copy-hint {
+  margin: var(--space-10) 0 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  word-break: break-all;
+  color: #334155;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px dashed #cbd5e1;
 }
 
 /* —— Monetization paywall (inline, above tool) —— */

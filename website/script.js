@@ -1150,6 +1150,8 @@ window.addEventListener('DOMContentLoaded', () => {
     console.log('[script] No saved session, showing login button');
     showLoginButton();
   }
+
+  applyCutupPricingPlanLocks(window.userSubscription || { plan: 'free' });
 });
 
 // Restore pending URL after login
@@ -1333,12 +1335,126 @@ function getLocalUsage() {
   }
 }
 
+const CUTUP_PLAN_RANK = {
+  free: 0,
+  starter: 1,
+  pro: 2,
+  advanced: 3,
+};
+
+function normalizePlanKey(key) {
+  if (!key) return 'free';
+  key = String(key).toLowerCase();
+  if (key === 'business') return 'advanced';
+  return key;
+}
+
+function cutupPricingPreventClick(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  return false;
+}
+
+/**
+ * Landing / index pricing: lock [data-cutup-plan] CTAs (no backend change).
+ */
+function applyCutupPricingPlanLocks(user) {
+  const currentPlanKey = normalizePlanKey(user?.plan || 'free');
+  const currentRank = CUTUP_PLAN_RANK[currentPlanKey] ?? 0;
+  console.log('[plan-debug] currentPlanKey:', currentPlanKey, 'currentRank:', currentRank);
+
+  document.querySelectorAll('[data-cutup-plan]').forEach((el) => {
+    const planKeyRaw = el.getAttribute('data-cutup-plan');
+    if (planKeyRaw == null) return;
+    const trimmed = String(planKeyRaw).trim();
+    if (trimmed === '') return;
+
+    const planKey = normalizePlanKey(trimmed);
+    const planRank = CUTUP_PLAN_RANK[planKey] ?? 0;
+
+    const btn = el.matches('a, button') ? el : el.querySelector('a, button');
+    if (!btn) return;
+
+    const card = el.closest('.feature-card') || el.closest('.pricing-card') || el.parentElement;
+
+    let disabled = false;
+    if (currentPlanKey === 'advanced') {
+      disabled = true;
+    } else if (planRank <= currentRank) {
+      disabled = true;
+    }
+
+    if (!btn.dataset.cutupOriginalLabel) {
+      btn.dataset.cutupOriginalLabel = (btn.textContent || '').trim();
+    }
+    if (btn.tagName === 'A' && btn.dataset.cutupOriginalHref == null) {
+      btn.dataset.cutupOriginalHref = btn.getAttribute('href') || '';
+    }
+
+    if (disabled) {
+      if (card) card.classList.add('disabled-plan');
+      btn.classList.add('disabled-plan-btn');
+      btn.setAttribute('aria-disabled', 'true');
+      btn.setAttribute('tabindex', '-1');
+      if (btn.tagName === 'A') {
+        btn.setAttribute('href', '#');
+      }
+      if (!btn._cutupPricingLockBound) {
+        btn.addEventListener('click', cutupPricingPreventClick, true);
+        btn._cutupPricingLockBound = true;
+      }
+      btn.textContent = planRank === currentRank ? 'Current plan' : 'Not available';
+    } else {
+      if (card) card.classList.remove('disabled-plan');
+      btn.classList.remove('disabled-plan-btn');
+      btn.removeAttribute('aria-disabled');
+      btn.removeAttribute('tabindex');
+      if (btn._cutupPricingLockBound) {
+        btn.removeEventListener('click', cutupPricingPreventClick, true);
+        btn._cutupPricingLockBound = false;
+      }
+      if (btn.tagName === 'A' && btn.dataset.cutupOriginalHref != null) {
+        btn.setAttribute('href', btn.dataset.cutupOriginalHref);
+      }
+      if (btn.dataset.cutupOriginalLabel) {
+        btn.textContent = btn.dataset.cutupOriginalLabel;
+      }
+    }
+  });
+
+  const monetizationUpgrade = document.getElementById('monetizationUpgradeBtn');
+  if (monetizationUpgrade) {
+    const raw = monetizationUpgrade.getAttribute('data-cutup-plan');
+    if (raw == null || String(raw).trim() === '') {
+      const lock = currentPlanKey === 'advanced';
+      if (lock) {
+        monetizationUpgrade.classList.add('disabled-plan-btn');
+        monetizationUpgrade.setAttribute('aria-disabled', 'true');
+        monetizationUpgrade.setAttribute('tabindex', '-1');
+        if (!monetizationUpgrade._cutupPricingLockBound) {
+          monetizationUpgrade.addEventListener('click', cutupPricingPreventClick, true);
+          monetizationUpgrade._cutupPricingLockBound = true;
+        }
+      } else {
+        monetizationUpgrade.classList.remove('disabled-plan-btn');
+        monetizationUpgrade.removeAttribute('aria-disabled');
+        monetizationUpgrade.removeAttribute('tabindex');
+        if (monetizationUpgrade._cutupPricingLockBound) {
+          monetizationUpgrade.removeEventListener('click', cutupPricingPreventClick, true);
+          monetizationUpgrade._cutupPricingLockBound = false;
+        }
+      }
+    }
+  }
+}
+
 async function updateButtonsBasedOnSubscription(sessionId) {
   try {
     const subResponse = await fetch(`${API_BASE_URL}/api/subscription?action=info&session=${sessionId}`);
     if (!subResponse.ok) {
       // Default to free plan if can't fetch
       setButtonsForFreePlan();
+      applyCutupPricingPlanLocks({ plan: 'free' });
       return;
     }
     
@@ -1401,10 +1517,12 @@ async function updateButtonsBasedOnSubscription(sessionId) {
     } else {
       setButtonsForPaidPlan(audioExceeded, videoExceeded, monthlyCapExceeded, limits);
     }
+    applyCutupPricingPlanLocks({ plan: userPlan });
   } catch (error) {
     console.error('Error loading subscription info:', error);
     // Default to free plan on error
     setButtonsForFreePlan();
+    applyCutupPricingPlanLocks({ plan: 'free' });
   }
 }
 
@@ -1567,6 +1685,12 @@ function showLoginButton() {
   if (googleWrap) googleWrap.style.display = '';
   document.getElementById('userProfile').style.display = 'none';
   resetGoogleButtonState();
+  try {
+    if (window.userSubscription) window.userSubscription.plan = 'free';
+  } catch (_e) {
+    /* noop */
+  }
+  applyCutupPricingPlanLocks({ plan: 'free' });
 }
 
 function showUserProfile(user) {
@@ -1672,6 +1796,9 @@ function showUserProfile(user) {
   console.log('[script] User profile displayed successfully');
   updateFulltextSoftLockVeil();
   refreshConversionSaveBlockUI();
+  if (typeof window.cutupMaybeTrackReferralSignup === 'function') {
+    window.cutupMaybeTrackReferralSignup();
+  }
 }
 
 // Generate avatar from name/email
@@ -3792,6 +3919,10 @@ function displayResults(summary, fullText, segments = null, options = {}) {
     renderRetentionPanels();
   }
 
+  if (typeof window.cutupShowViralReferralAfterResult === 'function') {
+    window.cutupShowViralReferralAfterResult();
+  }
+
   if (!previewMode) {
     const sessionId = localStorage.getItem('cutup_session');
     if (sessionId) {
@@ -5327,6 +5458,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupEnterKeyHandler(document.getElementById('youtubeUrlInput'));
   setupEnterKeyHandler(document.getElementById('instagramUrlInput'));
   setupEnterKeyHandler(document.getElementById('tiktokUrlInput'));
+  applyCutupPricingPlanLocks(window.userSubscription || { plan: 'free' });
 });
 
 // Handle audio file input (like extension)

@@ -79,7 +79,7 @@
 
   /**
    * @param {string} event
-   * @param {{ plan?: string | null, sessionId?: string | null }} [data]
+   * @param {{ plan?: string | null, referrer?: string | null, sessionId?: string | null }} [data]
    */
   function sendAnalyticsEvent(event, data) {
     const variant = getPricingVariant();
@@ -87,6 +87,7 @@
       event: String(event || ''),
       variant,
       plan: data && data.plan !== undefined ? data.plan : null,
+      referrer: data && data.referrer !== undefined ? data.referrer : null,
       ts: Date.now(),
       guest_id: getOrCreateGuestId()
     };
