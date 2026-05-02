@@ -1222,21 +1222,27 @@
   transform: scale(1.05) translateY(-4px);
 }
 
-.paid-plan-card.disabled-plan {
+.paid-plan-card.disabled-plan,
+.paid-plan-card.plan-card-disabled {
   opacity: 0.5;
+  pointer-events: none;
 }
 
-.paid-plan-card.disabled-plan .plan-btn:disabled {
+.paid-plan-card.disabled-plan .plan-btn:disabled,
+.paid-plan-card.plan-card-disabled .plan-btn:disabled {
   cursor: not-allowed;
+  pointer-events: none;
 }
 
-.paid-plan-card.disabled-plan:hover {
+.paid-plan-card.disabled-plan:hover,
+.paid-plan-card.plan-card-disabled:hover {
   transform: scale(0.95);
   border-color: var(--border);
   box-shadow: none;
 }
 
-.paid-plan-card.featured.disabled-plan:hover {
+.paid-plan-card.featured.disabled-plan:hover,
+.paid-plan-card.featured.plan-card-disabled:hover {
   transform: scale(1.05);
 }
 
@@ -1571,8 +1577,9 @@
 }
 
 .plan-btn:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
+  pointer-events: none;
   transform: none !important;
 }
 

@@ -1126,9 +1126,9 @@ window.addEventListener('DOMContentLoaded', () => {
   
   // Ensure login button is visible by default
   const loginBtn = document.getElementById('loginBtn');
-  if (loginBtn) {
-    loginBtn.style.display = 'block';
-  }
+  const googleWrap = document.querySelector('.google-btn-wrapper');
+  if (loginBtn) loginBtn.style.display = '';
+  if (googleWrap) googleWrap.style.display = '';
   
   // Check if we have a pending URL (user logged in after entering URL)
   const pendingUrl = localStorage.getItem('cutup_pending_url');
@@ -1561,7 +1561,10 @@ function showLoginButton() {
   } catch {
     /* ignore */
   }
-  document.getElementById('loginBtn').style.display = 'block';
+  const lb = document.getElementById('loginBtn');
+  const googleWrap = document.querySelector('.google-btn-wrapper');
+  if (lb) lb.style.display = '';
+  if (googleWrap) googleWrap.style.display = '';
   document.getElementById('userProfile').style.display = 'none';
   resetGoogleButtonState();
 }
@@ -1592,6 +1595,8 @@ function showUserProfile(user) {
   }
   
   loginBtn.style.display = 'none';
+  const googleBtnWrap = document.querySelector('.google-btn-wrapper');
+  if (googleBtnWrap) googleBtnWrap.style.display = 'none';
   userProfile.style.display = 'flex';
   
   // Set avatar - use user picture or generate avatar

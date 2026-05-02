@@ -74,7 +74,8 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-const DASHBOARD_PLAN_RANK = { free: 0, starter: 1, pro: 2, advanced: 3, business: 4 };
+/** Strict tiers: advanced and business share top rank (no upgrade in public grid). */
+const DASHBOARD_PLAN_RANK = { free: 0, starter: 1, pro: 2, advanced: 3, business: 3 };
 
 function dashboardPlanRank(planId) {
   const id = String(planId || '').toLowerCase();
@@ -839,12 +840,10 @@ function renderPlansSection() {
 
   const stripeReady = plansCache.some((p) => Number(p?.priceUsd?.monthly) > 0);
   const publicPlanIds = new Set(plansCache.map((p) => p.id));
-  const currentPlanId = String(subscriptionInfo?.plan || 'free').toLowerCase();
-  const isCurrentPlanPrivate = !publicPlanIds.has(currentPlanId);
-  let currentRank = dashboardPlanRank(currentPlanId);
-  if (isCurrentPlanPrivate) {
-    currentRank = Math.max(currentRank, dashboardPlanRank('business'));
-  }
+  const currentUserPlanKey = String(subscriptionInfo?.plan || 'free').toLowerCase();
+  const isCurrentPlanPrivate = !publicPlanIds.has(currentUserPlanKey);
+  const atTopTier = currentUserPlanKey === 'advanced' || currentUserPlanKey === 'business';
+  const currentRank = dashboardPlanRank(currentUserPlanKey);
   subscriptionInfoEl.innerHTML = `
     <div class="usage-summary">
       <h3>Choose a plan</h3>
@@ -859,25 +858,23 @@ function renderPlansSection() {
   plansGrid.innerHTML = sortedPlans.map((plan) => {
     const pid = plan.id;
     const planRank = dashboardPlanRank(pid);
-    const isCurrent = String(pid).toLowerCase() === currentPlanId;
-    const isLowerTier = planRank < currentRank;
     const usd = Number(plan?.priceUsd?.monthly || 0);
     const displayName = displayPlanTitle(pid, plan.nameEn || plan.name);
 
     let cta;
-    let disableButton;
-    let cardExtraClass = '';
+    let disableButton = true;
+    let cardExtraClass = 'plan-card-disabled disabled-plan';
 
-    if (isCurrent) {
-      cta = 'Current plan';
-      disableButton = true;
-    } else if (isLowerTier) {
+    if (atTopTier) {
+      if (currentUserPlanKey === 'advanced' && pid === 'advanced') {
+        cta = 'Current plan';
+      } else {
+        cta = 'Not available';
+      }
+    } else if (planRank < currentRank) {
       cta = 'Not available';
-      disableButton = true;
-      cardExtraClass = 'disabled-plan';
-    } else if (pid === 'free') {
-      cta = 'Free tier';
-      disableButton = true;
+    } else if (planRank === currentRank) {
+      cta = 'Current plan';
     } else {
       cta =
         pid === 'starter'
@@ -888,14 +885,16 @@ function renderPlansSection() {
               ? 'Upgrade to Business'
               : 'Upgrade';
       disableButton = !stripeReady;
+      cardExtraClass = disableButton ? 'plan-card-disabled disabled-plan' : '';
     }
 
+    const isCurrentCard = String(pid).toLowerCase() === currentUserPlanKey;
     const priceLabel = usd > 0 ? `$${usd.toFixed(2)} / month` : 'Price unavailable';
     return `
-      <article class="paid-plan-card ${pid === 'pro' ? 'featured' : ''} ${isCurrent ? 'current-plan' : ''} ${cardExtraClass}">
+      <article class="paid-plan-card ${pid === 'pro' ? 'featured' : ''} ${isCurrentCard ? 'current-plan' : ''} ${cardExtraClass}">
         <div class="paid-plan-header">
           <h3 class="paid-plan-name">${escapeHtml(displayName)}</h3>
-          ${isCurrent ? '<span class="current-badge">Current</span>' : ''}
+          ${isCurrentCard ? '<span class="current-badge">Current</span>' : ''}
         </div>
         <p class="plan-price">${priceLabel}</p>
         <ul class="plan-features">
@@ -912,6 +911,7 @@ function renderPlansSection() {
 
   plansGrid.querySelectorAll('button[data-upgrade-plan]').forEach((btn) => {
     btn.addEventListener('click', () => {
+      if (btn.disabled) return;
       const planId = btn.getAttribute('data-upgrade-plan');
       if (!planId || !currentSession) return;
       if (typeof sendAnalyticsEvent === 'function') {

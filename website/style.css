@@ -96,11 +96,25 @@ body {
   color: white;
 }
 
-/* Auth Section */
+/* Auth Section — row so Google control is never column-stacked with icon above text */
 .auth-section {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 12px;
+}
+
+.google-btn-wrapper {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.google-btn-wrapper .login-btn.google-btn {
+  width: auto;
+  max-width: 100%;
 }
 
 .login-btn {
@@ -114,30 +128,40 @@ body {
   font-weight: 500;
   transition: background 0.2s, box-shadow 0.2s, border-color 0.2s;
   font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  line-height: 1;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .login-btn.google-btn {
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: center;
+  gap: 10px;
   padding: 10px 16px;
-  gap: 12px;
-  justify-content: flex-start;
+  line-height: 1;
+  white-space: nowrap;
 }
 
-.login-btn .google-icon {
+.login-btn.google-btn img.google-icon {
   width: 18px;
   height: 18px;
+  display: block;
   margin: 0;
   flex-shrink: 0;
-  display: block;
   object-fit: contain;
 }
 
-.login-btn .google-btn-label {
-  line-height: 1.2;
+.login-btn.google-btn span {
+  display: inline-block;
+  line-height: 1;
+  font-weight: 500;
 }
 
 .login-btn.loading {
@@ -3103,10 +3127,20 @@ body {
   .auth-section {
     width: 100%;
     flex-direction: column;
+    align-items: stretch;
     gap: var(--space-8);
   }
 
-  .login-btn,
+  .google-btn-wrapper {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .google-btn-wrapper .login-btn.google-btn {
+    width: auto;
+    max-width: 100%;
+  }
+
   .user-profile {
     width: 100%;
     justify-content: center;
