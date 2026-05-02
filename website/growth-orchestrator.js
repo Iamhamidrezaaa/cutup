@@ -193,7 +193,15 @@
       incentive: state.incentive,
     });
 
+    const fired = {
+      paywallVisible: false,
+      discountVisible: false,
+      referralFired: false,
+      softHintFired: false,
+    };
+
     const isIndex = !!(typeof document !== 'undefined' && document.getElementById('cutupPricingPaywall'));
+    const growthPaywall = state.monetization !== 'NONE' || state.incentive === 'DISCOUNT';
 
     if (isIndex) {
       setGrowthPaywallFlags(state);
@@ -203,12 +211,29 @@
         window.cutupMountIndexPricingPaywall();
       }
       clearGrowthPaywallFlags();
+      const host = document.getElementById('cutupPricingPaywall');
+      fired.paywallVisible = !!(
+        host &&
+        !host.hidden &&
+        String(host.innerHTML || '')
+          .trim()
+          .length > 0
+      );
+      if (
+        fired.paywallVisible &&
+        state.incentive === 'DISCOUNT' &&
+        typeof window.getHotDiscountCodeForCheckout === 'function' &&
+        window.getHotDiscountCodeForCheckout({})
+      ) {
+        fired.discountVisible = true;
+      }
     }
 
     if (isIndex && state.monetization === 'SOFT') {
       const hint = document.getElementById('retentionUpgradeHint');
       if (hint && canFireGrowthAction('soft_hint')) {
         hint.hidden = false;
+        fired.softHintFired = true;
       }
     }
 
@@ -220,16 +245,30 @@
           canFireGrowthAction('viral_block:' + state.intent + ':' + state.monetization)
         ) {
           window.cutupShowViralReferralAfterResult();
+          fired.referralFired = true;
         }
       } else if (block) {
         block.hidden = true;
       }
     }
+
+    const hadGrowthTouch =
+      (fired.paywallVisible && growthPaywall) ||
+      fired.referralFired ||
+      (fired.softHintFired && state.monetization === 'SOFT') ||
+      fired.discountVisible;
+    if (hadGrowthTouch && typeof window.cutupGrowthRecordImpression === 'function') {
+      window.cutupGrowthRecordImpression(state, fired);
+    }
   }
 
   function cutupRunGrowthOrchestrator(reason) {
     if (typeof document === 'undefined') return;
-    const state = getGrowthState();
+    const staticState = getGrowthState();
+    const state =
+      typeof window.cutupAdaptGrowthState === 'function'
+        ? window.cutupAdaptGrowthState(staticState)
+        : staticState;
     applyGrowthTriggers(state, reason);
   }
 

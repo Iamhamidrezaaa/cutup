@@ -25,6 +25,9 @@ function emitPaymentSuccessAnalytics() {
   if (typeof sendAnalyticsEvent === 'function') {
     sendAnalyticsEvent('payment_success', { plan: paidPlan, sessionId: currentSession });
   }
+  if (typeof window.cutupGrowthRecordPaymentSuccess === 'function') {
+    window.cutupGrowthRecordPaymentSuccess();
+  }
 }
 
 function emitPaymentFailedAnalytics() {
