@@ -178,9 +178,8 @@ body {
   color: #fff;
 }
 
-/* Simple + blog headers (site-header.js) */
-.simple-header,
-.blog-header {
+/* Simple header — non-home pages (about, privacy, contact, blog, …) */
+.simple-header {
   background: rgba(255, 255, 255, 0.9);
   border-bottom: 1px solid var(--border);
   position: sticky;
@@ -189,8 +188,7 @@ body {
   backdrop-filter: blur(10px);
 }
 
-.simple-header-inner,
-.blog-header-inner {
+.simple-header-inner {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -199,8 +197,7 @@ body {
   padding: 16px 0;
 }
 
-.simple-header .logo,
-.blog-header .logo {
+.simple-header .logo {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -210,35 +207,26 @@ body {
   text-decoration: none;
 }
 
-.simple-header .logo-icon,
-.blog-header .logo-icon {
+.simple-header .logo-icon {
   border-radius: 8px;
 }
 
-.simple-header-nav,
-.blog-header-nav {
+.simple-header-nav {
   display: flex;
   align-items: center;
   gap: 24px;
   flex-wrap: wrap;
 }
 
-.simple-header-nav > a,
-.blog-header-nav > a {
+.simple-header-nav > a {
   text-decoration: none;
   color: var(--text-primary);
   font-weight: 500;
   transition: color 0.2s;
 }
 
-.simple-header-nav > a:hover,
-.blog-header-nav > a:hover {
+.simple-header-nav > a:hover {
   color: var(--primary);
-}
-
-.blog-header-nav > a.active {
-  color: var(--primary);
-  font-weight: 600;
 }
 
 /* Auth Section — row so Google control is never column-stacked with icon above text */
@@ -3267,8 +3255,7 @@ body {
 
   .header,
   .main-header,
-  .simple-header,
-  .blog-header {
+  .simple-header {
     position: sticky;
     top: 0;
     z-index: 200;
@@ -3276,8 +3263,7 @@ body {
 
   .nav-content,
   .main-header-inner,
-  .simple-header-inner,
-  .blog-header-inner {
+  .simple-header-inner {
     padding: var(--space-12) 0;
     gap: var(--space-12);
   }
@@ -3334,8 +3320,7 @@ body {
     display: flex;
   }
 
-  .simple-header-nav,
-  .blog-header-nav {
+  .simple-header-nav {
     display: none;
     width: 100%;
     flex-direction: column;
@@ -3345,8 +3330,7 @@ body {
     border-top: 1px solid var(--border);
   }
 
-  .simple-header-nav.is-open,
-  .blog-header-nav.is-open {
+  .simple-header-nav.is-open {
     display: flex;
   }
 

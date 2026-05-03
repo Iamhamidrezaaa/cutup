@@ -6049,7 +6049,7 @@ window.addEventListener('resize', () => {
 });
 
 function setupMobileHeaderMenu() {
-  if (document.querySelector('.main-header, .simple-header, .blog-header')) return;
+  if (document.querySelector('.main-header, .simple-header')) return;
   const toggle = document.getElementById('navMenuToggle');
   const links = document.getElementById('navLinks');
   if (!toggle || !links) return;

@@ -21,10 +21,10 @@
 <body>
   <script src="site-chrome.js"></script>
   <script type="module">
-    import { renderBlogHeader, initSiteHeaderNav } from '/site-header.js';
+    import { renderSimpleHeader, initSiteHeaderNav } from '/site-header.js';
     import { renderFooter } from '/site-footer.js';
-    document.body.insertAdjacentHTML('afterbegin', renderBlogHeader());
-    initSiteHeaderNav(document.querySelector('header.blog-header'));
+    document.body.insertAdjacentHTML('afterbegin', renderSimpleHeader());
+    initSiteHeaderNav(document.querySelector('header.simple-header'));
     document.body.insertAdjacentHTML('beforeend', renderFooter());
   </script>
 

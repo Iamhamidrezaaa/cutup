@@ -1,5 +1,7 @@
 /**
- * Central headers (ES module). Three types: marketing, simple legal, blog.
+ * Central headers (ES module).
+ * - Marketing: homepage (+ product landings that import it).
+ * - Simple: all other static pages that should match (about, privacy, contact, blog, …).
  */
 const LOGO_MARKUP =
   '<a href="/" class="logo">' +
@@ -75,23 +77,6 @@ export function renderSimpleHeader() {
     '<nav id="navLinks" class="simple-header-nav">' +
     '<a href="/" class="nav-link">Home</a>' +
     '<a href="/#tool" class="nav-link">Tool</a>' +
-    '</nav>' +
-    '</div>' +
-    '</header>'
-  );
-}
-
-export function renderBlogHeader() {
-  return (
-    '<header class="blog-header">' +
-    '<div class="container blog-header-inner">' +
-    LOGO_MARKUP +
-    NAV_TOGGLE +
-    '<nav id="navLinks" class="blog-header-nav">' +
-    '<a href="/#tool" class="nav-link">Generate subtitles</a>' +
-    '<a href="/#pricing" class="nav-link">Pricing</a>' +
-    '<a href="/blog.html" class="nav-link active" aria-current="page">Blog</a>' +
-    '<a href="/#faq" class="nav-link">FAQ</a>' +
     '</nav>' +
     '</div>' +
     '</header>'
