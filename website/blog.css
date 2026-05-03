@@ -22,13 +22,8 @@ body.has-sticky-article-cta--visible {
   padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
 }
 a { color: var(--primary); text-decoration: none; }
-.container {
-  max-width: 1200px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 0 24px;
-  box-sizing: border-box;
-}
+/* Do not redefine global .container here — it breaks simple-header alignment vs privacy/about.
+   Header and main both use .container from style.css so edges match. */
 
 .blog-hero { padding: 30px 0 16px; }
 .blog-hero h1 { margin: 0 0 8px; font-size: 38px; letter-spacing: -0.02em; }
@@ -403,6 +398,5 @@ input:focus, select:focus { outline: 2px solid rgba(91, 76, 230, 0.25); border-c
 @media (max-width: 760px) {
   .blog-filters { grid-template-columns: 1fr; }
   .blog-grid { grid-template-columns: 1fr; }
-  .container { width: min(1140px, calc(100% - 24px)); }
   .post-content { padding: 16px; font-size: 16px; }
 }
