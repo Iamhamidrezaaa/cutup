@@ -208,8 +208,9 @@ async function loadRoutes() {
     adminResetPasswordHandler = adminResetModule.default;
     console.log('✅ Admin panel auth handlers loaded');
 
-    const { ensureAdminsSchemaAndSeed } = await import('./api/admins-repository.js');
-    await ensureAdminsSchemaAndSeed();
+    const { ensureAdminsSchema, syncPrimaryAdminAccount } = await import('./api/admins-repository.js');
+    await ensureAdminsSchema();
+    await syncPrimaryAdminAccount();
 
     const toolsContentModule = await import('./api/tools-content.js');
     toolsContentHandler = toolsContentModule.default;

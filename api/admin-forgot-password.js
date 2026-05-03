@@ -1,6 +1,6 @@
 import { setCORSHeaders } from './cors.js';
 import { isBillingDbConfigured } from './db/pool.js';
-import { ensureAdminsSchemaAndSeed, createAdminPasswordResetForEmail } from './admins-repository.js';
+import { ensureAdminsSchema, createAdminPasswordResetForEmail } from './admins-repository.js';
 import { sendEmail } from './email.js';
 
 const forgotMap = new Map();
@@ -34,7 +34,7 @@ export default async function adminForgotPasswordHandler(req, res) {
   if (!isBillingDbConfigured()) {
     return res.status(503).json({ ok: false, error: 'not_configured' });
   }
-  await ensureAdminsSchemaAndSeed();
+  await ensureAdminsSchema();
 
   const body = req.body && typeof req.body === 'object' ? req.body : {};
   const email = String(body.email || '').trim().toLowerCase();

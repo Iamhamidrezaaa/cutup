@@ -46,7 +46,7 @@ export function generateAdminSessionToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
-/** Persist session row (call after ensureAdminsSchemaAndSeed / admin_sessions table exists). */
+/** Persist session row (admin_sessions table must exist — call ensureAdminsSchema first). */
 export async function saveAdminSession(token, record, maxAgeMs = SESSION_MS) {
   if (!isBillingDbConfigured()) return;
   const pool = getPool();

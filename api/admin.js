@@ -1,5 +1,5 @@
 import { spawnSync } from 'child_process';
-import { setCORSHeaders } from './cors.js';
+import { setAdminPanelCorsHeaders } from './cors.js';
 import { resolveAdminAuth } from './admin-panel-auth.js';
 import {
   getPool,
@@ -16,7 +16,7 @@ import {
   saveAdminBlogPostDb,
   publishAdminBlogPostDb
 } from './billing-repository.js';
-import { listAdminsDb, insertAdminDb, updateAdminDb, ensureAdminsSchemaAndSeed } from './admins-repository.js';
+import { listAdminsDb, insertAdminDb, updateAdminDb, ensureAdminsSchema } from './admins-repository.js';
 
 /** Fire-and-forget sitemap ping after blog publish (does not block admin response). */
 function triggerGoogleSitemapPing() {
@@ -124,11 +124,11 @@ async function dbHealth() {
 }
 
 export default async function handler(req, res) {
-  setCORSHeaders(res);
+  setAdminPanelCorsHeaders(req, res);
   if (!isBillingDbConfigured()) {
     return res.status(503).json({ error: 'Service is not configured yet.' });
   }
-  await ensureAdminsSchemaAndSeed();
+  await ensureAdminsSchema();
 
   const action = req.query?.action || req.body?.action;
   try {

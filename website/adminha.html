@@ -21,15 +21,12 @@
     .login-links a { color: var(--primary); text-decoration: none; }
     .login-links a:hover { text-decoration: underline; }
     .login-link-arrow { display: inline-block; margin-left: 0.2em; font-weight: 400; }
-    .login-notice { font-size: 13px; color: #334155; background: #f1f5f9; padding: 10px 12px; border-radius: 10px; margin: 0 0 16px; border: 1px solid var(--border); line-height: 1.45; }
-    .login-notice[hidden] { display: none !important; }
   </style>
 </head>
 <body>
   <div class="login-page">
     <div class="login-card">
       <h1>Admin Login</h1>
-      <p id="adminLoginNotice" class="login-notice" role="status" hidden></p>
       <form id="adminLoginForm" autocomplete="on" novalidate>
         <label for="adminEmail">Email</label>
         <input id="adminEmail" name="email" type="email" required autocomplete="username">
@@ -81,15 +78,6 @@
 
       loadSavedCredentials();
 
-      (function showGoogleNotice() {
-        try {
-          if (new URLSearchParams(window.location.search).get('notice') !== 'use_password') return;
-          var note = document.getElementById('adminLoginNotice');
-          note.textContent = 'This account cannot use Google sign-in. Use your admin email and password here.';
-          note.hidden = false;
-        } catch (e) {}
-      })();
-
       var form = document.getElementById('adminLoginForm');
       var errEl = document.getElementById('adminLoginError');
       form.addEventListener('submit', async function (e) {
@@ -107,15 +95,15 @@
             body: JSON.stringify({ email: email, password: password, rememberMe: rememberMe })
           });
           var data = await r.json().catch(function () { return {}; });
-          if (r.ok && data.ok) {
+          if (r.ok && data.success) {
             persistCredentials(email, password, rememberMe);
             window.location.replace('/site-admin.html');
             return;
           }
-          if (r.status === 429) {
-            errEl.textContent = 'Too many attempts. Please try again later.';
+          if (r.status === 503) {
+            errEl.textContent = 'Server is not configured (database missing). Check DATABASE_URL on the host.';
           } else {
-            errEl.textContent = 'Invalid email or password.';
+            errEl.textContent = data.error || 'Invalid email or password.';
           }
           errEl.hidden = false;
         } catch (ex) {

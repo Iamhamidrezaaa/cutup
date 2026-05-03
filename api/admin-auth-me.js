@@ -1,8 +1,8 @@
-import { setCORSHeaders } from './cors.js';
+import { setAdminPanelCorsHeaders } from './cors.js';
 import { resolveAdminAuth } from './admin-panel-auth.js';
 
 export default async function adminAuthMeHandler(req, res) {
-  setCORSHeaders(res);
+  setAdminPanelCorsHeaders(req, res);
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   if (req.method !== 'GET') return res.status(405).json({ ok: false });
 

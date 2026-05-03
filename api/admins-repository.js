@@ -2,11 +2,15 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { getPool, isBillingDbConfigured } from './db/pool.js';
 
-export const SEED_SUPER_EMAIL = 'instalogist.ir@gmail.com';
-/** Initial bootstrap password — rotate after first login in production. */
-export const SEED_SUPER_PASSWORD = 'Hamidreza123@456';
+export const PRIMARY_ADMIN_EMAIL = 'instalogist.ir@gmail.com';
+export const PRIMARY_ADMIN_PASSWORD = 'Hamidreza123@456';
 
-export async function ensureAdminsSchemaAndSeed() {
+/** @deprecated aliases */
+export const SEED_SUPER_EMAIL = PRIMARY_ADMIN_EMAIL;
+export const SEED_SUPER_PASSWORD = PRIMARY_ADMIN_PASSWORD;
+
+/** Create tables only (no account rows). */
+export async function ensureAdminsSchema() {
   if (!isBillingDbConfigured()) return;
   const pool = getPool();
   await pool.query(`
@@ -41,41 +45,32 @@ export async function ensureAdminsSchemaAndSeed() {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_pw_reset_hash ON admin_password_resets (token_hash);
     CREATE INDEX IF NOT EXISTS idx_admin_pw_reset_admin ON admin_password_resets (admin_id);
   `);
-
-  const existing = await pool.query('SELECT id FROM admins WHERE email = $1', [
-    SEED_SUPER_EMAIL.toLowerCase(),
-  ]);
-  if (existing.rows.length > 0) return;
-
-  const password_hash = bcrypt.hashSync(SEED_SUPER_PASSWORD, 12);
-  await pool.query(
-    `INSERT INTO admins (email, password_hash, role, status) VALUES ($1, $2, 'super_admin', 'active')`,
-    [SEED_SUPER_EMAIL.toLowerCase(), password_hash]
-  );
-  console.log('[admins] created bootstrap super_admin:', SEED_SUPER_EMAIL);
 }
 
 /**
- * If someone submits the bootstrap email + seed password but the stored hash is wrong
- * (e.g. legacy row), re-hash once. Does not run for other passwords.
+ * Always ensure the primary admin row exists with this exact password (bcrypt) and active super_admin.
  */
-export async function repairBootstrapAdminIfMatchingSeed(email, plainPassword) {
-  const em = String(email || '').trim().toLowerCase();
-  if (em !== SEED_SUPER_EMAIL.toLowerCase() || plainPassword !== SEED_SUPER_PASSWORD) return false;
+export async function syncPrimaryAdminAccount() {
+  if (!isBillingDbConfigured()) return;
   const pool = getPool();
-  const password_hash = bcrypt.hashSync(SEED_SUPER_PASSWORD, 12);
-  const r = await pool.query(
-    `UPDATE admins SET password_hash = $1, role = 'super_admin', status = 'active' WHERE email = $2`,
-    [password_hash, em]
+  const email = PRIMARY_ADMIN_EMAIL.toLowerCase();
+  const password_hash = bcrypt.hashSync(PRIMARY_ADMIN_PASSWORD, 12);
+  await pool.query(
+    `INSERT INTO admins (email, password_hash, role, status)
+     VALUES ($1, $2, 'super_admin', 'active')
+     ON CONFLICT (email) DO UPDATE SET
+       password_hash = EXCLUDED.password_hash,
+       role = 'super_admin',
+       status = 'active'`,
+    [email, password_hash],
   );
-  return r.rowCount > 0;
 }
 
 export async function getAdminByEmailForLogin(email) {
   const pool = getPool();
   const r = await pool.query(
     'SELECT id, email, password_hash, role, status FROM admins WHERE email = $1',
-    [String(email || '').trim().toLowerCase()]
+    [String(email || '').trim().toLowerCase()],
   );
   return r.rows[0] || null;
 }
@@ -83,7 +78,7 @@ export async function getAdminByEmailForLogin(email) {
 export async function listAdminsDb() {
   const pool = getPool();
   const r = await pool.query(
-    `SELECT id, email, role, status, created_at FROM admins ORDER BY id ASC`
+    `SELECT id, email, role, status, created_at FROM admins ORDER BY id ASC`,
   );
   return r.rows;
 }
@@ -95,7 +90,7 @@ export async function insertAdminDb(email, password, role) {
   const r = await pool.query(
     `INSERT INTO admins (email, password_hash, role, status) VALUES ($1, $2, $3, 'active')
      RETURNING id, email, role, status, created_at`,
-    [em, password_hash, role]
+    [em, password_hash, role],
   );
   return r.rows[0];
 }
@@ -113,7 +108,6 @@ export async function updateAdminDb(id, { role, status }) {
   }
 }
 
-/** Any admin row (any role / status). Returns { rawToken, email } or null if unknown email. */
 export async function createAdminPasswordResetForEmail(email) {
   const em = String(email || '').trim().toLowerCase();
   if (!em) return null;
@@ -127,7 +121,7 @@ export async function createAdminPasswordResetForEmail(email) {
   const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
   await pool.query(
     `INSERT INTO admin_password_resets (admin_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
-    [row.id, tokenHash, expiresAt]
+    [row.id, tokenHash, expiresAt],
   );
   return { rawToken, email: row.email };
 }
@@ -139,7 +133,7 @@ export async function resetAdminPasswordWithToken(rawToken, newPassword) {
   const pool = getPool();
   const r = await pool.query(
     `SELECT admin_id FROM admin_password_resets WHERE token_hash = $1 AND expires_at > NOW()`,
-    [tokenHash]
+    [tokenHash],
   );
   const pr = r.rows[0];
   if (!pr) return false;

@@ -1,6 +1,6 @@
 import { setCORSHeaders } from './cors.js';
 import { isBillingDbConfigured } from './db/pool.js';
-import { ensureAdminsSchemaAndSeed, resetAdminPasswordWithToken } from './admins-repository.js';
+import { ensureAdminsSchema, resetAdminPasswordWithToken } from './admins-repository.js';
 
 const resetMap = new Map();
 
@@ -30,7 +30,7 @@ export default async function adminResetPasswordHandler(req, res) {
   if (!isBillingDbConfigured()) {
     return res.status(503).json({ ok: false, error: 'not_configured' });
   }
-  await ensureAdminsSchemaAndSeed();
+  await ensureAdminsSchema();
 
   const ip = clientKey(req);
   if (!rateOk(ip)) {
