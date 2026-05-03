@@ -22,6 +22,7 @@
     "@vercel/node": "^3.0.0"
   },
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "busboy": "^1.6.0",
     "cors": "^2.8.5",
     "docx": "^8.5.0",

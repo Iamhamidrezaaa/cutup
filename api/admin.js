@@ -1,6 +1,6 @@
 import { spawnSync } from 'child_process';
 import { setCORSHeaders } from './cors.js';
-import { sessions } from './auth.js';
+import { resolveAdminAuth } from './admin-panel-auth.js';
 import {
   getPool,
   isBillingDbConfigured
@@ -16,13 +16,7 @@ import {
   saveAdminBlogPostDb,
   publishAdminBlogPostDb
 } from './billing-repository.js';
-
-function parseAdminEmails() {
-  return String(process.env.ADMIN_EMAILS || '')
-    .split(',')
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-}
+import { listAdminsDb, insertAdminDb, updateAdminDb, ensureAdminsSchemaAndSeed } from './admins-repository.js';
 
 /** Fire-and-forget sitemap ping after blog publish (does not block admin response). */
 function triggerGoogleSitemapPing() {
@@ -48,29 +42,38 @@ function sanitizeBlogCoverImageUrl(raw) {
   }
 }
 
-function getSessionAndAdminEmail(req, res) {
-  const sessionId = req.headers['x-session-id'] || req.query?.session || req.body?.session;
-  if (!sessionId) {
+/** Cookie-based panel auth (separate from end-user Google sessions). */
+async function getAdminPanelAuth(req, res) {
+  const auth = await resolveAdminAuth(req);
+  if (!auth) {
     res.status(401).json({ error: 'Authentication required' });
     return null;
   }
-  const session = sessions.get(sessionId);
-  if (!session || !session.user?.email) {
-    res.status(401).json({ error: 'Invalid or expired session' });
-    return null;
+  return { email: auth.email, role: auth.role, adminId: auth.adminId };
+}
+
+function requireBlogAccess(auth, res) {
+  if (!auth || !['editor', 'admin', 'super_admin'].includes(auth.role)) {
+    res.status(403).json({ error: 'Insufficient permissions' });
+    return false;
   }
-  if (session.expiresAt && Date.now() > session.expiresAt) {
-    sessions.delete(sessionId);
-    res.status(401).json({ error: 'Session expired' });
-    return null;
+  return true;
+}
+
+function requireOpsAccess(auth, res) {
+  if (!auth || !['admin', 'super_admin'].includes(auth.role)) {
+    res.status(403).json({ error: 'Insufficient permissions' });
+    return false;
   }
-  const email = String(session.user.email || '').toLowerCase();
-  const admins = parseAdminEmails();
-  if (!admins.includes(email)) {
-    res.status(403).json({ error: 'You do not have admin access.' });
-    return null;
+  return true;
+}
+
+function requireSuperAdmin(auth, res) {
+  if (!auth || auth.role !== 'super_admin') {
+    res.status(403).json({ error: 'Insufficient permissions' });
+    return false;
   }
-  return email;
+  return true;
 }
 
 function boolConfigured(name) {
@@ -99,7 +102,7 @@ async function dbHealth() {
        FROM information_schema.tables
        WHERE table_schema = 'public'
          AND table_name = ANY($1::text[])`,
-      [['users', 'subscriptions', 'usage', 'usage_history', 'saved_outputs', 'blog_posts']]
+      [['users', 'subscriptions', 'usage', 'usage_history', 'saved_outputs', 'blog_posts', 'admins', 'admin_sessions']]
     );
     const existing = new Set(tableRes.rows.map((r) => r.table_name));
     return {
@@ -110,7 +113,9 @@ async function dbHealth() {
         usage: existing.has('usage'),
         usage_history: existing.has('usage_history'),
         saved_outputs: existing.has('saved_outputs'),
-        blog_posts: existing.has('blog_posts')
+        blog_posts: existing.has('blog_posts'),
+        admins: existing.has('admins'),
+        admin_sessions: existing.has('admin_sessions')
       }
     };
   } catch {
@@ -123,6 +128,7 @@ export default async function handler(req, res) {
   if (!isBillingDbConfigured()) {
     return res.status(503).json({ error: 'Service is not configured yet.' });
   }
+  await ensureAdminsSchemaAndSeed();
 
   const action = req.query?.action || req.body?.action;
   try {
@@ -151,10 +157,11 @@ export default async function handler(req, res) {
       return res.json({ posts: published, total: published.length });
     }
 
-    const adminEmail = getSessionAndAdminEmail(req, res);
-    if (!adminEmail) return;
+    const auth = await getAdminPanelAuth(req, res);
+    if (!auth) return;
 
     if (req.method === 'GET' && action === 'overview') {
+      if (!requireOpsAccess(auth, res)) return;
       const overview = await getAdminOverviewDb();
       return res.json({
         ...overview,
@@ -164,6 +171,7 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'GET' && action === 'users') {
+      if (!requireOpsAccess(auth, res)) return;
       const data = await getAdminUsersDb({
         search: req.query.search || '',
         plan: req.query.plan || 'all',
@@ -173,6 +181,7 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'GET' && action === 'usage') {
+      if (!requireOpsAccess(auth, res)) return;
       const data = await getAdminUsageDb({
         type: req.query.type || 'all',
         platform: req.query.platform || 'all',
@@ -184,6 +193,7 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'GET' && action === 'savedOutputs') {
+      if (!requireOpsAccess(auth, res)) return;
       const data = await getAdminSavedOutputsDb({
         limit: req.query.limit || 300
       });
@@ -191,6 +201,7 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'GET' && action === 'payments') {
+      if (!requireOpsAccess(auth, res)) return;
       const snapshot = await getAdminPaymentsSnapshotDb();
       return res.json({
         ...snapshot,
@@ -207,11 +218,13 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'GET' && action === 'pricingAb') {
+      if (!requireOpsAccess(auth, res)) return;
       const metrics = await getAdminPricingAbMetricsDb();
       return res.json(metrics);
     }
 
     if (req.method === 'GET' && action === 'health') {
+      if (!requireOpsAccess(auth, res)) return;
       const db = await dbHealth();
       const events = await getAdminUsageDb({ limit: 20 });
       return res.json({
@@ -228,16 +241,68 @@ export default async function handler(req, res) {
           ffmpeg: safeCmdExists('ffmpeg', ['-version'])
         },
         recentEvents: events.slice(0, 20),
-        checkedBy: adminEmail
+        checkedBy: auth.email
       });
     }
 
+    if (req.method === 'GET' && action === 'admins') {
+      if (!requireSuperAdmin(auth, res)) return;
+      const rows = await listAdminsDb();
+      return res.json({ admins: rows, total: rows.length });
+    }
+
+    if (req.method === 'POST' && action === 'createAdmin') {
+      if (!requireSuperAdmin(auth, res)) return;
+      const raw = req.body && typeof req.body === 'object' ? req.body : {};
+      const email = String(raw.email || '').trim().toLowerCase();
+      const password = String(raw.password || '');
+      const role = String(raw.role || 'admin').trim();
+      if (!email || !password) {
+        return res.status(400).json({ error: 'email and password required' });
+      }
+      if (!['super_admin', 'admin', 'editor'].includes(role)) {
+        return res.status(400).json({ error: 'invalid role' });
+      }
+      try {
+        const row = await insertAdminDb(email, password, role);
+        return res.json({ success: true, admin: row });
+      } catch (e) {
+        if (e.code === '23505') {
+          return res.status(409).json({ error: 'Email already exists' });
+        }
+        throw e;
+      }
+    }
+
+    if (req.method === 'POST' && action === 'updateAdmin') {
+      if (!requireSuperAdmin(auth, res)) return;
+      const raw = req.body && typeof req.body === 'object' ? req.body : {};
+      const id = raw.id;
+      if (id == null) return res.status(400).json({ error: 'id required' });
+      const role = raw.role != null ? String(raw.role).trim() : null;
+      const status = raw.status != null ? String(raw.status).trim() : null;
+      if (role && !['super_admin', 'admin', 'editor'].includes(role)) {
+        return res.status(400).json({ error: 'invalid role' });
+      }
+      if (status && !['active', 'disabled'].includes(status)) {
+        return res.status(400).json({ error: 'invalid status' });
+      }
+      const targetId = Number(id);
+      if (status === 'disabled' && Number.isFinite(targetId) && targetId === auth.adminId) {
+        return res.status(400).json({ error: 'Cannot disable your own account' });
+      }
+      await updateAdminDb(id, { role: role || undefined, status: status || undefined });
+      return res.json({ success: true });
+    }
+
     if (req.method === 'GET' && action === 'blogPosts') {
+      if (!requireBlogAccess(auth, res)) return;
       const posts = await listAdminBlogPostsDb(req.query.limit || 200);
       return res.json({ posts, total: posts.length });
     }
 
     if (req.method === 'POST' && action === 'saveBlogPost') {
+      if (!requireBlogAccess(auth, res)) return;
       const raw = req.body && typeof req.body === 'object' ? req.body : {};
       const rawId = raw.id != null && String(raw.id).trim() !== '' ? String(raw.id).trim() : null;
       const payload = {
@@ -272,6 +337,7 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST' && action === 'publishBlogPost') {
+      if (!requireBlogAccess(auth, res)) return;
       const id = req.body?.id;
       const publish = Boolean(req.body?.publish);
       if (!id) return res.status(400).json({ error: 'id is required' });

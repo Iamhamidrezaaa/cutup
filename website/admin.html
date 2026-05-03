@@ -34,6 +34,7 @@
         <button class="nav-btn" data-section="payments" aria-label="Open Payments section"><span aria-hidden="true">💳</span><span>Payments</span></button>
         <button class="nav-btn" data-section="health" aria-label="Open System health section"><span aria-hidden="true">🩺</span><span>System health</span></button>
         <button class="nav-btn" data-section="blog" aria-label="Open Blog CMS section"><span aria-hidden="true">📝</span><span>Blog CMS</span></button>
+        <button type="button" class="nav-btn" data-section="admins" id="navAdminsBtn" hidden aria-label="Open Admins section"><span aria-hidden="true">🔐</span><span>Admins</span></button>
       </aside>
 
       <section class="admin-content" id="adminMainContent" tabindex="-1">
@@ -101,6 +102,23 @@
         <section id="section-health" class="panel">
           <h2>System health</h2>
           <div id="healthPanel"></div>
+        </section>
+
+        <section id="section-admins" class="panel">
+          <h2>Admins</h2>
+          <p class="metric-subtle">Manage panel accounts. Passwords are stored hashed; only super admins see this tab.</p>
+          <div class="toolbar" style="flex-wrap: wrap; gap: 10px;">
+            <input id="newAdminEmail" type="email" placeholder="Email" autocomplete="off" aria-label="New admin email">
+            <input id="newAdminPassword" type="password" placeholder="Password" autocomplete="new-password" aria-label="New admin password">
+            <select id="newAdminRole" aria-label="New admin role">
+              <option value="admin">admin</option>
+              <option value="editor">editor</option>
+              <option value="super_admin">super_admin</option>
+            </select>
+            <button type="button" id="createAdminBtn" class="btn">Add admin</button>
+          </div>
+          <p id="adminsTableHint" class="sr-only">Admin accounts with role and status.</p>
+          <div class="table-wrap"><table id="adminsTable" aria-label="Admins table" aria-describedby="adminsTableHint"></table></div>
         </section>
 
         <section id="section-blog" class="panel">

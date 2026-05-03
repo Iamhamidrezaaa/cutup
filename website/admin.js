@@ -1,6 +1,7 @@
-const API_BASE_URL = 'https://cutup.shop';
-let currentSession = null;
-let currentUser = null;
+const API_BASE_URL = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '';
+let panelRole = '';
+let panelAdminId = null;
+let panelAdminEmail = '';
 let blogPostsCache = [];
 let slugManuallyEdited = false;
 
@@ -634,9 +635,9 @@ function showBanner(message) {
 }
 
 async function apiGet(action, params = {}) {
-  const q = new URLSearchParams({ action, session: currentSession, ...params });
+  const q = new URLSearchParams({ action, ...params });
   const response = await fetch(`${API_BASE_URL}/api/admin?${q.toString()}`, {
-    headers: { 'X-Session-Id': currentSession }
+    credentials: 'include'
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || 'Request failed');
@@ -647,8 +648,8 @@ async function apiPost(action, payload = {}) {
   const response = await fetch(`${API_BASE_URL}/api/admin?action=${encodeURIComponent(action)}`, {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', 'X-Session-Id': currentSession },
-    body: JSON.stringify({ ...payload, session: currentSession })
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...payload })
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -660,13 +661,42 @@ async function apiPost(action, payload = {}) {
 }
 
 async function loadMe() {
-  const q = new URLSearchParams({ action: 'me', session: currentSession });
-  const response = await fetch(`${API_BASE_URL}/api/auth?${q.toString()}`, { headers: { 'X-Session-Id': currentSession } });
+  const response = await fetch(`${API_BASE_URL}/api/admin/auth/me`, { credentials: 'include' });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data.user) throw new Error('Please login first.');
-  currentUser = data.user;
+  if (!response.ok || !data.ok) throw new Error('Please sign in.');
+  panelRole = data.role || '';
+  panelAdminId = data.adminId != null ? Number(data.adminId) : null;
+  panelAdminEmail = String(data.email || '');
   const identity = document.getElementById('adminIdentity');
-  if (identity) identity.textContent = `${currentUser.name || currentUser.email} (${currentUser.email})`;
+  if (identity) identity.textContent = `${panelAdminEmail} · role: ${panelRole}`;
+}
+
+function applyRoleToNav() {
+  const adminsNav = document.getElementById('navAdminsBtn');
+  if (adminsNav) adminsNav.hidden = panelRole !== 'super_admin';
+
+  const opsSections = ['overview', 'users', 'usage', 'outputs', 'payments', 'health'];
+  const allNav = document.querySelectorAll('.nav-btn[data-section]');
+  if (panelRole === 'editor') {
+    allNav.forEach((btn) => {
+      const s = btn.getAttribute('data-section');
+      btn.hidden = s !== 'blog';
+    });
+    document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach((n) => n.classList.remove('active'));
+    document.getElementById('section-blog')?.classList.add('active');
+    const blogBtn = document.querySelector('.nav-btn[data-section="blog"]');
+    blogBtn?.classList.add('active');
+    return;
+  }
+
+  allNav.forEach((btn) => {
+    const s = btn.getAttribute('data-section');
+    if (s === 'admins') return;
+    btn.hidden = false;
+  });
+
+  if (panelRole !== 'super_admin' && adminsNav) adminsNav.hidden = true;
 }
 
 function renderOverview(data) {
@@ -983,6 +1013,72 @@ async function loadBlogPosts() {
   renderBlogTable(blogPostsCache);
 }
 
+function renderAdminsTable(rows) {
+  const el = document.getElementById('adminsTable');
+  if (!el) return;
+  el.innerHTML = `
+    <thead><tr><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+    <tbody>
+      ${(rows.length ? rows : []).map((a) => {
+        const isSelf = panelAdminId != null && Number(a.id) === panelAdminId;
+        const roleSelect = `
+          <select class="admin-role-select" data-admin-id="${escapeHtml(String(a.id))}" aria-label="Role for ${escapeHtml(a.email)}">
+            <option value="super_admin"${a.role === 'super_admin' ? ' selected' : ''}>super_admin</option>
+            <option value="admin"${a.role === 'admin' ? ' selected' : ''}>admin</option>
+            <option value="editor"${a.role === 'editor' ? ' selected' : ''}>editor</option>
+          </select>`;
+        const toggleLabel = a.status === 'active' ? 'Disable' : 'Enable';
+        const nextStatus = a.status === 'active' ? 'disabled' : 'active';
+        const toggleBtn = isSelf && a.status === 'active'
+          ? '<span class="muted">—</span>'
+          : `<button type="button" class="btn ghost admin-status-btn" data-admin-id="${escapeHtml(String(a.id))}" data-next-status="${nextStatus}">${escapeHtml(toggleLabel)}</button>`;
+        const saveRoleBtn = `<button type="button" class="btn ghost admin-save-role-btn" data-admin-id="${escapeHtml(String(a.id))}">Save role</button>`;
+        return `<tr>
+          <td>${escapeHtml(a.email)}</td>
+          <td>${roleSelect}</td>
+          <td>${statusBadge(a.status || '—', a.status === 'active' ? 'ok' : 'warn')}</td>
+          <td>${fmtDate(a.created_at)}</td>
+          <td><div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">${saveRoleBtn}${toggleBtn}</div></td>
+        </tr>`;
+      }).join('') || emptyRow(5, 'No admin accounts.')}
+    </tbody>`;
+
+  el.querySelectorAll('.admin-save-role-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-admin-id');
+      const row = el.querySelector(`.admin-role-select[data-admin-id="${id}"]`);
+      const role = row?.value;
+      if (!id || !role) return;
+      try {
+        await apiPost('updateAdmin', { id, role });
+        showBanner('Role updated.');
+        await loadAdmins();
+      } catch (err) {
+        showBanner(err.message || 'Could not update role.');
+      }
+    });
+  });
+  el.querySelectorAll('.admin-status-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-admin-id');
+      const status = btn.getAttribute('data-next-status');
+      if (!id || !status) return;
+      try {
+        await apiPost('updateAdmin', { id, status });
+        showBanner(status === 'disabled' ? 'Admin disabled.' : 'Admin enabled.');
+        await loadAdmins();
+      } catch (err) {
+        showBanner(err.message || 'Could not update status.');
+      }
+    });
+  });
+}
+
+async function loadAdmins() {
+  const data = await apiGet('admins');
+  renderAdminsTable(data.admins || []);
+}
+
 async function refreshSection(section) {
   if (section === 'overview') return loadOverview();
   if (section === 'users') return loadUsers();
@@ -991,6 +1087,7 @@ async function refreshSection(section) {
   if (section === 'payments') return loadPayments();
   if (section === 'health') return loadHealth();
   if (section === 'blog') return loadBlogPosts();
+  if (section === 'admins') return loadAdmins();
 }
 
 function setupNavigation() {
@@ -1009,14 +1106,30 @@ function setupNavigation() {
 function setupActions() {
   document.getElementById('adminLogoutBtn')?.addEventListener('click', async () => {
     try {
-      await fetch(`${API_BASE_URL}/api/auth?action=logout`, {
+      await fetch(`${API_BASE_URL}/api/admin/logout`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Session-Id': currentSession },
-        body: JSON.stringify({ session: currentSession })
+        credentials: 'include'
       });
     } catch {}
-    localStorage.removeItem('cutup_session');
-    window.location.href = '/';
+    window.location.href = '/adminha.html';
+  });
+  document.getElementById('createAdminBtn')?.addEventListener('click', async () => {
+    const email = document.getElementById('newAdminEmail')?.value?.trim() || '';
+    const password = document.getElementById('newAdminPassword')?.value || '';
+    const role = document.getElementById('newAdminRole')?.value || 'admin';
+    if (!email || !password) {
+      showBanner('Email and password are required.');
+      return;
+    }
+    try {
+      await apiPost('createAdmin', { email, password, role });
+      showBanner('Admin created.');
+      document.getElementById('newAdminEmail').value = '';
+      document.getElementById('newAdminPassword').value = '';
+      await loadAdmins();
+    } catch (err) {
+      showBanner(err.message || 'Could not create admin.');
+    }
   });
   document.getElementById('usersReloadBtn')?.addEventListener('click', () => loadUsers().catch((e) => showBanner(e.message)));
   document.getElementById('usageReloadBtn')?.addEventListener('click', () => loadUsage().catch((e) => showBanner(e.message)));
@@ -1152,18 +1265,29 @@ function setupActions() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-  const params = new URLSearchParams(window.location.search);
-  currentSession = params.get('session') || localStorage.getItem('cutup_session');
-  if (!currentSession) {
-    window.location.href = '/';
-    return;
-  }
-  localStorage.setItem('cutup_session', currentSession);
   setupNavigation();
   setupActions();
   try {
     await loadMe();
-    await Promise.all([loadOverview(), loadUsers(), loadUsage(), loadOutputs(), loadPayments(), loadHealth(), loadBlogPosts()]);
+  } catch {
+    window.location.replace('/adminha.html');
+    return;
+  }
+  try {
+    applyRoleToNav();
+    const loads = [loadBlogPosts()];
+    if (panelRole !== 'editor') {
+      loads.push(
+        loadOverview(),
+        loadUsers(),
+        loadUsage(),
+        loadOutputs(),
+        loadPayments(),
+        loadHealth()
+      );
+    }
+    if (panelRole === 'super_admin') loads.push(loadAdmins());
+    await Promise.all(loads);
   } catch (e) {
     showBanner(e.message || 'Admin access is unavailable.');
   }

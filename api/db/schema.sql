@@ -227,3 +227,27 @@ CREATE INDEX IF NOT EXISTS idx_growth_strategy_stats_updated
 -- Relax leads source for SEO capture (idempotent on fresh DB)
 ALTER TABLE leads DROP CONSTRAINT IF EXISTS leads_source_check;
 ALTER TABLE leads ADD CONSTRAINT leads_source_check CHECK (source IN ('soft_unlock', 'save_action', 'seo_guide'));
+
+-- Panel admins (password login; separate from end-user Google auth)
+CREATE TABLE IF NOT EXISTS admins (
+  id BIGSERIAL PRIMARY KEY,
+  email VARCHAR(320) NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  role VARCHAR(32) NOT NULL DEFAULT 'admin',
+  status VARCHAR(32) NOT NULL DEFAULT 'active',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT admins_role_check CHECK (role IN ('super_admin', 'admin', 'editor')),
+  CONSTRAINT admins_status_check CHECK (status IN ('active', 'disabled'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_admins_email ON admins (email);
+
+CREATE TABLE IF NOT EXISTS admin_sessions (
+  token TEXT PRIMARY KEY,
+  admin_id BIGINT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+  email VARCHAR(320) NOT NULL,
+  role VARCHAR(32) NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires ON admin_sessions (expires_at);

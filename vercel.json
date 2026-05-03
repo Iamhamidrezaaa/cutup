@@ -84,6 +84,22 @@
     {
       "src": "/api/cron/conversion-emails",
       "dest": "/api/cron-conversion-emails.js"
+    },
+    {
+      "src": "/api/admin",
+      "dest": "/api/admin.js"
+    },
+    {
+      "src": "/api/admin/login",
+      "dest": "/api/admin-login.js"
+    },
+    {
+      "src": "/api/admin/logout",
+      "dest": "/api/admin-logout.js"
+    },
+    {
+      "src": "/api/admin/auth/me",
+      "dest": "/api/admin-auth-me.js"
     }
   ],
   "crons": [

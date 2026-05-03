@@ -10,6 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3001;
 
 // Load environment variables
@@ -105,7 +106,7 @@ app.get('/api/health', (req, res) => {
 app.get('/sitemap.xml', async (req, res) => sitemapHandler(req, res));
 
 // Import and use API routes
-let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, analyticsHandler, adminHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler;
+let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, analyticsHandler, adminHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler;
 
 async function loadRoutes() {
   try {
@@ -194,6 +195,17 @@ async function loadRoutes() {
     const adminModule = await import('./api/admin.js');
     adminHandler = adminModule.default;
     console.log('✅ Admin handler loaded');
+
+    const adminLoginModule = await import('./api/admin-login.js');
+    adminLoginHandler = adminLoginModule.default;
+    const adminLogoutModule = await import('./api/admin-logout.js');
+    adminLogoutHandler = adminLogoutModule.default;
+    const adminAuthMeModule = await import('./api/admin-auth-me.js');
+    adminAuthMeHandler = adminAuthMeModule.default;
+    console.log('✅ Admin panel auth handlers loaded');
+
+    const { ensureAdminsSchemaAndSeed } = await import('./api/admins-repository.js');
+    await ensureAdminsSchemaAndSeed();
 
     const toolsContentModule = await import('./api/tools-content.js');
     toolsContentHandler = toolsContentModule.default;
@@ -434,6 +446,27 @@ app.post('/api/admin', async (req, res) => {
     return res.status(503).json({ error: 'Admin handler not loaded' });
   }
   return adminHandler(req, res);
+});
+
+app.post('/api/admin/login', async (req, res) => {
+  if (!adminLoginHandler) {
+    return res.status(503).json({ ok: false, error: 'not_loaded' });
+  }
+  return adminLoginHandler(req, res);
+});
+
+app.post('/api/admin/logout', async (req, res) => {
+  if (!adminLogoutHandler) {
+    return res.status(503).json({ ok: false });
+  }
+  return adminLogoutHandler(req, res);
+});
+
+app.get('/api/admin/auth/me', async (req, res) => {
+  if (!adminAuthMeHandler) {
+    return res.status(503).json({ ok: false });
+  }
+  return adminAuthMeHandler(req, res);
 });
 
 app.get('/api/tools-content', async (req, res) => {
