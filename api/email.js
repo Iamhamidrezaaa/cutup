@@ -10,8 +10,18 @@ function stripHtml(html) {
     .trim();
 }
 
+function smtpEnvPresent(name) {
+  const v = process.env[name];
+  return v != null && String(v).trim() !== '';
+}
+
 export function isEmailTransportConfigured() {
-  return !!(process.env.SMTP_HOST && process.env.SMTP_FROM);
+  return (
+    smtpEnvPresent('SMTP_HOST') &&
+    smtpEnvPresent('SMTP_FROM') &&
+    smtpEnvPresent('SMTP_USER') &&
+    smtpEnvPresent('SMTP_PASS')
+  );
 }
 
 let transporterPromise = null;
@@ -19,16 +29,14 @@ let transporterPromise = null;
 function getTransporter() {
   if (!isEmailTransportConfigured()) return null;
   if (!transporterPromise) {
-    const port = Number(process.env.SMTP_PORT || 587);
-    const secure = String(process.env.SMTP_SECURE || '').toLowerCase() === 'true' || port === 465;
     transporterPromise = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
-      port,
-      secure,
-      auth:
-        process.env.SMTP_USER != null && process.env.SMTP_USER !== ''
-          ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS || '' }
-          : undefined,
+      port: Number(process.env.SMTP_PORT) || 587,
+      secure: false,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
     });
   }
   return transporterPromise;
@@ -41,22 +49,25 @@ function getTransporter() {
 export async function sendEmail({ to, subject, html, text }) {
   const transport = getTransporter();
   if (!transport) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.warn('[email] SMTP not configured (SMTP_HOST / SMTP_FROM); skip send');
-    }
+    console.warn(
+      '[email] SMTP not configured (need SMTP_HOST, SMTP_FROM, SMTP_USER, SMTP_PASS); skip send',
+    );
     return { sent: false, skipped: true };
   }
+  const toAddr = String(to).trim();
   try {
+    console.log('[email] sending to:', toAddr);
     await transport.sendMail({
       from: process.env.SMTP_FROM,
-      to: String(to).trim(),
+      to: toAddr,
       subject: String(subject || '').slice(0, 200),
       html: String(html || ''),
       text: text != null ? String(text) : stripHtml(html),
     });
+    console.log('[email] sent successfully');
     return { sent: true };
-  } catch (e) {
-    console.error('[email] send failed', e.message);
-    return { sent: false, error: e.message };
+  } catch (error) {
+    console.error('[email] failed', error);
+    return { sent: false, error: error?.message || String(error) };
   }
 }
