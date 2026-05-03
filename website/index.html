@@ -27,7 +27,7 @@
     <nav class="nav">
       <div class="container">
         <div class="nav-content">
-          <a href="index.html" class="logo" style="text-decoration: none; color: inherit;">
+          <a href="/" class="logo" style="text-decoration: none; color: inherit;">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -41,10 +41,11 @@
             <span></span>
           </button>
           <div class="nav-links" id="navLinks">
-            <a href="#tool" class="nav-link cta">Generate subtitles</a>
+            <a href="/#tool" class="nav-link cta">Generate subtitles</a>
             <a href="#features" class="nav-link">Features</a>
             <a href="#how-it-works" class="nav-link">How it works</a>
             <a href="#pricing" class="nav-link">Pricing</a>
+            <a href="/blog.html" class="nav-link">Blog</a>
             <a href="#faq" class="nav-link">FAQ</a>
             <div class="auth-section" id="authSection">
               <div class="google-btn-wrapper">
@@ -150,7 +151,7 @@
           </div>
           <div class="hero-cta hero-cta-row hero-cta-secondary">
             <a href="#pricing" class="btn btn-secondary btn-ghost">Compare plans</a>
-            <a href="#tool" class="nav-text-link">Or use the full tool below →</a>
+            <a href="/#tool" class="nav-text-link">Or use the full tool below →</a>
           </div>
         </div>
       </div>
@@ -240,7 +241,7 @@ Here's the fastest path from link to publish-ready captions.
           <div class="monetization-paywall-inner">
             <p class="monetization-paywall-msg" id="monetizationPaywallMsg" role="status"></p>
             <div class="monetization-paywall-actions">
-              <a href="dashboard.html" class="btn btn-primary monetization-upgrade-btn pricing-dashboard-cta" id="monetizationUpgradeBtn" data-cutup-plan="">Upgrade</a>
+              <a href="/dashboard.html" class="btn btn-primary monetization-upgrade-btn pricing-dashboard-cta" id="monetizationUpgradeBtn" data-cutup-plan="">Upgrade</a>
               <a href="#pricing" class="btn btn-secondary" id="monetizationPricingLink">See pricing</a>
             </div>
           </div>
@@ -726,10 +727,10 @@ Here's the fastest path from link to publish-ready captions.
       <div class="container">
         <div id="cutupPricingPaywall" class="cutup-pricing-paywall" hidden></div>
         <h2 class="section-title">Pricing that speaks your language</h2>
-        <p class="hero-description" style="text-align: center; max-width: 760px; margin: -32px auto 24px;">
+        <p class="hero-description" style="text-align: center; max-width: 760px; margin: 0 auto 16px;">
           Save hours of manual work: we bill in <strong>video-sized outcomes</strong>, not jargon. Pick a tier by how much you publish—creators, students, and teams all start with the same instant preview.
         </p>
-        <p class="hero-description" style="text-align: center; max-width: 640px; margin: 0 auto 32px; font-size: 15px; color: #555;">
+        <p class="hero-description" style="text-align: center; max-width: 640px; margin: 0 auto 20px; font-size: 15px; color: #555;">
           <strong>How we count:</strong> 1 processed video ≈ an average <strong>5–10 minutes</strong> of talking-head or lesson audio. Longer files simply use more of your monthly pool—your dashboard shows live estimates.
         </p>
         <div class="pricing-plans-grid">
@@ -744,11 +745,12 @@ Here's the fastest path from link to publish-ready captions.
               <li>Limited languages &amp; tools</li>
               <li>Watermark may appear</li>
             </ul>
-            <a href="#tool" class="btn btn-secondary" style="margin-top: auto; display: inline-block;">Try free preview</a>
+            <a href="/#tool" class="btn btn-secondary" style="margin-top: auto; display: inline-block;">Try free preview</a>
           </div>
           <div class="feature-card pricing-card">
             <h3 class="feature-title">Starter · $9.99/mo</h3>
             <p class="feature-description" style="font-weight: 600; color: var(--primary);">~10–15 videos / month</p>
+            <p class="feature-description pricing-tier-note">For individuals starting out</p>
             <p class="feature-description pricing-access-note">Cancel anytime · Instant access after upgrade</p>
             <p class="feature-description">Ideal for solo creators posting weekly. Download real SRT files, keep summaries on, and stay bilingual without hiring a transcriptionist.</p>
             <ul class="feature-description" style="padding-left: 18px; margin: 0 0 12px; font-size: 14px; line-height: 1.5;">
@@ -756,12 +758,13 @@ Here's the fastest path from link to publish-ready captions.
               <li>Up to 2 languages</li>
               <li>Summaries enabled</li>
             </ul>
-            <a href="dashboard.html" class="btn btn-primary pricing-dashboard-cta" style="margin-top: auto; display: inline-block;" data-cutup-plan="starter">Upgrade in dashboard</a>
+            <a href="/dashboard.html" class="btn btn-primary pricing-dashboard-cta" style="margin-top: auto; display: inline-block;" data-cutup-plan="starter">Start Starter plan</a>
           </div>
           <div class="feature-card pricing-card pricing-card-pro">
             <span class="pricing-badge">Most Popular</span>
             <h3 class="feature-title">Pro · $19.99/mo</h3>
             <p class="feature-description" style="font-weight: 600; color: var(--primary);">~25–35 videos / month</p>
+            <p class="feature-description pricing-tier-note">For consistent creators</p>
             <p class="feature-description pricing-micro-note">Most users choose this plan</p>
             <p class="feature-description pricing-fit-note">Best for creators publishing weekly</p>
             <p class="feature-description pricing-access-note">Cancel anytime · Instant access after upgrade</p>
@@ -771,11 +774,12 @@ Here's the fastest path from link to publish-ready captions.
               <li>Faster queue times</li>
               <li>Better TXT / DOCX exports</li>
             </ul>
-            <a href="dashboard.html" class="btn btn-primary pricing-dashboard-cta" style="margin-top: auto; display: inline-block;" data-cutup-plan="pro">Subscribe with card</a>
+            <a href="/dashboard.html" class="btn btn-primary pricing-dashboard-cta" style="margin-top: auto; display: inline-block;" data-cutup-plan="pro">Start Pro plan</a>
           </div>
           <div class="feature-card pricing-card">
             <h3 class="feature-title">Business · $39.99/mo</h3>
             <p class="feature-description" style="font-weight: 600; color: var(--primary);">~80–100 videos / month</p>
+            <p class="feature-description pricing-tier-note">For teams and heavy usage</p>
             <p class="feature-description pricing-access-note">Cancel anytime · Instant access after upgrade</p>
             <p class="feature-description">Heavy publishing schedules get priority routing, generous fair-use headroom, and every premium export option unlocked.</p>
             <ul class="feature-description" style="padding-left: 18px; margin: 0 0 12px; font-size: 14px; line-height: 1.5;">
@@ -783,30 +787,78 @@ Here's the fastest path from link to publish-ready captions.
               <li>Fair-use pool (no scary fine print in-app)</li>
               <li>Full feature access</li>
             </ul>
-            <a href="dashboard.html" class="btn btn-primary pricing-dashboard-cta" style="margin-top: auto; display: inline-block;" data-cutup-plan="advanced">Go Business</a>
+            <a href="/dashboard.html" class="btn btn-primary pricing-dashboard-cta" style="margin-top: auto; display: inline-block;" data-cutup-plan="advanced">Start Business plan</a>
           </div>
         </div>
-        <p class="hero-description" style="text-align: center; max-width: 720px; margin: 28px auto 0; font-size: 14px; color: #666;">
-          International renewals run through Stripe after you sign in. Exact totals always match the live checkout page inside your dashboard.
+        <p class="hero-description" style="text-align: center; max-width: 720px; margin: 20px auto 0; font-size: 14px; color: #666;">
+          Plans renew monthly in USD. You’ll always see the exact total on the checkout page before you confirm.
         </p>
       </div>
     </section>
 
-    <section id="faq" class="how-it-works">
+    <section id="faq" class="faq-section" aria-labelledby="faq-heading">
       <div class="container">
-        <h2 class="section-title">FAQ</h2>
-        <div class="steps" style="grid-template-columns: 1fr;">
-          <div class="step" style="text-align: left;">
-            <h3 class="step-title">Do I need an account?</h3>
-            <p class="step-description">No. You can run previews immediately. Creating a free account unlocks history and higher limits.</p>
+        <h2 id="faq-heading" class="section-title section-title--faq">FAQ</h2>
+        <div class="faq-accordion" id="faqAccordion">
+          <div class="faq-item">
+            <button type="button" class="faq-question" id="faq-q-1" aria-expanded="false" aria-controls="faq-a-1" data-faq-btn>Do I need an account?</button>
+            <div class="faq-answer" id="faq-a-1" role="region" aria-labelledby="faq-q-1">
+              <p>No. Paste a link and preview timed subtitles right away. A free account adds history, saved outputs, and higher limits when you’re ready.</p>
+            </div>
           </div>
-          <div class="step" style="text-align: left;">
-            <h3 class="step-title">Which payments do you support?</h3>
-            <p class="step-description">International cards via Stripe for Starter, Pro, and Business (<strong>$9.99</strong> / <strong>$19.99</strong> / <strong>$39.99</strong> per month). Optional legacy IRR cart remains in the dashboard where applicable.</p>
+          <div class="faq-item">
+            <button type="button" class="faq-question" id="faq-q-2" aria-expanded="false" aria-controls="faq-a-2" data-faq-btn>How fast is subtitle generation?</button>
+            <div class="faq-answer" id="faq-a-2" role="region" aria-labelledby="faq-q-2">
+              <p>Most short-to-medium videos finish in about a minute. Longer files take a bit more—you’ll see progress in the tool so you’re never guessing.</p>
+            </div>
           </div>
-          <div class="step" style="text-align: left;">
-            <h3 class="step-title">Can I translate subtitles?</h3>
-            <p class="step-description">Yes. Paid plans can translate SRT, transcript, and summary text into multiple languages.</p>
+          <div class="faq-item">
+            <button type="button" class="faq-question" id="faq-q-3" aria-expanded="false" aria-controls="faq-a-3" data-faq-btn>What video platforms are supported?</button>
+            <div class="faq-answer" id="faq-a-3" role="region" aria-labelledby="faq-q-3">
+              <p>YouTube, TikTok, and Instagram links work out of the box. You can also upload audio or video files when you want to run everything in one place.</p>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button type="button" class="faq-question" id="faq-q-4" aria-expanded="false" aria-controls="faq-a-4" data-faq-btn>Can I download subtitles?</button>
+            <div class="faq-answer" id="faq-a-4" role="region" aria-labelledby="faq-q-4">
+              <p>Yes. Paid plans unlock full SRT downloads and exports so you can drop captions straight into your editor or upload platform.</p>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button type="button" class="faq-question" id="faq-q-5" aria-expanded="false" aria-controls="faq-a-5" data-faq-btn>Is there a free trial?</button>
+            <div class="faq-answer" id="faq-a-5" role="region" aria-labelledby="faq-q-5">
+              <p>You get a real in-browser preview without a card. When you need full files, longer clips, or higher volume, upgrading takes one minute.</p>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button type="button" class="faq-question" id="faq-q-6" aria-expanded="false" aria-controls="faq-a-6" data-faq-btn>What languages are supported?</button>
+            <div class="faq-answer" id="faq-a-6" role="region" aria-labelledby="faq-q-6">
+              <p>Transcription and subtitles work across many languages—pick the output language you need in the tool. Paid plans add translation for SRT, transcript, and summaries.</p>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button type="button" class="faq-question" id="faq-q-7" aria-expanded="false" aria-controls="faq-a-7" data-faq-btn>Can I edit subtitles before exporting?</button>
+            <div class="faq-answer" id="faq-a-7" role="region" aria-labelledby="faq-q-7">
+              <p>Absolutely. Review timing and text in the preview, tweak what you need, then export when it matches your style.</p>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button type="button" class="faq-question" id="faq-q-8" aria-expanded="false" aria-controls="faq-a-8" data-faq-btn>What payment methods do you accept?</button>
+            <div class="faq-answer" id="faq-a-8" role="region" aria-labelledby="faq-q-8">
+              <p>Payments are handled securely via international card processors. You can pay with Visa, Mastercard, and other global payment methods. Pricing is in USD.</p>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button type="button" class="faq-question" id="faq-q-9" aria-expanded="false" aria-controls="faq-a-9" data-faq-btn>Can I translate subtitles for other markets?</button>
+            <div class="faq-answer" id="faq-a-9" role="region" aria-labelledby="faq-q-9">
+              <p>Yes. On paid plans you can translate SRT, full transcript, and summaries so one video can ship in multiple languages.</p>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button type="button" class="faq-question" id="faq-q-10" aria-expanded="false" aria-controls="faq-a-10" data-faq-btn>Where do I manage my plan?</button>
+            <div class="faq-answer" id="faq-a-10" role="region" aria-labelledby="faq-q-10">
+              <p>After you sign in, your dashboard shows usage, saved work, and plan options in one place—no digging through emails.</p>
+            </div>
           </div>
         </div>
       </div>
@@ -833,36 +885,25 @@ Here's the fastest path from link to publish-ready captions.
 
   </main>
 
-  <footer class="footer">
+  <footer class="site-footer footer">
     <div class="container">
-      <div class="footer-content">
-        <div class="footer-logo">
-          <a href="index.html" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 8px;">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span class="logo-text">Cutup</span>
-          </a>
-        </div>
-        <div class="footer-links">
-          <a href="subtitle-generator.html" class="footer-link">Subtitle generator</a>
-          <a href="video-to-text.html" class="footer-link">Video to text</a>
-          <a href="translate-video.html" class="footer-link">Translate video</a>
-          <a href="about.html" class="footer-link">About</a>
-          <a href="privacy.html" class="footer-link">Privacy</a>
-          <a href="contact.html" class="footer-link">Contact</a>
-        </div>
-      </div>
-      <div class="footer-bottom">
-        <div class="footer-copyright">
-          <p>&copy; 2026 Cutup. All rights reserved.</p>
-        </div>
+      <div class="footer-inner">
+        <div class="footer-brand"><a href="/">Cutup</a></div>
+        <nav class="footer-links" aria-label="Footer">
+          <a href="/#tool" class="footer-link">Subtitle generator</a>
+          <a href="/#tool" class="footer-link">Video to text</a>
+          <a href="/#tool" class="footer-link">Translate video</a>
+          <a href="/blog.html" class="footer-link">Blog</a>
+          <a href="/about.html" class="footer-link">About</a>
+          <a href="/privacy.html" class="footer-link">Privacy</a>
+          <a href="/contact.html" class="footer-link">Contact</a>
+        </nav>
+        <div class="footer-copy">© 2026 Cutup. All rights reserved.</div>
       </div>
     </div>
   </footer>
 
+  <script src="site-chrome.js"></script>
   <script src="analytics-client.js"></script>
   <script src="viral-referral.js"></script>
   <script src="conversion-banners.js"></script>

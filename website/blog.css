@@ -22,19 +22,13 @@ body.has-sticky-article-cta--visible {
   padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
 }
 a { color: var(--primary); text-decoration: none; }
-.container { width: min(1140px, calc(100% - 32px)); margin: 0 auto; }
-
-.blog-header {
-  background: rgba(255, 255, 255, 0.92);
-  border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  backdrop-filter: blur(6px);
+.container {
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 24px;
+  box-sizing: border-box;
 }
-.header-inner { display: flex; justify-content: space-between; align-items: center; min-height: 64px; }
-.brand { font-size: 22px; font-weight: 800; color: #1e1b4b; }
-.header-links { display: flex; gap: 14px; font-weight: 500; }
 
 .blog-hero { padding: 30px 0 16px; }
 .blog-hero h1 { margin: 0 0 8px; font-size: 38px; letter-spacing: -0.02em; }

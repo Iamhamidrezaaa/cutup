@@ -1,0 +1,79 @@
+/* Shared marketing footer (blog/tools pages that don’t load full style.css) */
+.site-footer.footer {
+  background: #1a1a1a;
+  color: #fff;
+  padding: 48px 0 24px;
+  margin-top: auto;
+}
+
+.site-footer .container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.site-footer .footer-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  align-items: center;
+  text-align: center;
+}
+
+.site-footer .footer-brand a {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #fff;
+  text-decoration: none;
+}
+
+.site-footer .footer-brand a:hover {
+  opacity: 0.9;
+}
+
+.site-footer .footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16px 24px;
+}
+
+.site-footer .footer-link {
+  color: rgba(255, 255, 255, 0.8);
+  text-decoration: none;
+  font-size: 14px;
+  transition: color 0.2s;
+}
+
+.site-footer .footer-link:hover {
+  color: #fff;
+}
+
+.site-footer .footer-copy {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  width: 100%;
+}
+
+@media (min-width: 769px) {
+  .site-footer .footer-inner {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .site-footer .footer-links {
+    justify-content: flex-end;
+    flex: 1;
+  }
+
+  .site-footer .footer-copy {
+    flex-basis: 100%;
+    text-align: center;
+    margin-top: 8px;
+  }
+}

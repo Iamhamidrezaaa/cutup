@@ -33,22 +33,22 @@ function templateHtml({ headline, body, ctaLabel, kind }) {
 
 const TEMPLATES = {
   lead_ready: {
-    subject: 'Your transcript is ready',
-    headline: 'Your transcript is ready',
-    body: 'Jump back into Cutup to view, export, and keep working on your video.',
-    cta: 'Open Cutup',
+    subject: 'Your subtitles are ready — go grab them',
+    headline: 'Your subtitles are ready — go grab them',
+    body: 'They’re sitting in Cutup waiting for you—pop in, tweak if you want, and export.',
+    cta: 'Open the tool',
   },
   abandon_pay: {
-    subject: 'Finish your upgrade and unlock full access',
-    headline: 'Finish your upgrade',
-    body: 'You started upgrading — complete checkout anytime to unlock full exports and higher limits.',
-    cta: 'Continue in Cutup',
+    subject: 'Want faster + full access? Unlock it here',
+    headline: 'Pick up where you left off',
+    body: 'You were a tap away from the full workflow—no stress, finish checkout when you’re ready.',
+    cta: 'Unlock it',
   },
   active_use: {
-    subject: 'You’re using Cutup a lot — go unlimited',
-    headline: 'You’re getting great mileage from Cutup',
-    body: 'Upgrade when you’re ready for more minutes, downloads, and headroom.',
-    cta: 'See plans',
+    subject: 'You’re on a roll with Cutup',
+    headline: 'You’re crushing it with Cutup',
+    body: 'If you want more headroom and faster runs, snag a plan that matches your pace.',
+    cta: 'See what fits',
   },
 };
 

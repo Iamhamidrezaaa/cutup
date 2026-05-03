@@ -26,7 +26,7 @@
     <!-- Header -->
     <header class="dashboard-header">
       <div class="header-content">
-        <a href="index.html" class="logo" style="text-decoration: none; color: inherit;">
+        <a href="/" class="logo" style="text-decoration: none; color: inherit;">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
             <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -143,36 +143,25 @@
     </main>
   </div>
 
-  <footer class="footer">
+  <footer class="site-footer footer">
     <div class="container">
-      <div class="footer-content">
-        <div class="footer-logo">
-          <a href="index.html" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 8px;">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span class="logo-text">Cutup</span>
-          </a>
-        </div>
-        <div class="footer-links">
-          <a href="subtitle-generator.html" class="footer-link">Subtitle generator</a>
-          <a href="video-to-text.html" class="footer-link">Video to text</a>
-          <a href="translate-video.html" class="footer-link">Translate video</a>
-          <a href="about.html" class="footer-link">About</a>
-          <a href="privacy.html" class="footer-link">Privacy</a>
-          <a href="contact.html" class="footer-link">Contact</a>
-        </div>
-      </div>
-      <div class="footer-bottom">
-        <div class="footer-copyright">
-          <p>&copy; 2026 Cutup. All rights reserved.</p>
-        </div>
+      <div class="footer-inner">
+        <div class="footer-brand"><a href="/">Cutup</a></div>
+        <nav class="footer-links" aria-label="Footer">
+          <a href="/#tool" class="footer-link">Subtitle generator</a>
+          <a href="/#tool" class="footer-link">Video to text</a>
+          <a href="/#tool" class="footer-link">Translate video</a>
+          <a href="/blog.html" class="footer-link">Blog</a>
+          <a href="/about.html" class="footer-link">About</a>
+          <a href="/privacy.html" class="footer-link">Privacy</a>
+          <a href="/contact.html" class="footer-link">Contact</a>
+        </nav>
+        <div class="footer-copy">© 2026 Cutup. All rights reserved.</div>
       </div>
     </div>
   </footer>
 
+  <script src="site-chrome.js"></script>
   <script src="analytics-client.js"></script>
   <script src="conversion-banners.js"></script>
   <script src="pricing-segmentation.js"></script>

@@ -116,7 +116,7 @@
     if (mode === 'dashboard') {
       initIdleBanner(host, {
         idleMs: 180000,
-        ctaHref: 'index.html#tool',
+        ctaHref: '/#tool',
         isEligible: function () { return true; }
       });
     } else {

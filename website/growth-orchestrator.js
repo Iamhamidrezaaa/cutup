@@ -231,7 +231,8 @@
 
     if (isIndex && state.monetization === 'SOFT') {
       const hint = document.getElementById('retentionUpgradeHint');
-      if (hint && canFireGrowthAction('soft_hint')) {
+      const strip = document.getElementById('retentionStrip');
+      if (hint && strip && !strip.hidden && canFireGrowthAction('soft_hint')) {
         hint.hidden = false;
         fired.softHintFired = true;
       }

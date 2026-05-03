@@ -1016,7 +1016,7 @@ function setupActions() {
       });
     } catch {}
     localStorage.removeItem('cutup_session');
-    window.location.href = 'index.html';
+    window.location.href = '/';
   });
   document.getElementById('usersReloadBtn')?.addEventListener('click', () => loadUsers().catch((e) => showBanner(e.message)));
   document.getElementById('usageReloadBtn')?.addEventListener('click', () => loadUsage().catch((e) => showBanner(e.message)));
@@ -1155,7 +1155,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const params = new URLSearchParams(window.location.search);
   currentSession = params.get('session') || localStorage.getItem('cutup_session');
   if (!currentSession) {
-    window.location.href = 'index.html';
+    window.location.href = '/';
     return;
   }
   localStorage.setItem('cutup_session', currentSession);

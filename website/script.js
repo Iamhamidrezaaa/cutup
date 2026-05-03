@@ -12,6 +12,56 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
   });
 });
 
+(function setupRootHashLinks() {
+  function isHomePathname() {
+    const p = (window.location.pathname || '/').replace(/\/$/, '') || '/';
+    return p === '/';
+  }
+  document.querySelectorAll('a[href^="/#"]').forEach((anchor) => {
+    anchor.addEventListener('click', function (e) {
+      let hash = '';
+      try {
+        hash = new URL(this.getAttribute('href'), window.location.origin).hash;
+      } catch (_err) {
+        return;
+      }
+      if (!hash || !isHomePathname()) return;
+      e.preventDefault();
+      const target = document.querySelector(hash);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        try {
+          history.replaceState(null, '', hash);
+        } catch (_e2) {
+          /* ignore */
+        }
+      }
+    });
+  });
+})();
+
+function initCutupFaqAccordion() {
+  const root = document.getElementById('faqAccordion');
+  if (!root) return;
+  const items = Array.from(root.querySelectorAll('.faq-item'));
+  items.forEach((item) => {
+    const btn = item.querySelector('[data-faq-btn]');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      const opening = !item.classList.contains('active');
+      items.forEach((i) => {
+        i.classList.remove('active');
+        const b = i.querySelector('[data-faq-btn]');
+        if (b) b.setAttribute('aria-expanded', 'false');
+      });
+      if (opening) {
+        item.classList.add('active');
+        btn.setAttribute('aria-expanded', 'true');
+      }
+    });
+  });
+}
+
 // Add scroll animation
 const observerOptions = {
   threshold: 0.1,
@@ -158,6 +208,167 @@ function cutupIsLoggedIn() {
   } catch {
     return false;
   }
+}
+
+const CUTUP_LAST_SESSION_LEGACY_KEY = 'cutUp_last_session';
+const CUTUP_PENDING_PLAN_AFTER_AUTH_KEY = 'cutup_pending_plan_after_auth';
+const CUTUP_PAYMENT_RETRY_KEY = 'cutup_payment_retry';
+
+function readLastSessionEntry() {
+  try {
+    const tryParse = (raw) => {
+      if (!raw) return null;
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    };
+    return (
+      tryParse(localStorage.getItem('cutup_last_session')) ||
+      tryParse(localStorage.getItem(CUTUP_LAST_SESSION_LEGACY_KEY))
+    );
+  } catch {
+    return null;
+  }
+}
+
+function inferCutupPaymentProvider() {
+  if (typeof window !== 'undefined' && window.CUTUP_PAYMENT_PROVIDER) {
+    return window.CUTUP_PAYMENT_PROVIDER === 'yekpay' ? 'yekpay' : 'stripe';
+  }
+  try {
+    const lang = (navigator.language || navigator.languages?.[0] || '').toLowerCase();
+    if (lang.startsWith('fa')) return 'yekpay';
+  } catch (_e) {
+    /* noop */
+  }
+  return 'stripe';
+}
+
+async function cutupTriggerGoogleLogin() {
+  const btn = document.getElementById('loginBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add('loading');
+    const label = btn.querySelector('.google-btn-label');
+    if (label) label.textContent = 'Connecting...';
+  }
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/oauth/google/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[script] Auth error response:', response.status, errorText);
+      throw new Error(`Server error: ${response.status}`);
+    }
+    const data = await response.json();
+    if (!data?.authUrl) {
+      console.error('[script] No authUrl in response:', data);
+      throw new Error('No authUrl returned from server');
+    }
+    window.location.href = data.authUrl;
+  } catch (error) {
+    console.error('[script] Google login failed:', error);
+    resetGoogleButtonState();
+    alert('Google sign-in failed. Please try again.');
+    throw error;
+  }
+}
+
+async function cutupStartPaymentCheckoutFromLanding(planKey) {
+  const sessionId = localStorage.getItem('cutup_session');
+  if (!sessionId) return;
+  const provider = inferCutupPaymentProvider();
+  let discount = null;
+  try {
+    if (typeof getHotDiscountCodeForCheckout === 'function') {
+      discount = getHotDiscountCodeForCheckout({});
+    }
+  } catch (_e) {
+    discount = null;
+  }
+  const body = { planKey, provider, ...(discount ? { discount } : {}) };
+  const response = await fetch(`${API_BASE_URL}/api/payment/create`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Session-Id': sessionId,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  const redirect = data.redirect_url || data.url;
+  if (response.ok && redirect) {
+    if (typeof sendAnalyticsEvent === 'function') {
+      sendAnalyticsEvent('payment_started', { plan: planKey, sessionId });
+    }
+    if (discount && typeof window.cutupPaywallDiscountUsed === 'function') {
+      window.cutupPaywallDiscountUsed(planKey);
+    }
+    try {
+      sessionStorage.setItem(CUTUP_PAYMENT_RETRY_KEY, JSON.stringify({ planKey, provider }));
+    } catch (_e) {
+      /* noop */
+    }
+    window.location.href = redirect;
+    return;
+  }
+  alert(
+    data?.error === 'Payment provider not configured'
+      ? 'Payments are not configured.'
+      : 'Payments are not available right now. Try again from your dashboard.'
+  );
+}
+
+function setupLandingPricingCheckoutIntercept() {
+  if (!document.getElementById('heroUrlInput')) return;
+  document.addEventListener(
+    'click',
+    async (e) => {
+      const a = e.target.closest && e.target.closest('a.pricing-dashboard-cta');
+      if (!a) return;
+      if (a.classList.contains('disabled-plan-btn')) return;
+      if (a.getAttribute('aria-disabled') === 'true') return;
+
+      let plan = (a.getAttribute('data-cutup-plan') || '').trim();
+      if (a.id === 'monetizationUpgradeBtn' && !plan) {
+        plan = 'pro';
+      }
+      if (!plan || !['starter', 'pro', 'advanced'].includes(plan)) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (!cutupIsLoggedIn()) {
+        try {
+          sessionStorage.setItem(CUTUP_PENDING_PLAN_AFTER_AUTH_KEY, plan);
+        } catch (_e) {
+          /* noop */
+        }
+        try {
+          await cutupTriggerGoogleLogin();
+        } catch (_e) {
+          try {
+            sessionStorage.removeItem(CUTUP_PENDING_PLAN_AFTER_AUTH_KEY);
+          } catch (_e2) {
+            /* noop */
+          }
+        }
+        return;
+      }
+
+      try {
+        await cutupStartPaymentCheckoutFromLanding(plan);
+      } catch (err) {
+        console.error('[script] checkout from landing failed', err);
+        alert('Could not start checkout. Please try again.');
+      }
+    },
+    true
+  );
 }
 
 function cutupSoftUnlockSet() {
@@ -655,8 +866,10 @@ function recordRetentionAfterResults(opts) {
     filtered.unshift(entry);
     const trimmed = filtered.slice(0, 5);
     try {
+      const payload = JSON.stringify({ url, platform, title, ts: Date.now() });
       localStorage.setItem(CUTUP_RECENT_ACTIVITY_KEY, JSON.stringify(trimmed));
-      localStorage.setItem(CUTUP_LAST_SESSION_KEY, JSON.stringify({ url, platform, title, ts: Date.now() }));
+      localStorage.setItem(CUTUP_LAST_SESSION_KEY, payload);
+      localStorage.setItem(CUTUP_LAST_SESSION_LEGACY_KEY, payload);
     } catch {
       /* ignore */
     }
@@ -703,16 +916,28 @@ function retentionSwitchPlatformWithUrl(platform, url) {
   document.getElementById('tool')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+function updateRetentionStripVisibility(stats) {
+  const strip = document.getElementById('retentionStrip');
+  if (!strip) return false;
+  const s = stats || readUsageStats();
+  const hasUsage = (s.totalUses || 0) >= 1;
+  const hasRecent = readRecentActivity().length > 0;
+  const last = readLastSessionEntry();
+  const maxAge = 7 * 24 * 60 * 60 * 1000;
+  const hasValidLast =
+    last &&
+    last.url &&
+    /^https?:\/\//i.test(String(last.url)) &&
+    Date.now() - (Number(last.ts) || 0) < maxAge;
+  const show = hasUsage || hasRecent || hasValidLast;
+  strip.hidden = !show;
+  return show;
+}
+
 function renderContinueBanner() {
   const wrap = document.getElementById('retentionContinueBanner');
   if (!wrap) return;
-  let last = null;
-  try {
-    const raw = localStorage.getItem(CUTUP_LAST_SESSION_KEY);
-    last = raw ? JSON.parse(raw) : null;
-  } catch {
-    last = null;
-  }
+  const last = readLastSessionEntry();
   const maxAge = 7 * 24 * 60 * 60 * 1000;
   const ok =
     last &&
@@ -781,6 +1006,7 @@ function renderRecentActivityList() {
 
 function renderRetentionPanels(stats) {
   const s = stats || readUsageStats();
+  if (!updateRetentionStripVisibility(s)) return;
   renderUsageHint(s);
   renderUpgradeHint(s);
   renderRecentActivityList();
@@ -789,12 +1015,7 @@ function renderRetentionPanels(stats) {
 
 function setupRetentionInteractions() {
   document.getElementById('retentionContinueBtn')?.addEventListener('click', () => {
-    let last = null;
-    try {
-      last = JSON.parse(localStorage.getItem(CUTUP_LAST_SESSION_KEY) || 'null');
-    } catch {
-      last = null;
-    }
+    const last = readLastSessionEntry();
     console.log('[retention] continue clicked');
     if (last?.url) {
       retentionSwitchPlatformWithUrl(last.platform || 'youtube', last.url);
@@ -1091,7 +1312,7 @@ if (authSuccess === 'success' && sessionId) {
   // If we're on dashboard.html and have pending URL, redirect to main page
   if (window.location.pathname.includes('dashboard.html') && pendingUrl) {
     console.log('[script] Redirecting to main page with pending URL');
-    window.location.href = `index.html?session=${sessionId}`;
+    window.location.href = `/?session=${encodeURIComponent(sessionId)}`;
     // Don't continue execution after redirect
   } else {
     // Remove query params from URL
@@ -1739,10 +1960,10 @@ function showUserProfile(user) {
   // Setup dropdown menu
   const sessionId = localStorage.getItem('cutup_session');
   if (sessionId && dashboardLink) {
-    dashboardLink.href = `dashboard.html?session=${sessionId}`;
+    dashboardLink.href = `/dashboard.html?session=${encodeURIComponent(sessionId)}`;
     dashboardLink.addEventListener('click', (e) => {
       e.preventDefault();
-      window.location.href = `dashboard.html?session=${sessionId}`;
+      window.location.href = `/dashboard.html?session=${encodeURIComponent(sessionId)}`;
     });
   }
   
@@ -1858,51 +2079,23 @@ document.addEventListener('DOMContentLoaded', () => {
   fullTextBtnMain = document.getElementById('fullTextBtnMain');
   
   // Setup login button event listener using event delegation (simple and reliable)
-  document.addEventListener('click', async function(e) {
+  document.addEventListener('click', async function (e) {
     const btn = e.target.closest('#loginBtn');
     if (!btn) return;
-    
+
     e.preventDefault();
     e.stopPropagation();
-    
-    btn.disabled = true;
-    btn.classList.add('loading');
-    const label = btn.querySelector('.google-btn-label');
-    if (label) label.textContent = 'Connecting...';
 
+    console.log('[script] Login button clicked, fetching auth URL from /api/oauth/google/start...');
     try {
-      console.log('[script] Login button clicked, fetching auth URL from /api/oauth/google/start...');
-      const response = await fetch(`${API_BASE_URL}/api/oauth/google/start`, { 
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      console.log('[script] Auth response status:', response.status);
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[script] Auth error response:', response.status, errorText);
-        throw new Error(`Server error: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      console.log('[script] Auth data received:', data);
-      
-      if (!data?.authUrl) {
-        console.error('[script] No authUrl in response:', data);
-        throw new Error('No authUrl returned from server');
-      }
-      
-      console.log('[script] Redirecting to Google OAuth:', data.authUrl);
-      window.location.href = data.authUrl;
-    } catch (error) {
-      console.error('[script] Google login failed:', error);
-      resetGoogleButtonState();
-      alert('Google sign-in failed. Please try again.');
+      await cutupTriggerGoogleLogin();
+    } catch (_err) {
+      /* cutupTriggerGoogleLogin already surfaced error */
     }
   });
+
+  setupLandingPricingCheckoutIntercept();
+  initCutupFaqAccordion();
   
   console.log('[script] Login button event listener attached (event delegation)');
   
@@ -2319,7 +2512,7 @@ async function handleVideoDownload() {
     const limitCheck = await checkSubscriptionLimit(sessionId, 'downloadVideo', 0);
     if (limitCheck && !limitCheck.allowed) {
       showMessage(limitCheck.reason || LIMIT_UPGRADE_FALLBACK, 'error');
-      window.open(`dashboard.html?session=${sessionId}`, '_blank');
+      window.open(`/dashboard.html?session=${encodeURIComponent(sessionId)}`, '_blank');
       return;
     }
     
@@ -2394,7 +2587,7 @@ async function handleAudioDownload() {
     const limitCheck = await checkSubscriptionLimit(sessionId, 'downloadAudio', 0);
     if (limitCheck && !limitCheck.allowed) {
       showMessage(limitCheck.reason || LIMIT_UPGRADE_FALLBACK, 'error');
-      window.open(`dashboard.html?session=${sessionId}`, '_blank');
+      window.open(`/dashboard.html?session=${encodeURIComponent(sessionId)}`, '_blank');
       return;
     }
     
@@ -2663,7 +2856,7 @@ function setMonetizationUpgradeHref() {
   const a = document.getElementById('monetizationUpgradeBtn');
   if (!a) return;
   const sid = localStorage.getItem('cutup_session');
-  a.href = sid ? `dashboard.html?session=${encodeURIComponent(sid)}` : 'dashboard.html';
+  a.href = sid ? `/dashboard.html?session=${encodeURIComponent(sid)}` : '/dashboard.html';
 }
 
 function applyMonetizationPaywallFromServer(data) {
@@ -2829,7 +3022,7 @@ async function processSummarizeFile(file, sessionId) {
     const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', estimatedDurationMinutes);
     if (!limitCheck.allowed) {
       showMessage(limitCheck.reason || LIMIT_UPGRADE_FALLBACK, 'error');
-      window.open(`dashboard.html?session=${sessionId}`, '_blank');
+      window.open(`/dashboard.html?session=${encodeURIComponent(sessionId)}`, '_blank');
       hideProgressBar();
       return;
     }
@@ -2937,7 +3130,7 @@ async function processFullTextFile(file, sessionId, activeTab = 'fulltext') {
     const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', estimatedDurationMinutes);
     if (!limitCheck.allowed) {
       showMessage(limitCheck.reason || LIMIT_UPGRADE_FALLBACK, 'error');
-      window.open(`dashboard.html?session=${sessionId}`, '_blank');
+      window.open(`/dashboard.html?session=${encodeURIComponent(sessionId)}`, '_blank');
       hideProgressBar();
       return;
     }
@@ -3385,7 +3578,7 @@ async function processSummarize(url, sessionId, platform = 'youtube') {
       const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', durationMinutes);
       if (!limitCheck.allowed) {
         showMessage(limitCheck.reason || LIMIT_UPGRADE_FALLBACK, 'error');
-        window.open(`dashboard.html?session=${sessionId}`, '_blank');
+        window.open(`/dashboard.html?session=${encodeURIComponent(sessionId)}`, '_blank');
         hideProgressBar();
         return;
       }
@@ -3519,7 +3712,7 @@ async function processFullText(url, sessionId, platform = 'youtube', activeTab =
       const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', durationMinutes);
       if (!limitCheck.allowed) {
         showMessage(limitCheck.reason || LIMIT_UPGRADE_FALLBACK, 'error');
-        window.open(`dashboard.html?session=${sessionId}`, '_blank');
+        window.open(`/dashboard.html?session=${encodeURIComponent(sessionId)}`, '_blank');
         hideProgressBar();
         return;
       }
@@ -4118,7 +4311,7 @@ document.addEventListener('DOMContentLoaded', () => {
         destination: sessionId ? 'dashboard' : 'pricing'
       });
       if (sessionId) {
-        window.open(`dashboard.html?session=${sessionId}`, '_blank');
+        window.open(`/dashboard.html?session=${encodeURIComponent(sessionId)}`, '_blank');
       } else {
         document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         showMessage('Pick a plan below—then sign in to unlock the full file while momentum is hot.', 'info');
@@ -4905,13 +5098,13 @@ function showQualityModal(formats, url, sessionId, isPro, isStarter, userPlan, t
       if (lockIconEl) {
         lockIconEl.addEventListener('click', (e) => {
           e.stopPropagation();
-          window.open(`dashboard.html?session=${sessionId}#subscription`, '_blank');
+          window.open(`/dashboard.html?session=${encodeURIComponent(sessionId)}#subscription`, '_blank');
         });
         lockIconEl.style.cursor = 'pointer';
       }
       item.addEventListener('click', () => {
         showMessage('This quality requires a higher plan. Upgrade to unlock.', 'info');
-        window.open(`dashboard.html?session=${sessionId}#subscription`, '_blank');
+        window.open(`/dashboard.html?session=${encodeURIComponent(sessionId)}#subscription`, '_blank');
       });
       item.style.cursor = 'not-allowed';
       item.style.opacity = '0.6';

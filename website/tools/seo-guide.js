@@ -91,8 +91,8 @@
     });
   }
 
-  var toolHref = '../index.html#tool';
-  var pricingHref = '../index.html#pricing';
+  var toolHref = '/#tool';
+  var pricingHref = '/#pricing';
 
   function relatedLinksHtml() {
     var guides = [
@@ -118,7 +118,7 @@
       '<ul>' +
       '<li><a href="../tools.html">All Cutup tools</a></li>' +
       '<li><a href="../blog.html">Blog</a></li>' +
-      '<li><a href="../index.html">Homepage</a></li>' +
+      '<li><a href="/">Homepage</a></li>' +
       '<li><a href="' +
       pricingHref +
       '">Pricing</a></li>' +
@@ -318,7 +318,7 @@
       .catch(function () {
         if (root) {
           root.innerHTML =
-            '<p class="seo-loading">This guide could not be loaded. <a href="../tools.html">Browse tools</a> or <a href="../index.html">open the homepage</a>.</p>';
+            '<p class="seo-loading">This guide could not be loaded. <a href="../tools.html">Browse tools</a> or <a href="/">open the homepage</a>.</p>';
         }
       });
 

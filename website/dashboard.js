@@ -270,7 +270,7 @@ function setupEventListeners() {
       }
     }
     localStorage.removeItem('cutup_session');
-    window.location.href = 'index.html';
+    window.location.href = '/';
   });
 }
 
@@ -449,7 +449,7 @@ function openToolWithUrl(urlValue = '') {
     localStorage.removeItem('cutup_pending_url');
   }
   localStorage.setItem('cutup_pending_platform', 'youtube');
-  window.location.href = 'index.html#tool';
+  window.location.href = '/#tool';
 }
 
 function isUnlimitedPlan() {
@@ -1037,7 +1037,7 @@ async function refreshDashboardData({ silent = false } = {}) {
   } catch (e) {
     if (e.message === 'auth_failed') {
       localStorage.removeItem('cutup_session');
-      window.location.href = 'index.html';
+      window.location.href = '/';
       return;
     }
     showDashboardLevelError('Could not load dashboard data right now. Please refresh in a moment.');
@@ -1048,13 +1048,28 @@ document.addEventListener('DOMContentLoaded', async () => {
   const { activeSession, paymentReturn } = getSessionFromLocation();
   currentSession = activeSession;
   if (!currentSession) {
-    window.location.href = 'index.html';
+    window.location.href = '/';
     return;
   }
   localStorage.setItem('cutup_session', currentSession);
   setupNavigation();
   setupEventListeners();
   await refreshDashboardData();
+
+  try {
+    if (!paymentReturn || !paymentReturn.result) {
+      const pending = sessionStorage.getItem('cutup_pending_plan_after_auth');
+      if (pending) {
+        const pk = String(pending).trim();
+        sessionStorage.removeItem('cutup_pending_plan_after_auth');
+        if (['starter', 'pro', 'advanced'].includes(pk)) {
+          setTimeout(() => startPaymentCheckout(pk, inferPaymentProvider()), 600);
+        }
+      }
+    }
+  } catch (_e) {
+    /* noop */
+  }
 
   const pr = paymentReturn;
   if (pr.result === 'return') {

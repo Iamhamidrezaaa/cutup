@@ -114,11 +114,17 @@
 
   function applyVariantBPricingCTAs() {
     if (getPricingVariant() !== 'B') return;
-    var ctaText = 'Start unlimited access';
+    var labels = {
+      starter: 'Start Starter plan',
+      pro: 'Start Pro plan',
+      advanced: 'Start Business plan',
+    };
     document.querySelectorAll('a.pricing-dashboard-cta').forEach(function (a) {
       var p = (a.getAttribute('data-cutup-plan') || '').trim();
-      if (p === 'starter' || p === 'pro' || p === 'advanced' || a.id === 'monetizationUpgradeBtn') {
-        a.textContent = ctaText;
+      if (p === 'starter' || p === 'pro' || p === 'advanced') {
+        if (labels[p]) a.textContent = labels[p];
+      } else if (a.id === 'monetizationUpgradeBtn') {
+        a.textContent = 'Start Pro plan';
       }
     });
   }

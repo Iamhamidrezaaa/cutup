@@ -4,7 +4,7 @@
  */
 const API_BASE_URL = 'https://cutup.shop';
 const BLOG_ENDPOINT = `${API_BASE_URL}/api/admin?action=blogPosts&public=1`;
-const MAIN_TOOL_HREF = 'index.html#tool';
+const MAIN_TOOL_HREF = '/#tool';
 
 function toolsContentUrl(type) {
   try {
@@ -581,7 +581,7 @@ function renderFallback(invalidType) {
     pills.appendChild(a);
   });
   wrap.appendChild(pills);
-  const home = el('a', 'tools-btn-primary', { href: 'index.html' });
+  const home = el('a', 'tools-btn-primary', { href: '/' });
   home.textContent = 'Back to home';
   home.style.marginTop = '24px';
   home.style.display = 'inline-flex';

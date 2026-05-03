@@ -14,20 +14,39 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
   <link rel="stylesheet" href="../tools.css">
   <link rel="stylesheet" href="seo-guide.css">
 </head>
 <body>
-  <header class="tools-header">
-    <div class="container tools-header-inner">
-      <a href="../index.html" class="tools-brand">Cutup</a>
-      <nav class="tools-nav" aria-label="Primary">
-        <a href="../index.html">Home</a>
-        <a href="../tools.html">Tools</a>
-        <a href="../blog.html">Blog</a>
-        <a href="../index.html#tool" class="tools-nav-cta">Try the tool</a>
-      </nav>
-    </div>
+  <header class="header">
+    <nav class="nav">
+      <div class="container">
+        <div class="nav-content">
+          <a href="/" class="logo" style="text-decoration: none; color: inherit;">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="logo-text">Cutup</span>
+          </a>
+          <button type="button" class="nav-menu-toggle" id="navMenuToggle" aria-label="Open menu" aria-expanded="false" aria-controls="navLinks">
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
+          <div class="nav-links" id="navLinks">
+            <a href="/#tool" class="nav-link cta">Generate subtitles</a>
+            <a href="/#features" class="nav-link">Features</a>
+            <a href="/#how-it-works" class="nav-link">How it works</a>
+            <a href="/#pricing" class="nav-link">Pricing</a>
+            <a href="/blog.html" class="nav-link">Blog</a>
+            <a href="/#faq" class="nav-link">FAQ</a>
+          </div>
+        </div>
+      </div>
+    </nav>
   </header>
 
   <main class="container tools-main">
@@ -64,20 +83,33 @@
     <div class="seo-exit-banner-inner">
       <p style="margin:0">Still planning your workflow? Open the editor and paste a link to preview captions.</p>
       <div>
-        <a href="../index.html#tool" data-seo-exit-cta="1">Try Cutup</a>
+        <a href="/#tool" data-seo-exit-cta="1">Try Cutup</a>
         <button type="button" class="seo-exit-close" aria-label="Dismiss">×</button>
       </div>
     </div>
   </div>
 
-  <footer class="tools-footer">
-    <div class="container tools-footer-inner">
-      <p class="tools-footer-copy">© Cutup. <a href="../index.html">Home</a> · <a href="../tools.html">Tools</a> · <a href="../blog.html">Blog</a></p>
+  <footer class="site-footer footer">
+    <div class="container">
+      <div class="footer-inner">
+        <div class="footer-brand"><a href="/">Cutup</a></div>
+        <nav class="footer-links" aria-label="Footer">
+          <a href="/#tool" class="footer-link">Subtitle generator</a>
+          <a href="/#tool" class="footer-link">Video to text</a>
+          <a href="/#tool" class="footer-link">Translate video</a>
+          <a href="/blog.html" class="footer-link">Blog</a>
+          <a href="/about.html" class="footer-link">About</a>
+          <a href="/privacy.html" class="footer-link">Privacy</a>
+          <a href="/contact.html" class="footer-link">Contact</a>
+        </nav>
+        <div class="footer-copy">© 2026 Cutup. All rights reserved.</div>
+      </div>
     </div>
   </footer>
 
   <script src="../analytics-client.js"></script>
   <script src="../viral-referral.js"></script>
   <script src="seo-guide.js"></script>
+  <script src="../site-chrome.js"></script>
 </body>
 </html>
