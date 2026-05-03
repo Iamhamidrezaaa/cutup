@@ -17,11 +17,15 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
     const p = (window.location.pathname || '/').replace(/\/$/, '') || '/';
     return p === '/';
   }
-  document.querySelectorAll('a[href^="/#"]').forEach((anchor) => {
+  function bindHomeHashNav(anchor) {
     anchor.addEventListener('click', function (e) {
       let hash = '';
       try {
-        hash = new URL(this.getAttribute('href'), window.location.origin).hash;
+        const u = new URL(this.getAttribute('href'), window.location.origin);
+        if (u.origin !== window.location.origin) return;
+        const path = (u.pathname || '/').replace(/\/$/, '') || '/';
+        if (path !== '/') return;
+        hash = u.hash;
       } catch (_err) {
         return;
       }
@@ -37,6 +41,21 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
         }
       }
     });
+  }
+  document.querySelectorAll('a[href^="/#"]').forEach(bindHomeHashNav);
+  document.querySelectorAll('a[href*="#"]').forEach((anchor) => {
+    const h = anchor.getAttribute('href');
+    if (!h || h.startsWith('/#')) return;
+    try {
+      const u = new URL(h, window.location.origin);
+      if (u.origin !== window.location.origin) return;
+      if (!u.hash) return;
+      const path = (u.pathname || '/').replace(/\/$/, '') || '/';
+      if (path !== '/') return;
+    } catch (_e) {
+      return;
+    }
+    bindHomeHashNav(anchor);
   });
 })();
 
@@ -6030,7 +6049,7 @@ window.addEventListener('resize', () => {
 });
 
 function setupMobileHeaderMenu() {
-  if (document.querySelector('.main-header')) return;
+  if (document.querySelector('.main-header, .simple-header, .blog-header')) return;
   const toggle = document.getElementById('navMenuToggle');
   const links = document.getElementById('navLinks');
   if (!toggle || !links) return;

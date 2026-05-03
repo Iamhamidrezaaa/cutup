@@ -116,6 +116,9 @@ body {
 }
 
 .main-header .logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 20px;
   font-weight: 600;
   color: var(--primary);
@@ -125,6 +128,11 @@ body {
 
 .main-header .logo:hover {
   opacity: 0.82;
+}
+
+.main-header .logo svg {
+  color: var(--primary);
+  flex-shrink: 0;
 }
 
 .main-header-nav {
@@ -143,6 +151,74 @@ body {
 
 .main-header-nav > a:hover {
   color: var(--primary);
+}
+
+.main-header-nav > a.nav-link.cta {
+  background: var(--primary);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  transition: background 0.2s, color 0.2s;
+}
+
+.main-header-nav > a.nav-link.cta:hover {
+  background: var(--primary-hover);
+  color: #fff;
+}
+
+/* Simple + blog headers (site-header.js) */
+.simple-header,
+.blog-header {
+  background: rgba(255, 255, 255, 0.9);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(10px);
+}
+
+.simple-header-inner,
+.blog-header-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 0;
+}
+
+.simple-header .logo,
+.blog-header .logo {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.simple-header-nav,
+.blog-header-nav {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.simple-header-nav > a,
+.blog-header-nav > a {
+  text-decoration: none;
+  color: var(--text-primary);
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.simple-header-nav > a:hover,
+.blog-header-nav > a:hover {
+  color: var(--primary);
+}
+
+.blog-header-nav > a.active {
+  color: var(--primary);
+  font-weight: 600;
 }
 
 /* Auth Section — row so Google control is never column-stacked with icon above text */
@@ -1087,27 +1163,6 @@ code, pre {
   text-align: right;
 }
 
-.footer-enamad {
-  flex-shrink: 0;
-}
-
-.enamad-link {
-  display: inline-block;
-  transition: opacity 0.2s, transform 0.2s;
-}
-
-.enamad-link:hover {
-  opacity: 0.9;
-  transform: scale(1.05);
-}
-
-.enamad-logo {
-  width: 120px;
-  height: auto;
-  display: block;
-  border-radius: 4px;
-}
-
 /* Responsive for footer */
 @media (max-width: 768px) {
   .footer-bottom {
@@ -1118,10 +1173,6 @@ code, pre {
   
   .footer-copyright {
     text-align: center;
-  }
-  
-  .enamad-logo {
-    width: 100px;
   }
 }
 
@@ -1134,6 +1185,12 @@ code, pre {
   text-align: left;
 }
 
+.site-footer .footer-brand {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #fff;
+}
+
 .site-footer .footer-brand a {
   font-size: 1.25rem;
   font-weight: 700;
@@ -1143,6 +1200,10 @@ code, pre {
 
 .site-footer .footer-brand a:hover {
   opacity: 0.92;
+}
+
+.site-footer .footer-inner > p.footer-copy {
+  margin: 0;
 }
 
 .site-footer .footer-copy {
@@ -3185,14 +3246,18 @@ body {
   }
 
   .header,
-  .main-header {
+  .main-header,
+  .simple-header,
+  .blog-header {
     position: sticky;
     top: 0;
     z-index: 200;
   }
 
   .nav-content,
-  .main-header-inner {
+  .main-header-inner,
+  .simple-header-inner,
+  .blog-header-inner {
     padding: var(--space-12) 0;
     gap: var(--space-12);
   }
@@ -3246,6 +3311,22 @@ body {
   }
 
   .main-header-nav.is-open {
+    display: flex;
+  }
+
+  .simple-header-nav,
+  .blog-header-nav {
+    display: none;
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-8);
+    padding-top: var(--space-12);
+    border-top: 1px solid var(--border);
+  }
+
+  .simple-header-nav.is-open,
+  .blog-header-nav.is-open {
     display: flex;
   }
 
