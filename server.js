@@ -105,7 +105,7 @@ app.get('/api/health', (req, res) => {
 app.get('/sitemap.xml', async (req, res) => sitemapHandler(req, res));
 
 // Import and use API routes
-let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, analyticsHandler, adminHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, cronConversionEmailsHandler;
+let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, analyticsHandler, adminHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler;
 
 async function loadRoutes() {
   try {
@@ -219,6 +219,8 @@ async function loadRoutes() {
 
     const leadsModule = await import('./api/leads.js');
     leadsHandler = leadsModule.default;
+    const contactModule = await import('./api/contact.js');
+    contactHandler = contactModule.default;
     const cronConvModule = await import('./api/cron-conversion-emails.js');
     cronConversionEmailsHandler = cronConvModule.default;
     console.log('✅ Leads + conversion cron handlers loaded');
@@ -399,6 +401,13 @@ app.post('/api/leads', async (req, res) => {
   return leadsHandler(req, res);
 });
 
+app.post('/api/contact', async (req, res) => {
+  if (!contactHandler) {
+    return res.status(503).json({ ok: false });
+  }
+  return contactHandler(req, res);
+});
+
 app.get('/api/cron/conversion-emails', async (req, res) => {
   if (!cronConversionEmailsHandler) {
     return res.status(503).json({ ok: false });
@@ -505,6 +514,7 @@ loadRoutes().then(() => {
     console.log(`   POST /api/payment/verify`);
     console.log(`   POST /api/analytics`);
     console.log(`   POST /api/leads`);
+    console.log(`   POST /api/contact`);
     console.log(`   GET  /api/cron/conversion-emails`);
     console.log(`   POST /api/stripe/webhook`);
     console.log(`   GET  /api/admin?action=overview`);
