@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>رمز جدید ادمین | Cutup</title>
+  <link rel="stylesheet" href="admin.css">
+  <style>
+    .login-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .login-card { width: 100%; max-width: 400px; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 28px; box-shadow: 0 12px 40px rgba(15, 23, 42, 0.08); }
+    .login-card h1 { margin: 0 0 18px; font-size: 20px; }
+    .login-card label { display: block; font-size: 14px; color: var(--muted); margin-bottom: 6px; }
+    .login-card input { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; font: inherit; margin-bottom: 14px; }
+    .login-card .btn { width: 100%; margin-top: 8px; }
+    .msg { font-size: 14px; margin-top: 12px; min-height: 1.25em; }
+    .msg.err { color: var(--err); }
+    .msg[hidden] { display: none !important; }
+    .login-links { margin-top: 16px; font-size: 14px; text-align: center; }
+    .login-links a { color: var(--primary); }
+  </style>
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-card">
+      <h1>تنظیم رمز جدید</h1>
+      <form id="resetForm" novalidate>
+        <input type="hidden" id="resetToken" value="">
+        <label for="newPassword">رمز جدید (New Password)</label>
+        <input id="newPassword" type="password" required autocomplete="new-password" minlength="8" dir="ltr">
+        <label for="confirmPassword">تکرار رمز جدید (Confirm New Password)</label>
+        <input id="confirmPassword" type="password" required autocomplete="new-password" minlength="8" dir="ltr">
+        <button type="submit" class="btn">ذخیره رمز جدید</button>
+        <p id="resetMsg" class="msg err" role="alert" hidden></p>
+      </form>
+      <p class="login-links"><a href="https://cutup.shop/adminha.html">ورود ادمین</a></p>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var API_BASE_URL = window.location.origin;
+      var ADMIN_LOGIN_URL = 'https://cutup.shop/adminha.html';
+      var params = new URLSearchParams(window.location.search);
+      var token = params.get('token') || '';
+      document.getElementById('resetToken').value = token;
+      var msg = document.getElementById('resetMsg');
+      if (!token) {
+        msg.textContent = 'لینک نامعتبر است. از ایمیل دریافتی دوباره باز کنید یا درخواست بازیابی بدهید.';
+        msg.hidden = false;
+        document.getElementById('resetForm').querySelector('button[type="submit"]').disabled = true;
+      }
+      document.getElementById('resetForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        msg.hidden = true;
+        var t = document.getElementById('resetToken').value.trim();
+        var p1 = document.getElementById('newPassword').value;
+        var p2 = document.getElementById('confirmPassword').value;
+        if (!t) return;
+        if (p1.length < 8) {
+          msg.textContent = 'رمز باید حداقل ۸ کاراکتر باشد.';
+          msg.hidden = false;
+          return;
+        }
+        if (p1 !== p2) {
+          msg.textContent = 'رمز و تکرار آن یکسان نیستند.';
+          msg.hidden = false;
+          return;
+        }
+        try {
+          var r = await fetch(API_BASE_URL + '/api/admin/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: t, password: p1, confirmPassword: p2 })
+          });
+          var data = await r.json().catch(function () { return {}; });
+          if (r.ok && data.ok) {
+            window.location.replace(ADMIN_LOGIN_URL);
+            return;
+          }
+          if (data.error === 'password_mismatch') {
+            msg.textContent = 'رمز و تکرار آن یکسان نیستند.';
+          } else if (data.error === 'invalid_or_expired_token') {
+            msg.textContent = 'لینک منقضی یا نامعتبر است. دوباره «فراموشی رمز» را بزنید.';
+          } else if (r.status === 429) {
+            msg.textContent = 'تلاش‌های زیاد — کمی بعد دوباره امتحان کنید.';
+          } else {
+            msg.textContent = 'ذخیره نشد. دوباره تلاش کنید.';
+          }
+          msg.hidden = false;
+        } catch (ex) {
+          msg.textContent = 'خطای شبکه.';
+          msg.hidden = false;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en" dir="ltr">
+<html lang="fa" dir="rtl">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Admin Login</title>
+  <title>ورود ادمین | Cutup</title>
   <meta name="robots" content="noindex, nofollow">
   <link rel="stylesheet" href="admin.css">
   <style>
@@ -11,29 +11,69 @@
     .login-card { width: 100%; max-width: 400px; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 28px; box-shadow: 0 12px 40px rgba(15, 23, 42, 0.08); }
     .login-card h1 { margin: 0 0 20px; font-size: 22px; letter-spacing: -0.02em; }
     .login-card label { display: block; font-size: 14px; color: var(--muted); margin-bottom: 6px; }
-    .login-card input { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; font: inherit; margin-bottom: 14px; }
+    .login-card input[type="email"], .login-card input[type="password"] { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; font: inherit; margin-bottom: 14px; }
+    .login-row-check { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 14px; color: var(--text); }
+    .login-row-check input { width: auto; margin: 0; }
     .login-card .btn { width: 100%; margin-top: 8px; }
     .login-error { color: var(--err); font-size: 14px; margin-top: 12px; min-height: 1.25em; }
     .login-error[hidden] { display: none !important; }
+    .login-links { margin-top: 16px; font-size: 14px; text-align: center; }
+    .login-links a { color: var(--primary); }
   </style>
 </head>
 <body>
   <div class="login-page">
     <div class="login-card">
-      <h1>Admin Login</h1>
+      <h1>ورود ادمین</h1>
       <form id="adminLoginForm" autocomplete="on" novalidate>
-        <label for="adminEmail">Email</label>
-        <input id="adminEmail" name="email" type="email" required autocomplete="username">
-        <label for="adminPassword">Password</label>
-        <input id="adminPassword" name="password" type="password" required autocomplete="current-password">
-        <button type="submit" class="btn">Login</button>
+        <label for="adminEmail">ایمیل</label>
+        <input id="adminEmail" name="email" type="email" required autocomplete="username" dir="ltr">
+        <label for="adminPassword">رمز عبور</label>
+        <input id="adminPassword" name="password" type="password" required autocomplete="current-password" dir="ltr">
+        <div class="login-row-check">
+          <input type="checkbox" id="adminRememberMe" name="remember">
+          <label for="adminRememberMe" style="margin:0;font-weight:500;color:var(--text);">مرا به خاطر بسپار (ذخیره ایمیل و رمز در این مرورگر)</label>
+        </div>
+        <button type="submit" class="btn">ورود</button>
         <p id="adminLoginError" class="login-error" role="alert" hidden></p>
       </form>
+      <p class="login-links"><a href="/admin-forgot.html">فراموشی رمز عبور</a></p>
     </div>
   </div>
   <script>
     (function () {
+      var LS_REMEMBER = 'cutup_adminha_remember';
+      var LS_EMAIL = 'cutup_adminha_email';
+      var LS_PASSWORD = 'cutup_adminha_password';
       var API_BASE_URL = window.location.origin;
+
+      function loadSavedCredentials() {
+        try {
+          if (localStorage.getItem(LS_REMEMBER) !== '1') return;
+          var e = localStorage.getItem(LS_EMAIL);
+          var p = localStorage.getItem(LS_PASSWORD);
+          if (e) document.getElementById('adminEmail').value = e;
+          if (p) document.getElementById('adminPassword').value = p;
+          document.getElementById('adminRememberMe').checked = true;
+        } catch (err) {}
+      }
+
+      function persistCredentials(email, password, remember) {
+        try {
+          if (remember) {
+            localStorage.setItem(LS_REMEMBER, '1');
+            localStorage.setItem(LS_EMAIL, email);
+            localStorage.setItem(LS_PASSWORD, password);
+          } else {
+            localStorage.removeItem(LS_REMEMBER);
+            localStorage.removeItem(LS_EMAIL);
+            localStorage.removeItem(LS_PASSWORD);
+          }
+        } catch (err) {}
+      }
+
+      loadSavedCredentials();
+
       var form = document.getElementById('adminLoginForm');
       var errEl = document.getElementById('adminLoginError');
       form.addEventListener('submit', async function (e) {
@@ -42,26 +82,28 @@
         errEl.textContent = '';
         var email = (document.getElementById('adminEmail').value || '').trim();
         var password = document.getElementById('adminPassword').value || '';
+        var rememberMe = document.getElementById('adminRememberMe').checked;
         try {
           var r = await fetch(API_BASE_URL + '/api/admin/login', {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: email, password: password })
+            body: JSON.stringify({ email: email, password: password, rememberMe: rememberMe })
           });
           var data = await r.json().catch(function () { return {}; });
           if (r.ok && data.ok) {
+            persistCredentials(email, password, rememberMe);
             window.location.replace('/admin.html');
             return;
           }
           if (r.status === 429) {
-            errEl.textContent = 'Too many attempts. Please try again later.';
+            errEl.textContent = 'تلاش‌های زیاد — کمی بعد دوباره امتحان کنید.';
           } else {
-            errEl.textContent = 'Invalid email or password';
+            errEl.textContent = 'ایمیل یا رمز عبور نامعتبر است.';
           }
           errEl.hidden = false;
         } catch (ex) {
-          errEl.textContent = 'Invalid email or password';
+          errEl.textContent = 'ایمیل یا رمز عبور نامعتبر است.';
           errEl.hidden = false;
         }
       });

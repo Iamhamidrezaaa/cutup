@@ -251,3 +251,14 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires ON admin_sessions (expires_at);
+
+CREATE TABLE IF NOT EXISTS admin_password_resets (
+  id BIGSERIAL PRIMARY KEY,
+  admin_id BIGINT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_pw_reset_hash ON admin_password_resets (token_hash);
+CREATE INDEX IF NOT EXISTS idx_admin_pw_reset_admin ON admin_password_resets (admin_id);

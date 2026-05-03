@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>بازیابی رمز ادمین | Cutup</title>
+  <link rel="stylesheet" href="admin.css">
+  <style>
+    .login-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .login-card { width: 100%; max-width: 400px; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 28px; box-shadow: 0 12px 40px rgba(15, 23, 42, 0.08); }
+    .login-card h1 { margin: 0 0 12px; font-size: 20px; }
+    .login-card p.lead { margin: 0 0 18px; color: var(--muted); font-size: 14px; line-height: 1.5; }
+    .login-card label { display: block; font-size: 14px; color: var(--muted); margin-bottom: 6px; }
+    .login-card input { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; font: inherit; margin-bottom: 14px; }
+    .login-card .btn { width: 100%; margin-top: 8px; }
+    .msg { font-size: 14px; margin-top: 12px; min-height: 1.25em; }
+    .msg.ok { color: var(--ok); }
+    .msg.err { color: var(--err); }
+    .msg[hidden] { display: none !important; }
+    .login-links { margin-top: 16px; font-size: 14px; text-align: center; }
+    .login-links a { color: var(--primary); }
+  </style>
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-card">
+      <h1>فراموشی رمز عبور</h1>
+      <p class="lead">ایمیل حساب ادمین خود را وارد کنید. اگر در سیستم با هر نقشی ثبت شده باشید، لینک تغییر رمز به ایمیل شما ارسال می‌شود (نیاز به تنظیم SMTP روی سرور).</p>
+      <form id="forgotForm" novalidate>
+        <label for="forgotEmail">ایمیل</label>
+        <input id="forgotEmail" type="email" required autocomplete="email" dir="ltr">
+        <button type="submit" class="btn">ارسال لینک بازیابی</button>
+        <p id="forgotMsg" class="msg" role="status" hidden></p>
+      </form>
+      <p class="login-links"><a href="https://cutup.shop/adminha.html">بازگشت به ورود ادمین</a></p>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var API_BASE_URL = window.location.origin;
+      var form = document.getElementById('forgotForm');
+      var msg = document.getElementById('forgotMsg');
+      form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        msg.hidden = true;
+        msg.className = 'msg';
+        var email = (document.getElementById('forgotEmail').value || '').trim();
+        if (!email) return;
+        try {
+          var r = await fetch(API_BASE_URL + '/api/admin/forgot-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email })
+          });
+          var data = await r.json().catch(function () { return {}; });
+          if (r.status === 429) {
+            msg.textContent = 'درخواست‌های زیاد — یک ساعت بعد دوباره تلاش کنید.';
+            msg.classList.add('err');
+            msg.hidden = false;
+            return;
+          }
+          if (data.ok) {
+            msg.textContent = 'اگر این ایمیل برای یک ادمین ثبت باشد، به‌زودی ایمیل حاوی لینک را دریافت می‌کنید. پوشهٔ اسپم را هم بررسی کنید.';
+            msg.classList.add('ok');
+            msg.hidden = false;
+            return;
+          }
+          msg.textContent = 'ارسال انجام نشد. بعداً دوباره تلاش کنید.';
+          msg.classList.add('err');
+          msg.hidden = false;
+        } catch (ex) {
+          msg.textContent = 'خطای شبکه. اتصال را بررسی کنید.';
+          msg.classList.add('err');
+          msg.hidden = false;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -47,13 +47,14 @@ export function generateAdminSessionToken() {
 }
 
 /** Persist session row (call after ensureAdminsSchemaAndSeed / admin_sessions table exists). */
-export async function saveAdminSession(token, record) {
+export async function saveAdminSession(token, record, maxAgeMs = SESSION_MS) {
   if (!isBillingDbConfigured()) return;
   const pool = getPool();
   const t = String(token || '').trim();
   const adminId = Number(record.id);
   if (!t || !Number.isFinite(adminId)) return;
-  const expiresAt = new Date(Date.now() + SESSION_MS);
+  const ms = Number(maxAgeMs) > 0 ? Number(maxAgeMs) : SESSION_MS;
+  const expiresAt = new Date(Date.now() + ms);
   await pool.query(
     `INSERT INTO admin_sessions (token, admin_id, email, role, expires_at)
      VALUES ($1, $2, $3, $4, $5)`,

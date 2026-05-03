@@ -80,13 +80,20 @@ export default async function adminLoginHandler(req, res) {
     }
 
     clearFails(ip);
+    const rememberMe = Boolean(body.rememberMe);
+    const sessionMs = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+    const maxAgeSec = Math.floor(sessionMs / 1000);
     const token = generateAdminSessionToken();
-    await saveAdminSession(token, {
-      id: row.id,
-      email: row.email,
-      role: row.role,
-    });
-    setAdminSessionCookie(res, token, 86400);
+    await saveAdminSession(
+      token,
+      {
+        id: row.id,
+        email: row.email,
+        role: row.role,
+      },
+      sessionMs
+    );
+    setAdminSessionCookie(res, token, maxAgeSec);
     console.log('[admin-login] success', email);
     return res.json({ ok: true });
   } catch (e) {

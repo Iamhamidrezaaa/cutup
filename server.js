@@ -106,7 +106,7 @@ app.get('/api/health', (req, res) => {
 app.get('/sitemap.xml', async (req, res) => sitemapHandler(req, res));
 
 // Import and use API routes
-let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, analyticsHandler, adminHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler;
+let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, analyticsHandler, adminHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler;
 
 async function loadRoutes() {
   try {
@@ -202,6 +202,10 @@ async function loadRoutes() {
     adminLogoutHandler = adminLogoutModule.default;
     const adminAuthMeModule = await import('./api/admin-auth-me.js');
     adminAuthMeHandler = adminAuthMeModule.default;
+    const adminForgotModule = await import('./api/admin-forgot-password.js');
+    adminForgotPasswordHandler = adminForgotModule.default;
+    const adminResetModule = await import('./api/admin-reset-password.js');
+    adminResetPasswordHandler = adminResetModule.default;
     console.log('✅ Admin panel auth handlers loaded');
 
     const { ensureAdminsSchemaAndSeed } = await import('./api/admins-repository.js');
@@ -467,6 +471,20 @@ app.get('/api/admin/auth/me', async (req, res) => {
     return res.status(503).json({ ok: false });
   }
   return adminAuthMeHandler(req, res);
+});
+
+app.post('/api/admin/forgot-password', async (req, res) => {
+  if (!adminForgotPasswordHandler) {
+    return res.status(503).json({ ok: false });
+  }
+  return adminForgotPasswordHandler(req, res);
+});
+
+app.post('/api/admin/reset-password', async (req, res) => {
+  if (!adminResetPasswordHandler) {
+    return res.status(503).json({ ok: false });
+  }
+  return adminResetPasswordHandler(req, res);
 });
 
 app.get('/api/tools-content', async (req, res) => {

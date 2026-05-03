@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { getPool, isBillingDbConfigured } from './db/pool.js';
 
@@ -29,6 +30,16 @@ export async function ensureAdminsSchemaAndSeed() {
       expires_at TIMESTAMPTZ NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires ON admin_sessions (expires_at);
+
+    CREATE TABLE IF NOT EXISTS admin_password_resets (
+      id BIGSERIAL PRIMARY KEY,
+      admin_id BIGINT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_pw_reset_hash ON admin_password_resets (token_hash);
+    CREATE INDEX IF NOT EXISTS idx_admin_pw_reset_admin ON admin_password_resets (admin_id);
   `);
 
   const existing = await pool.query('SELECT id FROM admins WHERE email = $1', [
@@ -84,4 +95,41 @@ export async function updateAdminDb(id, { role, status }) {
   } else if (status != null) {
     await pool.query('UPDATE admins SET status = $2 WHERE id = $1', [rid, status]);
   }
+}
+
+/** Any admin row (any role / status). Returns { rawToken, email } or null if unknown email. */
+export async function createAdminPasswordResetForEmail(email) {
+  const em = String(email || '').trim().toLowerCase();
+  if (!em) return null;
+  const pool = getPool();
+  const r = await pool.query('SELECT id, email FROM admins WHERE email = $1', [em]);
+  const row = r.rows[0];
+  if (!row) return null;
+  await pool.query('DELETE FROM admin_password_resets WHERE admin_id = $1', [row.id]);
+  const rawToken = crypto.randomBytes(32).toString('base64url');
+  const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+  await pool.query(
+    `INSERT INTO admin_password_resets (admin_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
+    [row.id, tokenHash, expiresAt]
+  );
+  return { rawToken, email: row.email };
+}
+
+export async function resetAdminPasswordWithToken(rawToken, newPassword) {
+  const t = String(rawToken || '').trim();
+  if (!t || !newPassword) return false;
+  const tokenHash = crypto.createHash('sha256').update(t).digest('hex');
+  const pool = getPool();
+  const r = await pool.query(
+    `SELECT admin_id FROM admin_password_resets WHERE token_hash = $1 AND expires_at > NOW()`,
+    [tokenHash]
+  );
+  const pr = r.rows[0];
+  if (!pr) return false;
+  await pool.query('DELETE FROM admin_password_resets WHERE admin_id = $1', [pr.admin_id]);
+  await pool.query('DELETE FROM admin_sessions WHERE admin_id = $1', [pr.admin_id]);
+  const hash = bcrypt.hashSync(String(newPassword), 12);
+  await pool.query('UPDATE admins SET password_hash = $1 WHERE id = $2', [hash, pr.admin_id]);
+  return true;
 }
