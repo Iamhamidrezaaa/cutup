@@ -36,14 +36,15 @@
         <p id="resetMsg" class="msg err" role="alert" hidden></p>
       </form>
       <p class="login-links">
-        <a href="https://cutup.shop/adminha.html">Admin login<span class="login-link-arrow" aria-hidden="true"> →</span></a>
+        <a href="/adminha.html">Admin login<span class="login-link-arrow" aria-hidden="true"> →</span></a>
       </p>
     </div>
   </div>
+  <script src="api-config.js"></script>
   <script>
     (function () {
-      var API_BASE_URL = window.location.origin;
-      var ADMIN_LOGIN_URL = 'https://cutup.shop/adminha.html';
+      var API_BASE_URL = window.CUTUP_API_BASE;
+      var ADMIN_LOGIN_URL = window.location.origin + '/adminha.html';
       var params = new URLSearchParams(window.location.search);
       var token = params.get('token') || '';
       document.getElementById('resetToken').value = token;

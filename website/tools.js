@@ -2,7 +2,8 @@
  * Programmatic SEO tool landing pages — config-driven.
  * Add new entries to TOOL_PAGES to scale (100+ pages).
  */
-const API_BASE_URL = 'https://cutup.shop';
+const API_BASE_URL =
+  typeof window !== 'undefined' && typeof window.CUTUP_API_BASE !== 'undefined' ? window.CUTUP_API_BASE : '';
 const BLOG_ENDPOINT = `${API_BASE_URL}/api/admin?action=blogPosts&public=1`;
 const MAIN_TOOL_HREF = '/#tool';
 

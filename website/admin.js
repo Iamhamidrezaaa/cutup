@@ -1,4 +1,7 @@
-const API_BASE_URL = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '';
+const API_BASE_URL =
+  typeof window !== 'undefined' && typeof window.CUTUP_API_BASE !== 'undefined'
+    ? window.CUTUP_API_BASE
+    : '';
 let panelRole = '';
 let panelAdminId = null;
 let panelAdminEmail = '';

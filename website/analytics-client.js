@@ -9,13 +9,21 @@
 
   function getApiBase() {
     try {
-      if (typeof window !== 'undefined' && window.location && window.location.origin) {
-        return window.location.origin;
+      if (typeof window !== 'undefined' && typeof window.CUTUP_API_BASE !== 'undefined') {
+        return window.CUTUP_API_BASE;
       }
+      const o =
+        typeof window !== 'undefined' && window.location && window.location.origin
+          ? window.location.origin
+          : '';
+      if (o && (o.indexOf('localhost') !== -1 || o.indexOf('127.0.0.1') !== -1)) {
+        return 'http://localhost:3001';
+      }
+      return '';
     } catch (_e) {
       /* noop */
     }
-    return 'https://cutup.shop';
+    return '';
   }
 
   function isDebug() {

@@ -1,4 +1,5 @@
-const API_BASE_URL = 'https://cutup.shop';
+const API_BASE_URL =
+  typeof window !== 'undefined' && typeof window.CUTUP_API_BASE !== 'undefined' ? window.CUTUP_API_BASE : '';
 const AVG_VIDEO_MINUTES = 7;
 const PAYMENT_RETRY_KEY = 'cutup_payment_retry';
 let cutupDashboardPricingViewedSent = false;

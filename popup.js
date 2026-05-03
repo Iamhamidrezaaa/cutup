@@ -1,6 +1,6 @@
 // API Configuration
 // برای استفاده از سرور پارس پک:
-const API_BASE_URL = 'http://195.248.240.108:3001';
+const API_BASE_URL = 'https://cutup.shop';
 // یا اگر domain دارید:
 // const API_BASE_URL = 'https://yourdomain.com';
 

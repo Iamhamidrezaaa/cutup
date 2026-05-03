@@ -15,6 +15,21 @@
     DISCOUNT: { shown: 0, converted: 0 },
   };
 
+  function cutupGrowthApiOrigin() {
+    try {
+      if (typeof window !== 'undefined' && typeof window.CUTUP_API_BASE !== 'undefined') {
+        return window.CUTUP_API_BASE;
+      }
+      const o = window.location && window.location.origin ? window.location.origin : '';
+      if (o.indexOf('localhost') !== -1 || o.indexOf('127.0.0.1') !== -1) {
+        return 'http://localhost:3001';
+      }
+      return '';
+    } catch (_e) {
+      return '';
+    }
+  }
+
   function readPerformance() {
     try {
       const raw = localStorage.getItem(PERF_KEY);
@@ -173,13 +188,7 @@
 
   function cutupGrowthBrainTrack(payload) {
     try {
-      var base = '';
-      try {
-        base = window.location && window.location.origin ? window.location.origin : '';
-      } catch (_e) {
-        base = '';
-      }
-      if (!base || base === 'null') base = 'https://cutup.shop';
+      var base = cutupGrowthApiOrigin();
       fetch(base + '/api/growth/track', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -197,13 +206,7 @@
     var local = adaptGrowthStateLocal(state);
 
     try {
-      var base = '';
-      try {
-        base = window.location && window.location.origin ? window.location.origin : '';
-      } catch (_e) {
-        base = '';
-      }
-      if (!base || base === 'null') base = 'https://cutup.shop';
+      var base = cutupGrowthApiOrigin();
       var res = await fetch(base + '/api/growth/decision?' + buildGrowthDecisionQuery(), {
         credentials: 'omit',
         cache: 'no-store',

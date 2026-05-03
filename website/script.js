@@ -105,7 +105,8 @@ document.querySelectorAll('.feature-card, .step').forEach(el => {
 });
 
 // Auth functionality
-const API_BASE_URL = 'https://cutup.shop';
+const API_BASE_URL =
+  typeof window !== 'undefined' && typeof window.CUTUP_API_BASE !== 'undefined' ? window.CUTUP_API_BASE : '';
 const DASHBOARD_HISTORY_KEY = 'cutup_dashboard_history'; // Shared key for localStorage
 let currentSession = null;
 

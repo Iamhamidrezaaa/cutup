@@ -85,6 +85,7 @@
     </div>
   </main>
 
+  <script src="api-config.js"></script>
   <script>
     (function () {
       const form = document.getElementById('contactForm');
@@ -127,7 +128,7 @@
         };
 
         try {
-          const res = await fetch('/api/contact', {
+          const res = await fetch((window.CUTUP_API_BASE || '') + '/api/contact', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, email, message, website, cfToken: token }),

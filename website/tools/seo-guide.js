@@ -7,11 +7,15 @@
 
   var API_BASE = '';
   try {
-    API_BASE = window.location && window.location.origin ? window.location.origin : '';
+    if (typeof window.CUTUP_API_BASE !== 'undefined') API_BASE = window.CUTUP_API_BASE;
+    else {
+      var o = window.location && window.location.origin ? window.location.origin : '';
+      if (o.indexOf('localhost') !== -1 || o.indexOf('127.0.0.1') !== -1) API_BASE = 'http://localhost:3001';
+      else API_BASE = '';
+    }
   } catch (_e) {
     API_BASE = '';
   }
-  if (!API_BASE || API_BASE === 'null') API_BASE = 'https://cutup.shop';
 
   var EXIT_KEY = 'cutup_seo_exit_' + type;
 
