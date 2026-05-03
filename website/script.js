@@ -266,6 +266,11 @@ function inferCutupPaymentProvider() {
 }
 
 async function cutupTriggerGoogleLogin() {
+  if (cutupIsLoggedIn()) {
+    console.log('[script] Already authenticated; skipping Google OAuth redirect');
+    resetGoogleButtonState();
+    return;
+  }
   const btn = document.getElementById('loginBtn');
   if (btn) {
     btn.disabled = true;
@@ -1364,12 +1369,13 @@ window.addEventListener('DOMContentLoaded', () => {
   const savedSession = localStorage.getItem('cutup_session');
   console.log('[script] Saved session from localStorage:', savedSession);
   
-  // Ensure login button is visible by default
   const loginBtn = document.getElementById('loginBtn');
   const googleWrap = document.querySelector('.google-btn-wrapper');
-  if (loginBtn) loginBtn.style.display = '';
-  if (googleWrap) googleWrap.style.display = '';
-  
+  if (!savedSession) {
+    if (loginBtn) loginBtn.style.display = '';
+    if (googleWrap) googleWrap.style.display = '';
+  }
+
   // Check if we have a pending URL (user logged in after entering URL)
   const pendingUrl = localStorage.getItem('cutup_pending_url');
   const pendingPlatform = localStorage.getItem('cutup_pending_platform');
@@ -2104,6 +2110,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     e.preventDefault();
     e.stopPropagation();
+
+    if (cutupIsLoggedIn()) {
+      console.log('[script] Login click ignored — session already present');
+      return;
+    }
 
     console.log('[script] Login button clicked, fetching auth URL from /api/oauth/google/start...');
     try {

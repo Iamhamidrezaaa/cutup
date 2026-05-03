@@ -39,7 +39,6 @@ export default async function handler(req, res) {
           'https://www.googleapis.com/auth/userinfo.email',
           'https://www.googleapis.com/auth/userinfo.profile'
         ],
-        prompt: 'consent',
         include_granted_scopes: true
       });
 
@@ -84,7 +83,7 @@ export default async function handler(req, res) {
         user,
         tokens,
         createdAt: Date.now(),
-        expiresAt: Date.now() + (6 * 60 * 60 * 1000) // 6 hours
+        expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000 // 30 days — fewer re-logins for returning users
       });
 
       try {

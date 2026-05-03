@@ -59,6 +59,9 @@
         <div style="background: white; padding: 2rem; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
           <h2 style="font-size: 1.5rem; margin-bottom: 1rem; color: var(--primary);">Contact form</h2>
           <form id="contactForm" style="display: flex; flex-direction: column; gap: 1rem;">
+            <div class="honeypot-field" aria-hidden="true">
+              <input type="text" name="website" tabindex="-1" autocomplete="off" />
+            </div>
             <div>
               <label for="name" style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Name</label>
               <input type="text" id="name" name="name" required style="width: 100%; padding: 0.75rem; border: 2px solid var(--border); border-radius: 8px; font-family: inherit;">
@@ -71,9 +74,11 @@
               <label for="message" style="display: block; margin-bottom: 0.5rem; font-weight: 500;">Message</label>
               <textarea id="message" name="message" rows="5" required style="width: 100%; padding: 0.75rem; border: 2px solid var(--border); border-radius: 8px; font-family: inherit; resize: vertical;"></textarea>
             </div>
-            <button type="submit" style="background: var(--primary); color: white; padding: 0.75rem 1.5rem; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
+            <div class="cf-turnstile" data-sitekey="0x4AAAAAADIgzmavc-RbN4iZ"></div>
+            <button type="submit" id="contactSubmitBtn" style="background: var(--primary); color: white; padding: 0.75rem 1.5rem; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
               Send message
             </button>
+            <p id="contactFormStatus" class="contact-form-status" role="status" aria-live="polite"></p>
           </form>
         </div>
       </div>
@@ -83,30 +88,73 @@
   <script>
     (function () {
       const form = document.getElementById('contactForm');
-      if (!form) return;
+      const btn = document.getElementById('contactSubmitBtn');
+      const statusEl = document.getElementById('contactFormStatus');
+      if (!form || !btn) return;
+
+      const BTN_LABEL = 'Send message';
+      const SENDING_LABEL = 'Sending...';
+
+      function setStatus(text, kind) {
+        if (!statusEl) return;
+        statusEl.textContent = text || '';
+        statusEl.className = 'contact-form-status' + (kind ? ' contact-form-status--' + kind : '');
+        if (text) {
+          requestAnimationFrame(function () {
+            statusEl.classList.add('contact-form-status--visible');
+          });
+        } else {
+          statusEl.classList.remove('contact-form-status--visible');
+        }
+      }
+
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
+        setStatus('', null);
+
+        btn.disabled = true;
+        btn.textContent = SENDING_LABEL;
+
         const name = form.querySelector('[name="name"]').value;
         const email = form.querySelector('[name="email"]').value;
         const message = form.querySelector('[name="message"]').value;
+        const website = (form.querySelector('[name="website"]') || {}).value || '';
+        const token = form.querySelector('[name="cf-turnstile-response"]')?.value;
+
+        const restoreButton = function () {
+          btn.disabled = false;
+          btn.textContent = BTN_LABEL;
+        };
+
         try {
           const res = await fetch('/api/contact', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, email, message }),
+            body: JSON.stringify({ name, email, message, website, cfToken: token }),
           });
           const data = await res.json().catch(() => ({}));
           if (data.ok) {
             form.reset();
-            alert('Message sent successfully 👍');
+            try {
+              if (window.turnstile) window.turnstile.reset();
+            } catch (_) {}
+            setStatus("Got your message — we'll get back within 24 hours.", 'success');
+            btn.disabled = true;
+            btn.textContent = BTN_LABEL;
+            setTimeout(function () {
+              btn.disabled = false;
+            }, 2000);
           } else {
-            alert('Something went wrong. Try again.');
+            setStatus('Something went wrong. Please try again.', 'error');
+            restoreButton();
           }
         } catch (err) {
-          alert('Network error. Try again.');
+          setStatus('Something went wrong. Please try again.', 'error');
+          restoreButton();
         }
       });
     })();
   </script>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </body>
 </html>

@@ -29,6 +29,38 @@ body {
   padding: 0 24px;
 }
 
+.honeypot-field {
+  position: absolute;
+  left: -9999px;
+  opacity: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.contact-form-status {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.contact-form-status--success {
+  background: #ecfdf5;
+  color: #065f46;
+}
+
+.contact-form-status--error {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.contact-form-status--visible {
+  opacity: 1;
+}
+
 /* Header */
 .header {
   background: var(--bg-light);

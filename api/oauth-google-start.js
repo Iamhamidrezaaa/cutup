@@ -35,13 +35,13 @@ export default async function handler(req, res) {
     );
 
     // Generate Google OAuth URL
+    // No prompt=consent / select_account — avoids forcing account picker every visit (standard SaaS UX).
     const authUrl = oAuth2Client.generateAuthUrl({
       access_type: 'offline',
       scope: [
         'https://www.googleapis.com/auth/userinfo.email',
         'https://www.googleapis.com/auth/userinfo.profile'
       ],
-      prompt: 'consent',
       include_granted_scopes: true
     });
 
