@@ -1,7 +1,10 @@
 import bcrypt from 'bcryptjs';
 import { setCORSHeaders } from './cors.js';
 import { isBillingDbConfigured } from './db/pool.js';
-import { getAdminByEmailForLogin } from './admins-repository.js';
+import {
+  getAdminByEmailForLogin,
+  repairBootstrapAdminIfMatchingSeed,
+} from './admins-repository.js';
 import {
   setAdminSessionCookie,
   generateAdminSessionToken,
@@ -67,13 +70,21 @@ export default async function adminLoginHandler(req, res) {
       return res.status(400).json({ ok: false, error: 'missing_fields' });
     }
 
-    const row = await getAdminByEmailForLogin(email);
+    let row = await getAdminByEmailForLogin(email);
     if (!row || row.status !== 'active') {
       recordFail(ip);
       return res.status(401).json({ ok: false, error: 'invalid_credentials' });
     }
 
-    const ok = bcrypt.compareSync(password, row.password_hash);
+    let ok = bcrypt.compareSync(password, row.password_hash);
+    if (!ok) {
+      await repairBootstrapAdminIfMatchingSeed(email, password);
+      const row2 = await getAdminByEmailForLogin(email);
+      if (row2 && row2.status === 'active') {
+        row = row2;
+        ok = bcrypt.compareSync(password, row.password_hash);
+      }
+    }
     if (!ok) {
       recordFail(ip);
       return res.status(401).json({ ok: false, error: 'invalid_credentials' });

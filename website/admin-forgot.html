@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex, nofollow">
-  <title>بازیابی رمز ادمین | Cutup</title>
+  <title>Forgot password | Cutup Admin</title>
   <link rel="stylesheet" href="admin.css">
   <style>
     .login-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
@@ -19,21 +19,25 @@
     .msg.err { color: var(--err); }
     .msg[hidden] { display: none !important; }
     .login-links { margin-top: 16px; font-size: 14px; text-align: center; }
-    .login-links a { color: var(--primary); }
+    .login-links a { color: var(--primary); text-decoration: none; }
+    .login-links a:hover { text-decoration: underline; }
+    .login-link-arrow { display: inline-block; margin-right: 0.2em; font-weight: 400; }
   </style>
 </head>
 <body>
   <div class="login-page">
     <div class="login-card">
-      <h1>فراموشی رمز عبور</h1>
-      <p class="lead">ایمیل حساب ادمین خود را وارد کنید. اگر در سیستم با هر نقشی ثبت شده باشید، لینک تغییر رمز به ایمیل شما ارسال می‌شود (نیاز به تنظیم SMTP روی سرور).</p>
+      <h1>Forgot password</h1>
+      <p class="lead">Enter the email for your admin account. If it exists (any role), we’ll email you a link to set a new password. SMTP must be configured on the server.</p>
       <form id="forgotForm" novalidate>
-        <label for="forgotEmail">ایمیل</label>
-        <input id="forgotEmail" type="email" required autocomplete="email" dir="ltr">
-        <button type="submit" class="btn">ارسال لینک بازیابی</button>
+        <label for="forgotEmail">Email</label>
+        <input id="forgotEmail" type="email" required autocomplete="email">
+        <button type="submit" class="btn">Send reset link</button>
         <p id="forgotMsg" class="msg" role="status" hidden></p>
       </form>
-      <p class="login-links"><a href="https://cutup.shop/adminha.html">بازگشت به ورود ادمین</a></p>
+      <p class="login-links">
+        <a href="https://cutup.shop/adminha.html"><span class="login-link-arrow" aria-hidden="true">← </span>Back to admin login</a>
+      </p>
     </div>
   </div>
   <script>
@@ -55,22 +59,22 @@
           });
           var data = await r.json().catch(function () { return {}; });
           if (r.status === 429) {
-            msg.textContent = 'درخواست‌های زیاد — یک ساعت بعد دوباره تلاش کنید.';
+            msg.textContent = 'Too many requests. Try again in about an hour.';
             msg.classList.add('err');
             msg.hidden = false;
             return;
           }
           if (data.ok) {
-            msg.textContent = 'اگر این ایمیل برای یک ادمین ثبت باشد، به‌زودی ایمیل حاوی لینک را دریافت می‌کنید. پوشهٔ اسپم را هم بررسی کنید.';
+            msg.textContent = 'If this email is registered as an admin, you’ll receive a message with a reset link shortly. Check your spam folder.';
             msg.classList.add('ok');
             msg.hidden = false;
             return;
           }
-          msg.textContent = 'ارسال انجام نشد. بعداً دوباره تلاش کنید.';
+          msg.textContent = 'Something went wrong. Please try again later.';
           msg.classList.add('err');
           msg.hidden = false;
         } catch (ex) {
-          msg.textContent = 'خطای شبکه. اتصال را بررسی کنید.';
+          msg.textContent = 'Network error. Check your connection.';
           msg.classList.add('err');
           msg.hidden = false;
         }

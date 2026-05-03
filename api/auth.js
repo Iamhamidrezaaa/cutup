@@ -7,6 +7,9 @@ const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'https://cutup.sh
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://cutup.shop';
 
+/** This account must use password login at /adminha.html only (not Google OAuth). */
+const GOOGLE_LOGIN_BLOCKED_EMAIL = 'instalogist.ir@gmail.com';
+
 // In-memory session store (in production, use Redis or database)
 const sessions = new Map();
 
@@ -76,6 +79,15 @@ export default async function handler(req, res) {
         given_name: payload.given_name,
         family_name: payload.family_name
       };
+
+      if (
+        String(user.email || '')
+          .trim()
+          .toLowerCase() === GOOGLE_LOGIN_BLOCKED_EMAIL
+      ) {
+        console.warn('[auth] Google login blocked for panel-only admin email');
+        return res.redirect(`${FRONTEND_URL}/adminha.html?notice=use_password`);
+      }
 
       // Create session
       const sessionId = generateSessionId();

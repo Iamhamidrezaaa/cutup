@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ورود ادمین | Cutup</title>
+  <title>Admin Login | Cutup</title>
   <meta name="robots" content="noindex, nofollow">
   <link rel="stylesheet" href="admin.css">
   <style>
@@ -18,26 +18,33 @@
     .login-error { color: var(--err); font-size: 14px; margin-top: 12px; min-height: 1.25em; }
     .login-error[hidden] { display: none !important; }
     .login-links { margin-top: 16px; font-size: 14px; text-align: center; }
-    .login-links a { color: var(--primary); }
+    .login-links a { color: var(--primary); text-decoration: none; }
+    .login-links a:hover { text-decoration: underline; }
+    .login-link-arrow { display: inline-block; margin-left: 0.2em; font-weight: 400; }
+    .login-notice { font-size: 13px; color: #334155; background: #f1f5f9; padding: 10px 12px; border-radius: 10px; margin: 0 0 16px; border: 1px solid var(--border); line-height: 1.45; }
+    .login-notice[hidden] { display: none !important; }
   </style>
 </head>
 <body>
   <div class="login-page">
     <div class="login-card">
-      <h1>ورود ادمین</h1>
+      <h1>Admin Login</h1>
+      <p id="adminLoginNotice" class="login-notice" role="status" hidden></p>
       <form id="adminLoginForm" autocomplete="on" novalidate>
-        <label for="adminEmail">ایمیل</label>
-        <input id="adminEmail" name="email" type="email" required autocomplete="username" dir="ltr">
-        <label for="adminPassword">رمز عبور</label>
-        <input id="adminPassword" name="password" type="password" required autocomplete="current-password" dir="ltr">
+        <label for="adminEmail">Email</label>
+        <input id="adminEmail" name="email" type="email" required autocomplete="username">
+        <label for="adminPassword">Password</label>
+        <input id="adminPassword" name="password" type="password" required autocomplete="current-password">
         <div class="login-row-check">
           <input type="checkbox" id="adminRememberMe" name="remember">
-          <label for="adminRememberMe" style="margin:0;font-weight:500;color:var(--text);">مرا به خاطر بسپار (ذخیره ایمیل و رمز در این مرورگر)</label>
+          <label for="adminRememberMe" style="margin:0;font-weight:500;color:var(--text);">Remember me</label>
         </div>
-        <button type="submit" class="btn">ورود</button>
+        <button type="submit" class="btn">Login</button>
         <p id="adminLoginError" class="login-error" role="alert" hidden></p>
       </form>
-      <p class="login-links"><a href="/admin-forgot.html">فراموشی رمز عبور</a></p>
+      <p class="login-links">
+        <a href="/admin-forgot.html">Forgot password<span class="login-link-arrow" aria-hidden="true"> →</span></a>
+      </p>
     </div>
   </div>
   <script>
@@ -74,6 +81,15 @@
 
       loadSavedCredentials();
 
+      (function showGoogleNotice() {
+        try {
+          if (new URLSearchParams(window.location.search).get('notice') !== 'use_password') return;
+          var note = document.getElementById('adminLoginNotice');
+          note.textContent = 'This account cannot use Google sign-in. Use your admin email and password here.';
+          note.hidden = false;
+        } catch (e) {}
+      })();
+
       var form = document.getElementById('adminLoginForm');
       var errEl = document.getElementById('adminLoginError');
       form.addEventListener('submit', async function (e) {
@@ -93,17 +109,17 @@
           var data = await r.json().catch(function () { return {}; });
           if (r.ok && data.ok) {
             persistCredentials(email, password, rememberMe);
-            window.location.replace('/admin.html');
+            window.location.replace('/site-admin.html');
             return;
           }
           if (r.status === 429) {
-            errEl.textContent = 'تلاش‌های زیاد — کمی بعد دوباره امتحان کنید.';
+            errEl.textContent = 'Too many attempts. Please try again later.';
           } else {
-            errEl.textContent = 'ایمیل یا رمز عبور نامعتبر است.';
+            errEl.textContent = 'Invalid email or password.';
           }
           errEl.hidden = false;
         } catch (ex) {
-          errEl.textContent = 'ایمیل یا رمز عبور نامعتبر است.';
+          errEl.textContent = 'Invalid email or password.';
           errEl.hidden = false;
         }
       });

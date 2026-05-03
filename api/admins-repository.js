@@ -2,9 +2,9 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { getPool, isBillingDbConfigured } from './db/pool.js';
 
-const SEED_SUPER_EMAIL = 'instalogist.ir@gmail.com';
+export const SEED_SUPER_EMAIL = 'instalogist.ir@gmail.com';
 /** Initial bootstrap password — rotate after first login in production. */
-const SEED_SUPER_PASSWORD = 'Hamidreza123@456';
+export const SEED_SUPER_PASSWORD = 'Hamidreza123@456';
 
 export async function ensureAdminsSchemaAndSeed() {
   if (!isBillingDbConfigured()) return;
@@ -53,6 +53,22 @@ export async function ensureAdminsSchemaAndSeed() {
     [SEED_SUPER_EMAIL.toLowerCase(), password_hash]
   );
   console.log('[admins] created bootstrap super_admin:', SEED_SUPER_EMAIL);
+}
+
+/**
+ * If someone submits the bootstrap email + seed password but the stored hash is wrong
+ * (e.g. legacy row), re-hash once. Does not run for other passwords.
+ */
+export async function repairBootstrapAdminIfMatchingSeed(email, plainPassword) {
+  const em = String(email || '').trim().toLowerCase();
+  if (em !== SEED_SUPER_EMAIL.toLowerCase() || plainPassword !== SEED_SUPER_PASSWORD) return false;
+  const pool = getPool();
+  const password_hash = bcrypt.hashSync(SEED_SUPER_PASSWORD, 12);
+  const r = await pool.query(
+    `UPDATE admins SET password_hash = $1, role = 'super_admin', status = 'active' WHERE email = $2`,
+    [password_hash, em]
+  );
+  return r.rowCount > 0;
 }
 
 export async function getAdminByEmailForLogin(email) {

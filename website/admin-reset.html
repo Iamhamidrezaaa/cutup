@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex, nofollow">
-  <title>رمز جدید ادمین | Cutup</title>
+  <title>Set new password | Cutup Admin</title>
   <link rel="stylesheet" href="admin.css">
   <style>
     .login-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
@@ -17,23 +17,27 @@
     .msg.err { color: var(--err); }
     .msg[hidden] { display: none !important; }
     .login-links { margin-top: 16px; font-size: 14px; text-align: center; }
-    .login-links a { color: var(--primary); }
+    .login-links a { color: var(--primary); text-decoration: none; }
+    .login-links a:hover { text-decoration: underline; }
+    .login-link-arrow { display: inline-block; margin-left: 0.2em; font-weight: 400; }
   </style>
 </head>
 <body>
   <div class="login-page">
     <div class="login-card">
-      <h1>تنظیم رمز جدید</h1>
+      <h1>Set a new password</h1>
       <form id="resetForm" novalidate>
         <input type="hidden" id="resetToken" value="">
-        <label for="newPassword">رمز جدید (New Password)</label>
-        <input id="newPassword" type="password" required autocomplete="new-password" minlength="8" dir="ltr">
-        <label for="confirmPassword">تکرار رمز جدید (Confirm New Password)</label>
-        <input id="confirmPassword" type="password" required autocomplete="new-password" minlength="8" dir="ltr">
-        <button type="submit" class="btn">ذخیره رمز جدید</button>
+        <label for="newPassword">New password</label>
+        <input id="newPassword" type="password" required autocomplete="new-password" minlength="8">
+        <label for="confirmPassword">Confirm new password</label>
+        <input id="confirmPassword" type="password" required autocomplete="new-password" minlength="8">
+        <button type="submit" class="btn">Save password</button>
         <p id="resetMsg" class="msg err" role="alert" hidden></p>
       </form>
-      <p class="login-links"><a href="https://cutup.shop/adminha.html">ورود ادمین</a></p>
+      <p class="login-links">
+        <a href="https://cutup.shop/adminha.html">Admin login<span class="login-link-arrow" aria-hidden="true"> →</span></a>
+      </p>
     </div>
   </div>
   <script>
@@ -45,7 +49,7 @@
       document.getElementById('resetToken').value = token;
       var msg = document.getElementById('resetMsg');
       if (!token) {
-        msg.textContent = 'لینک نامعتبر است. از ایمیل دریافتی دوباره باز کنید یا درخواست بازیابی بدهید.';
+        msg.textContent = 'Invalid or missing link. Open the link from your email or request a new reset.';
         msg.hidden = false;
         document.getElementById('resetForm').querySelector('button[type="submit"]').disabled = true;
       }
@@ -57,12 +61,12 @@
         var p2 = document.getElementById('confirmPassword').value;
         if (!t) return;
         if (p1.length < 8) {
-          msg.textContent = 'رمز باید حداقل ۸ کاراکتر باشد.';
+          msg.textContent = 'Password must be at least 8 characters.';
           msg.hidden = false;
           return;
         }
         if (p1 !== p2) {
-          msg.textContent = 'رمز و تکرار آن یکسان نیستند.';
+          msg.textContent = 'Passwords do not match.';
           msg.hidden = false;
           return;
         }
@@ -78,17 +82,17 @@
             return;
           }
           if (data.error === 'password_mismatch') {
-            msg.textContent = 'رمز و تکرار آن یکسان نیستند.';
+            msg.textContent = 'Passwords do not match.';
           } else if (data.error === 'invalid_or_expired_token') {
-            msg.textContent = 'لینک منقضی یا نامعتبر است. دوباره «فراموشی رمز» را بزنید.';
+            msg.textContent = 'This link has expired or is invalid. Request a new reset from Forgot password.';
           } else if (r.status === 429) {
-            msg.textContent = 'تلاش‌های زیاد — کمی بعد دوباره امتحان کنید.';
+            msg.textContent = 'Too many attempts. Try again later.';
           } else {
-            msg.textContent = 'ذخیره نشد. دوباره تلاش کنید.';
+            msg.textContent = 'Could not save. Please try again.';
           }
           msg.hidden = false;
         } catch (ex) {
-          msg.textContent = 'خطای شبکه.';
+          msg.textContent = 'Network error.';
           msg.hidden = false;
         }
       });
