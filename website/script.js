@@ -6030,6 +6030,7 @@ window.addEventListener('resize', () => {
 });
 
 function setupMobileHeaderMenu() {
+  if (document.querySelector('.main-header')) return;
   const toggle = document.getElementById('navMenuToggle');
   const links = document.getElementById('navLinks');
   if (!toggle || !links) return;

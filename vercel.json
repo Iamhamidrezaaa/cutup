@@ -20,6 +20,16 @@
   ],
   "routes": [
     {
+      "src": "/index.html",
+      "status": 301,
+      "headers": { "Location": "/" }
+    },
+    {
+      "src": "/(.*)/index.html",
+      "status": 301,
+      "headers": { "Location": "/$1/" }
+    },
+    {
       "src": "/api/upload",
       "dest": "/api/upload.js"
     },

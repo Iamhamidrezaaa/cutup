@@ -24,6 +24,10 @@
   align-items: center;
 }
 
+.dashboard-header .header-content > .header-actions:only-child {
+  margin-left: auto;
+}
+
 .logo {
   display: flex;
   align-items: center;

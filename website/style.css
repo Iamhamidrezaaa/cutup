@@ -96,6 +96,55 @@ body {
   color: white;
 }
 
+/* Global header from site-chrome.js (renderHeader) */
+.main-header {
+  background: rgba(255, 255, 255, 0.9);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(10px);
+}
+
+.main-header-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 0;
+}
+
+.main-header .logo {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--primary);
+  text-decoration: none;
+  transition: opacity 0.2s;
+}
+
+.main-header .logo:hover {
+  opacity: 0.82;
+}
+
+.main-header-nav {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.main-header-nav > a {
+  text-decoration: none;
+  color: var(--text-primary);
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.main-header-nav > a:hover {
+  color: var(--primary);
+}
+
 /* Auth Section — row so Google control is never column-stacked with icon above text */
 .auth-section {
   display: flex;
@@ -1081,8 +1130,8 @@ code, pre {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  align-items: center;
-  text-align: center;
+  align-items: flex-start;
+  text-align: left;
 }
 
 .site-footer .footer-brand a {
@@ -1101,7 +1150,9 @@ code, pre {
   padding-top: 16px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   font-size: 14px;
+  line-height: 1.5;
   color: rgba(255, 255, 255, 0.65);
+  text-align: left;
 }
 
 @media (min-width: 769px) {
@@ -1121,7 +1172,7 @@ code, pre {
 
   .site-footer .footer-copy {
     flex-basis: 100%;
-    text-align: center;
+    text-align: left;
     margin: 0;
   }
 }
@@ -3133,13 +3184,15 @@ body {
     padding-right: var(--space-16);
   }
 
-  .header {
+  .header,
+  .main-header {
     position: sticky;
     top: 0;
     z-index: 200;
   }
 
-  .nav-content {
+  .nav-content,
+  .main-header-inner {
     padding: var(--space-12) 0;
     gap: var(--space-12);
   }
@@ -3179,6 +3232,20 @@ body {
   }
 
   .nav-links.is-open {
+    display: flex;
+  }
+
+  .main-header-nav {
+    display: none;
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-8);
+    padding-top: var(--space-12);
+    border-top: 1px solid var(--border);
+  }
+
+  .main-header-nav.is-open {
     display: flex;
   }
 

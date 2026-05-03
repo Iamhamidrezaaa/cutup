@@ -125,14 +125,14 @@ function postCardMarkup(post, { related = false } = {}) {
       </div>`;
   return `
     <article class="post-card${extraClasses}">
-      <a class="post-card-media" href="blog.html?slug=${slugQ}" aria-label="${escapeHtml(title)}">
+      <a class="post-card-media" href="/blog.html?slug=${slugQ}" aria-label="${escapeHtml(title)}">
         ${thumb}
         <div class="post-card-placeholder"><span>${escapeHtml(placeholderLabel)}</span></div>
       </a>
       ${metaLine}
-      <h2><a href="blog.html?slug=${slugQ}">${escapeHtml(title)}</a></h2>
+      <h2><a href="/blog.html?slug=${slugQ}">${escapeHtml(title)}</a></h2>
       ${excerptBlock}
-      <a class="read-more" href="blog.html?slug=${slugQ}">Read more</a>
+      <a class="read-more" href="/blog.html?slug=${slugQ}">Read more</a>
     </article>
   `;
 }

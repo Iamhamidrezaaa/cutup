@@ -21,62 +21,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="cutup-home">
+  <script src="site-chrome.js"></script>
   <div id="cutupInlineNotify" class="cutup-inline-notify" role="region" aria-label="Notifications" hidden></div>
-  <header class="header">
-    <nav class="nav">
-      <div class="container">
-        <div class="nav-content">
-          <a href="/" class="logo" style="text-decoration: none; color: inherit;">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span class="logo-text">Cutup</span>
-          </a>
-          <button type="button" class="nav-menu-toggle" id="navMenuToggle" aria-label="Open menu" aria-expanded="false" aria-controls="navLinks">
-            <span></span>
-            <span></span>
-            <span></span>
-          </button>
-          <div class="nav-links" id="navLinks">
-            <a href="/#tool" class="nav-link cta">Generate subtitles</a>
-            <a href="#features" class="nav-link">Features</a>
-            <a href="#how-it-works" class="nav-link">How it works</a>
-            <a href="#pricing" class="nav-link">Pricing</a>
-            <a href="/blog.html" class="nav-link">Blog</a>
-            <a href="#faq" class="nav-link">FAQ</a>
-            <div class="auth-section" id="authSection">
-              <div class="google-btn-wrapper">
-                <button type="button" class="login-btn google-btn" id="loginBtn">
-                  <img class="google-icon" src="google-g.svg" width="18" height="18" alt="" decoding="async" />
-                  <span class="google-btn-label">Continue with Google</span>
-                </button>
-              </div>
-              <div class="user-profile" id="userProfile" style="display: none;">
-                <div class="user-profile-trigger" id="userProfileTrigger">
-                <img src="" alt="Profile" class="user-avatar" id="userAvatar">
-                <span class="user-name" id="userName"></span>
-                  <span class="dropdown-arrow">▼</span>
-                </div>
-                <div class="user-dropdown" id="userDropdown">
-                  <a href="#" class="dropdown-item" id="dashboardLink">
-                    <span class="dropdown-icon">⚙️</span>
-                    <span>Dashboard</span>
-                  </a>
-                  <button class="dropdown-item" id="logoutBtn">
-                    <span class="dropdown-icon">🚪</span>
-                    <span>Log out</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </nav>
-  </header>
 
   <main>
     <!-- Hero Section -->
@@ -903,7 +850,6 @@ Here's the fastest path from link to publish-ready captions.
     </div>
   </footer>
 
-  <script src="site-chrome.js"></script>
   <script src="analytics-client.js"></script>
   <script src="viral-referral.js"></script>
   <script src="conversion-banners.js"></script>

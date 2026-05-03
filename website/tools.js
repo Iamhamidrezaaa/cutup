@@ -620,7 +620,7 @@ async function loadBlogAndGuides(toolKey) {
       top.forEach((post) => {
         const li = document.createElement('li');
         const slug = String(post.slug || '');
-        const a = el('a', '', { href: `blog.html?slug=${encodeURIComponent(slug)}` });
+        const a = el('a', '', { href: `/blog.html?slug=${encodeURIComponent(slug)}` });
         a.textContent = post.title || slug;
         li.appendChild(a);
         ul.appendChild(li);
@@ -637,14 +637,14 @@ async function loadBlogAndGuides(toolKey) {
       top.slice(0, 5).forEach((post) => {
         const li = document.createElement('li');
         const slug = String(post.slug || '');
-        const a = el('a', '', { href: `blog.html?slug=${encodeURIComponent(slug)}` });
+        const a = el('a', '', { href: `/blog.html?slug=${encodeURIComponent(slug)}` });
         a.textContent = guideLinkLabel(post, toolKey);
         li.appendChild(a);
         guidesUl.appendChild(li);
       });
       if (!guidesUl.children.length) {
         const li = document.createElement('li');
-        const a = el('a', '', { href: 'blog.html' });
+        const a = el('a', '', { href: '/blog.html' });
         a.textContent = 'Browse all guides on the Cutup blog';
         li.appendChild(a);
         guidesUl.appendChild(li);
@@ -654,7 +654,7 @@ async function loadBlogAndGuides(toolKey) {
     if (ul) {
       ul.textContent = '';
       const li = document.createElement('li');
-      const a = el('a', '', { href: 'blog.html' });
+      const a = el('a', '', { href: '/blog.html' });
       a.textContent = 'Visit the Cutup blog';
       li.appendChild(a);
       ul.appendChild(li);
@@ -662,7 +662,7 @@ async function loadBlogAndGuides(toolKey) {
     if (guidesUl) {
       guidesUl.textContent = '';
       const li = document.createElement('li');
-      const a = el('a', '', { href: 'blog.html' });
+      const a = el('a', '', { href: '/blog.html' });
       a.textContent = 'Read guides on the Cutup blog';
       li.appendChild(a);
       guidesUl.appendChild(li);
