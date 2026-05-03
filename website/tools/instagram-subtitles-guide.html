@@ -20,6 +20,13 @@
 </head>
 <body>
   <script src="../site-chrome.js"></script>
+  <script type="module">
+    import { renderMarketingHeader, initSiteHeaderNav } from '/site-header.js';
+    import { renderFooter } from '/site-footer.js';
+    document.body.insertAdjacentHTML('afterbegin', renderMarketingHeader());
+    initSiteHeaderNav(document.querySelector('header.main-header'));
+    document.body.insertAdjacentHTML('beforeend', renderFooter());
+  </script>
 
   <main class="container tools-main">
     <article class="seo-guide-body">
@@ -60,14 +67,6 @@
       </div>
     </div>
   </div>
-
-  <script type="module">
-    import { renderMarketingHeader, initSiteHeaderNav } from '/site-header.js';
-    import { renderFooter } from '/site-footer.js';
-    document.body.insertAdjacentHTML('afterbegin', renderMarketingHeader());
-    initSiteHeaderNav(document.querySelector('header.main-header'));
-    document.body.insertAdjacentHTML('beforeend', renderFooter());
-  </script>
 
   <script src="../analytics-client.js"></script>
   <script src="../viral-referral.js"></script>

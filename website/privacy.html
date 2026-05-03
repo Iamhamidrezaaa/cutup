@@ -21,6 +21,13 @@
 </head>
 <body>
   <script src="site-chrome.js"></script>
+  <script type="module">
+    import { renderSimpleHeader, initSiteHeaderNav } from '/site-header.js';
+    import { renderFooter } from '/site-footer.js';
+    document.body.insertAdjacentHTML('afterbegin', renderSimpleHeader());
+    initSiteHeaderNav(document.querySelector('header.simple-header'));
+    document.body.insertAdjacentHTML('beforeend', renderFooter());
+  </script>
 
   <main style="padding: 48px 0;">
     <div class="container">
@@ -92,12 +99,5 @@
     </div>
   </main>
 
-  <script type="module">
-    import { renderSimpleHeader, initSiteHeaderNav } from '/site-header.js';
-    import { renderFooter } from '/site-footer.js';
-    document.body.insertAdjacentHTML('afterbegin', renderSimpleHeader());
-    initSiteHeaderNav(document.querySelector('header.simple-header'));
-    document.body.insertAdjacentHTML('beforeend', renderFooter());
-  </script>
 </body>
 </html>

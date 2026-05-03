@@ -1,6 +1,12 @@
 /**
  * Central headers (ES module). Three types: marketing, simple legal, blog.
  */
+const LOGO_MARKUP =
+  '<a href="/" class="logo">' +
+  '<img src="/logo.svg" alt="Cutup logo" class="logo-icon" width="32" height="32" decoding="async" />' +
+  '<span>Cutup</span>' +
+  '</a>';
+
 const NAV_TOGGLE =
   '<button type="button" class="nav-menu-toggle" id="navMenuToggle" aria-label="Open menu" aria-expanded="false" aria-controls="navLinks">' +
   '<span></span><span></span><span></span>' +
@@ -45,7 +51,7 @@ export function renderMarketingHeader() {
   return (
     '<header class="main-header">' +
     '<div class="container main-header-inner">' +
-    '<a href="/" class="logo">Cutup</a>' +
+    LOGO_MARKUP +
     NAV_TOGGLE +
     '<nav id="navLinks" class="main-header-nav">' +
     '<a href="/#tool" class="nav-link cta">Generate subtitles</a>' +
@@ -64,7 +70,7 @@ export function renderSimpleHeader() {
   return (
     '<header class="simple-header">' +
     '<div class="container simple-header-inner">' +
-    '<a href="/" class="logo">Cutup</a>' +
+    LOGO_MARKUP +
     NAV_TOGGLE +
     '<nav id="navLinks" class="simple-header-nav">' +
     '<a href="/" class="nav-link">Home</a>' +
@@ -79,12 +85,13 @@ export function renderBlogHeader() {
   return (
     '<header class="blog-header">' +
     '<div class="container blog-header-inner">' +
-    '<a href="/" class="logo">Cutup</a>' +
+    LOGO_MARKUP +
     NAV_TOGGLE +
     '<nav id="navLinks" class="blog-header-nav">' +
-    '<a href="/#tool" class="nav-link">Generate</a>' +
+    '<a href="/#tool" class="nav-link">Generate subtitles</a>' +
     '<a href="/#pricing" class="nav-link">Pricing</a>' +
     '<a href="/blog.html" class="nav-link active" aria-current="page">Blog</a>' +
+    '<a href="/#faq" class="nav-link">FAQ</a>' +
     '</nav>' +
     '</div>' +
     '</header>'

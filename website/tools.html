@@ -20,11 +20,6 @@
 </head>
 <body>
   <script src="site-chrome.js"></script>
-
-  <main id="toolsMain" class="tools-main">
-    <div id="toolsPageRoot" class="container tools-page-root"></div>
-  </main>
-
   <script type="module">
     import { renderMarketingHeader, initSiteHeaderNav } from '/site-header.js';
     import { renderFooter } from '/site-footer.js';
@@ -32,6 +27,10 @@
     initSiteHeaderNav(document.querySelector('header.main-header'));
     document.body.insertAdjacentHTML('beforeend', renderFooter());
   </script>
+
+  <main id="toolsMain" class="tools-main">
+    <div id="toolsPageRoot" class="container tools-page-root"></div>
+  </main>
 
   <script src="tools.js"></script>
 </body>

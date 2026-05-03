@@ -1,6 +1,7 @@
 const API_BASE_URL = 'https://cutup.shop';
 const BLOG_ENDPOINT = `${API_BASE_URL}/api/admin?action=blogPosts&public=1`;
-const ARTICLE_CTA_URL = 'https://cutup.shop/#tool';
+/** Editor CTA: always root path + hash (never index.html). */
+const ARTICLE_CTA_URL = '/#tool';
 
 let postsCache = [];
 let tocScrollCleanup = null;
@@ -60,7 +61,17 @@ function setCanonical(url) {
     el.setAttribute('rel', 'canonical');
     document.head.appendChild(el);
   }
-  el.setAttribute('href', url);
+  const n = normalizeSameOriginHref(url);
+  const candidate = n || String(url).trim();
+  if (!candidate) return;
+  try {
+    const href = /^https?:\/\//i.test(candidate)
+      ? candidate
+      : new URL(candidate, window.location.origin).href;
+    el.setAttribute('href', href);
+  } catch {
+    el.setAttribute('href', candidate);
+  }
 }
 
 function normalizeTags(tags) {
@@ -385,17 +396,29 @@ function slugifyHeading(text) {
     .slice(0, 80) || `section-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function sanitizeUrl(url) {
+/**
+ * Safe href for markdown links. Same-origin paths strip trailing /index.html (CMS legacy).
+ */
+function normalizeSameOriginHref(url) {
   const raw = String(url || '').trim();
   if (!raw) return '';
-  if (raw.startsWith('/') || raw.startsWith('#')) return raw;
+  if (raw.startsWith('#')) return raw;
   try {
     const parsed = new URL(raw, window.location.origin);
-    if (!['http:', 'https:', 'mailto:'].includes(parsed.protocol)) return '';
-    return parsed.href;
+    if (parsed.protocol === 'mailto:') return parsed.href;
+    if (!['http:', 'https:'].includes(parsed.protocol)) return '';
+    if (parsed.origin !== window.location.origin) return parsed.href;
+    let path = parsed.pathname || '/';
+    path = path.replace(/\/index\.html$/i, '') || '/';
+    if (!path.startsWith('/')) path = `/${path}`;
+    return `${path}${parsed.search}${parsed.hash}`;
   } catch {
     return '';
   }
+}
+
+function sanitizeUrl(url) {
+  return normalizeSameOriginHref(url);
 }
 
 /** Cover / OG images: http(s) only — blocks javascript:, data:, etc. */

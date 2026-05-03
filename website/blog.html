@@ -20,6 +20,13 @@
 </head>
 <body>
   <script src="site-chrome.js"></script>
+  <script type="module">
+    import { renderBlogHeader, initSiteHeaderNav } from '/site-header.js';
+    import { renderFooter } from '/site-footer.js';
+    document.body.insertAdjacentHTML('afterbegin', renderBlogHeader());
+    initSiteHeaderNav(document.querySelector('header.blog-header'));
+    document.body.insertAdjacentHTML('beforeend', renderFooter());
+  </script>
 
   <main id="blogRoot" class="container">
     <section id="blogListView">
@@ -66,14 +73,6 @@
       <a class="sticky-article-cta__btn" href="/#tool">Try it now</a>
     </div>
   </aside>
-
-  <script type="module">
-    import { renderBlogHeader, initSiteHeaderNav } from '/site-header.js';
-    import { renderFooter } from '/site-footer.js';
-    document.body.insertAdjacentHTML('afterbegin', renderBlogHeader());
-    initSiteHeaderNav(document.querySelector('header.blog-header'));
-    document.body.insertAdjacentHTML('beforeend', renderFooter());
-  </script>
 
   <script src="blog.js"></script>
 </body>

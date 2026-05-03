@@ -66,6 +66,14 @@ body {
   color: var(--primary);
 }
 
+.logo-icon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: block;
+  border-radius: 8px;
+}
+
 .nav-links {
   display: flex;
   align-items: center;
@@ -135,6 +143,10 @@ body {
   flex-shrink: 0;
 }
 
+.main-header .logo-icon {
+  border-radius: 8px;
+}
+
 .main-header-nav {
   display: flex;
   align-items: center;
@@ -189,10 +201,18 @@ body {
 
 .simple-header .logo,
 .blog-header .logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 20px;
   font-weight: 600;
   color: var(--primary);
   text-decoration: none;
+}
+
+.simple-header .logo-icon,
+.blog-header .logo-icon {
+  border-radius: 8px;
 }
 
 .simple-header-nav,

@@ -21,6 +21,13 @@
 </head>
 <body>
   <script src="site-chrome.js"></script>
+  <script type="module">
+    import { renderMarketingHeader, initSiteHeaderNav } from '/site-header.js';
+    import { renderFooter } from '/site-footer.js';
+    document.body.insertAdjacentHTML('afterbegin', renderMarketingHeader());
+    initSiteHeaderNav(document.querySelector('header.main-header'));
+    document.body.insertAdjacentHTML('beforeend', renderFooter());
+  </script>
   <main>
     <section class="hero">
       <div class="container">
@@ -34,12 +41,5 @@
       </div>
     </section>
   </main>
-  <script type="module">
-    import { renderMarketingHeader, initSiteHeaderNav } from '/site-header.js';
-    import { renderFooter } from '/site-footer.js';
-    document.body.insertAdjacentHTML('afterbegin', renderMarketingHeader());
-    initSiteHeaderNav(document.querySelector('header.main-header'));
-    document.body.insertAdjacentHTML('beforeend', renderFooter());
-  </script>
 </body>
 </html>
