@@ -308,6 +308,9 @@ const ONBOARDING_OVERLAY_ID = 'onboardingOverlay';
 /** Cached GET /api/user/profile result for this page load (single fetch). */
 let dashboardUserProfileCache = null;
 
+/** While true, section renders are deferred until onboarding modal closes (avoids double paint with modal). */
+let pendingDashboardSectionRender = false;
+
 async function fetchDashboardUserProfileOnce() {
   if (dashboardUserProfileCache) return dashboardUserProfileCache;
   if (!currentSession) throw new Error('auth_failed');
@@ -337,6 +340,17 @@ function hideInitialLoader() {
   if (!el) return;
   el.classList.add('is-done');
   setTimeout(() => el.remove(), 230);
+}
+
+function flushPendingDashboardRenders() {
+  if (!pendingDashboardSectionRender) return;
+  pendingDashboardSectionRender = false;
+  if (!subscriptionInfo) return;
+  renderOverview();
+  renderUsageSection();
+  renderSavedOutputs();
+  renderPlansSection();
+  renderBillingSection();
 }
 
 function loadDashboardCountries() {
@@ -375,6 +389,8 @@ function teardownOnboardingModal(overlayNode) {
   shell?.classList.remove('cutup-onboarding-locked');
   shell?.removeAttribute('inert');
   shell?.removeAttribute('aria-hidden');
+  window.__ONBOARDING_ACTIVE__ = false;
+  flushPendingDashboardRenders();
 }
 
 /**
@@ -382,10 +398,12 @@ function teardownOnboardingModal(overlayNode) {
  * @param {object} profile - prefill fields
  */
 async function renderOnboardingModalIntoBody(profile) {
-  const old = document.getElementById('onboardingOverlay');
-  if (old) old.remove();
+  if (document.getElementById(ONBOARDING_OVERLAY_ID)) {
+    console.log('[onboarding] skip mount — overlay already present');
+    return;
+  }
 
-  console.log('[onboarding] creating modal');
+  window.__ONBOARDING_ACTIVE__ = true;
 
   document.body.style.overflow = 'hidden';
   const shell = document.getElementById('cutupDashboardShell');
@@ -495,8 +513,7 @@ async function renderOnboardingModalIntoBody(profile) {
     requestAnimationFrame(() => overlay.classList.add('is-visible'));
   });
 
-  console.log('[onboarding] modal appended to body');
-  console.log('[onboarding] overlay exists:', document.getElementById('onboardingOverlay'));
+  console.log('[onboarding] modal mounted');
 
   const errEl = modal.querySelector('[data-onb-error]');
   const successEl = modal.querySelector('[data-onb-success]');
@@ -686,56 +703,6 @@ if (typeof window !== 'undefined') {
   };
 }
 
-async function maybeShowProfileOnboarding() {
-  console.log('[onboarding] start');
-  if (!currentSession) return;
-
-  if (window.__FORCE_ONBOARDING__ === true) {
-    console.log('[onboarding] FORCE mode (__FORCE_ONBOARDING__)');
-    await showOnboardingModal();
-    return;
-  }
-
-  try {
-    const bundle = await fetchDashboardUserProfileOnce();
-    const { response, data, profile } = bundle;
-    if (response.status === 503) {
-      console.warn('[onboarding] service unavailable (503)', data);
-      return;
-    }
-    if (!response.ok) {
-      console.error('[onboarding] profile API failed', response.status, data);
-      showDashboardBanner(
-        data?.error === 'profile_error'
-          ? 'Profile service is temporarily unavailable. Please try again.'
-          : 'Could not load your profile. Please refresh.',
-        'error',
-        { persistent: true }
-      );
-      return;
-    }
-    if (data.ok === false) {
-      console.error('[onboarding] response ok:false', data);
-      showDashboardBanner('Could not load your profile.', 'error', { persistent: true });
-      return;
-    }
-    console.log('[onboarding] profile:', profile);
-    if (!profile) {
-      console.error('[onboarding] no profile in response', data);
-      showDashboardBanner('Invalid profile response.', 'error', { persistent: true });
-      return;
-    }
-    const incomplete = isUserProfileIncomplete(profile);
-    console.log('[onboarding] isIncomplete:', incomplete);
-    if (!incomplete) return;
-    console.log('[onboarding] triggering modal');
-    await showOnboardingModal(profile);
-  } catch (e) {
-    console.error('[onboarding] error', e);
-    showDashboardBanner('Profile check failed. Please refresh the page.', 'error', { persistent: true });
-  }
-}
-
 function getSessionFromLocation() {
   const params = new URLSearchParams(window.location.search);
   const authSuccess = params.get('auth');
@@ -827,6 +794,15 @@ async function loadDashboardHeavy({ silent = false, skipUserProfile = false } = 
   if (!skipUserProfile) tasks.push(loadUserProfile());
   tasks.push(loadSubscriptionInfo(), loadUsageHistory(), loadPlans(), loadSavedOutputs());
   await Promise.all(tasks);
+  if (window.__ONBOARDING_ACTIVE__) {
+    pendingDashboardSectionRender = true;
+    if (!silent) {
+      const wm = document.getElementById('welcomeMessage');
+      if (wm) wm.textContent = `Welcome back, ${dashboardGreetingName(currentUser)}.`;
+    }
+    return;
+  }
+  pendingDashboardSectionRender = false;
   renderOverview();
   renderUsageSection();
   renderSavedOutputs();
@@ -904,13 +880,16 @@ async function initDashboard() {
   }
 
   const profile = profileBundle.profile;
-  const incomplete = isUserProfileIncomplete(profile);
+  const isIncomplete = isUserProfileIncomplete(profile);
+  console.log('[onboarding] shouldShow:', isIncomplete);
   const forceOnb = window.__FORCE_ONBOARDING__ === true;
 
-  if (forceOnb || incomplete) {
+  if (forceOnb || isIncomplete) {
+    window.__ONBOARDING_ACTIVE__ = true;
     void runHeavySafe();
     await renderOnboardingModalIntoBody(profile);
   } else {
+    window.__ONBOARDING_ACTIVE__ = false;
     await runHeavySafe();
   }
 
@@ -918,6 +897,7 @@ async function initDashboard() {
 }
 
 function renderOverview() {
+  if (window.__ONBOARDING_ACTIVE__) return;
   if (!subscriptionInfo) return;
   const usage = subscriptionInfo.usage || {};
   const monthlyMinutes = usage.monthly?.minutes || 0;
@@ -1117,6 +1097,7 @@ function renderUpgradeWarning() {
 }
 
 function renderUsageSection() {
+  if (window.__ONBOARDING_ACTIVE__) return;
   const target = document.getElementById('usageDetails');
   if (!target || !subscriptionInfo) return;
   const usage = subscriptionInfo.usage || {};
@@ -1210,6 +1191,7 @@ function renderUsageSection() {
 }
 
 function renderSavedOutputs() {
+  if (window.__ONBOARDING_ACTIVE__) return;
   const target = document.getElementById('savedOutputs');
   if (!target) return;
   if (!savedOutputsCache.length) {
@@ -1400,6 +1382,7 @@ function renderSavedOutputs() {
 }
 
 function renderPlansSection() {
+  if (window.__ONBOARDING_ACTIVE__) return;
   const subscriptionInfoEl = document.getElementById('subscriptionInfo');
   const plansGrid = document.getElementById('plansGrid');
   if (!subscriptionInfoEl || !plansGrid) return;
@@ -1514,6 +1497,7 @@ function renderPlansSection() {
 }
 
 function renderBillingSection() {
+  if (window.__ONBOARDING_ACTIVE__) return;
   const target = document.getElementById('financialInfo');
   if (!target) return;
   const subscriptionEnd = subscriptionInfo?.subscription?.endDate ? formatDateTime(subscriptionInfo.subscription.endDate) : '—';
