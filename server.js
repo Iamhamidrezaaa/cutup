@@ -639,19 +639,23 @@ app.post('/api/retention', async (req, res) => {
 app.use(express.static(join(__dirname, 'website')));
 app.use(express.static(join(__dirname, 'public')));
 
-// Error handler
+// Unknown routes: real HTTP 404 (no redirect to home / index).
+app.use((req, res) => {
+  const apiPath = req.path || '';
+  if (apiPath === '/api' || apiPath.startsWith('/api/')) {
+    return res.status(404).json({ ok: false, error: 'not_found' });
+  }
+  return res.status(404).sendFile(join(__dirname, 'website', '404.html'));
+});
+
+// Error handler — must be after routes + 404; only runs for thrown errors / next(err).
 app.use((err, req, res, next) => {
   console.error('Error:', err);
-  res.status(500).json({ 
-    error: 'Internal server error', 
+  res.status(500).json({
+    error: 'Internal server error',
     message: err.message,
     stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
   });
-});
-
-// 404 handler — any unknown route (including missing files)
-app.use((req, res) => {
-  res.status(404).sendFile(join(__dirname, 'public/404.html'));
 });
 
 // Start server
