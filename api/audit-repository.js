@@ -263,6 +263,104 @@ export async function countAuditEventsDb(filters) {
   return Number(r.rows[0]?.c || 0);
 }
 
+let _auditEventsTableEnsured = false;
+
+/**
+ * Create audit_events (+ enrichment columns) if migration never ran. Does not throw.
+ */
+export async function ensureAuditEventsTable() {
+  if (!isBillingDbConfigured()) return;
+  if (_auditEventsTableEnsured) return;
+  const pool = getPool();
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS audit_events (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+        session_id TEXT,
+        event_type TEXT NOT NULL,
+        event_name TEXT NOT NULL,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        ip TEXT,
+        user_agent TEXT,
+        path TEXT,
+        referrer TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    for (const ddl of [
+      `ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS analytics_session_id TEXT`,
+      `ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS country_code TEXT`,
+      `ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS device TEXT`,
+      `ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS browser TEXT`,
+      `ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS plan TEXT`,
+      `ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS user_segment TEXT`,
+      `CREATE INDEX IF NOT EXISTS idx_audit_events_user_id ON audit_events (user_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_audit_events_event_name ON audit_events (event_name)`,
+      `CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events (created_at DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_audit_events_event_type ON audit_events (event_type)`,
+      `CREATE INDEX IF NOT EXISTS idx_audit_events_session_id ON audit_events (session_id) WHERE session_id IS NOT NULL`
+    ]) {
+      try {
+        await pool.query(ddl);
+      } catch (colErr) {
+        console.error('[audit summary error]', colErr);
+      }
+    }
+    _auditEventsTableEnsured = true;
+  } catch (e) {
+    console.error('[audit summary error]', e);
+    _auditEventsTableEnsured = false;
+  }
+}
+
+function computeSummaryRange({ dateFrom = null, dateTo = null } = {}) {
+  const now = new Date();
+  const d1 = parseDateParam(dateTo) || now;
+  let d0 = parseDateParam(dateFrom);
+  if (!d0) {
+    d0 = new Date(d1.getTime() - 24 * 60 * 60 * 1000);
+  }
+  return { d0, d1, range: [d0.toISOString(), d1.toISOString()] };
+}
+
+function buildEmptyAuditSummary(range) {
+  return {
+    range: { from: range[0], to: range[1] },
+    totalEvents: 0,
+    eventsWithUser: 0,
+    activeUsers: 0,
+    errorEvents: 0,
+    topEvents: [],
+    payment: { attempts: 0, successes: 0, failures: 0, conversionRate: 0 },
+    funnel: [],
+    liveMetrics: {
+      totalEventsAllTime: 0,
+      eventsLast24h: 0,
+      activeUsersLast15m: 0,
+      errorRate: 0,
+      conversionRate: 0
+    }
+  };
+}
+
+/** For HTTP fallback when summary computation throws (should be rare). */
+export function buildEmptyAuditSummaryFromHttpQuery(query = {}) {
+  const { range } = computeSummaryRange({
+    dateFrom: query.date_from || query.dateFrom,
+    dateTo: query.date_to || query.dateTo
+  });
+  return buildEmptyAuditSummary(range);
+}
+
+/** Percent 0–100; denominator 0 → 0 (never NaN). */
+function safeRatePercent(numerator, denominator) {
+  const d = Number(denominator) || 0;
+  const n = Number(numerator) || 0;
+  if (d <= 0) return 0;
+  return Math.round((n / d) * 10000) / 100;
+}
+
 function mapAuditRow(row) {
   return {
     id: row.id,
@@ -286,118 +384,186 @@ function mapAuditRow(row) {
   };
 }
 
-export async function getAuditSummaryDb({ dateFrom = null, dateTo = null } = {}) {
-  const pool = getPool();
-  const now = new Date();
-  const d1 = parseDateParam(dateTo) || now;
-  let d0 = parseDateParam(dateFrom);
-  if (!d0) {
-    d0 = new Date(d1.getTime() - 24 * 60 * 60 * 1000);
-  }
+export async function getAuditSummaryDb(opts = {}) {
+  const { range } = computeSummaryRange(opts);
+  const empty = () => buildEmptyAuditSummary(range);
 
-  const range = [d0.toISOString(), d1.toISOString()];
-
-  const totals = await pool.query(
-    `SELECT
-       COUNT(*)::int AS total_events,
-       COUNT(*) FILTER (WHERE user_id IS NOT NULL)::int AS events_with_user,
-       COUNT(DISTINCT user_id)::int AS active_users,
-       COUNT(*) FILTER (WHERE event_type = 'error')::int AS error_events
-     FROM audit_events
-     WHERE created_at >= $1 AND created_at <= $2`,
-    range
-  );
-
-  const topEvents = await pool.query(
-    `SELECT event_name, event_type, COUNT(*)::int AS count
-     FROM audit_events
-     WHERE created_at >= $1 AND created_at <= $2
-     GROUP BY event_name, event_type
-     ORDER BY count DESC
-     LIMIT 25`,
-    range
-  );
-
-  const payment = await pool.query(
-    `SELECT
-       COUNT(*) FILTER (WHERE event_name IN ('payment_attempt', 'payment_started'))::int AS attempts,
-       COUNT(*) FILTER (WHERE event_name = 'payment_success')::int AS successes,
-       COUNT(*) FILTER (WHERE event_name = 'payment_failed')::int AS failures
-     FROM audit_events
-     WHERE created_at >= $1 AND created_at <= $2`,
-    range
-  );
-
-  const funnelNames = ['page_view', 'signup', 'onboarding_completed', 'payment_success'];
-  const funnel = await pool.query(
-    `SELECT event_name, COUNT(*)::int AS count
-     FROM audit_events
-     WHERE created_at >= $1 AND created_at <= $2
-       AND event_name = ANY($3::text[])
-     GROUP BY event_name`,
-    [range[0], range[1], funnelNames]
-  );
-
-  const t = totals.rows[0] || {};
-  const p = payment.rows[0] || {};
-  const attempts = Number(p.attempts || 0);
-  const successes = Number(p.successes || 0);
-  const conversionRate = attempts > 0 ? Math.round((successes / attempts) * 10000) / 100 : null;
-
-  const roll = await pool.query(`
-    SELECT
-      (SELECT COUNT(*)::bigint FROM audit_events) AS total_all,
-      (SELECT COUNT(*)::int FROM audit_events WHERE created_at >= NOW() - INTERVAL '24 hours') AS events_last_24h,
-      (SELECT COUNT(DISTINCT user_id)::int FROM audit_events
-       WHERE created_at >= NOW() - INTERVAL '15 minutes' AND user_id IS NOT NULL) AS active_users_last_15m,
-      (SELECT COUNT(*)::int FROM audit_events
-       WHERE created_at >= NOW() - INTERVAL '24 hours' AND event_type = 'error') AS errors_last_24h,
-      (SELECT COUNT(*)::int FROM audit_events WHERE created_at >= NOW() - INTERVAL '24 hours') AS total_last_24h
-  `);
-  const r0 = roll.rows[0] || {};
-  const tot24 = Number(r0.total_last_24h || 0);
-  const err24 = Number(r0.errors_last_24h || 0);
-  const errorRateLast24h = tot24 > 0 ? Math.round((err24 / tot24) * 10000) / 100 : null;
-
-  const pay24 = await pool.query(
-    `SELECT
-       COUNT(*) FILTER (WHERE event_name IN ('payment_attempt', 'payment_started'))::int AS attempts,
-       COUNT(*) FILTER (WHERE event_name = 'payment_success')::int AS successes
-     FROM audit_events
-     WHERE created_at >= NOW() - INTERVAL '24 hours'`
-  );
-  const p24 = pay24.rows[0] || {};
-  const att24 = Number(p24.attempts || 0);
-  const suc24 = Number(p24.successes || 0);
-  const conversionRateLast24h = att24 > 0 ? Math.round((suc24 / att24) * 10000) / 100 : null;
-
-  return {
-    range: { from: range[0], to: range[1] },
-    totalEvents: Number(t.total_events || 0),
-    eventsWithUser: Number(t.events_with_user || 0),
-    activeUsers: Number(t.active_users || 0),
-    errorEvents: Number(t.error_events || 0),
-    topEvents: topEvents.rows,
-    payment: {
-      attempts,
-      successes,
-      failures: Number(p.failures || 0),
-      conversionRate
-    },
-    funnel: funnel.rows,
-    liveMetrics: {
-      totalEventsAllTime: Number(r0.total_all || 0),
-      eventsLast24h: Number(r0.events_last_24h || 0),
-      activeUsersLast15m: Number(r0.active_users_last_15m || 0),
-      errorRate: errorRateLast24h,
-      conversionRate: conversionRateLast24h
+  try {
+    if (!isBillingDbConfigured()) {
+      return empty();
     }
-  };
+
+    let pool;
+    try {
+      pool = getPool();
+    } catch (e) {
+      console.error('[audit summary error]', e);
+      return empty();
+    }
+
+    await ensureAuditEventsTable();
+
+    let totalsRow = {};
+    try {
+      const totals = await pool.query(
+        `SELECT
+           COUNT(*)::int AS total_events,
+           COUNT(*) FILTER (WHERE user_id IS NOT NULL)::int AS events_with_user,
+           COUNT(DISTINCT user_id)::int AS active_users,
+           COUNT(*) FILTER (WHERE event_type = 'error')::int AS error_events
+         FROM audit_events
+         WHERE created_at >= $1 AND created_at <= $2`,
+        range
+      );
+      totalsRow = totals.rows[0] || {};
+    } catch (e) {
+      console.error('[audit summary error]', e);
+    }
+
+    let topEvents = [];
+    try {
+      const r = await pool.query(
+        `SELECT event_name, event_type, COUNT(*)::int AS count
+         FROM audit_events
+         WHERE created_at >= $1 AND created_at <= $2
+         GROUP BY event_name, event_type
+         ORDER BY count DESC
+         LIMIT 25`,
+        range
+      );
+      topEvents = r.rows || [];
+    } catch (e) {
+      console.error('[audit summary error]', e);
+    }
+
+    let paymentRow = {};
+    try {
+      const payment = await pool.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE event_name IN ('payment_attempt', 'payment_started'))::int AS attempts,
+           COUNT(*) FILTER (WHERE event_name = 'payment_success')::int AS successes,
+           COUNT(*) FILTER (WHERE event_name = 'payment_failed')::int AS failures
+         FROM audit_events
+         WHERE created_at >= $1 AND created_at <= $2`,
+        range
+      );
+      paymentRow = payment.rows[0] || {};
+    } catch (e) {
+      console.error('[audit summary error]', e);
+    }
+
+    let funnelRows = [];
+    try {
+      const funnelNames = ['page_view', 'signup', 'onboarding_completed', 'payment_success'];
+      const funnel = await pool.query(
+        `SELECT event_name, COUNT(*)::int AS count
+         FROM audit_events
+         WHERE created_at >= $1 AND created_at <= $2
+           AND event_name = ANY($3::text[])
+         GROUP BY event_name`,
+        [range[0], range[1], funnelNames]
+      );
+      funnelRows = funnel.rows || [];
+    } catch (e) {
+      console.error('[audit summary error]', e);
+    }
+
+    let totalEventsAllTime = 0;
+    try {
+      const r = await pool.query(`SELECT COUNT(*)::bigint AS c FROM audit_events`);
+      totalEventsAllTime = Number(r.rows[0]?.c || 0);
+    } catch (e) {
+      console.error('[audit summary error]', e);
+    }
+
+    let eventsLast24h = 0;
+    try {
+      const r = await pool.query(
+        `SELECT COUNT(*)::int AS c FROM audit_events WHERE created_at >= NOW() - INTERVAL '24 hours'`
+      );
+      eventsLast24h = Number(r.rows[0]?.c || 0);
+    } catch (e) {
+      console.error('[audit summary error]', e);
+    }
+
+    let activeUsersLast15m = 0;
+    try {
+      const r = await pool.query(
+        `SELECT COUNT(DISTINCT user_id)::int AS c FROM audit_events
+         WHERE created_at >= NOW() - INTERVAL '15 minutes' AND user_id IS NOT NULL`
+      );
+      activeUsersLast15m = Number(r.rows[0]?.c || 0);
+    } catch (e) {
+      console.error('[audit summary error]', e);
+    }
+
+    let err24 = 0;
+    let tot24 = 0;
+    try {
+      const r = await pool.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE event_type = 'error')::int AS errs,
+           COUNT(*)::int AS tot
+         FROM audit_events
+         WHERE created_at >= NOW() - INTERVAL '24 hours'`
+      );
+      err24 = Number(r.rows[0]?.errs || 0);
+      tot24 = Number(r.rows[0]?.tot || 0);
+    } catch (e) {
+      console.error('[audit summary error]', e);
+    }
+
+    let att24 = 0;
+    let suc24 = 0;
+    try {
+      const pay24 = await pool.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE event_name IN ('payment_attempt', 'payment_started'))::int AS attempts,
+           COUNT(*) FILTER (WHERE event_name = 'payment_success')::int AS successes
+         FROM audit_events
+         WHERE created_at >= NOW() - INTERVAL '24 hours'`
+      );
+      att24 = Number(pay24.rows[0]?.attempts || 0);
+      suc24 = Number(pay24.rows[0]?.successes || 0);
+    } catch (e) {
+      console.error('[audit summary error]', e);
+    }
+
+    const attempts = Number(paymentRow.attempts || 0);
+    const successes = Number(paymentRow.successes || 0);
+
+    return {
+      range: { from: range[0], to: range[1] },
+      totalEvents: Number(totalsRow.total_events || 0),
+      eventsWithUser: Number(totalsRow.events_with_user || 0),
+      activeUsers: Number(totalsRow.active_users || 0),
+      errorEvents: Number(totalsRow.error_events || 0),
+      topEvents,
+      payment: {
+        attempts,
+        successes,
+        failures: Number(paymentRow.failures || 0),
+        conversionRate: safeRatePercent(successes, attempts)
+      },
+      funnel: funnelRows,
+      liveMetrics: {
+        totalEventsAllTime,
+        eventsLast24h,
+        activeUsersLast15m,
+        errorRate: safeRatePercent(err24, tot24),
+        conversionRate: safeRatePercent(suc24, att24)
+      }
+    };
+  } catch (e) {
+    console.error('[audit summary error]', e);
+    return empty();
+  }
 }
 
 /** Dev-friendly sample rows (no user linkage). */
 export async function seedTestAuditEventsDb() {
   if (!isBillingDbConfigured()) return 0;
+  await ensureAuditEventsTable();
   const pool = getPool();
   const rows = [
     ['product', 'page_view', { seed: true }],

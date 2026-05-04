@@ -5,6 +5,7 @@ import {
   listAuditEventsDb,
   countAuditEventsDb,
   getAuditSummaryDb,
+  buildEmptyAuditSummaryFromHttpQuery,
   getUserAuditTimelineDb,
   isUuid,
   getAuditEventTimeseriesDb,
@@ -54,16 +55,17 @@ export async function adminAuditSummaryHandler(req, res) {
   if (!auth) return;
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
+  let summary;
   try {
-    const summary = await getAuditSummaryDb({
+    summary = await getAuditSummaryDb({
       dateFrom: req.query.date_from || req.query.dateFrom,
       dateTo: req.query.date_to || req.query.dateTo
     });
-    return res.json({ ok: true, summary });
   } catch (e) {
-    console.error('[admin-audit summary]', e);
-    return res.status(500).json({ error: 'summary_failed', message: e?.message });
+    console.error('[audit summary error]', e);
+    summary = buildEmptyAuditSummaryFromHttpQuery(req.query);
   }
+  return res.json({ ok: true, summary });
 }
 
 function listFiltersFromQuery(req) {
