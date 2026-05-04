@@ -49,27 +49,12 @@
     return false;
   }
 
-  function showInstallButton() {
-    if (document.querySelector('.install-btn')) return;
-    var btn = document.createElement('button');
-    btn.type = 'button';
-    btn.innerText = 'Install App';
-    btn.className = 'install-btn';
-    btn.setAttribute('aria-label', 'Install Cutup app');
-
-    btn.onclick = async function () {
-      if (!deferredPrompt) return;
-      deferredPrompt.prompt();
-      try {
-        await deferredPrompt.userChoice;
-      } catch (_e) {
-        /* ignore */
-      }
-      deferredPrompt = null;
-      btn.remove();
-    };
-
-    document.body.appendChild(btn);
+  /** iOS: only Mobile Safari fires the “Add to Home Screen” flow; not Chrome/Fx/Edge on iOS. */
+  function isIOSSafari() {
+    if (!isIOSDevice()) return false;
+    var ua = navigator.userAgent || '';
+    if (/CriOS|FxiOS|EdgiOS|OPiOS|Brave/i.test(ua)) return false;
+    return /Safari/i.test(ua);
   }
 
   function showIOSInstallGuide() {
@@ -129,32 +114,100 @@
     document.body.appendChild(overlay);
   }
 
-  var deferredPrompt = null;
+  function ensureInstallButton() {
+    var btn = document.getElementById('installAppBtn');
+    if (btn) return btn;
+    btn = document.createElement('button');
+    btn.id = 'installAppBtn';
+    btn.type = 'button';
+    btn.className = 'install-btn';
+    btn.setAttribute('aria-label', 'Install Cutup app');
+    btn.textContent = 'Install App';
+    document.body.appendChild(btn);
+    return btn;
+  }
+
+  function initInstallButton() {
+    var btn = ensureInstallButton();
+    btn.onclick = async function () {
+      if (!window.deferredPrompt) {
+        alert('Install option available in browser menu');
+        return;
+      }
+      window.deferredPrompt.prompt();
+      try {
+        await window.deferredPrompt.userChoice;
+      } catch (_e) {
+        /* ignore */
+      }
+      window.deferredPrompt = null;
+    };
+  }
+
+  function hideInstallButtonIfStandalone() {
+    var btn = document.getElementById('installAppBtn');
+    if (btn) btn.hidden = true;
+  }
 
   ensureManifestLink();
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(function () {});
+    navigator.serviceWorker
+      .register('/sw.js')
+      .then(function (reg) {
+        console.log('SW registered:', reg);
+      })
+      .catch(function (err) {
+        console.error(err);
+      });
   }
 
-  if (isStandaloneDisplay()) return;
+  fetch('/manifest.json')
+    .then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function (data) {
+      console.log(data);
+    })
+    .catch(function (err) {
+      console.error('manifest.json:', err);
+    });
+
+  if (isStandaloneDisplay()) {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', hideInstallButtonIfStandalone);
+    } else {
+      hideInstallButtonIfStandalone();
+    }
+    return;
+  }
 
   window.addEventListener('beforeinstallprompt', function (e) {
+    console.log('PWA install available');
     e.preventDefault();
-    deferredPrompt = e;
-    showInstallButton();
+    window.deferredPrompt = e;
   });
 
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initInstallButton);
+  } else {
+    initInstallButton();
+  }
+
   if (
-    isIOSDevice() &&
-    !window.navigator.standalone &&
+    isIOSSafari() &&
+    !isStandaloneDisplay() &&
     !sessionStorage.getItem('cutup_ios_install_hint')
   ) {
     sessionStorage.setItem('cutup_ios_install_hint', '1');
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', showIOSInstallGuide);
-    } else {
+    function showIOS() {
       showIOSInstallGuide();
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', showIOS);
+    } else {
+      showIOS();
     }
   }
 })();

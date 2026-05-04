@@ -4051,7 +4051,7 @@ body {
 @media (max-width: 1024px) {
   html,
   body {
-    overflow-x: clip;
+    overflow-x: hidden;
   }
 
   img,

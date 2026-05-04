@@ -12,33 +12,38 @@ body {
   overflow-x: hidden;
 }
 
-/* Mobile text stability (home marketing): prevent overflow / jitter */
-.hero-text,
-.feature-text,
-.section-text {
+/* Root-cause overflow guards (mobile text jitter fix) */
+.section,
+.hero,
+.feature-section,
+.features {
   max-width: 100%;
-  overflow-wrap: break-word;
-  word-break: break-word;
+  overflow-x: hidden;
 }
 
-.cutup-home h1,
-.cutup-home h2,
-.cutup-home h3 {
-  line-height: 1.2;
-  word-break: break-word;
+.hero-content,
+.feature-card,
+.section-content,
+.features-grid,
+.features-slider {
+  max-width: 100%;
+  overflow: hidden;
 }
 
-@media (max-width: 480px) {
-  .cutup-home h1.hero-title {
-    font-size: 26px;
-  }
+.slider,
+.slide,
+.features-slider,
+.features-slider .feature-card {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
 
-  .cutup-home h2.section-title {
-    font-size: 20px;
-  }
-
-  .cutup-home main p {
-    font-size: 14px;
+@media (max-width: 768px) {
+  .features-slider {
+    margin: 0;
+    padding: 0;
   }
 }
 

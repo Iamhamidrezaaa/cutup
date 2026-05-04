@@ -505,7 +505,7 @@ async function renderOnboardingModalIntoBody(profile) {
   overlay.style.position = 'fixed';
   overlay.style.top = '0';
   overlay.style.left = '0';
-  overlay.style.width = '100vw';
+  overlay.style.width = '100%';
   overlay.style.height = '100vh';
   overlay.style.zIndex = '999999999';
   overlay.style.display = 'flex';
