@@ -205,6 +205,18 @@
         <section id="section-audit" class="panel">
           <h2>Product analytics</h2>
           <p class="admin-muted">Usage, conversion, and reliability — same access as Customers (admin &amp; super admin).</p>
+          <div id="auditEmptyState" class="audit-empty-state" hidden>
+            <p class="audit-empty-title">No data yet</p>
+            <p class="admin-muted">Send traffic or seed sample events for this workspace.</p>
+            <button type="button" id="auditSeedBtn" class="btn">Generate test events</button>
+          </div>
+          <div class="toolbar audit-quick-filters" role="toolbar" aria-label="Quick date range">
+            <span class="audit-quick-label">Quick range</span>
+            <button type="button" class="btn ghost audit-quick-filter" data-range="today">Today</button>
+            <button type="button" class="btn ghost audit-quick-filter" data-range="1h">Last 1h</button>
+            <button type="button" class="btn ghost audit-quick-filter" data-range="24h">Last 24h</button>
+            <button type="button" class="btn ghost audit-quick-filter" data-range="7d">Last 7d</button>
+          </div>
           <div id="auditSummaryCards" class="cards-grid"></div>
           <div class="audit-charts-grid">
             <div class="audit-chart-card">
@@ -226,8 +238,9 @@
             <button type="button" id="auditRunRulesBtn" class="btn ghost">Run alert rules now</button>
           </div>
           <h3>Funnel snapshot</h3>
-          <p class="admin-muted">Preset counts in the selected date range.</p>
-          <div class="table-wrap"><table id="auditFunnelTable" aria-label="Funnel snapshot"></table></div>
+          <p class="admin-muted">Preset steps in the selected range — share of the first step shown.</p>
+          <div id="auditFunnelVisual" class="audit-funnel-visual" aria-label="Funnel snapshot steps"></div>
+          <div class="table-wrap sr-only"><table id="auditFunnelTable" aria-label="Funnel snapshot data"></table></div>
           <h3>Dynamic funnel</h3>
           <p class="admin-muted">Comma or newline-separated <code>event_name</code> steps; conversion is ordered (prior step before next).</p>
           <div class="toolbar audit-funnel-builder">
@@ -238,7 +251,7 @@
           <div class="audit-split">
             <div>
               <h3>Live feed</h3>
-              <p class="admin-muted" id="auditLiveFeedStatus">Connecting…</p>
+              <p id="auditLiveFeedStatus" class="audit-live-feed-status audit-live-feed-status--connecting" role="status">Connecting…</p>
               <div id="auditLiveFeed" class="audit-live-feed" aria-live="polite"></div>
             </div>
             <div>

@@ -12,7 +12,8 @@ import {
   getAuditDauTimeseriesDb,
   computeDynamicFunnelDb,
   listAuditAlertsDb,
-  evaluateAuditAlertsDb
+  evaluateAuditAlertsDb,
+  seedTestAuditEventsDb
 } from './audit-repository.js';
 import { ensureAdminsSchema } from './admins-repository.js';
 
@@ -193,5 +194,18 @@ export async function adminAuditEvaluateAlertsHandler(req, res) {
   } catch (e) {
     console.error('[admin-audit evaluate]', e);
     return res.status(500).json({ error: 'evaluate_failed', message: e?.message });
+  }
+}
+
+export async function adminAuditSeedHandler(req, res) {
+  const auth = await requireAuditReader(req, res);
+  if (!auth) return;
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  try {
+    const inserted = await seedTestAuditEventsDb();
+    return res.json({ ok: true, inserted });
+  } catch (e) {
+    console.error('[admin-audit seed]', e);
+    return res.status(500).json({ error: 'seed_failed', message: e?.message });
   }
 }

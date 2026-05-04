@@ -344,6 +344,33 @@ export async function getAuditSummaryDb({ dateFrom = null, dateTo = null } = {})
   const successes = Number(p.successes || 0);
   const conversionRate = attempts > 0 ? Math.round((successes / attempts) * 10000) / 100 : null;
 
+  const roll = await pool.query(`
+    SELECT
+      (SELECT COUNT(*)::bigint FROM audit_events) AS total_all,
+      (SELECT COUNT(*)::int FROM audit_events WHERE created_at >= NOW() - INTERVAL '24 hours') AS events_last_24h,
+      (SELECT COUNT(DISTINCT user_id)::int FROM audit_events
+       WHERE created_at >= NOW() - INTERVAL '15 minutes' AND user_id IS NOT NULL) AS active_users_last_15m,
+      (SELECT COUNT(*)::int FROM audit_events
+       WHERE created_at >= NOW() - INTERVAL '24 hours' AND event_type = 'error') AS errors_last_24h,
+      (SELECT COUNT(*)::int FROM audit_events WHERE created_at >= NOW() - INTERVAL '24 hours') AS total_last_24h
+  `);
+  const r0 = roll.rows[0] || {};
+  const tot24 = Number(r0.total_last_24h || 0);
+  const err24 = Number(r0.errors_last_24h || 0);
+  const errorRateLast24h = tot24 > 0 ? Math.round((err24 / tot24) * 10000) / 100 : null;
+
+  const pay24 = await pool.query(
+    `SELECT
+       COUNT(*) FILTER (WHERE event_name IN ('payment_attempt', 'payment_started'))::int AS attempts,
+       COUNT(*) FILTER (WHERE event_name = 'payment_success')::int AS successes
+     FROM audit_events
+     WHERE created_at >= NOW() - INTERVAL '24 hours'`
+  );
+  const p24 = pay24.rows[0] || {};
+  const att24 = Number(p24.attempts || 0);
+  const suc24 = Number(p24.successes || 0);
+  const conversionRateLast24h = att24 > 0 ? Math.round((suc24 / att24) * 10000) / 100 : null;
+
   return {
     range: { from: range[0], to: range[1] },
     totalEvents: Number(t.total_events || 0),
@@ -357,8 +384,40 @@ export async function getAuditSummaryDb({ dateFrom = null, dateTo = null } = {})
       failures: Number(p.failures || 0),
       conversionRate
     },
-    funnel: funnel.rows
+    funnel: funnel.rows,
+    liveMetrics: {
+      totalEventsAllTime: Number(r0.total_all || 0),
+      eventsLast24h: Number(r0.events_last_24h || 0),
+      activeUsersLast15m: Number(r0.active_users_last_15m || 0),
+      errorRate: errorRateLast24h,
+      conversionRate: conversionRateLast24h
+    }
   };
+}
+
+/** Dev-friendly sample rows (no user linkage). */
+export async function seedTestAuditEventsDb() {
+  if (!isBillingDbConfigured()) return 0;
+  const pool = getPool();
+  const rows = [
+    ['product', 'page_view', { seed: true }],
+    ['product', 'signup', { seed: true }],
+    ['ui', 'click', { seed: true, target: 'cta' }],
+    ['error', 'js_error', { seed: true, message: 'test_error' }],
+    ['product', 'payment_started', { seed: true }],
+    ['product', 'payment_success', { seed: true }],
+    ['product', 'onboarding_completed', { seed: true }]
+  ];
+  let n = 0;
+  for (const [eventType, eventName, meta] of rows) {
+    await pool.query(
+      `INSERT INTO audit_events (event_type, event_name, metadata)
+       VALUES ($1, $2, $3::jsonb)`,
+      [eventType, eventName, JSON.stringify(meta)]
+    );
+    n += 1;
+  }
+  return n;
 }
 
 /** Time buckets for charts: 'hour' | 'day' */

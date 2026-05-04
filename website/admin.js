@@ -205,7 +205,7 @@ function syncUsersNavParentState() {
 }
 
 function activateAdminSection(section) {
-  stopAuditFeedPoll();
+  stopAuditAutoRefresh();
   stopAuditLiveWs();
   document.querySelectorAll('.nav-btn[data-section]').forEach((n) => n.classList.remove('active'));
   document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
@@ -1861,8 +1861,15 @@ function setupActions() {
 }
 
 let auditFeedTimer = null;
+let auditSummaryTimer = null;
+/** When set, summary/list/charts use these ISO bounds instead of date inputs (quick filters). */
+let auditRangeQuick = null;
 let auditPage = 1;
 const AUDIT_PAGE_SIZE = 40;
+const AUDIT_FEED_POLL_MS = 3000;
+const AUDIT_SUMMARY_POLL_MS = 5000;
+/** Highlight error-rate card when at or above this % (rolling 24h). */
+const AUDIT_ERROR_RATE_THRESHOLD_PCT = 5;
 /** @type {WebSocket|null} */
 let auditWs = null;
 let auditChartEventsInst = null;
@@ -1900,45 +1907,108 @@ function scheduleAuditFeedPoll() {
   auditFeedTimer = setInterval(() => {
     const sec = document.getElementById('section-audit');
     if (!sec?.classList.contains('active')) return;
-    if (auditWs && auditWs.readyState === 1) return;
     loadAuditFeedOnly().catch(() => {});
-  }, 10000);
+  }, AUDIT_FEED_POLL_MS);
 }
 
-function setAuditLiveStatus(text) {
+function stopAuditAutoRefresh() {
+  stopAuditFeedPoll();
+  if (auditSummaryTimer) {
+    clearInterval(auditSummaryTimer);
+    auditSummaryTimer = null;
+  }
+}
+
+function startAuditAutoRefresh() {
+  stopAuditAutoRefresh();
+  auditSummaryTimer = setInterval(() => {
+    const sec = document.getElementById('section-audit');
+    if (!sec?.classList.contains('active')) return;
+    refreshAuditSummaryLive().catch(() => {});
+  }, AUDIT_SUMMARY_POLL_MS);
+  scheduleAuditFeedPoll();
+}
+
+function setAuditConnectionStatus(state) {
   const el = document.getElementById('auditLiveFeedStatus');
-  if (el) el.textContent = text;
+  if (!el) return;
+  el.className = 'audit-live-feed-status';
+  el.classList.add(`audit-live-feed-status--${state}`);
+  const labels = {
+    connecting: 'Connecting…',
+    live: 'Live',
+    disconnected: 'Disconnected'
+  };
+  el.textContent = labels[state] || state;
+}
+
+function updateAuditEmptyState(summary) {
+  const box = document.getElementById('auditEmptyState');
+  if (!box) return;
+  const total = Number(summary?.liveMetrics?.totalEventsAllTime ?? 0);
+  box.hidden = total > 0;
+}
+
+function fmtRelativeTime(iso) {
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return '—';
+  const sec = Math.floor((Date.now() - t) / 1000);
+  if (sec < 0) return '0s ago';
+  if (sec < 5) return 'just now';
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const h = Math.floor(min / 60);
+  if (h < 48) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+function auditFeedRowTone(e) {
+  const name = String(e.eventName || '');
+  const typ = String(e.eventType || '');
+  if (typ === 'error' || name.includes('failed') || name === 'js_error') return 'error';
+  if (name.includes('success') || name === 'payment_success') return 'success';
+  return 'neutral';
+}
+
+async function refreshAuditSummaryLive() {
+  try {
+    const data = await adminAuditFetch(`/api/admin/audit/summary${summaryQueryFromDates()}`);
+    renderAuditSummary(data.summary);
+  } catch (_e) {
+    /* keep previous snapshot */
+  }
 }
 
 function connectAuditLiveWs() {
   stopAuditLiveWs();
   if (typeof WebSocket === 'undefined') {
-    setAuditLiveStatus('Live updates: polling every 10s (WebSocket not available).');
+    setAuditConnectionStatus('live');
     scheduleAuditFeedPoll();
     return;
   }
   const url = auditLiveWsUrl();
   if (!url) {
-    setAuditLiveStatus('Live updates: polling every 10s.');
+    setAuditConnectionStatus('live');
     scheduleAuditFeedPoll();
     return;
   }
-  setAuditLiveStatus('Live feed: connecting…');
+  setAuditConnectionStatus('connecting');
   try {
     auditWs = new WebSocket(url);
   } catch (_e) {
     auditWs = null;
-    setAuditLiveStatus('Live updates: polling every 10s (connection failed).');
+    setAuditConnectionStatus('disconnected');
     scheduleAuditFeedPoll();
     return;
   }
   auditWs.onopen = () => {
-    setAuditLiveStatus('Live feed: connected (push).');
+    setAuditConnectionStatus('live');
     stopAuditFeedPoll();
   };
   auditWs.onclose = () => {
     auditWs = null;
-    setAuditLiveStatus('Live feed: reconnecting via polling every 10s…');
+    setAuditConnectionStatus('disconnected');
     scheduleAuditFeedPoll();
   };
   auditWs.onerror = () => {
@@ -1964,16 +2034,29 @@ function connectAuditLiveWs() {
 function prependAuditLiveFeed(payload) {
   const el = document.getElementById('auditLiveFeed');
   if (!el) return;
-  const name = escapeHtml(payload.eventName || payload.event_name || '—');
-  const typ = escapeHtml(payload.eventType || payload.event_type || 'ui');
-  const when = escapeHtml(fmtDate(payload.createdAt || payload.created_at));
-  const plan = payload.plan ? escapeHtml(String(payload.plan)) : '';
-  const cc = payload.countryCode ? escapeHtml(String(payload.countryCode)) : '';
-  const meta = [plan && `plan ${plan}`, cc && cc].filter(Boolean).join(' · ');
+  const ev = {
+    eventName: payload.eventName || payload.event_name,
+    eventType: payload.eventType || payload.event_type,
+    userId: payload.userId,
+    userEmail: payload.userEmail,
+    createdAt: payload.createdAt || payload.created_at
+  };
+  const tone = auditFeedRowTone(ev);
+  const name = escapeHtml(ev.eventName || '—');
+  const typ = escapeHtml(ev.eventType || 'ui');
+  const rel = escapeHtml(fmtRelativeTime(ev.createdAt));
+  const who = escapeHtml(String(ev.userEmail || ev.userId || '—'));
+  const dataUid = ev.userId ? ` data-user-id="${escapeHtml(String(ev.userId))}"` : '';
   const row = document.createElement('div');
-  row.className = 'audit-feed-row audit-feed-row--live';
+  row.className = `audit-feed-row audit-feed-row--${tone} audit-feed-row--live`;
+  row.setAttribute('role', 'button');
+  row.setAttribute('tabindex', '0');
+  row.setAttribute('title', 'Click to filter table');
+  row.setAttribute('data-event-name', ev.eventName || '');
+  row.setAttribute('data-event-type', ev.eventType || '');
+  if (ev.userId) row.setAttribute('data-user-id', String(ev.userId));
   row.innerHTML = `<strong>${name}</strong> <span class="badge badge-neutral">${typ}</span>
-        <div class="audit-feed-meta">${when}${meta ? ` · ${meta}` : ''}</div>`;
+        <div class="audit-feed-meta"><span class="audit-feed-relative">${rel}</span> · ${who}</div>`;
   if (el.firstChild) el.insertBefore(row, el.firstChild);
   else el.appendChild(row);
   while (el.children.length > 40) el.removeChild(el.lastChild);
@@ -1986,6 +2069,20 @@ async function adminAuditFetch(path) {
   return data;
 }
 
+function auditDateParamsForApi() {
+  const q = new URLSearchParams();
+  if (auditRangeQuick) {
+    if (auditRangeQuick.from) q.set('date_from', auditRangeQuick.from);
+    if (auditRangeQuick.to) q.set('date_to', auditRangeQuick.to);
+    return q;
+  }
+  const d0 = document.getElementById('auditDateFrom')?.value;
+  const d1 = document.getElementById('auditDateTo')?.value;
+  if (d0) q.set('date_from', `${d0}T00:00:00.000Z`);
+  if (d1) q.set('date_to', `${d1}T23:59:59.999Z`);
+  return q;
+}
+
 function auditQueryFromFilters() {
   const q = new URLSearchParams();
   q.set('page', String(auditPage));
@@ -1996,76 +2093,143 @@ function auditQueryFromFilters() {
   const plan = document.getElementById('auditFilterPlan')?.value?.trim();
   const country = document.getElementById('auditFilterCountry')?.value?.trim();
   const actMin = document.getElementById('auditFilterActivityMin')?.value?.trim();
-  const d0 = document.getElementById('auditDateFrom')?.value;
-  const d1 = document.getElementById('auditDateTo')?.value;
+  const dq = auditDateParamsForApi();
+  if (dq.has('date_from')) q.set('date_from', dq.get('date_from'));
+  if (dq.has('date_to')) q.set('date_to', dq.get('date_to'));
   if (uid) q.set('user_id', uid);
   if (ev) q.set('event_name', ev);
   if (ty) q.set('event_type', ty);
   if (plan && plan !== 'all') q.set('plan', plan);
   if (country) q.set('country', country.toUpperCase().slice(0, 2));
   if (actMin && Number(actMin) > 0) q.set('activity_min', String(Math.floor(Number(actMin))));
-  if (d0) q.set('date_from', `${d0}T00:00:00.000Z`);
-  if (d1) q.set('date_to', `${d1}T23:59:59.999Z`);
   return q.toString();
 }
 
 function summaryQueryFromDates() {
-  const q = new URLSearchParams();
-  const d0 = document.getElementById('auditDateFrom')?.value;
-  const d1 = document.getElementById('auditDateTo')?.value;
-  if (d0) q.set('date_from', `${d0}T00:00:00.000Z`);
-  if (d1) q.set('date_to', `${d1}T23:59:59.999Z`);
+  const q = auditDateParamsForApi();
   const s = q.toString();
   return s ? `?${s}` : '';
+}
+
+function setAuditQuickRange(key) {
+  const now = Date.now();
+  const toIso = new Date(now).toISOString();
+  let fromMs;
+  if (key === 'today') {
+    const d = new Date();
+    d.setUTCHours(0, 0, 0, 0);
+    fromMs = d.getTime();
+  } else if (key === '1h') fromMs = now - 3600000;
+  else if (key === '24h') fromMs = now - 86400000;
+  else if (key === '7d') fromMs = now - 7 * 86400000;
+  else return;
+  auditRangeQuick = { from: new Date(fromMs).toISOString(), to: toIso };
+  const df = document.getElementById('auditDateFrom');
+  const dt = document.getElementById('auditDateTo');
+  if (df) df.value = auditRangeQuick.from.slice(0, 10);
+  if (dt) dt.value = auditRangeQuick.to.slice(0, 10);
+  document.querySelectorAll('.audit-quick-filter').forEach((b) => {
+    b.classList.toggle('is-active', b.getAttribute('data-range') === key);
+  });
+}
+
+function clearAuditQuickRangeSelection() {
+  auditRangeQuick = null;
+  document.querySelectorAll('.audit-quick-filter').forEach((b) => b.classList.remove('is-active'));
 }
 
 function renderAuditSummary(summary) {
   const el = document.getElementById('auditSummaryCards');
   if (!el || !summary) return;
-  const p = summary.payment || {};
+  const lm = summary.liveMetrics || {};
+  const errRate = lm.errorRate;
+  const errAlert = errRate != null && errRate >= AUDIT_ERROR_RATE_THRESHOLD_PCT;
   const cards = [
-    ['Events (range)', String(summary.totalEvents ?? 0), 'All event types in range'],
-    ['Active users', String(summary.activeUsers ?? 0), 'Distinct user_id in range'],
-    ['Errors', String(summary.errorEvents ?? 0), 'event_type = error'],
-    [
-      'Payment conversion',
-      p.conversionRate != null ? `${p.conversionRate}%` : '—',
-      `Success ${p.successes || 0} / attempts ${p.attempts || 0}`
-    ]
+    {
+      key: 'events_last_24h',
+      title: 'Events (24h)',
+      value: String(lm.eventsLast24h ?? 0),
+      hint: 'Rolling window — last 24 hours',
+      alert: false
+    },
+    {
+      key: 'active_users_last_15m',
+      title: 'Active users (15m)',
+      value: String(lm.activeUsersLast15m ?? 0),
+      hint: 'Distinct logged-in users',
+      alert: false
+    },
+    {
+      key: 'error_rate',
+      title: 'Error rate (24h)',
+      value: errRate != null ? `${errRate}%` : '—',
+      hint: 'Errors ÷ all events (24h)',
+      alert: errAlert
+    },
+    {
+      key: 'conversion_rate',
+      title: 'Conversion (24h)',
+      value: lm.conversionRate != null ? `${lm.conversionRate}%` : '—',
+      hint: 'payment_success ÷ attempts',
+      alert: false
+    }
   ];
-  el.innerHTML = cards.map(([k, v, hint]) => `
-    <article class="card">
-      <h3>${escapeHtml(k)}</h3>
-      <p>${escapeHtml(v)}</p>
-      <div class="metric-subtle">${escapeHtml(hint || '')}</div>
-    </article>
-  `).join('');
+  el.innerHTML = cards
+    .map(
+      (c) => `
+    <article class="card${c.alert ? ' card--metric-alert' : ''}" data-metric="${escapeHtml(c.key)}">
+      <h3>${escapeHtml(c.title)}</h3>
+      <p>${escapeHtml(c.value)}</p>
+      <div class="metric-subtle">${escapeHtml(c.hint)}</div>
+    </article>`
+    )
+    .join('');
 
+  const fv = document.getElementById('auditFunnelVisual');
   const ft = document.getElementById('auditFunnelTable');
+  const preset = ['page_view', 'signup', 'onboarding_completed', 'payment_success'];
+  const map = new Map((summary.funnel || []).map((r) => [r.event_name, Number(r.count || 0)]));
+  const first = Math.max(0, map.get(preset[0]) ?? 0);
+  if (fv) {
+    fv.innerHTML = preset
+      .map((name) => {
+        const c = map.get(name) ?? 0;
+        const pctOfFirst = first > 0 ? Math.round((c / first) * 1000) / 10 : 0;
+        const barW = first > 0 ? Math.round((c / first) * 100) : 0;
+        return `<div class="audit-funnel-step">
+          <span class="audit-funnel-step-label">${escapeHtml(name)}</span>
+          <div class="audit-funnel-step-counts">${escapeHtml(String(c))} <span>(${escapeHtml(String(pctOfFirst))}% vs first step)</span></div>
+          <div class="audit-funnel-bar"><i style="width:${barW}%"></i></div>
+        </div>`;
+      })
+      .join('');
+  }
   if (ft) {
-    const preset = ['page_view', 'signup', 'onboarding_completed', 'payment_success'];
-    const map = new Map((summary.funnel || []).map((r) => [r.event_name, r.count]));
     const rows = preset.map((name) => `<tr><td>${escapeHtml(name)}</td><td>${map.get(name) ?? 0}</td></tr>`);
     ft.innerHTML = `<thead><tr><th>Event</th><th>Count</th></tr></thead><tbody>${rows.join('')}</tbody>`;
   }
+  updateAuditEmptyState(summary);
 }
 
 function renderAuditFeed(events) {
   const el = document.getElementById('auditLiveFeed');
   if (!el) return;
   if (!events?.length) {
-    el.innerHTML = '<div class="audit-feed-row">No events yet.</div>';
+    el.innerHTML =
+      '<div class="audit-feed-row audit-feed-row--neutral"><span class="admin-muted">No events in this feed.</span></div>';
     return;
   }
   el.innerHTML = events
     .map((e) => {
       const who = e.userEmail || e.userId || '—';
-      const seg = e.userSegment ? ` · ${e.userSegment}` : '';
-      const pl = e.plan ? ` · ${e.plan}` : '';
-      const cc = e.countryCode ? ` · ${e.countryCode}` : '';
-      return `<div class="audit-feed-row">
-        <strong>${escapeHtml(e.eventName)}</strong> <span class="badge badge-neutral">${escapeHtml(e.eventType)}</span>
-        <div class="audit-feed-meta">${escapeHtml(fmtDate(e.createdAt))} · ${escapeHtml(String(who))}${pl}${cc}${seg}</div>
+      const tone = auditFeedRowTone(e);
+      const rel = fmtRelativeTime(e.createdAt);
+      const en = escapeHtml(e.eventName || '');
+      const et = escapeHtml(e.eventType || '');
+      const dataUid = e.userId ? ` data-user-id="${escapeHtml(String(e.userId))}"` : '';
+      return `<div class="audit-feed-row audit-feed-row--${tone}" role="button" tabindex="0" title="Click to filter table" data-event-name="${en}" data-event-type="${et}"${dataUid}>
+        <strong>${en}</strong> <span class="badge badge-neutral">${et}</span>
+        <div class="audit-feed-meta"><span class="audit-feed-relative">${escapeHtml(rel)}</span> · ${escapeHtml(String(who))}</div>
       </div>`;
     })
     .join('');
@@ -2240,10 +2404,9 @@ async function runDynamicFunnel() {
   }
   const q = new URLSearchParams();
   q.set('steps', steps);
-  const d0 = document.getElementById('auditDateFrom')?.value;
-  const d1 = document.getElementById('auditDateTo')?.value;
-  if (d0) q.set('date_from', `${d0}T00:00:00.000Z`);
-  if (d1) q.set('date_to', `${d1}T23:59:59.999Z`);
+  const dq = auditDateParamsForApi();
+  if (dq.has('date_from')) q.set('date_from', dq.get('date_from'));
+  if (dq.has('date_to')) q.set('date_to', dq.get('date_to'));
   try {
     const data = await adminAuditFetch(`/api/admin/audit/funnel?${q.toString()}`);
     const stepsOut = data.funnel?.steps || [];
@@ -2263,15 +2426,20 @@ async function runDynamicFunnel() {
   }
 }
 
-async function loadAuditSummaryOnly() {
+async function loadAuditSummaryOnly(withCharts = true) {
   const data = await adminAuditFetch(`/api/admin/audit/summary${summaryQueryFromDates()}`);
   renderAuditSummary(data.summary);
-  await loadAuditCharts();
+  if (withCharts) await loadAuditCharts();
 }
 
 async function loadAuditFeedOnly() {
-  const data = await adminAuditFetch(`/api/admin/audit?page=1&limit=25`);
-  renderAuditFeed(data.events || []);
+  try {
+    const data = await adminAuditFetch(`/api/admin/audit?page=1&limit=25`);
+    renderAuditFeed(data.events || []);
+    setAuditConnectionStatus('live');
+  } catch (_e) {
+    setAuditConnectionStatus('disconnected');
+  }
 }
 
 async function loadAuditTableOnly() {
@@ -2286,6 +2454,7 @@ async function loadAuditPanel() {
     console.warn('[audit] blocked: insufficient role');
     return;
   }
+  setAuditConnectionStatus('connecting');
   try {
     const summaryData = await adminAuditFetch(`/api/admin/audit/summary${summaryQueryFromDates()}`);
     console.log('[audit] summary:', summaryData.summary);
@@ -2306,12 +2475,11 @@ async function loadAuditPanel() {
     console.warn('[audit] alerts', e);
   }
   try {
-    const feedData = await adminAuditFetch(`/api/admin/audit?page=1&limit=25`);
-    console.log('[audit] feed count:', feedData.events?.length, 'sample:', feedData.events?.[0]);
-    renderAuditFeed(feedData.events || []);
+    await loadAuditFeedOnly();
   } catch (e) {
     console.error('[audit] feed failed', e);
     renderAuditFeed([]);
+    setAuditConnectionStatus('disconnected');
   }
   auditPage = 1;
   try {
@@ -2322,7 +2490,7 @@ async function loadAuditPanel() {
     console.error('[audit] table failed', e);
     showBanner(e.message || 'Could not load audit events.');
   }
-  connectAuditLiveWs();
+  startAuditAutoRefresh();
 }
 
 async function loadUserJourneyTimeline() {
@@ -2376,12 +2544,69 @@ function setupAuditPanel() {
   document.getElementById('auditApplyBtn')?.addEventListener('click', async () => {
     auditPage = 1;
     try {
-      await loadAuditSummaryOnly();
+      await loadAuditSummaryOnly(true);
       await loadAuditTableOnly();
       await loadAuditAlertsPanel();
     } catch (e) {
       showBanner(e.message || 'Filter failed.');
     }
+  });
+  document.querySelectorAll('.audit-quick-filter').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const key = btn.getAttribute('data-range');
+      if (!key) return;
+      setAuditQuickRange(key);
+      auditPage = 1;
+      try {
+        await loadAuditSummaryOnly(true);
+        await loadAuditTableOnly();
+      } catch (e) {
+        showBanner(e.message || 'Quick range failed.');
+      }
+    });
+  });
+  ['auditDateFrom', 'auditDateTo'].forEach((id) => {
+    document.getElementById(id)?.addEventListener('change', () => clearAuditQuickRangeSelection());
+  });
+  document.getElementById('auditSeedBtn')?.addEventListener('click', async () => {
+    try {
+      const r = await fetch(`${API_BASE_URL}/api/admin/audit/seed`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || j.message || 'Seed failed');
+      showBanner(`Inserted ${j.inserted ?? 0} test events.`);
+      auditPage = 1;
+      await loadAuditSummaryOnly(true);
+      await loadAuditFeedOnly();
+      await loadAuditTableOnly();
+    } catch (e) {
+      showBanner(e.message || 'Could not seed events.');
+    }
+  });
+  document.getElementById('auditLiveFeed')?.addEventListener('click', (ev) => {
+    const row = ev.target.closest('.audit-feed-row[data-event-name]');
+    if (!row) return;
+    const uid = row.getAttribute('data-user-id');
+    const en = row.getAttribute('data-event-name');
+    const ty = row.getAttribute('data-event-type');
+    if (uid) {
+      const u = document.getElementById('auditFilterUserId');
+      if (u) u.value = uid;
+    }
+    if (en) {
+      const i = document.getElementById('auditFilterEvent');
+      if (i) i.value = en;
+    }
+    if (ty) {
+      const i = document.getElementById('auditFilterType');
+      if (i) i.value = ty;
+    }
+    auditPage = 1;
+    loadAuditTableOnly().catch(() => {});
   });
   document.getElementById('auditFunnelRunBtn')?.addEventListener('click', () => runDynamicFunnel().catch((e) => showBanner(e.message)));
   document.getElementById('auditRunRulesBtn')?.addEventListener('click', async () => {

@@ -106,7 +106,7 @@ app.get('/api/health', (req, res) => {
 app.get('/sitemap.xml', async (req, res) => sitemapHandler(req, res));
 
 // Import and use API routes
-let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler, userProfileHandler, auditEventHandler, adminAuditSummaryHandler, adminAuditListHandler, adminAuditUserTimelineHandler, adminAuditChartsHandler, adminAuditFunnelHandler, adminAuditAlertsHandler, adminAuditEvaluateAlertsHandler;
+let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler, userProfileHandler, auditEventHandler, adminAuditSummaryHandler, adminAuditListHandler, adminAuditUserTimelineHandler, adminAuditChartsHandler, adminAuditFunnelHandler, adminAuditAlertsHandler, adminAuditEvaluateAlertsHandler, adminAuditSeedHandler;
 
 async function loadRoutes() {
   try {
@@ -260,6 +260,7 @@ async function loadRoutes() {
     adminAuditFunnelHandler = adminAuditModule.adminAuditFunnelHandler;
     adminAuditAlertsHandler = adminAuditModule.adminAuditAlertsHandler;
     adminAuditEvaluateAlertsHandler = adminAuditModule.adminAuditEvaluateAlertsHandler;
+    adminAuditSeedHandler = adminAuditModule.adminAuditSeedHandler;
     console.log('✅ Audit log handlers loaded');
 
     console.log('All routes loaded successfully');
@@ -576,6 +577,13 @@ app.post('/api/admin/audit/evaluate-alerts', async (req, res) => {
     return res.status(503).json({ error: 'not_loaded' });
   }
   return adminAuditEvaluateAlertsHandler(req, res);
+});
+
+app.post('/api/admin/audit/seed', async (req, res) => {
+  if (!adminAuditSeedHandler) {
+    return res.status(503).json({ error: 'not_loaded' });
+  }
+  return adminAuditSeedHandler(req, res);
 });
 
 app.post('/api/admin/forgot-password', async (req, res) => {

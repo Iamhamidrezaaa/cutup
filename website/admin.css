@@ -786,6 +786,7 @@ th { font-size: 12px; color: var(--muted); background: #f8fafc; position: sticky
   border-bottom: 1px solid var(--border);
   display: grid;
   gap: 4px;
+  cursor: pointer;
 }
 .audit-feed-row:last-child { border-bottom: none; }
 .audit-feed-meta {
@@ -916,4 +917,100 @@ th { font-size: 12px; color: var(--muted); background: #f8fafc; position: sticky
 @keyframes audit-fade-in {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+.audit-empty-state {
+  text-align: center;
+  padding: 28px 20px;
+  margin-bottom: 20px;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  background: var(--card);
+}
+.audit-empty-title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 700;
+}
+.audit-quick-filters {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.audit-quick-label {
+  font-size: 13px;
+  color: var(--muted);
+  margin-right: 4px;
+}
+.audit-quick-filter.is-active {
+  border-color: var(--primary);
+  color: var(--primary);
+  font-weight: 600;
+}
+.audit-live-feed-status {
+  font-size: 13px;
+  margin: 0 0 10px;
+  font-weight: 600;
+}
+.audit-live-feed-status--connecting { color: var(--muted); }
+.audit-live-feed-status--live { color: #0d9488; }
+.audit-live-feed-status--disconnected { color: #dc2626; }
+
+.audit-feed-row--neutral {
+  border-left: 3px solid #3b82f6;
+}
+.audit-feed-row--success {
+  border-left: 3px solid #16a34a;
+}
+.audit-feed-row--error {
+  border-left: 3px solid #dc2626;
+  background: rgba(220, 38, 38, 0.04);
+}
+
+.card.card--metric-alert {
+  border-color: #fecaca;
+  background: linear-gradient(180deg, rgba(254, 202, 202, 0.35), var(--card));
+  box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.15);
+}
+
+.audit-funnel-visual {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+  max-width: 720px;
+}
+.audit-funnel-step {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px 16px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--card);
+}
+.audit-funnel-step-label {
+  font-weight: 600;
+  font-size: 14px;
+}
+.audit-funnel-step-counts {
+  font-size: 13px;
+  color: var(--muted);
+  text-align: right;
+}
+.audit-funnel-bar {
+  grid-column: 1 / -1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border);
+  overflow: hidden;
+}
+.audit-funnel-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--primary);
+  border-radius: 4px;
+  font-style: normal;
 }
