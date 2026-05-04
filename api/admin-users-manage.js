@@ -45,7 +45,18 @@ export default async function adminUsersManageHandler(req, res) {
       const name = body.name !== undefined ? body.name : body.displayName;
       const plan = body.plan !== undefined ? body.plan : undefined;
       const status = body.status !== undefined ? body.status : undefined;
-      const result = await adminPatchCustomerUser(id, { name, plan, status });
+      const result = await adminPatchCustomerUser(id, {
+        name,
+        plan,
+        status,
+        email: body.email,
+        first_name: body.first_name,
+        last_name: body.last_name,
+        phone: body.phone,
+        country: body.country,
+        address: body.address,
+        postal_code: body.postal_code
+      });
       if (!result.ok) {
         const code =
           result.error === 'not_found'

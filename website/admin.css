@@ -284,13 +284,13 @@ td.actions {
   vertical-align: top;
 }
 .customer-inline-panel-inner {
-  max-width: 760px;
+  max-width: 920px;
   display: grid;
   gap: 16px;
 }
 .customer-inline-fields {
   display: grid;
-  grid-template-columns: minmax(72px, auto) 1fr;
+  grid-template-columns: minmax(120px, 160px) minmax(0, 1fr);
   gap: 10px 18px;
   align-items: center;
 }
@@ -300,13 +300,22 @@ td.actions {
   font-weight: 600;
 }
 .customer-inline-fields input,
-.customer-inline-fields select {
+.customer-inline-fields select,
+.customer-inline-fields textarea {
   font: inherit;
   padding: 8px 10px;
   border-radius: 8px;
   border: 1px solid var(--border);
-  max-width: 340px;
+  max-width: 100%;
+  width: 100%;
   background: #fff;
+}
+.customer-inline-fields textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+.customer-inline-fields .customer-country-select {
+  max-width: 100%;
 }
 .customer-subscription-block {
   background: var(--card);

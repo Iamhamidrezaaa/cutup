@@ -74,7 +74,9 @@ export default async function handler(req, res) {
         name: payload.name,
         picture: payload.picture,
         given_name: payload.given_name,
-        family_name: payload.family_name
+        family_name: payload.family_name,
+        first_name: payload.given_name || null,
+        last_name: payload.family_name || null
       };
 
       // Create session
@@ -131,6 +133,15 @@ export default async function handler(req, res) {
         return res.status(401).json({ error: 'Session expired' });
       }
 
+      try {
+        const { mergeSessionUserWithProfile, isBillingDbConfigured } = await import('./billing-repository.js');
+        if (isBillingDbConfigured()) {
+          const merged = await mergeSessionUserWithProfile(session.user);
+          return res.json({ user: merged });
+        }
+      } catch (e) {
+        console.warn('[auth] mergeSessionUserWithProfile:', e?.message);
+      }
       return res.json({ user: session.user });
     }
 

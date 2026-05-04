@@ -69,6 +69,27 @@ function safeText(value, fallback = '—') {
   return str || fallback;
 }
 
+/** Prefer profile first/last; never show raw email local part when we have a real name. */
+function dashboardDisplayName(user) {
+  if (!user) return 'User';
+  const full = [user.first_name, user.last_name]
+    .map((x) => (x != null ? String(x).trim() : ''))
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+  if (full) return full;
+  const n = String(user.name || '').trim();
+  if (n && !n.includes('@')) return n;
+  return safeText(user.email, 'User');
+}
+
+function dashboardGreetingName(user) {
+  if (!user) return 'there';
+  const fn = String(user.first_name || '').trim();
+  if (fn) return fn;
+  return dashboardDisplayName(user);
+}
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -211,18 +232,23 @@ function generateAvatar(text) {
 }
 
 async function apiGet(url, options = {}) {
-  const response = await fetch(url, options);
+  const headers = { ...(options.headers || {}) };
+  if (currentSession && headers['X-Session-Id'] == null) headers['X-Session-Id'] = currentSession;
+  const response = await fetch(url, { ...options, headers });
   const data = await response.json().catch(() => ({}));
   return { response, data };
 }
 
 async function apiPost(url, payload, options = {}) {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(options.headers || {})
+  };
+  if (currentSession && headers['X-Session-Id'] == null) headers['X-Session-Id'] = currentSession;
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers || {})
-    },
+    ...options,
+    headers,
     body: JSON.stringify(payload || {})
   });
   const data = await response.json().catch(() => ({}));
@@ -275,6 +301,176 @@ function setupEventListeners() {
   });
 }
 
+let dashboardCountriesPromise = null;
+let profileOnboardingLatch = false;
+let profileOnboardingFormBound = false;
+
+function loadDashboardCountries() {
+  if (!dashboardCountriesPromise) {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    dashboardCountriesPromise = fetch(`${origin}/country-list.json`).then((r) => (r.ok ? r.json() : []));
+  }
+  return dashboardCountriesPromise;
+}
+
+async function fetchGeoCountryCode() {
+  try {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 6000);
+    const r = await fetch('https://ipwho.is/', { signal: ctrl.signal });
+    clearTimeout(tid);
+    if (!r.ok) return '';
+    const j = await r.json();
+    if (j && j.success === false) return '';
+    return String(j.country_code || '').toUpperCase().slice(0, 2);
+  } catch {
+    return '';
+  }
+}
+
+function bindProfileOnboardingFormOnce() {
+  if (profileOnboardingFormBound) return;
+  const form = document.getElementById('profileOnboardingForm');
+  if (!form) return;
+  profileOnboardingFormBound = true;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('profileOnboardingError');
+    const submitBtn = document.getElementById('onbSubmit');
+    if (errEl) {
+      errEl.hidden = true;
+      errEl.textContent = '';
+    }
+    const payload = {
+      first_name: String(document.getElementById('onbFirstName')?.value || '').trim(),
+      last_name: String(document.getElementById('onbLastName')?.value || '').trim(),
+      email: String(document.getElementById('onbEmail')?.value || '').trim(),
+      phone: String(document.getElementById('onbPhone')?.value || '').trim(),
+      country: String(document.getElementById('onbCountry')?.value || '').trim().toUpperCase().slice(0, 2),
+      address: String(document.getElementById('onbAddress')?.value || '').trim(),
+      postal_code: String(document.getElementById('onbPostal')?.value || '').trim()
+    };
+    if (!payload.email) {
+      if (errEl) {
+        errEl.textContent = 'Email is required.';
+        errEl.hidden = false;
+      }
+      return;
+    }
+    if (submitBtn) submitBtn.disabled = true;
+    try {
+      const { response, data } = await apiPost(`${API_BASE_URL}/api/user/profile`, payload);
+      if (!response.ok) {
+        const msg =
+          data.error === 'email_mismatch'
+            ? 'Email must match your signed-in account.'
+            : data.error === 'email_required'
+              ? 'Email is required.'
+              : data.message || data.error || 'Could not save profile.';
+        if (errEl) {
+          errEl.textContent = msg;
+          errEl.hidden = false;
+        }
+        return;
+      }
+      closeProfileOnboardingModal();
+      await loadUserProfile();
+      renderOverview();
+    } catch {
+      if (errEl) {
+        errEl.textContent = 'Network error. Please try again.';
+        errEl.hidden = false;
+      }
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  });
+}
+
+function closeProfileOnboardingModal() {
+  const backdrop = document.getElementById('profileOnboardingBackdrop');
+  if (!backdrop) return;
+  backdrop.classList.remove('profile-onboarding-backdrop--visible');
+  setTimeout(() => {
+    backdrop.hidden = true;
+    backdrop.setAttribute('aria-hidden', 'true');
+    profileOnboardingLatch = false;
+  }, 320);
+}
+
+async function openProfileOnboardingModal(profile) {
+  if (profileOnboardingLatch) return;
+  profileOnboardingLatch = true;
+  bindProfileOnboardingFormOnce();
+  const backdrop = document.getElementById('profileOnboardingBackdrop');
+  const sel = document.getElementById('onbCountry');
+  if (!backdrop || !sel) {
+    profileOnboardingLatch = false;
+    return;
+  }
+
+  const countries = await loadDashboardCountries().catch(() => []);
+  sel.innerHTML =
+    '<option value="">Select country</option>' +
+    (Array.isArray(countries)
+      ? countries
+          .map(
+            ({ code, name }) =>
+              `<option value="${escapeHtml(code)}">${escapeHtml(name)} (${escapeHtml(code)})</option>`
+          )
+          .join('')
+      : '');
+
+  const geo = await fetchGeoCountryCode();
+  const prefCountry =
+    (profile.country && String(profile.country).trim().toUpperCase().slice(0, 2)) || geo || '';
+  if (prefCountry) {
+    const hasOpt = Array.from(sel.options).some((o) => o.value === prefCountry);
+    if (hasOpt) sel.value = prefCountry;
+  }
+
+  const fnEl = document.getElementById('onbFirstName');
+  const lnEl = document.getElementById('onbLastName');
+  if (fnEl) {
+    fnEl.value =
+      String(profile.first_name || currentUser?.first_name || '').trim() ||
+      (currentUser?.name && !String(currentUser.name).includes('@')
+        ? String(currentUser.name).split(/\s+/)[0] || ''
+        : '');
+  }
+  if (lnEl) lnEl.value = String(profile.last_name || currentUser?.last_name || '').trim();
+  const emEl = document.getElementById('onbEmail');
+  if (emEl) emEl.value = String(profile.email || currentUser?.email || '').trim();
+  const phEl = document.getElementById('onbPhone');
+  if (phEl) phEl.value = String(profile.phone || '').trim();
+  const pcEl = document.getElementById('onbPostal');
+  if (pcEl) pcEl.value = String(profile.postal_code || '').trim();
+  const adEl = document.getElementById('onbAddress');
+  if (adEl) adEl.value = String(profile.address || '').trim();
+  const errEl = document.getElementById('profileOnboardingError');
+  if (errEl) {
+    errEl.hidden = true;
+    errEl.textContent = '';
+  }
+
+  backdrop.hidden = false;
+  backdrop.setAttribute('aria-hidden', 'false');
+  requestAnimationFrame(() => backdrop.classList.add('profile-onboarding-backdrop--visible'));
+}
+
+async function maybeShowProfileOnboarding() {
+  if (!currentSession) return;
+  try {
+    const { response, data } = await apiGet(`${API_BASE_URL}/api/user/profile`);
+    if (response.status === 503 || !response.ok) return;
+    const profile = data.profile;
+    if (!profile || !profile.incomplete) return;
+    await openProfileOnboardingModal(profile);
+  } catch {
+    /* noop */
+  }
+}
+
 function getSessionFromLocation() {
   const params = new URLSearchParams(window.location.search);
   const authSuccess = params.get('auth');
@@ -309,18 +505,20 @@ async function loadUserProfile() {
     throw new Error('auth_failed');
   }
   currentUser = data.user;
+  const disp = dashboardDisplayName(currentUser);
+  const greet = dashboardGreetingName(currentUser);
   const avatar = document.getElementById('userAvatarHeader');
   if (avatar) {
-    avatar.src = currentUser.picture || generateAvatar(currentUser.name || currentUser.email);
+    avatar.src = currentUser.picture || generateAvatar(disp);
   }
-  document.getElementById('userNameHeader').textContent = safeText(currentUser.name, currentUser.email);
+  document.getElementById('userNameHeader').textContent = disp;
   document.getElementById('userEmailHeader').textContent = safeText(currentUser.email, '');
-  document.getElementById('welcomeMessage').textContent = `Welcome back, ${safeText(currentUser.name, currentUser.email)}.`;
+  document.getElementById('welcomeMessage').textContent = `Welcome back, ${greet}.`;
   const identityStrip = document.getElementById('identityStrip');
   if (identityStrip) {
     identityStrip.innerHTML = `
-      <div><strong>Name:</strong> ${safeText(currentUser.name, currentUser.email)}</div>
-      <div><strong>Email:</strong> ${safeText(currentUser.email)}</div>
+      <div><strong>Name:</strong> ${escapeHtml(disp)}</div>
+      <div><strong>Email:</strong> ${escapeHtml(safeText(currentUser.email))}</div>
       <div><strong>Session:</strong> Active</div>
     `;
   }
@@ -1033,7 +1231,8 @@ async function refreshDashboardData({ silent = false } = {}) {
     renderPlansSection();
     renderBillingSection();
     if (!silent) {
-      document.getElementById('welcomeMessage').textContent = `Welcome back, ${safeText(currentUser?.name, currentUser?.email)}.`;
+      document.getElementById('welcomeMessage').textContent = `Welcome back, ${dashboardGreetingName(currentUser)}.`;
+      await maybeShowProfileOnboarding();
     }
   } catch (e) {
     if (e.message === 'auth_failed') {

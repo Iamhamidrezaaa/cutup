@@ -11,8 +11,12 @@ const TRASH_ICON_SRC = '/assets/icons/trash.png';
 let customersCache = [];
 /** @type {string|null} */
 let customersEditingId = null;
-/** @type {{ id: string, name: string, plan: string, status: string }|null} */
+/**
+ * @type {{ id: string, email: string, first_name: string, last_name: string, phone: string, country: string, address: string, postal_code: string, plan: string, status: string }|null}
+ */
 let customerInlineDraft = null;
+/** @type {Array<{code:string,name:string}>|null} */
+let adminCountriesCache = null;
 let customerSaveInFlight = false;
 
 const CUSTOMER_PLAN_SELECT_OPTIONS = [
@@ -848,6 +852,27 @@ async function apiPost(action, payload = {}) {
   return data;
 }
 
+async function loadAdminCountries() {
+  if (adminCountriesCache) return adminCountriesCache;
+  try {
+    const r = await fetch(`${window.location.origin || ''}/country-list.json`);
+    adminCountriesCache = r.ok ? await r.json() : [];
+  } catch {
+    adminCountriesCache = [];
+  }
+  return adminCountriesCache;
+}
+
+function countryOptionsHtml(selectedCode) {
+  const sel = String(selectedCode || '').toUpperCase().slice(0, 2);
+  const list = adminCountriesCache || [];
+  const opts = list.map(
+    ({ code, name }) =>
+      `<option value="${escapeHtml(code)}"${code === sel ? ' selected' : ''}>${escapeHtml(name)} (${escapeHtml(code)})</option>`
+  );
+  return `<option value="">—</option>${opts.join('')}`;
+}
+
 async function apiPatchCustomer(userId, body) {
   const response = await fetch(`${API_BASE_URL}/api/admin/users/${encodeURIComponent(userId)}`, {
     method: 'PATCH',
@@ -1018,8 +1043,20 @@ function renderUsersTable(rows) {
         <td colspan="${colCount}" class="customer-inline-panel">
           <div class="customer-inline-panel-inner">
             <div class="customer-inline-fields">
-              <label for="customer-draft-name-${escapeHtml(uid)}">Name</label>
-              <input id="customer-draft-name-${escapeHtml(uid)}" type="text" data-draft-name autocomplete="name" value="${escapeHtml(d.name)}" maxlength="255">
+              <label for="customer-draft-first-${escapeHtml(uid)}">First name</label>
+              <input id="customer-draft-first-${escapeHtml(uid)}" type="text" data-draft-first autocomplete="given-name" value="${escapeHtml(d.first_name)}" maxlength="255">
+              <label for="customer-draft-last-${escapeHtml(uid)}">Last name</label>
+              <input id="customer-draft-last-${escapeHtml(uid)}" type="text" data-draft-last autocomplete="family-name" value="${escapeHtml(d.last_name)}" maxlength="255">
+              <label for="customer-draft-email-${escapeHtml(uid)}">Email</label>
+              <input id="customer-draft-email-${escapeHtml(uid)}" type="email" data-draft-email autocomplete="email" value="${escapeHtml(d.email)}" maxlength="255">
+              <label for="customer-draft-phone-${escapeHtml(uid)}">Phone</label>
+              <input id="customer-draft-phone-${escapeHtml(uid)}" type="tel" data-draft-phone autocomplete="tel" value="${escapeHtml(d.phone)}" maxlength="64">
+              <label for="customer-draft-country-${escapeHtml(uid)}">Country</label>
+              <select id="customer-draft-country-${escapeHtml(uid)}" class="customer-country-select" data-draft-country>${countryOptionsHtml(d.country)}</select>
+              <label for="customer-draft-address-${escapeHtml(uid)}">Address</label>
+              <textarea id="customer-draft-address-${escapeHtml(uid)}" data-draft-address maxlength="2000" rows="3">${escapeHtml(d.address)}</textarea>
+              <label for="customer-draft-postal-${escapeHtml(uid)}">Postal code</label>
+              <input id="customer-draft-postal-${escapeHtml(uid)}" type="text" data-draft-postal autocomplete="postal-code" value="${escapeHtml(d.postal_code)}" maxlength="32">
               <label for="customer-draft-plan-${escapeHtml(uid)}">Plan</label>
               <select id="customer-draft-plan-${escapeHtml(uid)}" data-draft-plan>${customerPlanOptionsHtml(d.plan)}</select>
               <label for="customer-draft-status-${escapeHtml(uid)}">Status</label>
@@ -1040,12 +1077,22 @@ function renderUsersTable(rows) {
     <thead><tr><th>Name</th><th>Email</th><th>Plan</th><th>Status</th><th>Created</th><th>Last activity</th><th>Usage this month</th><th>Saved outputs</th><th>Actions</th></tr></thead>
     <tbody>${body || emptyRow(colCount, 'No users found for this filter.')}</tbody>`;
 
-  el.querySelectorAll('[data-draft-name]').forEach((inp) => {
-    inp.addEventListener('input', () => {
-      if (!customerInlineDraft) return;
-      customerInlineDraft.name = inp.value;
+  const bindDraft = (sel, key) => {
+    el.querySelectorAll(sel).forEach((inp) => {
+      const ev = inp.tagName === 'SELECT' ? 'change' : 'input';
+      inp.addEventListener(ev, () => {
+        if (!customerInlineDraft) return;
+        customerInlineDraft[key] = inp.value;
+      });
     });
-  });
+  };
+  bindDraft('[data-draft-first]', 'first_name');
+  bindDraft('[data-draft-last]', 'last_name');
+  bindDraft('[data-draft-email]', 'email');
+  bindDraft('[data-draft-phone]', 'phone');
+  bindDraft('[data-draft-country]', 'country');
+  bindDraft('[data-draft-address]', 'address');
+  bindDraft('[data-draft-postal]', 'postal_code');
   el.querySelectorAll('[data-draft-plan]').forEach((sel) => {
     sel.addEventListener('change', () => {
       if (!customerInlineDraft) return;
@@ -1060,14 +1107,22 @@ function renderUsersTable(rows) {
   });
 
   el.querySelectorAll('.customer-edit-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const id = btn.getAttribute('data-customer-id') || '';
       const row = customersCache.find((x) => String(x.id) === id);
       if (!row || !id) return;
+      await loadAdminCountries();
       customersEditingId = id;
+      const p = row.profile || {};
       customerInlineDraft = {
         id,
-        name: row.name || row.email?.split('@')[0] || '',
+        email: row.email || '',
+        first_name: p.first_name || '',
+        last_name: p.last_name || '',
+        phone: p.phone || '',
+        country: String(p.country || '').toUpperCase().slice(0, 2),
+        address: p.address || '',
+        postal_code: p.postal_code || '',
         plan: String(row.plan || 'free').toLowerCase(),
         status: (row.status || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active'
       };
@@ -1092,7 +1147,13 @@ function renderUsersTable(rows) {
       let savedOk = false;
       try {
         const resData = await apiPatchCustomer(id, {
-          name: customerInlineDraft.name,
+          email: customerInlineDraft.email,
+          first_name: customerInlineDraft.first_name,
+          last_name: customerInlineDraft.last_name,
+          phone: customerInlineDraft.phone,
+          country: customerInlineDraft.country,
+          address: customerInlineDraft.address,
+          postal_code: customerInlineDraft.postal_code,
           plan: customerInlineDraft.plan,
           status: customerInlineDraft.status
         });
@@ -1401,9 +1462,16 @@ async function loadUsers() {
   } else if (customerInlineDraft && stillThere) {
     const fresh = customersCache.find((u) => String(u.id) === String(customerInlineDraft.id));
     if (fresh) {
+      const p = fresh.profile || {};
       customerInlineDraft = {
         id: fresh.id,
-        name: fresh.name || fresh.email?.split('@')[0] || '',
+        email: fresh.email || '',
+        first_name: p.first_name || '',
+        last_name: p.last_name || '',
+        phone: p.phone || '',
+        country: String(p.country || '').toUpperCase().slice(0, 2),
+        address: p.address || '',
+        postal_code: p.postal_code || '',
         plan: String(fresh.plan || 'free').toLowerCase(),
         status: (fresh.status || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active'
       };
@@ -1764,12 +1832,17 @@ function setupActions() {
   updateContentChecklist();
 }
 
-document.addEventListener('DOMContentLoaded', async () => {
+let cutupAdminBootStarted = false;
+
+window.cutupAdminBootstrap = async function cutupAdminBootstrap() {
+  if (cutupAdminBootStarted) return;
+  cutupAdminBootStarted = true;
   setupNavigation();
   setupActions();
   try {
     await loadMe();
   } catch {
+    cutupAdminBootStarted = false;
     redirectToAdminLogin();
     return;
   }
@@ -1777,6 +1850,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     applyRoleToNav();
     fillNewAdminRoleSelect();
     updateAdministratorsToolbarState();
+    loadAdminCountries().catch(() => {});
     const loads = [loadBlogPosts()];
     if (panelRole !== 'editor') {
       loads.push(
@@ -1792,5 +1866,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     await Promise.all(loads);
   } catch (e) {
     showBanner(e.message || 'Admin access is unavailable.');
+  }
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  const shell = document.getElementById('adminDashboardShell');
+  if (shell?.classList.contains('adminha-dashboard-visible')) {
+    window.cutupAdminBootstrap();
   }
 });

@@ -71,7 +71,7 @@ try {
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'X-Session-Id'],
   credentials: false
 }));
 
@@ -79,7 +79,7 @@ app.use(cors({
 app.options('*', (req, res) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Session-Id');
   res.sendStatus(200);
 });
 
@@ -106,7 +106,7 @@ app.get('/api/health', (req, res) => {
 app.get('/sitemap.xml', async (req, res) => sitemapHandler(req, res));
 
 // Import and use API routes
-let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler;
+let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler, userProfileHandler;
 
 async function loadRoutes() {
   try {
@@ -245,6 +245,10 @@ async function loadRoutes() {
     const cronConvModule = await import('./api/cron-conversion-emails.js');
     cronConversionEmailsHandler = cronConvModule.default;
     console.log('✅ Leads + conversion cron handlers loaded');
+
+    const userProfileModule = await import('./api/user-profile.js');
+    userProfileHandler = userProfileModule.default;
+    console.log('✅ User profile handler loaded');
 
     console.log('All routes loaded successfully');
   } catch (err) {
@@ -443,6 +447,20 @@ app.post('/api/cron/conversion-emails', async (req, res) => {
   return cronConversionEmailsHandler(req, res);
 });
 
+app.get('/api/user/profile', async (req, res) => {
+  if (!userProfileHandler) {
+    return res.status(503).json({ error: 'User profile handler not loaded' });
+  }
+  return userProfileHandler(req, res);
+});
+
+app.post('/api/user/profile', async (req, res) => {
+  if (!userProfileHandler) {
+    return res.status(503).json({ error: 'User profile handler not loaded' });
+  }
+  return userProfileHandler(req, res);
+});
+
 app.get('/api/admin', async (req, res) => {
   if (!adminHandler) {
     return res.status(503).json({ error: 'Admin handler not loaded' });
@@ -541,6 +559,10 @@ app.post('/api/retention', async (req, res) => {
   return retentionHandler(req, res);
 });
 
+// Static site (HTML, assets) — after API routes so /api/* is not shadowed.
+app.use(express.static(join(__dirname, 'website')));
+app.use(express.static(join(__dirname, 'public')));
+
 // Error handler
 app.use((err, req, res, next) => {
   console.error('Error:', err);
@@ -551,9 +573,9 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 404 handler
+// 404 handler — any unknown route (including missing files)
 app.use((req, res) => {
-  res.status(404).json({ error: 'Not found' });
+  res.status(404).sendFile(join(__dirname, 'public/404.html'));
 });
 
 // Start server
