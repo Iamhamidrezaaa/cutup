@@ -1,0 +1,205 @@
+/* Checkout — premium, read-only summary (profile from API). */
+:root {
+  --checkout-bg: #0c0d12;
+  --checkout-surface: #16181f;
+  --checkout-border: rgba(255, 255, 255, 0.08);
+  --checkout-text: #f4f4f5;
+  --checkout-muted: #a1a1aa;
+  --checkout-accent: #818cf8;
+  --checkout-accent-dim: rgba(129, 140, 248, 0.15);
+}
+
+body.cutup-checkout-body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: 'Inter', system-ui, sans-serif;
+  background: radial-gradient(1200px 600px at 10% -10%, rgba(99, 102, 241, 0.18), transparent),
+    radial-gradient(900px 500px at 100% 0%, rgba(129, 140, 248, 0.12), transparent), var(--checkout-bg);
+  color: var(--checkout-text);
+}
+
+.cutup-checkout-wrap {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 48px 20px 64px;
+}
+
+.cutup-checkout-brand {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--checkout-muted);
+  margin-bottom: 28px;
+}
+
+.cutup-checkout-brand a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.cutup-checkout-brand a:hover {
+  color: var(--checkout-text);
+}
+
+.cutup-checkout-card {
+  background: var(--checkout-surface);
+  border: 1px solid var(--checkout-border);
+  border-radius: 16px;
+  padding: 28px 28px 24px;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.35);
+}
+
+.cutup-checkout-card h1 {
+  margin: 0 0 8px;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.cutup-checkout-lead {
+  margin: 0 0 24px;
+  font-size: 15px;
+  color: var(--checkout-muted);
+  line-height: 1.5;
+}
+
+.cutup-checkout-plan-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--checkout-border);
+}
+
+.cutup-checkout-plan-name {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.cutup-checkout-price {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--checkout-accent);
+}
+
+.cutup-checkout-price span {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--checkout-muted);
+}
+
+.cutup-checkout-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--checkout-muted);
+  margin: 24px 0 12px;
+}
+
+.cutup-checkout-dl {
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.cutup-checkout-dl div {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 12px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+@media (max-width: 480px) {
+  .cutup-checkout-dl div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+
+.cutup-checkout-dl dt {
+  margin: 0;
+  color: var(--checkout-muted);
+  font-weight: 500;
+}
+
+.cutup-checkout-dl dd {
+  margin: 0;
+  font-weight: 500;
+}
+
+.cutup-checkout-actions {
+  margin-top: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cutup-checkout-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 14px 20px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.cutup-checkout-btn--primary {
+  background: linear-gradient(135deg, #6366f1, #818cf8);
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.35);
+}
+
+.cutup-checkout-btn--primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(99, 102, 241, 0.4);
+}
+
+.cutup-checkout-btn--primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.cutup-checkout-btn--ghost {
+  background: transparent;
+  color: var(--checkout-muted);
+  border: 1px solid var(--checkout-border);
+}
+
+.cutup-checkout-btn--ghost:hover {
+  color: var(--checkout-text);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.cutup-checkout-error {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #fecaca;
+  font-size: 14px;
+}
+
+.cutup-checkout-loading {
+  text-align: center;
+  padding: 48px 20px;
+  color: var(--checkout-muted);
+}
+
+.cutup-checkout-footnote {
+  margin-top: 20px;
+  font-size: 12px;
+  color: var(--checkout-muted);
+  line-height: 1.5;
+  text-align: center;
+}

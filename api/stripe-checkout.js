@@ -3,7 +3,7 @@ import { setCORSHeaders } from './cors.js';
 import { sessions } from './auth.js';
 import { getSubscriptionRowByEmail, isBillingDbConfigured } from './billing-repository.js';
 
-const STRIPE_PLAN_KEYS = ['starter', 'pro', 'advanced'];
+const STRIPE_PLAN_KEYS = ['starter', 'pro', 'advanced', 'business'];
 
 /** Public URLs for Checkout return. Prefer FRONTEND_URL; with Stripe test keys default to localhost for safer local QA. */
 function getFrontendBaseUrl() {
@@ -22,7 +22,8 @@ function resolvePriceId(priceKey) {
   const envMap = {
     starter: process.env.STRIPE_PRICE_STARTER,
     pro: process.env.STRIPE_PRICE_PRO,
-    advanced: process.env.STRIPE_PRICE_ADVANCED
+    advanced: process.env.STRIPE_PRICE_ADVANCED,
+    business: process.env.STRIPE_PRICE_ADVANCED
   };
   return envMap[priceKey] || null;
 }
@@ -63,7 +64,7 @@ export default async function handler(req, res) {
     }
   }
 
-  const raw = String(body?.priceKey || 'pro').toLowerCase();
+  const raw = String(body?.plan || body?.priceKey || body?.planKey || 'pro').toLowerCase();
   const priceKey = STRIPE_PLAN_KEYS.includes(raw) ? raw : 'pro';
   const priceId = resolvePriceId(priceKey);
 
@@ -98,7 +99,7 @@ export default async function handler(req, res) {
     const sessionPayload = {
       mode: 'subscription',
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${baseUrl}/dashboard.html?session=${encodeURIComponent(sessionId)}&payment=success`,
+      success_url: `${baseUrl}/payment-success.html?session=${encodeURIComponent(sessionId)}&payment=success`,
       cancel_url: `${baseUrl}/dashboard.html?session=${encodeURIComponent(sessionId)}&payment=cancel`,
       client_reference_id: sessionId,
       metadata: { userEmail: email, plan },

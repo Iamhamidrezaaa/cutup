@@ -3,15 +3,17 @@ import {
   isBillingDbConfigured,
   tryClaimStripeEventStandalone,
   releaseStripeWebhookClaim,
-  syncPaymentSuccessByExternalId
+  syncPaymentSuccessByExternalId,
+  resolveUserIdForAnalytics
 } from './billing-repository.js';
+import { recordServerAuditEvent } from './audit-internal.js';
 import {
   applyStripeCheckoutCompleted,
   applyStripeSubscriptionRenewal,
   downgradeStripeSubscription
 } from './subscription.js';
 
-const PUBLIC_STRIPE_PLANS = new Set(['starter', 'pro', 'advanced']);
+const PUBLIC_STRIPE_PLANS = new Set(['starter', 'pro', 'advanced', 'business']);
 
 function planKeyFromStripeMetadata(meta) {
   const p = String(meta || '').toLowerCase();
@@ -115,6 +117,14 @@ export default async function handler(req, res) {
           const synced = await syncPaymentSuccessByExternalId('stripe', s.id);
           if (synced) {
             console.log('[payment] verified', s.id, email, 'webhook');
+            const userId = await resolveUserIdForAnalytics(email);
+            void recordServerAuditEvent({
+              eventType: 'product',
+              eventName: 'payment_success',
+              userId,
+              sessionId: null,
+              metadata: { plan, source: 'stripe_webhook' }
+            });
           }
           console.log('[stripe-webhook] checkout.session.completed', plan, email, s.id);
         } else {

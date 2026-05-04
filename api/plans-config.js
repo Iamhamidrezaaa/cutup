@@ -37,7 +37,7 @@ export const PLANS = {
       maxVideoQuality: 'unlimited'
     },
     price: { monthly: 360000, quarterly: 972000, semiannual: 1836000, annual: 3240000 },
-    priceEur: { monthly: 9.99 }
+    priceEur: { monthly: 9 }
   },
   pro: {
     name: 'Pro',
@@ -54,9 +54,11 @@ export const PLANS = {
       maxVideoQuality: 'unlimited'
     },
     price: { monthly: 900000, quarterly: 2430000, semiannual: 4590000, annual: 8100000 },
-    priceEur: { monthly: 19.99 }
+    priceEur: { monthly: 19 }
   },
+  /** Legacy DB / Stripe metadata key; same entitlements as Business. Hidden from public plan list. */
   advanced: {
+    publicOffer: false,
     name: 'Advanced',
     nameEn: 'Advanced',
     monthlyLimit: 2000,
@@ -71,15 +73,14 @@ export const PLANS = {
       maxVideoQuality: 'unlimited'
     },
     price: { monthly: 0, quarterly: 0, semiannual: 0, annual: 0 },
-    priceEur: { monthly: 39.99 }
+    priceEur: { monthly: 49 }
   },
   business: {
-    publicOffer: false,
     name: 'Business',
     nameEn: 'Business',
-    monthlyLimit: 600,
-    downloadAudioLimit: null,
-    downloadVideoLimit: null,
+    monthlyLimit: 2000,
+    downloadAudioLimit: 200,
+    downloadVideoLimit: 200,
     features: {
       transcription: true,
       summarization: true,
@@ -89,6 +90,6 @@ export const PLANS = {
       maxVideoQuality: 'unlimited'
     },
     price: { monthly: 1800000, quarterly: 4860000, semiannual: 9180000, annual: 16200000 },
-    priceEur: { monthly: 0 }
+    priceEur: { monthly: 49 }
   }
 };

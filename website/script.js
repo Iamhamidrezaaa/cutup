@@ -303,49 +303,28 @@ async function cutupTriggerGoogleLogin() {
   }
 }
 
-async function cutupStartPaymentCheckoutFromLanding(planKey) {
+const CUTUP_LANDING_PAID_PLANS = ['starter', 'pro', 'business', 'advanced'];
+
+async function cutupRoutePricingToCheckout(planKey) {
   const sessionId = localStorage.getItem('cutup_session');
   if (!sessionId) return;
-  const provider = inferCutupPaymentProvider();
-  let discount = null;
   try {
-    if (typeof getHotDiscountCodeForCheckout === 'function') {
-      discount = getHotDiscountCodeForCheckout({});
+    const response = await fetch(`${API_BASE_URL}/api/user/profile`, {
+      headers: { 'X-Session-Id': sessionId },
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.profile) {
+      window.location.href = `/dashboard.html?checkoutPlan=${encodeURIComponent(planKey)}`;
+      return;
     }
+    if (data.profile.incomplete) {
+      window.location.href = `/dashboard.html?checkoutPlan=${encodeURIComponent(planKey)}`;
+      return;
+    }
+    window.location.href = `/checkout.html?plan=${encodeURIComponent(planKey)}`;
   } catch (_e) {
-    discount = null;
+    window.location.href = `/dashboard.html?checkoutPlan=${encodeURIComponent(planKey)}`;
   }
-  const body = { planKey, provider, ...(discount ? { discount } : {}) };
-  const response = await fetch(`${API_BASE_URL}/api/payment/create`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Session-Id': sessionId,
-    },
-    body: JSON.stringify(body),
-  });
-  const data = await response.json().catch(() => ({}));
-  const redirect = data.redirect_url || data.url;
-  if (response.ok && redirect) {
-    if (typeof sendAnalyticsEvent === 'function') {
-      sendAnalyticsEvent('payment_started', { plan: planKey, sessionId });
-    }
-    if (discount && typeof window.cutupPaywallDiscountUsed === 'function') {
-      window.cutupPaywallDiscountUsed(planKey);
-    }
-    try {
-      sessionStorage.setItem(CUTUP_PAYMENT_RETRY_KEY, JSON.stringify({ planKey, provider }));
-    } catch (_e) {
-      /* noop */
-    }
-    window.location.href = redirect;
-    return;
-  }
-  alert(
-    data?.error === 'Payment provider not configured'
-      ? 'Payments are not configured.'
-      : 'Payments are not available right now. Try again from your dashboard.'
-  );
 }
 
 function setupLandingPricingCheckoutIntercept() {
@@ -362,7 +341,7 @@ function setupLandingPricingCheckoutIntercept() {
       if (a.id === 'monetizationUpgradeBtn' && !plan) {
         plan = 'pro';
       }
-      if (!plan || !['starter', 'pro', 'advanced'].includes(plan)) return;
+      if (!plan || !CUTUP_LANDING_PAID_PLANS.includes(plan)) return;
 
       e.preventDefault();
       e.stopPropagation();
@@ -386,10 +365,10 @@ function setupLandingPricingCheckoutIntercept() {
       }
 
       try {
-        await cutupStartPaymentCheckoutFromLanding(plan);
+        await cutupRoutePricingToCheckout(plan);
       } catch (err) {
-        console.error('[script] checkout from landing failed', err);
-        alert('Could not start checkout. Please try again.');
+        console.error('[script] checkout route from landing failed', err);
+        alert('Could not continue to checkout. Please try again.');
       }
     },
     true
@@ -1587,13 +1566,19 @@ const CUTUP_PLAN_RANK = {
   starter: 1,
   pro: 2,
   advanced: 3,
+  business: 3,
 };
 
 function normalizePlanKey(key) {
   if (!key) return 'free';
   key = String(key).toLowerCase();
-  if (key === 'business') return 'advanced';
+  if (key === 'business') return 'business';
   return key;
+}
+
+function cutupIsTopTierPlan(key) {
+  const k = normalizePlanKey(key);
+  return k === 'advanced' || k === 'business';
 }
 
 function cutupPricingPreventClick(e) {
@@ -1625,7 +1610,7 @@ function applyCutupPricingPlanLocks(user) {
     const card = el.closest('.feature-card') || el.closest('.pricing-card') || el.parentElement;
 
     let disabled = false;
-    if (currentPlanKey === 'advanced') {
+    if (cutupIsTopTierPlan(currentPlanKey)) {
       disabled = true;
     } else if (planRank <= currentRank) {
       disabled = true;
@@ -1673,7 +1658,7 @@ function applyCutupPricingPlanLocks(user) {
   if (monetizationUpgrade) {
     const raw = monetizationUpgrade.getAttribute('data-cutup-plan');
     if (raw == null || String(raw).trim() === '') {
-      const lock = currentPlanKey === 'advanced';
+      const lock = cutupIsTopTierPlan(currentPlanKey);
       if (lock) {
         monetizationUpgrade.classList.add('disabled-plan-btn');
         monetizationUpgrade.setAttribute('aria-disabled', 'true');

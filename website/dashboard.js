@@ -133,7 +133,7 @@ function dashboardPlanRank(planId) {
 /** Display-only label (Stripe tier `advanced` is shown as Business). */
 function displayPlanTitle(planId, nameFallback) {
   const id = String(planId || '').toLowerCase();
-  if (id === 'advanced') return 'Business';
+  if (id === 'advanced' || id === 'business') return 'Business';
   return safeText(nameFallback, id || 'Free');
 }
 
@@ -327,6 +327,17 @@ function setupEventListeners() {
 let dashboardCountriesPromise = null;
 
 const ONBOARDING_OVERLAY_ID = 'onboardingOverlay';
+const VALID_CHECKOUT_PLAN_KEYS = new Set(['starter', 'pro', 'business', 'advanced']);
+
+function readCheckoutPlanFromUrl() {
+  const raw = (new URLSearchParams(window.location.search).get('checkoutPlan') || '').trim().toLowerCase();
+  return VALID_CHECKOUT_PLAN_KEYS.has(raw) ? raw : '';
+}
+
+function isTopTierPlanKey(key) {
+  const k = String(key || '').toLowerCase();
+  return k === 'advanced' || k === 'business';
+}
 
 /** Cached GET /api/user/profile result for this page load (single fetch). */
 let dashboardUserProfileCache = null;
@@ -658,6 +669,19 @@ async function renderOnboardingModalIntoBody(profile) {
       form.classList.add('is-hidden');
       successEl.hidden = false;
       await new Promise((resolve) => setTimeout(resolve, 720));
+      const sp = new URLSearchParams(window.location.search);
+      const returnUrl = sp.get('returnUrl');
+      const checkoutPlan = sp.get('checkoutPlan');
+      if (returnUrl && returnUrl.startsWith('/')) {
+        teardownOnboardingModal(overlay);
+        window.location.href = returnUrl;
+        return;
+      }
+      if (checkoutPlan && VALID_CHECKOUT_PLAN_KEYS.has(String(checkoutPlan).trim().toLowerCase())) {
+        teardownOnboardingModal(overlay);
+        window.location.href = `/checkout.html?plan=${encodeURIComponent(checkoutPlan.trim().toLowerCase())}`;
+        return;
+      }
       teardownOnboardingModal(overlay);
       await loadUserProfile();
       renderOverview();
@@ -751,8 +775,16 @@ function getSessionFromLocation() {
 
   const activeSession = sessionId || localStorage.getItem('cutup_session');
   if (paymentResult || authSuccess === 'success') {
-    const cleanQuery = activeSession ? `?session=${encodeURIComponent(activeSession)}` : '';
-    window.history.replaceState({}, document.title, `${window.location.pathname}${cleanQuery}`);
+    const qp = new URLSearchParams();
+    if (activeSession) qp.set('session', activeSession);
+    const cp = params.get('checkoutPlan');
+    if (cp) qp.set('checkoutPlan', cp);
+    const ep = params.get('editProfile');
+    if (ep) qp.set('editProfile', ep);
+    const ru = params.get('returnUrl');
+    if (ru) qp.set('returnUrl', ru);
+    const qs = qp.toString();
+    window.history.replaceState({}, document.title, `${window.location.pathname}${qs ? `?${qs}` : ''}`);
   }
   return { activeSession, paymentReturn };
 }
@@ -845,6 +877,23 @@ async function loadDashboardHeavy({ silent = false, skipUserProfile = false } = 
  * @returns {{ ok: true, paymentReturn: object } | { ok: false }}
  */
 async function initDashboard() {
+  try {
+    const pend = sessionStorage.getItem('cutup_pending_plan_after_auth');
+    if (pend) {
+      const pk = String(pend).trim().toLowerCase();
+      sessionStorage.removeItem('cutup_pending_plan_after_auth');
+      if (VALID_CHECKOUT_PLAN_KEYS.has(pk)) {
+        const u = new URL(window.location.href);
+        u.searchParams.set('checkoutPlan', pk);
+        window.history.replaceState({}, '', u);
+      }
+    }
+  } catch (_e) {
+    /* noop */
+  }
+
+  const pendingCheckoutPlan = readCheckoutPlanFromUrl();
+
   const { activeSession, paymentReturn } = getSessionFromLocation();
   currentSession = activeSession;
   if (!currentSession) {
@@ -910,6 +959,11 @@ async function initDashboard() {
   console.log('[onboarding] shouldShow:', isIncomplete);
   const forceOnb = window.__FORCE_ONBOARDING__ === true;
 
+  if (pendingCheckoutPlan && !isIncomplete) {
+    window.location.replace(`/checkout.html?plan=${encodeURIComponent(pendingCheckoutPlan)}`);
+    return { ok: false };
+  }
+
   if (forceOnb || isIncomplete) {
     window.__ONBOARDING_ACTIVE__ = true;
     void runHeavySafe();
@@ -920,6 +974,10 @@ async function initDashboard() {
   } else {
     window.__ONBOARDING_ACTIVE__ = false;
     await runHeavySafe();
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get('editProfile') === '1') {
+      await showOnboardingModal();
+    }
   }
 
   return { ok: true, paymentReturn };
@@ -931,7 +989,7 @@ function renderOverview() {
   const usage = subscriptionInfo.usage || {};
   const monthlyMinutes = usage.monthly?.minutes || 0;
   const monthlyLimit = usage.monthlyLimit || 0;
-  const remainingVideos = subscriptionInfo.plan === 'advanced'
+  const remainingVideos = isTopTierPlanKey(subscriptionInfo.plan)
     ? 'Fair use'
     : `~${videosRemainingEstimate(monthlyMinutes, monthlyLimit)}`;
   const audioCount = usage.downloads?.audio?.count || 0;
@@ -1194,7 +1252,7 @@ function renderUsageSection() {
       <h3>Usage overview</h3>
       <div class="usage-stats">
         <div class="usage-stat-item"><span class="usage-stat-label">Videos processed</span><span class="usage-stat-value">~${videosUsedEstimate(monthlyMinutes)}</span></div>
-        <div class="usage-stat-item"><span class="usage-stat-label">Videos remaining</span><span class="usage-stat-value">${subscriptionInfo.plan === 'advanced' ? 'Fair use' : `~${videosRemainingEstimate(monthlyMinutes, monthlyLimit)}`}</span></div>
+        <div class="usage-stat-item"><span class="usage-stat-label">Videos remaining</span><span class="usage-stat-value">${isTopTierPlanKey(subscriptionInfo.plan) ? 'Fair use' : `~${videosRemainingEstimate(monthlyMinutes, monthlyLimit)}`}</span></div>
         <div class="usage-stat-item"><span class="usage-stat-label">Daily usage</span><span class="usage-stat-value">${dailyLabel}</span></div>
         <div class="usage-stat-item"><span class="usage-stat-label">Audio downloads</span><span class="usage-stat-value">${usage.downloads?.audio?.count || 0}${usage.downloads?.audio?.limit != null ? `/${usage.downloads.audio.limit}` : ''}</span></div>
         <div class="usage-stat-item"><span class="usage-stat-label">Video downloads</span><span class="usage-stat-value">${usage.downloads?.video?.count || 0}${usage.downloads?.video?.limit != null ? `/${usage.downloads.video.limit}` : ''}</span></div>
@@ -1420,7 +1478,7 @@ function renderPlansSection() {
   const publicPlanIds = new Set(plansCache.map((p) => p.id));
   const currentUserPlanKey = String(subscriptionInfo?.plan || 'free').toLowerCase();
   const isCurrentPlanPrivate = !publicPlanIds.has(currentUserPlanKey);
-  const atTopTier = currentUserPlanKey === 'advanced' || currentUserPlanKey === 'business';
+  const atTopTier = isTopTierPlanKey(currentUserPlanKey);
   const currentRank = dashboardPlanRank(currentUserPlanKey);
   subscriptionInfoEl.innerHTML = `
     <div class="usage-summary">
@@ -1431,7 +1489,7 @@ function renderPlansSection() {
     </div>
   `;
 
-  const order = ['free', 'starter', 'pro', 'advanced'];
+  const order = ['free', 'starter', 'pro', 'business'];
   const sortedPlans = [...plansCache].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
   plansGrid.innerHTML = sortedPlans.map((plan) => {
     const pid = plan.id;
@@ -1444,7 +1502,7 @@ function renderPlansSection() {
     let cardExtraClass = 'plan-card-disabled disabled-plan';
 
     if (atTopTier) {
-      if (currentUserPlanKey === 'advanced' && pid === 'advanced') {
+      if (isTopTierPlanKey(pid) && isTopTierPlanKey(currentUserPlanKey)) {
         cta = 'Current plan';
       } else {
         cta = 'Not available';
@@ -1459,14 +1517,16 @@ function renderPlansSection() {
           ? 'Upgrade to Starter'
           : pid === 'pro'
             ? 'Upgrade to Pro'
-            : pid === 'advanced'
+            : pid === 'business' || pid === 'advanced'
               ? 'Upgrade to Business'
               : 'Upgrade';
       disableButton = !stripeReady;
       cardExtraClass = disableButton ? 'plan-card-disabled disabled-plan' : '';
     }
 
-    const isCurrentCard = String(pid).toLowerCase() === currentUserPlanKey;
+    const isCurrentCard =
+      String(pid).toLowerCase() === currentUserPlanKey ||
+      (isTopTierPlanKey(pid) && isTopTierPlanKey(currentUserPlanKey));
     const priceLabel = eur > 0 ? `€${eur.toFixed(2)} / month` : 'Price unavailable';
     return `
       <article class="paid-plan-card ${pid === 'pro' ? 'featured' : ''} ${isCurrentCard ? 'current-plan' : ''} ${cardExtraClass}">
@@ -1485,10 +1545,8 @@ function renderPlansSection() {
     `;
   }).join('');
 
-  const paymentProvider = inferPaymentProvider();
-
   plansGrid.querySelectorAll('button[data-upgrade-plan]').forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       if (btn.disabled) return;
       const planId = btn.getAttribute('data-upgrade-plan');
       if (!planId || !currentSession) return;
@@ -1505,7 +1563,18 @@ function renderPlansSection() {
       } catch (_e) {
         /* noop */
       }
-      startPaymentCheckout(planId, paymentProvider);
+      try {
+        invalidateDashboardUserProfileCache();
+        const bundle = await fetchDashboardUserProfileOnce();
+        if (!bundle.response.ok || isUserProfileIncomplete(bundle.profile)) {
+          window.location.href = `/dashboard.html?checkoutPlan=${encodeURIComponent(planId)}`;
+          return;
+        }
+      } catch (_e) {
+        showDashboardBanner('Could not verify your profile. Please try again.', 'error');
+        return;
+      }
+      window.location.href = `/checkout.html?plan=${encodeURIComponent(planId)}`;
     });
   });
 
@@ -1556,15 +1625,19 @@ async function startPaymentCheckout(planKey, provider = 'stripe') {
     } catch (_e) {
       discount = null;
     }
-    const body = { planKey, provider, ...(discount ? { discount } : {}) };
+    const body = { plan: planKey, planKey, provider, ...(discount ? { discount } : {}) };
     const { response, data } = await apiPost(`${API_BASE_URL}/api/payment/create`, body, {
       headers: { 'X-Session-Id': currentSession },
     });
+    if (data?.error === 'profile_incomplete') {
+      showDashboardBanner('Please complete your profile before upgrading.', 'error');
+      return;
+    }
     if (data?.error === 'Payment provider not configured') {
       showDashboardBanner('Payment provider not configured.', 'error');
       return;
     }
-    const redirect = data.redirect_url || data.url;
+    const redirect = data.redirect_url || data.payment_url || data.url;
     if (response.ok && redirect) {
       if (typeof sendAnalyticsEvent === 'function') {
         sendAnalyticsEvent('payment_started', { plan: planKey, sessionId: currentSession });
@@ -1611,21 +1684,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const init = await initDashboard();
   if (!init.ok) return;
   const { paymentReturn } = init;
-
-  try {
-    if (!paymentReturn || !paymentReturn.result) {
-      const pending = sessionStorage.getItem('cutup_pending_plan_after_auth');
-      if (pending) {
-        const pk = String(pending).trim();
-        sessionStorage.removeItem('cutup_pending_plan_after_auth');
-        if (['starter', 'pro', 'advanced'].includes(pk)) {
-          setTimeout(() => startPaymentCheckout(pk, inferPaymentProvider()), 600);
-        }
-      }
-    }
-  } catch (_e) {
-    /* noop */
-  }
 
   const pr = paymentReturn;
   if (pr.result === 'return') {

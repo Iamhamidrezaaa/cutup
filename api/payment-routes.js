@@ -5,16 +5,20 @@ import { PLANS } from './plans-config.js';
 import {
   isBillingDbConfigured,
   getSubscriptionRowByEmail,
+  getUserProfileApiPayload,
   insertPaymentPending,
   updatePaymentExternalId,
   getPaymentForUserById,
   finalizePendingPaymentSuccess,
   markPaymentTerminalStatus,
-  markPendingPaymentExpiredIfStale
+  markPendingPaymentExpiredIfStale,
+  resolveUserIdForAnalytics
 } from './billing-repository.js';
 import { getYekpayConfig, yekpayCreatePaymentRequest, yekpayVerifyPayment } from './yekpay.js';
+import { recordServerAuditEvent } from './audit-internal.js';
 
-const STRIPE_PLAN_KEYS = ['starter', 'pro', 'advanced'];
+const PAID_PLAN_KEYS = ['starter', 'pro', 'advanced', 'business'];
+const STRIPE_PLAN_KEYS = ['starter', 'pro', 'advanced', 'business'];
 
 function getFrontendBaseUrl() {
   const explicit = (process.env.FRONTEND_URL || '').trim();
@@ -31,9 +35,16 @@ function resolveStripePriceId(priceKey) {
   const envMap = {
     starter: process.env.STRIPE_PRICE_STARTER,
     pro: process.env.STRIPE_PRICE_PRO,
-    advanced: process.env.STRIPE_PRICE_ADVANCED
+    advanced: process.env.STRIPE_PRICE_ADVANCED,
+    business: process.env.STRIPE_PRICE_ADVANCED
   };
   return envMap[priceKey] || null;
+}
+
+function normalizePaidPlanKey(raw) {
+  const p = String(raw || 'pro').toLowerCase();
+  if (PAID_PLAN_KEYS.includes(p)) return p;
+  return 'pro';
 }
 
 function readJsonBody(req) {
@@ -73,6 +84,18 @@ function planKeyFromStripeMetadata(meta) {
   return 'pro';
 }
 
+async function auditPaymentSuccess(req, email, sessionId, planKey, source) {
+  const userId = await resolveUserIdForAnalytics(email);
+  void recordServerAuditEvent({
+    eventType: 'product',
+    eventName: 'payment_success',
+    userId,
+    sessionId,
+    metadata: { plan: planKey, source: source || 'verify' },
+    req
+  });
+}
+
 function normalizeStripeId(ref) {
   if (!ref) return null;
   if (typeof ref === 'string') return ref;
@@ -101,12 +124,32 @@ export async function paymentCreateHandler(req, res) {
   if (!auth) return;
 
   const body = readJsonBody(req);
-  const rawPlan = String(body?.planKey || body?.priceKey || 'pro').toLowerCase();
-  const planKey = STRIPE_PLAN_KEYS.includes(rawPlan) ? rawPlan : 'pro';
+  const planKey = normalizePaidPlanKey(body?.plan ?? body?.planKey ?? body?.priceKey);
   const provider = String(body?.provider || 'stripe').toLowerCase().slice(0, 64);
   const email = auth.email;
   const sessionId = auth.sessionId;
   const baseUrl = getFrontendBaseUrl();
+
+  let profile;
+  try {
+    profile = await getUserProfileApiPayload(email);
+  } catch (e) {
+    console.error('[payment] profile load failed', e);
+    return res.status(503).json({ error: 'profile_error' });
+  }
+  if (!profile || profile.incomplete) {
+    return res.status(400).json({ error: 'profile_incomplete' });
+  }
+
+  const auditUserId = await resolveUserIdForAnalytics(email);
+  void recordServerAuditEvent({
+    eventType: 'product',
+    eventName: 'payment_attempt',
+    userId: auditUserId,
+    sessionId,
+    metadata: { plan: planKey },
+    req
+  });
 
   const planCfg = PLANS[planKey];
   const amount = planCfg?.priceEur?.monthly != null ? planCfg.priceEur.monthly : null;
@@ -122,9 +165,14 @@ export async function paymentCreateHandler(req, res) {
       planKey,
       discountCode
     });
-    const redirect_url = `${baseUrl}/dashboard.html?session=${encodeURIComponent(sessionId)}&payment=pending&payment_id=${encodeURIComponent(paymentId)}`;
+    const redirect_url = `${baseUrl}/payment-success.html?session=${encodeURIComponent(sessionId)}&payment=pending&payment_id=${encodeURIComponent(paymentId)}`;
     console.log('[payment] created', paymentId, email, 'manual');
-    return res.status(200).json({ redirect_url, payment_id: paymentId });
+    return res.status(200).json({
+      ok: true,
+      redirect_url,
+      payment_url: redirect_url,
+      payment_id: paymentId
+    });
   }
 
   if (provider === 'yekpay') {
@@ -173,7 +221,9 @@ export async function paymentCreateHandler(req, res) {
     console.log('[payment] yekpay created', paymentId, email, created.authority);
     console.log('[payment] yekpay redirect', paymentId, created.paymentUrl);
     return res.status(200).json({
+      ok: true,
       redirect_url: created.paymentUrl,
+      payment_url: created.paymentUrl,
       payment_id: paymentId
     });
   }
@@ -216,8 +266,8 @@ export async function paymentCreateHandler(req, res) {
   const stripe = new Stripe(secret);
   try {
     const q = (k, v) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`;
-    const success_url = `${baseUrl}/dashboard.html?${q('session', sessionId)}&${q('payment', 'success')}&${q('payment_id', String(paymentId))}&checkout_session_id={CHECKOUT_SESSION_ID}`;
-    const cancel_url = `${baseUrl}/dashboard.html?${q('session', sessionId)}&${q('payment', 'cancel')}&${q('payment_id', String(paymentId))}`;
+    const success_url = `${baseUrl}/payment-success.html?${q('session', sessionId)}&${q('payment', 'success')}&${q('payment_id', String(paymentId))}&checkout_session_id={CHECKOUT_SESSION_ID}`;
+    const cancel_url = `${baseUrl}/checkout.html?${q('plan', planKey)}&${q('session', sessionId)}&${q('payment', 'cancel')}&${q('payment_id', String(paymentId))}`;
 
     const sessionPayload = {
       mode: 'subscription',
@@ -252,7 +302,9 @@ export async function paymentCreateHandler(req, res) {
 
     console.log('[payment] created', paymentId, email, 'stripe', checkoutSession.id);
     return res.status(200).json({
+      ok: true,
       redirect_url: checkoutSession.url,
+      payment_url: checkoutSession.url,
       payment_id: paymentId
     });
   } catch (err) {
@@ -338,8 +390,8 @@ export async function paymentVerifyHandler(req, res) {
     const secret = (process.env.CUTUP_MANUAL_PAYMENT_VERIFY_SECRET || '').trim();
     const fromDb = payment.plan_key ? String(payment.plan_key).toLowerCase() : '';
     const fromBody = String(body?.plan_key || body?.planKey || '').toLowerCase();
-    const planKeyRaw = STRIPE_PLAN_KEYS.includes(fromDb) ? fromDb : fromBody;
-    if (!secret || providerReference !== secret || !STRIPE_PLAN_KEYS.includes(planKeyRaw)) {
+    const planKeyRaw = PAID_PLAN_KEYS.includes(fromDb) ? fromDb : fromBody;
+    if (!secret || providerReference !== secret || !PAID_PLAN_KEYS.includes(planKeyRaw)) {
       console.log('[payment] failed', 'manual verify rejected', paymentId);
       return res.status(403).json({ error: 'manual_verify_rejected' });
     }
@@ -357,10 +409,14 @@ export async function paymentVerifyHandler(req, res) {
       return res.status(409).json({ status: 'failed', error: out.error });
     }
     console.log('[payment] verified', paymentId, email, 'manual');
+    if (!out.idempotent) {
+      await auditPaymentSuccess(req, email, auth.sessionId, planKeyRaw, 'manual_verify');
+    }
     return res.status(200).json({
       status: 'success',
       success: true,
-      idempotent: Boolean(out.idempotent)
+      idempotent: Boolean(out.idempotent),
+      plan: planKeyRaw
     });
   }
 
@@ -401,7 +457,7 @@ export async function paymentVerifyHandler(req, res) {
     }
 
     const planKeyResolved = payment.plan_key ? String(payment.plan_key).toLowerCase() : '';
-    if (!STRIPE_PLAN_KEYS.includes(planKeyResolved)) {
+    if (!PAID_PLAN_KEYS.includes(planKeyResolved)) {
       await markPaymentTerminalStatus(email, paymentId, 'failed');
       console.log('[payment] yekpay failed', 'missing plan_key', paymentId);
       return res.status(200).json({ success: false, status: 'failed' });
@@ -423,10 +479,14 @@ export async function paymentVerifyHandler(req, res) {
     }
 
     console.log('[payment] yekpay verified', paymentId, email);
+    if (!out.idempotent) {
+      await auditPaymentSuccess(req, email, auth.sessionId, planKeyResolved, 'yekpay_verify');
+    }
     return res.status(200).json({
       success: true,
       status: 'success',
-      idempotent: Boolean(out.idempotent)
+      idempotent: Boolean(out.idempotent),
+      plan: planKeyResolved
     });
   }
 
@@ -500,9 +560,13 @@ export async function paymentVerifyHandler(req, res) {
   }
 
   console.log('[payment] verified', paymentId, email, 'stripe');
+  if (!out.idempotent) {
+    await auditPaymentSuccess(req, email, auth.sessionId, planKey, 'stripe_verify');
+  }
   return res.status(200).json({
     status: 'success',
     success: true,
-    idempotent: Boolean(out.idempotent)
+    idempotent: Boolean(out.idempotent),
+    plan: planKey
   });
 }
