@@ -22,7 +22,7 @@
 </head>
 <body>
   <script src="site-chrome.js"></script>
-  <div class="dashboard-container">
+  <div class="dashboard-container" id="cutupDashboardShell">
     <div id="cutupInlineNotify" class="cutup-inline-notify" role="region" aria-label="Notifications" hidden></div>
     <header class="dashboard-header">
       <div class="header-content">
@@ -135,20 +135,38 @@
     </main>
   </div>
 
-  <div id="profileOnboardingBackdrop" class="profile-onboarding-backdrop" hidden aria-hidden="true">
-    <div class="profile-onboarding-modal" role="dialog" aria-modal="true" aria-labelledby="profileOnboardingTitle">
+  <div
+    id="profileOnboardingBackdrop"
+    class="profile-onboarding-backdrop"
+    hidden
+    aria-hidden="true"
+    data-onboarding-strict="1"
+  >
+    <div
+      class="profile-onboarding-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="profileOnboardingTitle"
+      data-onboarding-dialog="1"
+    >
       <div class="profile-onboarding-card">
         <h2 id="profileOnboardingTitle" class="profile-onboarding-title">Complete your profile</h2>
-        <p class="profile-onboarding-subtitle">A few details help us keep your account and billing accurate.</p>
+        <p class="profile-onboarding-subtitle">
+          Add your details to unlock the dashboard. This step is required before you can continue.
+        </p>
         <p id="profileOnboardingError" class="profile-onboarding-error" role="alert" hidden></p>
+        <div id="profileOnboardingSuccess" class="profile-onboarding-success" hidden aria-live="polite">
+          <span class="profile-onboarding-success-check" aria-hidden="true">✓</span>
+          <span class="profile-onboarding-success-text">Profile saved</span>
+        </div>
         <form id="profileOnboardingForm" class="profile-onboarding-form" novalidate>
           <div class="profile-onboarding-grid">
             <label class="profile-onboarding-field">
-              <span>First name (prefilled from Google, editable)</span>
+              <span>First name</span>
               <input id="onbFirstName" name="first_name" type="text" autocomplete="given-name" required maxlength="255">
             </label>
             <label class="profile-onboarding-field">
-              <span>Last name (prefilled from Google, editable)</span>
+              <span>Last name</span>
               <input id="onbLastName" name="last_name" type="text" autocomplete="family-name" required maxlength="255">
             </label>
             <label class="profile-onboarding-field profile-onboarding-field--wide">

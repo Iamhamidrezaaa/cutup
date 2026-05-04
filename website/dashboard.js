@@ -304,6 +304,8 @@ function setupEventListeners() {
 let dashboardCountriesPromise = null;
 let profileOnboardingLatch = false;
 let profileOnboardingFormBound = false;
+/** @type {((e: KeyboardEvent) => void) | null} */
+let onboardingEscHandler = null;
 
 function loadDashboardCountries() {
   if (!dashboardCountriesPromise) {
@@ -313,19 +315,63 @@ function loadDashboardCountries() {
   return dashboardCountriesPromise;
 }
 
+/** ipapi.co — if blocked or error, return '' (country left empty). */
 async function fetchGeoCountryCode() {
   try {
     const ctrl = new AbortController();
     const tid = setTimeout(() => ctrl.abort(), 6000);
-    const r = await fetch('https://ipwho.is/', { signal: ctrl.signal });
+    const r = await fetch('https://ipapi.co/json/', { signal: ctrl.signal });
     clearTimeout(tid);
     if (!r.ok) return '';
     const j = await r.json();
-    if (j && j.success === false) return '';
+    if (j && (j.error || j.reason)) return '';
     return String(j.country_code || '').toUpperCase().slice(0, 2);
   } catch {
     return '';
   }
+}
+
+function attachOnboardingStrictHandlers() {
+  if (onboardingEscHandler) return;
+  onboardingEscHandler = (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+    }
+  };
+  document.addEventListener('keydown', onboardingEscHandler, true);
+}
+
+function detachOnboardingStrictHandlers() {
+  if (!onboardingEscHandler) return;
+  document.removeEventListener('keydown', onboardingEscHandler, true);
+  onboardingEscHandler = null;
+}
+
+function setDashboardOnboardingBlocked(active) {
+  const shell = document.getElementById('cutupDashboardShell');
+  if (active) {
+    document.body.classList.add('profile-onboarding-body-lock', 'profile-onboarding-active');
+    shell?.setAttribute('inert', '');
+    shell?.setAttribute('aria-hidden', 'true');
+    attachOnboardingStrictHandlers();
+  } else {
+    document.body.classList.remove('profile-onboarding-body-lock', 'profile-onboarding-active');
+    shell?.removeAttribute('inert');
+    shell?.removeAttribute('aria-hidden');
+    detachOnboardingStrictHandlers();
+  }
+}
+
+function resetProfileOnboardingChrome() {
+  const form = document.getElementById('profileOnboardingForm');
+  const successEl = document.getElementById('profileOnboardingSuccess');
+  if (form) {
+    form.classList.remove('profile-onboarding-form--hidden');
+    form.removeAttribute('aria-hidden');
+  }
+  if (successEl) successEl.hidden = true;
 }
 
 function bindProfileOnboardingFormOnce() {
@@ -337,6 +383,7 @@ function bindProfileOnboardingFormOnce() {
     e.preventDefault();
     const errEl = document.getElementById('profileOnboardingError');
     const submitBtn = document.getElementById('onbSubmit');
+    const successEl = document.getElementById('profileOnboardingSuccess');
     if (errEl) {
       errEl.hidden = true;
       errEl.textContent = '';
@@ -350,9 +397,51 @@ function bindProfileOnboardingFormOnce() {
       address: String(document.getElementById('onbAddress')?.value || '').trim(),
       postal_code: String(document.getElementById('onbPostal')?.value || '').trim()
     };
+    if (!payload.first_name) {
+      if (errEl) {
+        errEl.textContent = 'First name is required.';
+        errEl.hidden = false;
+      }
+      return;
+    }
+    if (!payload.last_name) {
+      if (errEl) {
+        errEl.textContent = 'Last name is required.';
+        errEl.hidden = false;
+      }
+      return;
+    }
     if (!payload.email) {
       if (errEl) {
         errEl.textContent = 'Email is required.';
+        errEl.hidden = false;
+      }
+      return;
+    }
+    if (!payload.phone) {
+      if (errEl) {
+        errEl.textContent = 'Phone is required.';
+        errEl.hidden = false;
+      }
+      return;
+    }
+    if (!payload.country) {
+      if (errEl) {
+        errEl.textContent = 'Please select a country.';
+        errEl.hidden = false;
+      }
+      return;
+    }
+    if (!payload.address) {
+      if (errEl) {
+        errEl.textContent = 'Address is required.';
+        errEl.hidden = false;
+      }
+      return;
+    }
+    if (!payload.postal_code) {
+      if (errEl) {
+        errEl.textContent = 'Postal code is required.';
         errEl.hidden = false;
       }
       return;
@@ -373,6 +462,12 @@ function bindProfileOnboardingFormOnce() {
         }
         return;
       }
+      if (form && successEl) {
+        form.classList.add('profile-onboarding-form--hidden');
+        form.setAttribute('aria-hidden', 'true');
+        successEl.hidden = false;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 520));
       closeProfileOnboardingModal();
       await loadUserProfile();
       renderOverview();
@@ -395,6 +490,8 @@ function closeProfileOnboardingModal() {
     backdrop.hidden = true;
     backdrop.setAttribute('aria-hidden', 'true');
     profileOnboardingLatch = false;
+    resetProfileOnboardingChrome();
+    setDashboardOnboardingBlocked(false);
   }, 320);
 }
 
@@ -408,6 +505,9 @@ async function openProfileOnboardingModal(profile) {
     profileOnboardingLatch = false;
     return;
   }
+
+  resetProfileOnboardingChrome();
+  setDashboardOnboardingBlocked(true);
 
   const countries = await loadDashboardCountries().catch(() => []);
   sel.innerHTML =
@@ -438,7 +538,14 @@ async function openProfileOnboardingModal(profile) {
         ? String(currentUser.name).split(/\s+/)[0] || ''
         : '');
   }
-  if (lnEl) lnEl.value = String(profile.last_name || currentUser?.last_name || '').trim();
+  if (lnEl) {
+    let ln = String(profile.last_name || currentUser?.last_name || '').trim();
+    if (!ln && currentUser?.name && !String(currentUser.name).includes('@')) {
+      const parts = String(currentUser.name).trim().split(/\s+/).filter(Boolean);
+      if (parts.length > 1) ln = parts.slice(1).join(' ');
+    }
+    lnEl.value = ln;
+  }
   const emEl = document.getElementById('onbEmail');
   if (emEl) emEl.value = String(profile.email || currentUser?.email || '').trim();
   const phEl = document.getElementById('onbPhone');
@@ -455,7 +562,10 @@ async function openProfileOnboardingModal(profile) {
 
   backdrop.hidden = false;
   backdrop.setAttribute('aria-hidden', 'false');
-  requestAnimationFrame(() => backdrop.classList.add('profile-onboarding-backdrop--visible'));
+  requestAnimationFrame(() => {
+    backdrop.classList.add('profile-onboarding-backdrop--visible');
+    fnEl?.focus();
+  });
 }
 
 async function maybeShowProfileOnboarding() {
@@ -1232,8 +1342,8 @@ async function refreshDashboardData({ silent = false } = {}) {
     renderBillingSection();
     if (!silent) {
       document.getElementById('welcomeMessage').textContent = `Welcome back, ${dashboardGreetingName(currentUser)}.`;
-      await maybeShowProfileOnboarding();
     }
+    await maybeShowProfileOnboarding();
   } catch (e) {
     if (e.message === 'auth_failed') {
       localStorage.removeItem('cutup_session');
