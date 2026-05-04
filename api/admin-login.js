@@ -11,6 +11,7 @@ import {
   generateAdminSessionToken,
   saveAdminSession,
 } from './admin-panel-auth.js';
+import { recordServerAuditEvent } from './audit-internal.js';
 
 export default async function adminLoginHandler(req, res) {
   setAdminPanelCorsHeaders(req, res);
@@ -64,6 +65,13 @@ export default async function adminLoginHandler(req, res) {
       sessionMs,
     );
     setAdminSessionCookie(res, token, maxAgeSec);
+
+    void recordServerAuditEvent({
+      eventType: 'security',
+      eventName: 'admin_login',
+      metadata: { adminId: admin.id, adminEmail: admin.email, role: admin.role },
+      req
+    });
 
     return res.json({ success: true, ok: true });
   } catch (e) {

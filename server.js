@@ -106,7 +106,7 @@ app.get('/api/health', (req, res) => {
 app.get('/sitemap.xml', async (req, res) => sitemapHandler(req, res));
 
 // Import and use API routes
-let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler, userProfileHandler;
+let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler, userProfileHandler, auditEventHandler, adminAuditSummaryHandler, adminAuditListHandler, adminAuditUserTimelineHandler;
 
 async function loadRoutes() {
   try {
@@ -249,6 +249,14 @@ async function loadRoutes() {
     const userProfileModule = await import('./api/user-profile.js');
     userProfileHandler = userProfileModule.default;
     console.log('✅ User profile handler loaded');
+
+    const auditEventModule = await import('./api/audit-event.js');
+    auditEventHandler = auditEventModule.default;
+    const adminAuditModule = await import('./api/admin-audit.js');
+    adminAuditSummaryHandler = adminAuditModule.adminAuditSummaryHandler;
+    adminAuditListHandler = adminAuditModule.adminAuditListHandler;
+    adminAuditUserTimelineHandler = adminAuditModule.adminAuditUserTimelineHandler;
+    console.log('✅ Audit log handlers loaded');
 
     console.log('All routes loaded successfully');
   } catch (err) {
@@ -419,6 +427,13 @@ app.post('/api/analytics', async (req, res) => {
   return analyticsHandler(req, res);
 });
 
+app.post('/api/audit/event', async (req, res) => {
+  if (!auditEventHandler) {
+    return res.status(503).json({ ok: false, error: 'not_loaded' });
+  }
+  return auditEventHandler(req, res);
+});
+
 app.post('/api/leads', async (req, res) => {
   if (!leadsHandler) {
     return res.status(503).json({ ok: false });
@@ -508,6 +523,27 @@ app.get('/api/admin/auth/me', async (req, res) => {
     return res.status(503).json({ ok: false });
   }
   return adminAuthMeHandler(req, res);
+});
+
+app.get('/api/admin/audit/summary', async (req, res) => {
+  if (!adminAuditSummaryHandler) {
+    return res.status(503).json({ error: 'not_loaded' });
+  }
+  return adminAuditSummaryHandler(req, res);
+});
+
+app.get('/api/admin/audit/user/:userId', async (req, res) => {
+  if (!adminAuditUserTimelineHandler) {
+    return res.status(503).json({ error: 'not_loaded' });
+  }
+  return adminAuditUserTimelineHandler(req, res);
+});
+
+app.get('/api/admin/audit', async (req, res) => {
+  if (!adminAuditListHandler) {
+    return res.status(503).json({ error: 'not_loaded' });
+  }
+  return adminAuditListHandler(req, res);
 });
 
 app.post('/api/admin/forgot-password', async (req, res) => {

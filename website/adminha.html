@@ -120,6 +120,7 @@
         <button class="nav-btn" data-section="payments" aria-label="Open Payments section"><span aria-hidden="true">💳</span><span>Payments</span></button>
         <button class="nav-btn" data-section="health" aria-label="Open System health section"><span aria-hidden="true">🩺</span><span>System health</span></button>
         <button class="nav-btn" data-section="blog" aria-label="Open Blog CMS section"><span aria-hidden="true">📝</span><span>Blog CMS</span></button>
+        <button type="button" class="nav-btn" data-section="audit" id="navAuditBtn" hidden aria-label="Open Audit log section"><span aria-hidden="true">📡</span><span>Audit Log</span></button>
       </aside>
 
       <section class="admin-content" id="adminMainContent" tabindex="-1">
@@ -199,6 +200,45 @@
           </div>
           <p id="adminsTableHint" class="sr-only">Administrator accounts with role and creation date.</p>
           <div class="table-wrap"><table id="adminsTable" aria-label="Administrators table" aria-describedby="adminsTableHint"></table></div>
+        </section>
+
+        <section id="section-audit" class="panel">
+          <h2>Audit Log</h2>
+          <p class="admin-muted">Event pipeline: product usage, errors, and security (super admin only).</p>
+          <div id="auditSummaryCards" class="cards-grid"></div>
+          <h3>Funnel snapshot</h3>
+          <p class="admin-muted">Counts for preset event names in the selected time range (page_view → signup → onboarding_completed → payment_success).</p>
+          <div class="table-wrap"><table id="auditFunnelTable" aria-label="Funnel snapshot"></table></div>
+          <div class="audit-split">
+            <div>
+              <h3>Live feed</h3>
+              <p class="admin-muted">Recent events (refreshes every 10s while this tab is open).</p>
+              <div id="auditLiveFeed" class="audit-live-feed" aria-live="polite"></div>
+            </div>
+            <div>
+              <h3>Filters &amp; user journey</h3>
+              <div class="toolbar audit-toolbar">
+                <input id="auditFilterUserId" type="text" placeholder="User UUID" autocomplete="off" aria-label="Filter by user id">
+                <input id="auditFilterEvent" type="text" placeholder="event_name" autocomplete="off" aria-label="Filter by event name">
+                <input id="auditFilterType" type="text" placeholder="event_type" autocomplete="off" aria-label="Filter by event type">
+                <input id="auditDateFrom" type="date" aria-label="From date">
+                <input id="auditDateTo" type="date" aria-label="To date">
+                <button type="button" id="auditApplyBtn" class="btn">Apply filters</button>
+              </div>
+              <div class="toolbar">
+                <input id="auditJourneyUserId" type="text" placeholder="User UUID for timeline" autocomplete="off" aria-label="Journey user id">
+                <button type="button" id="auditJourneyBtn" class="btn">Load user journey</button>
+              </div>
+              <div id="auditJourneyPanel" class="audit-journey-panel"></div>
+            </div>
+          </div>
+          <h3>Search results</h3>
+          <div class="table-wrap"><table id="auditEventsTable" aria-label="Audit events"></table></div>
+          <div class="toolbar audit-pagination">
+            <button type="button" id="auditPrevPage" class="btn ghost">Previous</button>
+            <span id="auditPageLabel" class="audit-page-label"></span>
+            <button type="button" id="auditNextPage" class="btn ghost">Next</button>
+          </div>
         </section>
 
         <section id="section-blog" class="panel">

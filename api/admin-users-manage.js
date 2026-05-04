@@ -3,6 +3,7 @@ import { resolveAdminAuth } from './admin-panel-auth.js';
 import { isBillingDbConfigured } from './db/pool.js';
 import { adminPatchCustomerUser, adminDeleteCustomerUser } from './billing-repository.js';
 import { ensureAdminsSchema } from './admins-repository.js';
+import { recordServerAuditEvent } from './audit-internal.js';
 
 function parseUserIdFromRequest(req) {
   if (req.params && req.params.id) return String(req.params.id).trim();
@@ -68,6 +69,12 @@ export default async function adminUsersManageHandler(req, res) {
                 : 400;
         return res.status(code).json({ error: result.error || 'update_failed' });
       }
+      void recordServerAuditEvent({
+        eventType: 'security',
+        eventName: 'admin_edit_user',
+        metadata: { targetUserId: id, adminId: auth.adminId, adminEmail: auth.email },
+        req
+      });
       return res.json({ success: true, user: result.user ?? null });
     }
 
@@ -82,6 +89,12 @@ export default async function adminUsersManageHandler(req, res) {
               : 400;
         return res.status(code).json({ error: result.error || 'delete_failed' });
       }
+      void recordServerAuditEvent({
+        eventType: 'security',
+        eventName: 'admin_delete_user',
+        metadata: { targetUserId: id, adminId: auth.adminId, adminEmail: auth.email },
+        req
+      });
       return res.json({ success: true });
     }
 

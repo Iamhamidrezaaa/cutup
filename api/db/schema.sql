@@ -278,3 +278,25 @@ CREATE TABLE IF NOT EXISTS admin_password_resets (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_admin_pw_reset_hash ON admin_password_resets (token_hash);
 CREATE INDEX IF NOT EXISTS idx_admin_pw_reset_admin ON admin_password_resets (admin_id);
+
+-- Central audit / product analytics pipeline (super_admin reads via /api/admin/audit*)
+CREATE TABLE IF NOT EXISTS audit_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  session_id TEXT,
+  event_type TEXT NOT NULL,
+  event_name TEXT NOT NULL,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ip TEXT,
+  user_agent TEXT,
+  path TEXT,
+  referrer TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_events_user_id ON audit_events (user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_events_event_name ON audit_events (event_name);
+CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_events_event_type ON audit_events (event_type);
+CREATE INDEX IF NOT EXISTS idx_audit_events_session_id ON audit_events (session_id)
+  WHERE session_id IS NOT NULL;

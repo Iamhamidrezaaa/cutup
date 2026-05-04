@@ -26,6 +26,9 @@ function emitPaymentSuccessAnalytics() {
   if (typeof sendAnalyticsEvent === 'function') {
     sendAnalyticsEvent('payment_success', { plan: paidPlan, sessionId: currentSession });
   }
+  if (typeof window.trackEvent === 'function') {
+    window.trackEvent('payment_success', { plan: paidPlan }, 'business');
+  }
   if (typeof window.cutupGrowthRecordPaymentSuccess === 'function') {
     window.cutupGrowthRecordPaymentSuccess();
   }
@@ -40,6 +43,9 @@ function emitPaymentFailedAnalytics() {
   }
   if (typeof sendAnalyticsEvent === 'function') {
     sendAnalyticsEvent('payment_failed', { plan: pk, sessionId: currentSession });
+  }
+  if (typeof window.trackEvent === 'function') {
+    window.trackEvent('payment_failed', { plan: pk }, 'business');
   }
 }
 
@@ -646,6 +652,9 @@ async function renderOnboardingModalIntoBody(profile) {
         return;
       }
       invalidateDashboardUserProfileCache();
+      if (typeof window.trackEvent === 'function') {
+        window.trackEvent('onboarding_completed', { source: 'dashboard_modal' }, 'product');
+      }
       form.classList.add('is-hidden');
       successEl.hidden = false;
       await new Promise((resolve) => setTimeout(resolve, 720));
@@ -904,6 +913,9 @@ async function initDashboard() {
   if (forceOnb || isIncomplete) {
     window.__ONBOARDING_ACTIVE__ = true;
     void runHeavySafe();
+    if (typeof window.trackEvent === 'function') {
+      window.trackEvent('onboarding_started', { forced: forceOnb }, 'product');
+    }
     await renderOnboardingModalIntoBody(profile);
   } else {
     window.__ONBOARDING_ACTIVE__ = false;
@@ -1556,6 +1568,9 @@ async function startPaymentCheckout(planKey, provider = 'stripe') {
     if (response.ok && redirect) {
       if (typeof sendAnalyticsEvent === 'function') {
         sendAnalyticsEvent('payment_started', { plan: planKey, sessionId: currentSession });
+      }
+      if (typeof window.trackEvent === 'function') {
+        window.trackEvent('payment_attempt', { plan: planKey, provider }, 'business');
       }
       if (discount && typeof window.cutupPaywallDiscountUsed === 'function') {
         window.cutupPaywallDiscountUsed(planKey);

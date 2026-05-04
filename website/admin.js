@@ -188,6 +188,7 @@ function syncUsersNavParentState() {
 }
 
 function activateAdminSection(section) {
+  stopAuditFeedPoll();
   document.querySelectorAll('.nav-btn[data-section]').forEach((n) => n.classList.remove('active'));
   document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
   const trigger = document.querySelector(`.nav-btn[data-section="${section}"]`);
@@ -934,6 +935,8 @@ function applyRoleToNav() {
   allNav.forEach((btn) => {
     btn.hidden = false;
   });
+  const auditNav = document.querySelector('.nav-btn[data-section="audit"]');
+  if (auditNav) auditNav.hidden = panelRole !== 'super_admin';
   syncUsersNavParentState();
 }
 
@@ -1633,6 +1636,7 @@ async function refreshSection(section) {
   if (section === 'health') return loadHealth();
   if (section === 'blog') return loadBlogPosts();
   if (section === 'administrators') return loadAdmins();
+  if (section === 'audit') return loadAuditPanel();
 }
 
 function setupNavigation() {
@@ -1832,6 +1836,235 @@ function setupActions() {
   updateContentChecklist();
 }
 
+let auditFeedTimer = null;
+let auditPage = 1;
+const AUDIT_PAGE_SIZE = 40;
+
+function stopAuditFeedPoll() {
+  if (auditFeedTimer) {
+    clearInterval(auditFeedTimer);
+    auditFeedTimer = null;
+  }
+}
+
+function scheduleAuditFeedPoll() {
+  stopAuditFeedPoll();
+  auditFeedTimer = setInterval(() => {
+    const sec = document.getElementById('section-audit');
+    if (!sec?.classList.contains('active')) return;
+    loadAuditFeedOnly().catch(() => {});
+  }, 10000);
+}
+
+async function adminAuditFetch(path) {
+  const response = await fetch(`${API_BASE_URL}${path}`, { credentials: 'include' });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || data.message || 'Request failed');
+  return data;
+}
+
+function auditQueryFromFilters() {
+  const q = new URLSearchParams();
+  q.set('page', String(auditPage));
+  q.set('limit', String(AUDIT_PAGE_SIZE));
+  const uid = document.getElementById('auditFilterUserId')?.value?.trim();
+  const ev = document.getElementById('auditFilterEvent')?.value?.trim();
+  const ty = document.getElementById('auditFilterType')?.value?.trim();
+  const d0 = document.getElementById('auditDateFrom')?.value;
+  const d1 = document.getElementById('auditDateTo')?.value;
+  if (uid) q.set('user_id', uid);
+  if (ev) q.set('event_name', ev);
+  if (ty) q.set('event_type', ty);
+  if (d0) q.set('date_from', `${d0}T00:00:00.000Z`);
+  if (d1) q.set('date_to', `${d1}T23:59:59.999Z`);
+  return q.toString();
+}
+
+function summaryQueryFromDates() {
+  const q = new URLSearchParams();
+  const d0 = document.getElementById('auditDateFrom')?.value;
+  const d1 = document.getElementById('auditDateTo')?.value;
+  if (d0) q.set('date_from', `${d0}T00:00:00.000Z`);
+  if (d1) q.set('date_to', `${d1}T23:59:59.999Z`);
+  const s = q.toString();
+  return s ? `?${s}` : '';
+}
+
+function renderAuditSummary(summary) {
+  const el = document.getElementById('auditSummaryCards');
+  if (!el || !summary) return;
+  const p = summary.payment || {};
+  const cards = [
+    ['Events (range)', String(summary.totalEvents ?? 0), 'All event types in range'],
+    ['Active users', String(summary.activeUsers ?? 0), 'Distinct user_id in range'],
+    ['Errors', String(summary.errorEvents ?? 0), 'event_type = error'],
+    [
+      'Payment conversion',
+      p.conversionRate != null ? `${p.conversionRate}%` : '—',
+      `Success ${p.successes || 0} / attempts ${p.attempts || 0}`
+    ]
+  ];
+  el.innerHTML = cards.map(([k, v, hint]) => `
+    <article class="card">
+      <h3>${escapeHtml(k)}</h3>
+      <p>${escapeHtml(v)}</p>
+      <div class="metric-subtle">${escapeHtml(hint || '')}</div>
+    </article>
+  `).join('');
+
+  const ft = document.getElementById('auditFunnelTable');
+  if (ft) {
+    const preset = ['page_view', 'signup', 'onboarding_completed', 'payment_success'];
+    const map = new Map((summary.funnel || []).map((r) => [r.event_name, r.count]));
+    const rows = preset.map((name) => `<tr><td>${escapeHtml(name)}</td><td>${map.get(name) ?? 0}</td></tr>`);
+    ft.innerHTML = `<thead><tr><th>Event</th><th>Count</th></tr></thead><tbody>${rows.join('')}</tbody>`;
+  }
+}
+
+function renderAuditFeed(events) {
+  const el = document.getElementById('auditLiveFeed');
+  if (!el) return;
+  if (!events?.length) {
+    el.innerHTML = '<div class="audit-feed-row">No events yet.</div>';
+    return;
+  }
+  el.innerHTML = events
+    .map((e) => {
+      const who = e.userEmail || e.userId || '—';
+      return `<div class="audit-feed-row">
+        <strong>${escapeHtml(e.eventName)}</strong> <span class="badge badge-neutral">${escapeHtml(e.eventType)}</span>
+        <div class="audit-feed-meta">${escapeHtml(fmtDate(e.createdAt))} · ${escapeHtml(String(who))}</div>
+      </div>`;
+    })
+    .join('');
+}
+
+function renderAuditTable(payload) {
+  const table = document.getElementById('auditEventsTable');
+  const label = document.getElementById('auditPageLabel');
+  if (!table) return;
+  const events = payload.events || [];
+  if (!events.length) {
+    table.innerHTML = `<tbody>${emptyRow(7, 'No rows for this query.')}</tbody>`;
+  } else {
+    table.innerHTML = `
+      <thead><tr><th>Time</th><th>Event</th><th>Type</th><th>User</th><th>Session</th><th>Path</th><th>Meta</th></tr></thead>
+      <tbody>
+        ${events
+          .map(
+            (e) => `
+          <tr>
+            <td>${escapeHtml(fmtDate(e.createdAt))}</td>
+            <td>${escapeHtml(e.eventName)}</td>
+            <td>${escapeHtml(e.eventType)}</td>
+            <td>${escapeHtml(e.userEmail || e.userId || '—')}</td>
+            <td title="${escapeHtml(e.sessionId || '')}">${escapeHtml((e.sessionId || '').slice(0, 12))}${e.sessionId?.length > 12 ? '…' : ''}</td>
+            <td title="${escapeHtml(e.path || '')}">${escapeHtml((e.path || '').slice(0, 48))}</td>
+            <td><code style="font-size:11px">${escapeHtml(JSON.stringify(e.metadata || {}).slice(0, 120))}${JSON.stringify(e.metadata || {}).length > 120 ? '…' : ''}</code></td>
+          </tr>`
+          )
+          .join('')}
+      </tbody>`;
+  }
+  if (label) {
+    const total = payload.total ?? 0;
+    const pages = payload.totalPages ?? 1;
+    label.textContent = `Page ${payload.page || 1} / ${pages} · ${total} events`;
+  }
+}
+
+async function loadAuditSummaryOnly() {
+  const data = await adminAuditFetch(`/api/admin/audit/summary${summaryQueryFromDates()}`);
+  renderAuditSummary(data.summary);
+}
+
+async function loadAuditFeedOnly() {
+  const data = await adminAuditFetch(`/api/admin/audit?page=1&limit=25`);
+  renderAuditFeed(data.events || []);
+}
+
+async function loadAuditTableOnly() {
+  const data = await adminAuditFetch(`/api/admin/audit?${auditQueryFromFilters()}`);
+  renderAuditTable(data);
+}
+
+async function loadAuditPanel() {
+  if (panelRole !== 'super_admin') {
+    showBanner('Audit log requires super admin.');
+    return;
+  }
+  await loadAuditSummaryOnly();
+  await loadAuditFeedOnly();
+  auditPage = 1;
+  await loadAuditTableOnly();
+  scheduleAuditFeedPoll();
+}
+
+async function loadUserJourneyTimeline() {
+  const uid = document.getElementById('auditJourneyUserId')?.value?.trim();
+  const panel = document.getElementById('auditJourneyPanel');
+  if (!uid || !panel) {
+    showBanner('Enter a user UUID.');
+    return;
+  }
+  try {
+    const data = await adminAuditFetch(`/api/admin/audit/user/${encodeURIComponent(uid)}?limit=300`);
+    const rows = data.timeline || [];
+    if (!rows.length) {
+      panel.innerHTML = '<p class="admin-muted">No audit events for this user.</p>';
+      return;
+    }
+    panel.innerHTML = rows
+      .map(
+        (e) => `
+      <div class="audit-journey-step">
+        <strong>${escapeHtml(e.eventName)}</strong> <span class="badge badge-neutral">${escapeHtml(e.eventType)}</span>
+        <div class="audit-feed-meta">${escapeHtml(fmtDate(e.createdAt))}</div>
+        <div class="audit-feed-meta">${escapeHtml(JSON.stringify(e.metadata || {}).slice(0, 200))}</div>
+      </div>`
+      )
+      .join('');
+  } catch (e) {
+    showBanner(e.message || 'Could not load journey.');
+  }
+}
+
+function setupAuditPanel() {
+  document.getElementById('auditApplyBtn')?.addEventListener('click', async () => {
+    auditPage = 1;
+    try {
+      await loadAuditSummaryOnly();
+      await loadAuditTableOnly();
+    } catch (e) {
+      showBanner(e.message || 'Filter failed.');
+    }
+  });
+  document.getElementById('auditJourneyBtn')?.addEventListener('click', () => loadUserJourneyTimeline().catch((e) => showBanner(e.message)));
+  document.getElementById('auditPrevPage')?.addEventListener('click', async () => {
+    if (auditPage <= 1) return;
+    auditPage -= 1;
+    try {
+      await loadAuditTableOnly();
+    } catch (e) {
+      showBanner(e.message);
+    }
+  });
+  document.getElementById('auditNextPage')?.addEventListener('click', async () => {
+    auditPage += 1;
+    try {
+      const data = await adminAuditFetch(`/api/admin/audit?${auditQueryFromFilters()}`);
+      if (!data.events?.length) {
+        auditPage -= 1;
+        return;
+      }
+      renderAuditTable(data);
+    } catch (e) {
+      auditPage -= 1;
+      showBanner(e.message);
+    }
+  });
+}
+
 let cutupAdminBootStarted = false;
 
 window.cutupAdminBootstrap = async function cutupAdminBootstrap() {
@@ -1839,6 +2072,7 @@ window.cutupAdminBootstrap = async function cutupAdminBootstrap() {
   cutupAdminBootStarted = true;
   setupNavigation();
   setupActions();
+  setupAuditPanel();
   try {
     await loadMe();
   } catch {

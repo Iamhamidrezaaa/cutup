@@ -102,7 +102,7 @@ async function dbHealth() {
        FROM information_schema.tables
        WHERE table_schema = 'public'
          AND table_name = ANY($1::text[])`,
-      [['users', 'subscriptions', 'usage', 'usage_history', 'saved_outputs', 'blog_posts', 'admins', 'admin_sessions']]
+      [['users', 'subscriptions', 'usage', 'usage_history', 'saved_outputs', 'blog_posts', 'admins', 'admin_sessions', 'audit_events']]
     );
     const existing = new Set(tableRes.rows.map((r) => r.table_name));
     return {
@@ -115,7 +115,8 @@ async function dbHealth() {
         saved_outputs: existing.has('saved_outputs'),
         blog_posts: existing.has('blog_posts'),
         admins: existing.has('admins'),
-        admin_sessions: existing.has('admin_sessions')
+        admin_sessions: existing.has('admin_sessions'),
+        audit_events: existing.has('audit_events')
       }
     };
   } catch {

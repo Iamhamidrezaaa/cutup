@@ -745,3 +745,75 @@ th { font-size: 12px; color: var(--muted); background: #f8fafc; position: sticky
   .cards-grid { grid-template-columns: 1fr; }
   .form-grid-2 { grid-template-columns: 1fr; }
 }
+
+.admin-muted {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0 0 16px;
+  max-width: 900px;
+}
+.audit-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin: 24px 0;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .audit-split { grid-template-columns: 1fr; }
+}
+.audit-toolbar {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.audit-toolbar input {
+  min-width: 120px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+}
+.audit-live-feed {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  font-size: 13px;
+}
+.audit-feed-row {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  gap: 4px;
+}
+.audit-feed-row:last-child { border-bottom: none; }
+.audit-feed-meta {
+  font-size: 11px;
+  color: var(--muted);
+}
+.audit-journey-panel {
+  margin-top: 12px;
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fafafa;
+  font-size: 13px;
+}
+.audit-journey-step {
+  padding: 10px 12px;
+  border-left: 3px solid var(--primary);
+  margin: 8px 12px;
+  background: var(--card);
+  border-radius: 0 8px 8px 0;
+}
+.audit-pagination {
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.audit-page-label {
+  font-size: 14px;
+  color: var(--muted);
+}
