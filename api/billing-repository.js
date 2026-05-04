@@ -859,6 +859,68 @@ function subscriptionPriceLabel(planKey) {
   return `€${Number.isInteger(n) ? n : n.toFixed(2)}`;
 }
 
+/** Same plan key resolution as GET /api/subscription?action=info (dashboard). */
+function resolvePlanKeyForCustomer(email, subscriptionPlanDb) {
+  if (email && String(email).toLowerCase() === UNLIMITED_EMAIL.toLowerCase()) return 'business';
+  const p =
+    subscriptionPlanDb != null && String(subscriptionPlanDb).trim() !== ''
+      ? String(subscriptionPlanDb).toLowerCase().trim()
+      : null;
+  return p || 'free';
+}
+
+function resolveCustomerDisplayName(email, rawDisplayName) {
+  const emailLocal = email && typeof email === 'string' ? email.split('@')[0] : '—';
+  const raw = rawDisplayName != null ? String(rawDisplayName).trim() : '';
+  if (!raw) return emailLocal;
+  if (raw.includes('@')) return emailLocal;
+  if (raw.toLowerCase() === String(emailLocal).toLowerCase()) return emailLocal;
+  return raw;
+}
+
+let _usersDisplayNameExists;
+async function usersTableHasDisplayNameColumn(pool) {
+  if (_usersDisplayNameExists !== undefined) return _usersDisplayNameExists;
+  try {
+    const chk = await pool.query(
+      `SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'display_name'
+       LIMIT 1`
+    );
+    _usersDisplayNameExists = chk.rows.length > 0;
+  } catch {
+    _usersDisplayNameExists = false;
+  }
+  return _usersDisplayNameExists;
+}
+
+/**
+ * After Google OAuth: store full name when missing, equals email prefix, or looks like an email.
+ * Skips if users.display_name column does not exist.
+ */
+export async function syncUserDisplayNameFromGoogleProfile(email, profile) {
+  if (!email || !profile || !isBillingDbConfigured()) return;
+  const pool = getPool();
+  const hasDn = await usersTableHasDisplayNameColumn(pool);
+  if (!hasDn) return;
+  const given = profile.given_name != null ? String(profile.given_name).trim() : '';
+  const family = profile.family_name != null ? String(profile.family_name).trim() : '';
+  let full = [given, family].filter(Boolean).join(' ').trim();
+  if (!full && profile.name) full = String(profile.name).trim();
+  if (!full) return;
+  const userId = await ensureUserByEmail(email);
+  const prefix = String(email).split('@')[0].toLowerCase();
+  const r = await pool.query('SELECT display_name FROM users WHERE id = $1::uuid', [userId]);
+  const ex = r.rows[0]?.display_name != null ? String(r.rows[0].display_name).trim() : '';
+  const shouldUpdate =
+    !ex || ex.toLowerCase() === prefix || ex.includes('@');
+  if (!shouldUpdate) return;
+  await pool.query('UPDATE users SET display_name = $2 WHERE id = $1::uuid', [
+    userId,
+    full.slice(0, 255)
+  ]);
+}
+
 /** Avoid referencing optional columns (e.g. users.role) until we know they exist. */
 let _usersRoleColumnExists;
 async function usersTableHasRoleColumn(pool) {
@@ -882,37 +944,55 @@ function isExcludedCustomerRole(roleVal) {
   return r === 'admin' || r === 'super_admin';
 }
 
-export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200 } = {}) {
+export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200, forUserId = null } = {}) {
   const pool = getPool();
   const filters = [];
   const params = [];
   filters.push(`NOT EXISTS (SELECT 1 FROM admins a WHERE lower(a.email) = lower(u.email))`);
 
-  const hasRoleCol = await usersTableHasRoleColumn(pool);
+  const [hasRoleCol, hasDisplayCol] = await Promise.all([
+    usersTableHasRoleColumn(pool),
+    usersTableHasDisplayNameColumn(pool)
+  ]);
   if (hasRoleCol) {
     filters.push(
       `(u.role IS NULL OR TRIM(u.role::text) = '' OR LOWER(TRIM(u.role::text)) NOT IN ('admin', 'super_admin'))`
     );
   }
 
+  if (forUserId) {
+    params.push(String(forUserId).trim());
+    filters.push(`u.id = $${params.length}::uuid`);
+  }
+
   if (search) {
     params.push(`%${search.toLowerCase()}%`);
-    filters.push(`(LOWER(u.email) LIKE $${params.length})`);
+    const idx = params.length;
+    if (hasDisplayCol) {
+      filters.push(
+        `(LOWER(u.email) LIKE $${idx} OR LOWER(COALESCE(u.display_name, '')) LIKE $${idx})`
+      );
+    } else {
+      filters.push(`(LOWER(u.email) LIKE $${idx})`);
+    }
   }
   if (plan && plan !== 'all') {
     params.push(plan);
     filters.push(`COALESCE(s.plan, 'free') = $${params.length}`);
   }
-  params.push(Math.min(Math.max(Number(limit) || 200, 1), 500));
+  const lim = forUserId ? 1 : Math.min(Math.max(Number(limit) || 200, 1), 500);
+  params.push(lim);
   const whereSql = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
 
   const roleSelect = hasRoleCol ? 'u.role AS user_role,' : 'NULL::text AS user_role,';
+  const displaySelect = hasDisplayCol ? 'u.display_name AS user_display_name,' : 'NULL::text AS user_display_name,';
 
   const r = await pool.query(
     `SELECT
        u.id AS user_id,
        u.email,
        ${roleSelect}
+       ${displaySelect}
        s.id AS subscription_id,
        s.plan AS subscription_plan,
        s.status AS subscription_status,
@@ -956,39 +1036,58 @@ export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200 }
   return r.rows
     .map((row) => {
       const hasSubscriptionRow = Boolean(row.subscription_id);
-      const subPlan = hasSubscriptionRow
-        ? String(row.subscription_plan || 'free').toLowerCase().trim() || 'free'
-        : null;
-      const planFromSubscription = hasSubscriptionRow ? subPlan : null;
-      const effectivePlan = planFromSubscription || 'free';
+      const planResolved = resolvePlanKeyForCustomer(
+        row.email,
+        hasSubscriptionRow ? row.subscription_plan : null
+      );
+      const subPlan = planResolved;
+
       const uiStatus =
-        String(row.subscription_status || 'active').toLowerCase() === 'canceled' ? 'inactive' : 'active';
-      const emailLocal = row.email && typeof row.email === 'string' ? row.email.split('@')[0] : '—';
+        hasSubscriptionRow &&
+        String(row.subscription_status || 'active').toLowerCase() === 'canceled'
+          ? 'inactive'
+          : 'active';
+
+      const name = resolveCustomerDisplayName(row.email, row.user_display_name);
       const role = row.user_role != null && String(row.user_role).trim() !== '' ? String(row.user_role).trim() : null;
 
-      const subscriptionObj = hasSubscriptionRow
-        ? {
-            plan: subPlan,
-            planLabel: planLabelForAdmin(subPlan || 'free'),
-            priceLabel: subscriptionPriceLabel(subPlan || 'free'),
-            billingPeriod: row.subscription_billing_period || 'monthly',
-            startedAt: row.subscription_created_at?.toISOString
-              ? row.subscription_created_at.toISOString()
-              : row.subscription_created_at,
-            currentPeriodEnd: row.subscription_current_period_end?.toISOString
-              ? row.subscription_current_period_end.toISOString()
-              : row.subscription_current_period_end || null,
-            rawStatus: row.subscription_status || 'active'
-          }
-        : null;
+      const needsSyntheticSub =
+        !hasSubscriptionRow && String(row.email).toLowerCase() === UNLIMITED_EMAIL.toLowerCase();
 
-      const planResolved = subscriptionObj?.plan || effectivePlan || 'free';
+      let subscriptionObj = null;
+      if (hasSubscriptionRow) {
+        subscriptionObj = {
+          plan: subPlan,
+          planLabel: planLabelForAdmin(subPlan),
+          priceLabel: subscriptionPriceLabel(subPlan),
+          billingPeriod: row.subscription_billing_period || 'monthly',
+          startedAt: row.subscription_created_at?.toISOString
+            ? row.subscription_created_at.toISOString()
+            : row.subscription_created_at,
+          currentPeriodEnd: row.subscription_current_period_end?.toISOString
+            ? row.subscription_current_period_end.toISOString()
+            : row.subscription_current_period_end || null,
+          rawStatus: row.subscription_status || 'active'
+        };
+      } else if (needsSyntheticSub) {
+        const end = new Date();
+        end.setFullYear(end.getFullYear() + 10);
+        subscriptionObj = {
+          plan: 'business',
+          planLabel: planLabelForAdmin('business'),
+          priceLabel: subscriptionPriceLabel('business'),
+          billingPeriod: 'annual',
+          startedAt: new Date().toISOString(),
+          currentPeriodEnd: end.toISOString(),
+          rawStatus: 'active'
+        };
+      }
 
       return {
         id: row.user_id,
         email: row.email,
         role: role || undefined,
-        name: emailLocal,
+        name,
         plan: planResolved,
         planLabel: planLabelForAdmin(planResolved),
         status: hasSubscriptionRow ? uiStatus : 'active',
@@ -1009,6 +1108,12 @@ export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200 }
       };
     })
     .filter((user) => !isExcludedCustomerRole(user.role));
+}
+
+/** Single customer row for PATCH response (same shape as list items). */
+export async function getAdminCustomerSnapshotById(userId) {
+  const rows = await getAdminUsersDb({ forUserId: userId, limit: 1 });
+  return rows[0] || null;
 }
 
 /**
@@ -1041,10 +1146,13 @@ export async function adminPatchCustomerUser(userId, { name, plan, status } = {}
   try {
     await client.query('BEGIN');
     if (nameStr !== undefined) {
-      await client.query('UPDATE users SET display_name = $2 WHERE id = $1::uuid', [
-        uid,
-        nameStr === '' ? null : nameStr
-      ]);
+      const hasDn = await usersTableHasDisplayNameColumn(pool);
+      if (hasDn) {
+        await client.query('UPDATE users SET display_name = $2 WHERE id = $1::uuid', [
+          uid,
+          nameStr === '' ? null : nameStr
+        ]);
+      }
     }
     if (planStr !== undefined || statusStr !== undefined) {
       const cur = await client.query(
@@ -1069,13 +1177,20 @@ export async function adminPatchCustomerUser(userId, { name, plan, status } = {}
       }
     }
     await client.query('COMMIT');
-    return { ok: true };
   } catch (e) {
     await client.query('ROLLBACK');
     throw e;
   } finally {
     client.release();
   }
+
+  let user = null;
+  try {
+    user = await getAdminCustomerSnapshotById(uid);
+  } catch (e) {
+    console.error('[adminPatchCustomerUser] snapshot failed', e);
+  }
+  return { ok: true, user };
 }
 
 export async function adminDeleteCustomerUser(userId) {

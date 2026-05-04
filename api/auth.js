@@ -87,9 +87,18 @@ export default async function handler(req, res) {
       });
 
       try {
-        const { ensureUserByEmail, isBillingDbConfigured } = await import('./billing-repository.js');
+        const {
+          ensureUserByEmail,
+          isBillingDbConfigured,
+          syncUserDisplayNameFromGoogleProfile
+        } = await import('./billing-repository.js');
         if (isBillingDbConfigured()) {
           await ensureUserByEmail(user.email);
+          await syncUserDisplayNameFromGoogleProfile(user.email, {
+            name: user.name,
+            given_name: user.given_name,
+            family_name: user.family_name
+          });
         }
       } catch (e) {
         console.error('[auth] ensureUserByEmail failed:', e.message);

@@ -985,7 +985,9 @@ function renderUsersTable(rows) {
       const uid = String(u.id || '');
       const emailAttr = escapeHtml(String(u.email || ''));
       const isEditing = customersEditingId && String(customersEditingId) === uid;
-      const planLabel = u.planLabel || (u.plan ? u.plan.charAt(0).toUpperCase() + u.plan.slice(1) : 'Free');
+      const planLabel =
+        u.planLabel ||
+        (u.plan ? u.plan.charAt(0).toUpperCase() + u.plan.slice(1) : '—');
       const st = (u.status || 'active').toLowerCase() === 'active' ? 'ok' : 'warn';
       const actions = isEditing
         ? `<div class="actions-wrapper">
@@ -1087,22 +1089,34 @@ function renderUsersTable(rows) {
       if (!id || !customerInlineDraft || String(customerInlineDraft.id) !== id) return;
       customerSaveInFlight = true;
       renderUsersTable(customersCache);
+      let savedOk = false;
       try {
-        await apiPatchCustomer(id, {
+        const resData = await apiPatchCustomer(id, {
           name: customerInlineDraft.name,
           plan: customerInlineDraft.plan,
           status: customerInlineDraft.status
         });
+        if (resData.user) {
+          const idx = customersCache.findIndex((x) => String(x.id) === id);
+          if (idx >= 0) customersCache[idx] = resData.user;
+        }
+        savedOk = true;
         showBanner('Customer updated.');
         customersEditingId = null;
         customerInlineDraft = null;
-        await loadUsers();
       } catch (err) {
         console.error('[admin] customer save', err);
         showBanner(err.message || 'Could not save customer.');
       } finally {
         customerSaveInFlight = false;
         renderUsersTable(customersCache);
+        if (savedOk) {
+          const mainRow = document.querySelector(`tr[data-customer-main="${id}"]`);
+          if (mainRow) {
+            mainRow.classList.add('row-updated');
+            setTimeout(() => mainRow.classList.remove('row-updated'), 1000);
+          }
+        }
       }
     });
   });

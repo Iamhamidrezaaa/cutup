@@ -36,11 +36,43 @@
       border: 0;
       background: var(--bg, #f3f5fb);
     }
+    .admin-login-brand {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .admin-login-brand-link {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text, #111827);
+    }
+    .admin-login-brand-link:hover .admin-login-brand-title {
+      color: var(--primary, #5b4ce6);
+    }
+    .admin-login-brand-logo {
+      display: block;
+      width: 96px;
+      height: auto;
+      border-radius: 12px;
+    }
+    .admin-login-brand-title {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
   </style>
 </head>
 <body>
   <div id="loginPageWrap" class="login-page">
     <div class="login-card">
+      <header class="admin-login-brand" aria-label="Cutup Admin">
+        <a href="https://cutup.shop" target="_blank" rel="noopener noreferrer" class="admin-login-brand-link">
+          <img src="logo.svg" alt="Cutup" width="96" height="96" decoding="async" class="admin-login-brand-logo">
+          <span class="admin-login-brand-title">Cutup Admin</span>
+        </a>
+      </header>
       <h1>Admin Login</h1>
       <form id="adminLoginForm" autocomplete="on" novalidate>
         <label for="adminEmail">Email</label>

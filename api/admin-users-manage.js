@@ -57,7 +57,7 @@ export default async function adminUsersManageHandler(req, res) {
                 : 400;
         return res.status(code).json({ error: result.error || 'update_failed' });
       }
-      return res.json({ success: true });
+      return res.json({ success: true, user: result.user ?? null });
     }
 
     if (req.method === 'DELETE') {

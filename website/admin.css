@@ -335,6 +335,10 @@ td.actions {
 .customer-subscription-block dd {
   margin: 0;
 }
+tr.row-updated > td {
+  background-color: #d1fae5 !important;
+  transition: background-color 0.35s ease;
+}
 .administrators-toolbar input[type="email"],
 .administrators-toolbar input[type="password"] {
   max-width: 220px;
