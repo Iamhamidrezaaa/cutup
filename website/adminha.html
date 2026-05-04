@@ -6,6 +6,7 @@
   <title>Admin Login | Cutup</title>
   <meta name="robots" content="noindex, nofollow">
   <link rel="stylesheet" href="admin.css">
+  <link rel="stylesheet" href="responsive-global.css?v=1">
   <style>
     .login-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
     .login-card { width: 100%; max-width: 400px; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 28px; box-shadow: 0 12px 40px rgba(15, 23, 42, 0.08); }
@@ -90,6 +91,16 @@
     <a href="#adminMainContent" class="skip-link">Skip to main content</a>
     <div class="admin-shell">
     <header class="admin-header">
+      <button
+        type="button"
+        class="admin-nav-toggle"
+        id="adminNavToggle"
+        aria-expanded="false"
+        aria-controls="cutupAdminSidebar"
+        aria-label="Open navigation menu"
+      >
+        <span class="admin-nav-toggle-bars" aria-hidden="true"></span>
+      </button>
       <div class="admin-header-brand">
         <div class="admin-logo-dot"></div>
         <div>
@@ -103,8 +114,10 @@
       </div>
     </header>
 
+    <div class="admin-nav-backdrop" id="adminNavBackdrop" hidden aria-hidden="true"></div>
+
     <div class="admin-main">
-      <aside class="admin-sidebar">
+      <aside class="admin-sidebar" id="cutupAdminSidebar">
         <button class="nav-btn active" data-section="overview" aria-label="Open Overview section"><span aria-hidden="true">📊</span><span>Overview</span></button>
         <div class="users-menu nav-group" id="navUsersGroup">
           <button type="button" class="nav-btn nav-group-head users-menu-trigger" id="navUsersTrigger" aria-haspopup="true" aria-controls="navUsersSub" aria-label="Users menu">

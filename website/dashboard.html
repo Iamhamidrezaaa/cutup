@@ -20,6 +20,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css?v=CLEAN_BUILD_2026_04">
   <link rel="stylesheet" href="dashboard.css?v=CLEAN_BUILD_2026_04">
+  <link rel="stylesheet" href="responsive-global.css?v=1">
 </head>
 <body>
   <script src="site-chrome.js"></script>
@@ -34,6 +35,16 @@
     <div id="cutupInlineNotify" class="cutup-inline-notify" role="region" aria-label="Notifications" hidden></div>
     <header class="dashboard-header">
       <div class="header-content">
+        <button
+          type="button"
+          class="dashboard-nav-toggle"
+          id="dashboardNavToggle"
+          aria-expanded="false"
+          aria-controls="cutupDashboardSidebar"
+          aria-label="Open navigation menu"
+        >
+          <span class="dashboard-nav-toggle-bars" aria-hidden="true"></span>
+        </button>
         <div class="header-actions">
           <div class="user-profile-header" id="userProfileHeader">
             <a href="#overview" class="user-profile-link" id="userProfileLink" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 12px; cursor: pointer;">
@@ -49,10 +60,12 @@
       </div>
     </header>
 
+    <div class="dashboard-sidebar-backdrop" id="dashboardSidebarBackdrop" hidden aria-hidden="true"></div>
+
     <!-- Main Content -->
     <main class="dashboard-main">
       <!-- Sidebar -->
-      <aside class="dashboard-sidebar">
+      <aside class="dashboard-sidebar" id="cutupDashboardSidebar">
         <nav class="sidebar-nav">
           <a href="#overview" class="nav-item active" data-section="overview">
             <span class="nav-icon">📊</span>

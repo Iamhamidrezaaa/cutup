@@ -204,6 +204,8 @@ function syncUsersNavParentState() {
   group.classList.toggle('nav-group--child-active', Boolean(activeSub));
 }
 
+let cutupAdminMobileNavClose = null;
+
 function activateAdminSection(section) {
   stopAuditAutoRefresh();
   stopAuditLiveWs();
@@ -213,6 +215,7 @@ function activateAdminSection(section) {
   trigger?.classList.add('active');
   document.getElementById(`section-${section}`)?.classList.add('active');
   syncUsersNavParentState();
+  if (typeof cutupAdminMobileNavClose === 'function') cutupAdminMobileNavClose();
 }
 let slugManuallyEdited = false;
 
@@ -1663,6 +1666,50 @@ async function refreshSection(section) {
   if (section === 'audit') return loadAuditPanel();
 }
 
+function setupAdminMobileNav() {
+  const toggle = document.getElementById('adminNavToggle');
+  const sidebar = document.getElementById('cutupAdminSidebar');
+  const backdrop = document.getElementById('adminNavBackdrop');
+  if (!toggle || !sidebar || !backdrop) return;
+
+  const mq = window.matchMedia('(max-width: 1024px)');
+
+  const close = () => {
+    sidebar.classList.remove('is-open');
+    backdrop.classList.remove('is-visible');
+    backdrop.setAttribute('hidden', '');
+    document.body.classList.remove('admin-nav-open');
+    toggle.setAttribute('aria-expanded', 'false');
+  };
+
+  cutupAdminMobileNavClose = close;
+
+  const open = () => {
+    sidebar.classList.add('is-open');
+    backdrop.removeAttribute('hidden');
+    document.body.classList.add('admin-nav-open');
+    toggle.setAttribute('aria-expanded', 'true');
+    requestAnimationFrame(() => backdrop.classList.add('is-visible'));
+  };
+
+  toggle.addEventListener('click', () => {
+    if (sidebar.classList.contains('is-open')) close();
+    else open();
+  });
+
+  backdrop.addEventListener('click', close);
+
+  sidebar.querySelectorAll('.nav-btn, .nav-submenu-item').forEach((el) => {
+    el.addEventListener('click', () => {
+      if (mq.matches) close();
+    });
+  });
+
+  mq.addEventListener('change', (e) => {
+    if (!e.matches) close();
+  });
+}
+
 function setupNavigation() {
   document.querySelectorAll('.nav-btn[data-section]').forEach((btn) => {
     btn.addEventListener('click', async () => {
@@ -2657,6 +2704,7 @@ window.cutupAdminBootstrap = async function cutupAdminBootstrap() {
   if (cutupAdminBootStarted) return;
   cutupAdminBootStarted = true;
   setupNavigation();
+  setupAdminMobileNav();
   setupActions();
   setupAuditPanel();
   try {

@@ -22,6 +22,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
 }
 
 .dashboard-header .header-content > .header-actions:only-child {
@@ -1296,7 +1297,7 @@
   .paid-plans-grid {
     grid-template-columns: 1fr !important;
     gap: 24px;
-    max-width: 500px !important;
+    max-width: 100% !important;
   }
   
   .paid-plan-card {
@@ -1322,25 +1323,7 @@
     grid-template-columns: 1fr;
     padding: 16px;
   }
-  
-  .dashboard-sidebar {
-    position: static;
-    padding: 16px;
-  }
 
-  .sidebar-nav {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .nav-item {
-    flex: 1 1 calc(50% - 8px);
-    justify-content: center;
-    min-height: 44px;
-    font-size: 13px;
-  }
-  
   .stats-grid {
     grid-template-columns: 1fr;
   }
@@ -2173,6 +2156,170 @@
   .onboardingField--postal {
     grid-column: 1;
     max-width: none;
+  }
+}
+
+/* —— Mobile nav toggle (hidden on desktop) —— */
+.dashboard-nav-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-light);
+  cursor: pointer;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.dashboard-nav-toggle-bars {
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: var(--text-primary);
+  border-radius: 1px;
+  box-shadow:
+    0 -6px 0 var(--text-primary),
+    0 6px 0 var(--text-primary);
+}
+
+.dashboard-sidebar-backdrop {
+  display: none;
+}
+
+/* —— Tablet / mobile: sidebar drawer (max-width: 1024px) —— */
+@media (max-width: 1024px) {
+  .dashboard-nav-toggle {
+    display: inline-flex;
+  }
+
+  .dashboard-main {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 16px;
+  }
+
+  .dashboard-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(288px, 88vw);
+    max-width: 100%;
+    z-index: 220;
+    margin: 0;
+    border-radius: 0;
+    padding: 20px 16px;
+    padding-top: max(20px, env(safe-area-inset-top, 0px));
+    box-shadow: 8px 0 32px rgba(15, 23, 42, 0.18);
+    transform: translateX(-105%);
+    transition: transform 0.22s ease;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  .dashboard-sidebar.is-open {
+    transform: translateX(0);
+  }
+
+  .sidebar-nav {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
+
+  .nav-item {
+    flex: none;
+    min-height: 44px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .dashboard-sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 210;
+    background: rgba(15, 23, 42, 0.45);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+      opacity 0.2s ease,
+      visibility 0.2s ease;
+  }
+
+  .dashboard-sidebar-backdrop.is-visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  body.dashboard-nav-open {
+    overflow: hidden;
+  }
+}
+
+/* —— Onboarding: scrollable on small viewports —— */
+#onboardingOverlay.onboardingOverlay--anim {
+  align-items: flex-start !important;
+  justify-content: center !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  padding: max(12px, env(safe-area-inset-top, 0px)) 16px max(12px, env(safe-area-inset-bottom, 0px)) !important;
+}
+
+.onboardingModal {
+  width: min(520px, 100%);
+  max-height: min(92dvh, 720px);
+  margin: auto 0;
+}
+
+@media (max-width: 480px) {
+  .section-title {
+    font-size: clamp(1.25rem, 5.5vw, 1.5rem);
+    line-height: 1.25;
+    word-break: break-word;
+  }
+
+  .welcome-message {
+    font-size: 16px;
+    padding: 18px;
+  }
+
+  .plan-btn:not(:disabled) {
+    min-height: 44px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .onboardingModal {
+    padding: 20px 16px;
+    max-height: min(calc(100dvh - 24px), 720px);
+  }
+
+  .onboardingModalTitle {
+    font-size: 1.2rem;
+  }
+
+  .onboardingField input,
+  .onboardingField select,
+  .onboardingField textarea {
+    min-height: 44px;
+  }
+
+  .onboardingField textarea {
+    min-height: 96px;
+  }
+
+  .onboardingSubmit {
+    min-height: 48px;
   }
 }
 

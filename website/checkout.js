@@ -141,9 +141,9 @@
           <div><dt>Address</dt><dd>${escapeHtml(p.address || '—')}</dd></div>
           <div><dt>Postal code</dt><dd>${escapeHtml(p.postal_code || '—')}</dd></div>
         </dl>
-        <div class="cutup-checkout-actions">
-          <button type="button" class="cutup-checkout-btn cutup-checkout-btn--primary" id="cutupPayNowBtn">Pay now</button>
-          <a class="cutup-checkout-btn cutup-checkout-btn--ghost" href="/dashboard.html?editProfile=1&returnUrl=${encodeURIComponent(
+        <div class="checkout-actions">
+          <button type="button" class="checkout-btn checkout-btn--primary" id="cutupPayNowBtn">Pay now</button>
+          <a class="checkout-btn checkout-btn--secondary" href="/dashboard.html?editProfile=1&amp;returnUrl=${encodeURIComponent(
             `/checkout.html?plan=${plan}`
           )}">Edit info</a>
         </div>

@@ -283,6 +283,48 @@ function getPlanVideoEstimate(monthlyLimitMinutes) {
   return `~${videos} videos / month`;
 }
 
+function setupDashboardMobileNav() {
+  const toggle = document.getElementById('dashboardNavToggle');
+  const sidebar = document.getElementById('cutupDashboardSidebar');
+  const backdrop = document.getElementById('dashboardSidebarBackdrop');
+  if (!toggle || !sidebar || !backdrop) return;
+
+  const mq = window.matchMedia('(max-width: 1024px)');
+
+  const close = () => {
+    sidebar.classList.remove('is-open');
+    backdrop.classList.remove('is-visible');
+    backdrop.setAttribute('hidden', '');
+    document.body.classList.remove('dashboard-nav-open');
+    toggle.setAttribute('aria-expanded', 'false');
+  };
+
+  const open = () => {
+    sidebar.classList.add('is-open');
+    backdrop.removeAttribute('hidden');
+    document.body.classList.add('dashboard-nav-open');
+    toggle.setAttribute('aria-expanded', 'true');
+    requestAnimationFrame(() => backdrop.classList.add('is-visible'));
+  };
+
+  toggle.addEventListener('click', () => {
+    if (sidebar.classList.contains('is-open')) close();
+    else open();
+  });
+
+  backdrop.addEventListener('click', close);
+
+  document.querySelectorAll('.dashboard-sidebar .nav-item').forEach((link) => {
+    link.addEventListener('click', () => {
+      if (mq.matches) close();
+    });
+  });
+
+  mq.addEventListener('change', (e) => {
+    if (!e.matches) close();
+  });
+}
+
 function setupNavigation() {
   const navItems = document.querySelectorAll('.nav-item');
   const sections = document.querySelectorAll('.dashboard-section');
@@ -301,6 +343,8 @@ function setupNavigation() {
     e.preventDefault();
     document.querySelector('.nav-item[data-section="overview"]')?.click();
   });
+
+  setupDashboardMobileNav();
 }
 
 function setupEventListeners() {
@@ -477,7 +521,7 @@ async function renderOnboardingModalIntoBody(profile) {
     /* noop */
   }
   overlay.style.visibility = 'visible';
-  overlay.classList.add('onboardingOverlay--anim');
+  overlay.classList.add('onboardingOverlay', 'onboardingOverlay--anim');
 
   overlay.onclick = (e) => {
     if (e.target === overlay) {

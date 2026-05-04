@@ -12,16 +12,20 @@
 body.cutup-checkout-body {
   margin: 0;
   min-height: 100vh;
+  max-width: 100%;
+  overflow-x: hidden;
   font-family: 'Inter', system-ui, sans-serif;
   background: radial-gradient(1200px 600px at 10% -10%, rgba(99, 102, 241, 0.18), transparent),
     radial-gradient(900px 500px at 100% 0%, rgba(129, 140, 248, 0.12), transparent), var(--checkout-bg);
   color: var(--checkout-text);
+  box-sizing: border-box;
 }
 
 .cutup-checkout-wrap {
-  max-width: 560px;
+  max-width: min(560px, 100%);
   margin: 0 auto;
   padding: 48px 20px 64px;
+  box-sizing: border-box;
 }
 
 .cutup-checkout-brand {
@@ -48,6 +52,9 @@ body.cutup-checkout-body {
   border-radius: 16px;
   padding: 28px 28px 24px;
   box-shadow: 0 24px 48px rgba(0, 0, 0, 0.35);
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 .cutup-checkout-card h1 {
@@ -71,11 +78,14 @@ body.cutup-checkout-body {
   gap: 16px;
   padding: 16px 0;
   border-bottom: 1px solid var(--checkout-border);
+  min-width: 0;
 }
 
 .cutup-checkout-plan-name {
   font-size: 17px;
   font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .cutup-checkout-price {
@@ -129,55 +139,69 @@ body.cutup-checkout-body {
 .cutup-checkout-dl dd {
   margin: 0;
   font-weight: 500;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
-.cutup-checkout-actions {
-  margin-top: 28px;
+.checkout-actions {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  margin-top: 16px;
+  width: 100%;
+  min-width: 0;
 }
 
-.cutup-checkout-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.checkout-actions button,
+.checkout-actions a.checkout-btn--secondary {
   width: 100%;
+  display: block;
+  box-sizing: border-box;
+}
+
+.checkout-btn {
+  margin: 0;
   padding: 14px 20px;
   border-radius: 10px;
   font-size: 15px;
   font-weight: 600;
   font-family: inherit;
-  cursor: pointer;
-  border: none;
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  text-align: center;
+  line-height: 1.35;
 }
 
-.cutup-checkout-btn--primary {
+.checkout-btn--primary {
+  cursor: pointer;
+  border: none;
   background: linear-gradient(135deg, #6366f1, #818cf8);
   color: #fff;
   box-shadow: 0 8px 24px rgba(99, 102, 241, 0.35);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 
-.cutup-checkout-btn--primary:hover:not(:disabled) {
+.checkout-btn--primary:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 12px 28px rgba(99, 102, 241, 0.4);
 }
 
-.cutup-checkout-btn--primary:disabled {
+.checkout-btn--primary:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 
-.cutup-checkout-btn--ghost {
-  background: transparent;
+.checkout-btn--secondary {
+  cursor: pointer;
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.05);
   color: var(--checkout-muted);
   border: 1px solid var(--checkout-border);
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 }
 
-.cutup-checkout-btn--ghost:hover {
+.checkout-btn--secondary:hover {
   color: var(--checkout-text);
-  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.22);
 }
 
 .cutup-checkout-error {
