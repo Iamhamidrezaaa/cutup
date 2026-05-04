@@ -1906,66 +1906,114 @@
   }
 }
 
-/* —— Onboarding: real body-mounted overlay (see dashboard.js) —— */
+/* —— Initial dashboard gate (profile check) —— */
+.dashboard-initial-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(248, 250, 252, 0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: opacity 0.2s ease;
+}
+
+.dashboard-initial-loader.is-done {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.dashboard-initial-loader-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 500;
+  color: #475569;
+}
+
+.dashboard-initial-loader-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #e2e8f0;
+  border-top-color: #6c5ce7;
+  border-radius: 50%;
+  animation: dashboard-loader-spin 0.7s linear infinite;
+}
+
+@keyframes dashboard-loader-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* —— Onboarding overlay (class hooks; base layout still inline in JS) —— */
 #cutupDashboardShell.cutup-onboarding-locked {
   pointer-events: none;
   user-select: none;
 }
 
-#onboardingOverlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  z-index: 999999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  box-sizing: border-box;
+.onboardingOverlay--anim {
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.onboardingOverlay--anim.is-visible {
+  opacity: 1;
 }
 
 .onboardingModal {
-  width: 480px;
-  max-width: 90%;
+  width: 520px;
+  max-width: 92%;
   max-height: min(92vh, 720px);
   overflow: auto;
-  background: #fff;
-  border-radius: 16px;
-  padding: 24px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
-  animation: fadeInScale 0.25s ease;
+  background: linear-gradient(180deg, #ffffff 0%, #f9f9ff 100%);
+  border-radius: 18px;
+  padding: 28px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.25);
   box-sizing: border-box;
+  opacity: 0;
+  transform: translateY(20px);
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
 }
 
-@keyframes fadeInScale {
-  from {
-    opacity: 0;
-    transform: scale(0.92);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+.onboardingOverlay--anim.is-visible .onboardingModal {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.onboardingModalHeader {
+  text-align: center;
+  margin-bottom: 22px;
+}
+
+.onboardingModalIcon {
+  font-size: 2rem;
+  line-height: 1;
+  margin-bottom: 12px;
+  filter: drop-shadow(0 2px 4px rgba(108, 92, 231, 0.2));
 }
 
 .onboardingModalTitle {
   margin: 0 0 8px;
-  font-size: 1.35rem;
+  font-size: 1.45rem;
   font-weight: 700;
-  letter-spacing: -0.02em;
-  color: #0f172a;
+  letter-spacing: -0.03em;
+  color: #1e1b4b;
 }
 
 .onboardingModalLead {
-  margin: 0 0 20px;
+  margin: 0;
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.55;
   color: #64748b;
+  font-weight: 500;
 }
 
 .onboardingModalError {
@@ -1996,6 +2044,7 @@
   color: #166534;
   background: linear-gradient(180deg, #ecfdf5, #d1fae5);
   border: 1px solid #6ee7b7;
+  animation: onboarding-success-in 0.35s ease;
 }
 
 .onboardingModalSuccessIcon {
@@ -2021,35 +2070,52 @@
 
 .onboardingFormGrid {
   display: grid;
-  gap: 14px 16px;
+  gap: 16px;
   grid-template-columns: 1fr 1fr;
 }
 
 .onboardingField {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   font-size: 13px;
   font-weight: 600;
-  color: #64748b;
+  color: #475569;
 }
 
 .onboardingField--wide {
   grid-column: 1 / -1;
 }
 
+.onboardingField--postal {
+  grid-column: span 1;
+  max-width: 220px;
+}
+
 .onboardingField input,
 .onboardingField select,
 .onboardingField textarea {
-  font: inherit;
-  font-weight: 500;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid #e2e8f0;
-  background: #fff;
-  color: #0f172a;
   width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  color: #0f172a;
+  background: #fff;
   box-sizing: border-box;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.onboardingField input:focus,
+.onboardingField select:focus,
+.onboardingField textarea:focus {
+  outline: none;
+  border-color: #6c5ce7;
+  box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.15);
 }
 
 .onboardingField textarea {
@@ -2059,26 +2125,43 @@
 
 .onboardingSubmit {
   width: 100%;
-  margin-top: 22px;
-  padding: 12px 18px;
+  margin-top: 24px;
+  padding: 14px;
   border: none;
-  border-radius: 10px;
+  border-radius: 12px;
   font: inherit;
   font-weight: 600;
   font-size: 15px;
   cursor: pointer;
-  background: linear-gradient(135deg, #6366f1, #5b4ce6);
+  background: linear-gradient(135deg, #6c5ce7, #8e7cff);
   color: #fff;
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+  box-shadow: 0 6px 24px rgba(108, 92, 231, 0.35);
+  transition:
+    filter 0.2s ease,
+    transform 0.15s ease,
+    box-shadow 0.2s ease;
 }
 
 .onboardingSubmit:hover:not(:disabled) {
-  transform: translateY(-1px);
+  filter: brightness(1.06);
+  box-shadow: 0 8px 28px rgba(108, 92, 231, 0.42);
 }
 
 .onboardingSubmit:disabled {
-  opacity: 0.65;
+  opacity: 0.75;
   cursor: not-allowed;
+  filter: none;
+}
+
+@keyframes onboarding-success-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 @media (max-width: 560px) {
@@ -2086,8 +2169,10 @@
     grid-template-columns: 1fr;
   }
 
-  .onboardingField--wide {
+  .onboardingField--wide,
+  .onboardingField--postal {
     grid-column: 1;
+    max-width: none;
   }
 }
 
