@@ -48,6 +48,23 @@ let currentUser = null;
 let subscriptionInfo = null;
 let plansCache = [];
 let historyCache = [];
+
+/**
+ * Legacy deploys sometimes served a static profile <form> inside #cutupDashboardShell.
+ * Real onboarding lives in #onboardingOverlay on document.body — only strip forms inside the shell.
+ */
+function removeGhostInlineProfileFormFromShell() {
+  const shell = document.getElementById('cutupDashboardShell');
+  if (!shell) return;
+  const ghost = shell.querySelector('input[name="first_name"]');
+  if (!ghost) return;
+  const form = ghost.closest('form');
+  if (!form) return;
+  console.warn('[onboarding] ghost form detected in shell → removing', form);
+  form.remove();
+}
+
+[0, 100, 500, 1500].forEach((ms) => setTimeout(removeGhostInlineProfileFormFromShell, ms));
 let savedOutputsCache = [];
 let savedOutputsFilter = 'all';
 
