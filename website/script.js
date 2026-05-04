@@ -230,28 +230,8 @@ function cutupIsLoggedIn() {
   }
 }
 
-const CUTUP_LAST_SESSION_LEGACY_KEY = 'cutUp_last_session';
 const CUTUP_PENDING_PLAN_AFTER_AUTH_KEY = 'cutup_pending_plan_after_auth';
 const CUTUP_PAYMENT_RETRY_KEY = 'cutup_payment_retry';
-
-function readLastSessionEntry() {
-  try {
-    const tryParse = (raw) => {
-      if (!raw) return null;
-      try {
-        return JSON.parse(raw);
-      } catch {
-        return null;
-      }
-    };
-    return (
-      tryParse(localStorage.getItem('cutup_last_session')) ||
-      tryParse(localStorage.getItem(CUTUP_LAST_SESSION_LEGACY_KEY))
-    );
-  } catch {
-    return null;
-  }
-}
 
 function inferCutupPaymentProvider() {
   if (typeof window !== 'undefined' && window.CUTUP_PAYMENT_PROVIDER) {
@@ -682,7 +662,6 @@ function setupConversionLayerInteractions() {
 /* ========== Retention: recent activity, usage stats, upgrade hint ========== */
 const CUTUP_RECENT_ACTIVITY_KEY = 'cutup_recent_activity';
 const CUTUP_USAGE_STATS_KEY = 'cutup_usage_stats';
-const CUTUP_LAST_SESSION_KEY = 'cutup_last_session';
 const CUTUP_GUEST_ID_KEY = 'cutup_guest_id';
 
 let retentionUpgradeHintLogged = false;
@@ -870,10 +849,7 @@ function recordRetentionAfterResults(opts) {
     filtered.unshift(entry);
     const trimmed = filtered.slice(0, 5);
     try {
-      const payload = JSON.stringify({ url, platform, title, ts: Date.now() });
       localStorage.setItem(CUTUP_RECENT_ACTIVITY_KEY, JSON.stringify(trimmed));
-      localStorage.setItem(CUTUP_LAST_SESSION_KEY, payload);
-      localStorage.setItem(CUTUP_LAST_SESSION_LEGACY_KEY, payload);
     } catch {
       /* ignore */
     }
@@ -926,29 +902,9 @@ function updateRetentionStripVisibility(stats) {
   const s = stats || readUsageStats();
   const hasUsage = (s.totalUses || 0) >= 1;
   const hasRecent = readRecentActivity().length > 0;
-  const last = readLastSessionEntry();
-  const maxAge = 7 * 24 * 60 * 60 * 1000;
-  const hasValidLast =
-    last &&
-    last.url &&
-    /^https?:\/\//i.test(String(last.url)) &&
-    Date.now() - (Number(last.ts) || 0) < maxAge;
-  const show = hasUsage || hasRecent || hasValidLast;
+  const show = hasUsage || hasRecent;
   strip.hidden = !show;
   return show;
-}
-
-function renderContinueBanner() {
-  const wrap = document.getElementById('retentionContinueBanner');
-  if (!wrap) return;
-  const last = readLastSessionEntry();
-  const maxAge = 7 * 24 * 60 * 60 * 1000;
-  const ok =
-    last &&
-    last.url &&
-    /^https?:\/\//i.test(String(last.url)) &&
-    Date.now() - (Number(last.ts) || 0) < maxAge;
-  wrap.hidden = !ok;
 }
 
 function renderUsageHint(stats) {
@@ -1014,18 +970,9 @@ function renderRetentionPanels(stats) {
   renderUsageHint(s);
   renderUpgradeHint(s);
   renderRecentActivityList();
-  renderContinueBanner();
 }
 
 function setupRetentionInteractions() {
-  document.getElementById('retentionContinueBtn')?.addEventListener('click', () => {
-    const last = readLastSessionEntry();
-    console.log('[retention] continue clicked');
-    if (last?.url) {
-      retentionSwitchPlatformWithUrl(last.platform || 'youtube', last.url);
-    }
-  });
-
   renderRetentionPanels();
 }
 

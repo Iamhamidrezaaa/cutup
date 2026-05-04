@@ -3857,17 +3857,6 @@ body {
   background: #fafafa;
 }
 
-.retention-continue-text {
-  margin: 0;
-  font-size: 14px;
-  color: #334155;
-  flex: 1 1 160px;
-}
-
-.retention-continue-btn {
-  flex-shrink: 0;
-}
-
 .retention-usage-hint {
   margin: 0;
   font-size: 13px;
@@ -4593,6 +4582,39 @@ main > section {
   .pricing-plans-grid .feature-card .btn {
     width: 100%;
     min-height: 48px;
+  }
+
+  /* Source selector: 2×2 grid, no horizontal scroll (mobile only) */
+  .download-section .platform-tabs-container.source-selector {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    overflow-x: hidden;
+    overflow-y: visible;
+    white-space: normal;
+    border-bottom: none;
+    padding-bottom: 12px;
+    margin-bottom: 16px;
+    -webkit-overflow-scrolling: auto;
+  }
+
+  .download-section .platform-tabs-container.source-selector .platform-tab {
+    width: 100%;
+    min-width: 0;
+    flex: none;
+    margin: 0 !important;
+    min-height: 48px;
+    box-sizing: border-box;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    justify-content: center;
+    align-items: center;
+  }
+
+  .download-section .platform-tabs-container.source-selector .platform-tab.active {
+    margin-bottom: 0;
+    border-bottom: 1px solid #c7d2fe;
   }
 }
 
