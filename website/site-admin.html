@@ -28,13 +28,20 @@
     <div class="admin-main">
       <aside class="admin-sidebar">
         <button class="nav-btn active" data-section="overview" aria-label="Open Overview section"><span aria-hidden="true">📊</span><span>Overview</span></button>
-        <button class="nav-btn" data-section="users" aria-label="Open Users section"><span aria-hidden="true">👥</span><span>Users</span></button>
+        <div class="users-menu nav-group" id="navUsersGroup">
+          <button type="button" class="nav-btn nav-group-head users-menu-trigger" id="navUsersTrigger" aria-haspopup="true" aria-controls="navUsersSub" aria-label="Users menu">
+            <span aria-hidden="true">👥</span><span class="nav-group-head-label">Users</span><span class="nav-flyout-chevron" aria-hidden="true"></span>
+          </button>
+          <div id="navUsersSub" class="users-submenu" role="menu" aria-label="Users submenu">
+            <button type="button" class="nav-btn nav-submenu-item" data-section="administrators" role="menuitem" aria-label="Open Administrators">Administrators</button>
+            <button type="button" class="nav-btn nav-submenu-item" data-section="users" role="menuitem" aria-label="Open Customers">Customers</button>
+          </div>
+        </div>
         <button class="nav-btn" data-section="usage" aria-label="Open Usage section"><span aria-hidden="true">📈</span><span>Usage</span></button>
         <button class="nav-btn" data-section="outputs" aria-label="Open Saved outputs section"><span aria-hidden="true">🗂️</span><span>Saved outputs</span></button>
         <button class="nav-btn" data-section="payments" aria-label="Open Payments section"><span aria-hidden="true">💳</span><span>Payments</span></button>
         <button class="nav-btn" data-section="health" aria-label="Open System health section"><span aria-hidden="true">🩺</span><span>System health</span></button>
         <button class="nav-btn" data-section="blog" aria-label="Open Blog CMS section"><span aria-hidden="true">📝</span><span>Blog CMS</span></button>
-        <button type="button" class="nav-btn" data-section="admins" id="navAdminsBtn" hidden aria-label="Open Admins section"><span aria-hidden="true">🔐</span><span>Admins</span></button>
       </aside>
 
       <section class="admin-content" id="adminMainContent" tabindex="-1">
@@ -46,8 +53,8 @@
         </section>
 
         <section id="section-users" class="panel">
-          <h2>Users</h2>
-          <p id="usersTableHint" class="sr-only">Users table with account, plan, and usage information.</p>
+          <h2>Customers</h2>
+          <p id="usersTableHint" class="sr-only">Customers table with account, plan, and usage information.</p>
           <div class="toolbar">
             <input id="usersSearch" type="search" placeholder="Search by email/name">
             <select id="usersPlanFilter">
@@ -55,12 +62,12 @@
               <option value="free">Free</option>
               <option value="starter">Starter</option>
               <option value="pro">Pro</option>
-              <option value="advanced">Business</option>
               <option value="business">Business</option>
+              <option value="advanced">Advanced</option>
             </select>
             <button id="usersReloadBtn" class="btn">Refresh</button>
           </div>
-          <div class="table-wrap"><table id="usersTable" aria-label="Users table" aria-describedby="usersTableHint"></table></div>
+          <div class="table-wrap"><table id="usersTable" aria-label="Customers table" aria-describedby="usersTableHint"></table></div>
         </section>
 
         <section id="section-usage" class="panel">
@@ -104,21 +111,16 @@
           <div id="healthPanel"></div>
         </section>
 
-        <section id="section-admins" class="panel">
-          <h2>Admins</h2>
-          <p class="metric-subtle">Manage panel accounts. Passwords are stored hashed; only super admins see this tab.</p>
-          <div class="toolbar" style="flex-wrap: wrap; gap: 10px;">
-            <input id="newAdminEmail" type="email" placeholder="Email" autocomplete="off" aria-label="New admin email">
-            <input id="newAdminPassword" type="password" placeholder="Password" autocomplete="new-password" aria-label="New admin password">
-            <select id="newAdminRole" aria-label="New admin role">
-              <option value="admin">admin</option>
-              <option value="editor">editor</option>
-              <option value="super_admin">super_admin</option>
-            </select>
-            <button type="button" id="createAdminBtn" class="btn">Add admin</button>
+        <section id="section-administrators" class="panel">
+          <h2>Administrators</h2>
+          <div id="administratorsToolbar" class="toolbar administrators-toolbar">
+            <input id="newAdminEmail" type="email" placeholder="Email" autocomplete="off" aria-label="New administrator email">
+            <input id="newAdminPassword" type="password" placeholder="Password" autocomplete="new-password" aria-label="New administrator password">
+            <select id="newAdminRole" aria-label="New administrator role"></select>
+            <button type="button" id="createAdminBtn" class="btn">Add administrator</button>
           </div>
-          <p id="adminsTableHint" class="sr-only">Admin accounts with role and status.</p>
-          <div class="table-wrap"><table id="adminsTable" aria-label="Admins table" aria-describedby="adminsTableHint"></table></div>
+          <p id="adminsTableHint" class="sr-only">Administrator accounts with role and creation date.</p>
+          <div class="table-wrap"><table id="adminsTable" aria-label="Administrators table" aria-describedby="adminsTableHint"></table></div>
         </section>
 
         <section id="section-blog" class="panel">

@@ -10,7 +10,7 @@ module.exports = {
   // International billing (Stripe) — also set these in server .env for Node
   STRIPE_SECRET_KEY: '',
   STRIPE_WEBHOOK_SECRET: '',
-  // Monthly subscription Price IDs from Stripe Dashboard (Products → Prices). Do not guess — create three prices ($9.99, $19.99, $39.99/mo) and paste each price_... id here.
+  // Monthly subscription Price IDs from Stripe Dashboard (Products → Prices, currency EUR). Create three prices (€9.99, €19.99, €39.99/mo) and paste each price_... id here.
   STRIPE_PRICE_STARTER: 'price_xxx',
   STRIPE_PRICE_PRO: 'price_xxx',
   STRIPE_PRICE_ADVANCED: 'price_xxx',

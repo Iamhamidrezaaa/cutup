@@ -106,7 +106,7 @@ app.get('/api/health', (req, res) => {
 app.get('/sitemap.xml', async (req, res) => sitemapHandler(req, res));
 
 // Import and use API routes
-let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, analyticsHandler, adminHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler;
+let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler;
 
 async function loadRoutes() {
   try {
@@ -195,6 +195,10 @@ async function loadRoutes() {
     const adminModule = await import('./api/admin.js');
     adminHandler = adminModule.default;
     console.log('✅ Admin handler loaded');
+
+    const adminUsersManageModule = await import('./api/admin-users-manage.js');
+    adminUsersManageHandler = adminUsersManageModule.default;
+    console.log('✅ Admin customer user manage handler loaded');
 
     const adminLoginModule = await import('./api/admin-login.js');
     adminLoginHandler = adminLoginModule.default;
@@ -451,6 +455,20 @@ app.post('/api/admin', async (req, res) => {
     return res.status(503).json({ error: 'Admin handler not loaded' });
   }
   return adminHandler(req, res);
+});
+
+app.patch('/api/admin/users/:id', async (req, res) => {
+  if (!adminUsersManageHandler) {
+    return res.status(503).json({ error: 'Admin users handler not loaded' });
+  }
+  return adminUsersManageHandler(req, res);
+});
+
+app.delete('/api/admin/users/:id', async (req, res) => {
+  if (!adminUsersManageHandler) {
+    return res.status(503).json({ error: 'Admin users handler not loaded' });
+  }
+  return adminUsersManageHandler(req, res);
 });
 
 app.post('/api/admin/login', async (req, res) => {

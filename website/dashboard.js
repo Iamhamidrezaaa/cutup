@@ -842,7 +842,7 @@ function renderPlansSection() {
   const plansGrid = document.getElementById('plansGrid');
   if (!subscriptionInfoEl || !plansGrid) return;
 
-  const stripeReady = plansCache.some((p) => Number(p?.priceUsd?.monthly) > 0);
+  const stripeReady = plansCache.some((p) => Number(p?.priceEur?.monthly ?? p?.priceUsd?.monthly) > 0);
   const publicPlanIds = new Set(plansCache.map((p) => p.id));
   const currentUserPlanKey = String(subscriptionInfo?.plan || 'free').toLowerCase();
   const isCurrentPlanPrivate = !publicPlanIds.has(currentUserPlanKey);
@@ -862,7 +862,7 @@ function renderPlansSection() {
   plansGrid.innerHTML = sortedPlans.map((plan) => {
     const pid = plan.id;
     const planRank = dashboardPlanRank(pid);
-    const usd = Number(plan?.priceUsd?.monthly || 0);
+    const eur = Number((plan?.priceEur?.monthly ?? plan?.priceUsd?.monthly) ?? 0);
     const displayName = displayPlanTitle(pid, plan.nameEn || plan.name);
 
     let cta;
@@ -893,7 +893,7 @@ function renderPlansSection() {
     }
 
     const isCurrentCard = String(pid).toLowerCase() === currentUserPlanKey;
-    const priceLabel = usd > 0 ? `$${usd.toFixed(2)} / month` : 'Price unavailable';
+    const priceLabel = eur > 0 ? `€${eur.toFixed(2)} / month` : 'Price unavailable';
     return `
       <article class="paid-plan-card ${pid === 'pro' ? 'featured' : ''} ${isCurrentCard ? 'current-plan' : ''} ${cardExtraClass}">
         <div class="paid-plan-header">
@@ -955,7 +955,7 @@ function renderBillingSection() {
   const target = document.getElementById('financialInfo');
   if (!target) return;
   const subscriptionEnd = subscriptionInfo?.subscription?.endDate ? formatDateTime(subscriptionInfo.subscription.endDate) : '—';
-  const stripeReady = plansCache.some((p) => Number(p?.priceUsd?.monthly) > 0);
+  const stripeReady = plansCache.some((p) => Number(p?.priceEur?.monthly ?? p?.priceUsd?.monthly) > 0);
   const paymentStatus = subscriptionInfo?.plan === 'free' ? 'No active paid subscription' : 'Active';
   target.innerHTML = `
     <div class="usage-summary">

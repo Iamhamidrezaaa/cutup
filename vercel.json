@@ -86,6 +86,10 @@
       "dest": "/api/cron-conversion-emails.js"
     },
     {
+      "src": "/api/admin/users/(.*)",
+      "dest": "/api/admin-users-manage.js"
+    },
+    {
       "src": "/api/admin",
       "dest": "/api/admin.js"
     },

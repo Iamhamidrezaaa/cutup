@@ -17,6 +17,7 @@ function getFrontendBaseUrl() {
   return 'https://cutup.shop';
 }
 
+/** Price IDs must point to Stripe Prices in EUR (customer billing currency). */
 function resolvePriceId(priceKey) {
   const envMap = {
     starter: process.env.STRIPE_PRICE_STARTER,

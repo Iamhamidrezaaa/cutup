@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name VARCHAR(255);
+
 CREATE TABLE IF NOT EXISTS subscriptions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -156,7 +158,7 @@ CREATE TABLE IF NOT EXISTS payments (
   plan_key VARCHAR(32),
   discount_code VARCHAR(32),
   amount NUMERIC(14, 4),
-  currency VARCHAR(8) NOT NULL DEFAULT 'USD',
+  currency VARCHAR(8) NOT NULL DEFAULT 'EUR',
   external_id VARCHAR(255),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

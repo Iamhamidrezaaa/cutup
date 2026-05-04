@@ -21,10 +21,25 @@
     .login-links a { color: var(--primary); text-decoration: none; }
     .login-links a:hover { text-decoration: underline; }
     .login-link-arrow { display: inline-block; margin-left: 0.2em; font-weight: 400; }
+    .admin-dashboard-shell {
+      display: none;
+      width: 100%;
+      min-height: 100vh;
+    }
+    .admin-dashboard-shell.adminha-dashboard-visible {
+      display: block;
+    }
+    .admin-dashboard-frame {
+      display: block;
+      width: 100%;
+      height: 100vh;
+      border: 0;
+      background: var(--bg, #f3f5fb);
+    }
   </style>
 </head>
 <body>
-  <div class="login-page">
+  <div id="loginPageWrap" class="login-page">
     <div class="login-card">
       <h1>Admin Login</h1>
       <form id="adminLoginForm" autocomplete="on" novalidate>
@@ -36,7 +51,7 @@
           <input type="checkbox" id="adminRememberMe" name="remember">
           <label for="adminRememberMe" style="margin:0;font-weight:500;color:var(--text);">Remember me</label>
         </div>
-        <button type="submit" class="btn">Login</button>
+        <button type="submit" id="adminLoginSubmitBtn" class="btn">Login</button>
         <p id="adminLoginError" class="login-error" role="alert" hidden></p>
       </form>
       <p class="login-links">
@@ -44,13 +59,60 @@
       </p>
     </div>
   </div>
+  <div id="adminDashboardShell" class="admin-dashboard-shell" hidden style="display:none">
+    <iframe id="adminPanelFrame" class="admin-dashboard-frame" title="Cutup Admin panel" src="about:blank"></iframe>
+  </div>
   <script src="api-config.js"></script>
   <script>
     (function () {
       var LS_REMEMBER = 'cutup_adminha_remember';
       var LS_EMAIL = 'cutup_adminha_email';
       var LS_PASSWORD = 'cutup_adminha_password';
-      var API_BASE_URL = window.CUTUP_API_BASE;
+      var SESSION_FLAG = 'cutup_adminha_signed_in';
+      var FRAME_SRC = 'site-admin.html';
+
+      function apiBase() {
+        var b = window.CUTUP_API_BASE;
+        if (typeof b !== 'string') return '';
+        return b.replace(/\/$/, '');
+      }
+
+      function apiUrl(path) {
+        var p = path.charAt(0) === '/' ? path : '/' + path;
+        var base = apiBase();
+        return base ? base + p : p;
+      }
+
+      function showAdminDashboard() {
+        console.log('[adminha] showAdminDashboard');
+        var wrap = document.getElementById('loginPageWrap');
+        var shell = document.getElementById('adminDashboardShell');
+        var frame = document.getElementById('adminPanelFrame');
+        if (wrap) {
+          wrap.setAttribute('hidden', '');
+          wrap.style.display = 'none';
+        }
+        if (shell) {
+          shell.removeAttribute('hidden');
+          shell.style.display = 'block';
+          shell.classList.add('adminha-dashboard-visible');
+        }
+        if (frame) frame.src = FRAME_SRC;
+      }
+
+      function showLoginView() {
+        var wrap = document.getElementById('loginPageWrap');
+        var shell = document.getElementById('adminDashboardShell');
+        if (wrap) {
+          wrap.removeAttribute('hidden');
+          wrap.style.display = '';
+        }
+        if (shell) {
+          shell.setAttribute('hidden', '');
+          shell.style.display = 'none';
+          shell.classList.remove('adminha-dashboard-visible');
+        }
+      }
 
       function loadSavedCredentials() {
         try {
@@ -77,28 +139,68 @@
         } catch (err) {}
       }
 
-      loadSavedCredentials();
+      async function bootstrapSession() {
+        var hadFlag = false;
+        try {
+          hadFlag = localStorage.getItem(SESSION_FLAG) === '1';
+        } catch (e) {}
+        if (hadFlag) {
+          console.log('[adminha] bootstrap: SESSION_FLAG present, showing dashboard until /auth/me verifies');
+          showAdminDashboard();
+        }
+        try {
+          console.log('[adminha] bootstrap: GET', apiUrl('/api/admin/auth/me'));
+          var r = await fetch(apiUrl('/api/admin/auth/me'), { credentials: 'include' });
+          var data = await r.json().catch(function () { return {}; });
+          console.log('[adminha] bootstrap: auth/me response', r.status, data);
+          if (r.ok && data.ok) {
+            showAdminDashboard();
+            try {
+              localStorage.setItem(SESSION_FLAG, '1');
+            } catch (e) {}
+            return;
+          }
+        } catch (err) {
+          console.warn('[adminha] bootstrap: auth/me error', err);
+        }
+        try {
+          localStorage.removeItem(SESSION_FLAG);
+        } catch (e) {}
+        if (hadFlag) showLoginView();
+      }
 
-      var form = document.getElementById('adminLoginForm');
-      var errEl = document.getElementById('adminLoginError');
-      form.addEventListener('submit', async function (e) {
-        e.preventDefault();
+      async function handleLogin() {
+        console.log('[adminha] handleLogin: start');
+        var errEl = document.getElementById('adminLoginError');
+        var submitBtn = document.getElementById('adminLoginSubmitBtn');
         errEl.hidden = true;
         errEl.textContent = '';
         var email = (document.getElementById('adminEmail').value || '').trim();
         var password = document.getElementById('adminPassword').value || '';
         var rememberMe = document.getElementById('adminRememberMe').checked;
+        if (!email || !password) {
+          errEl.textContent = 'Email and password are required.';
+          errEl.hidden = false;
+          return;
+        }
+        if (submitBtn) submitBtn.disabled = true;
         try {
-          var r = await fetch(API_BASE_URL + '/api/admin/login', {
+          var url = apiUrl('/api/admin/login');
+          console.log('[adminha] handleLogin: POST', url);
+          var r = await fetch(url, {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email: email, password: password, rememberMe: rememberMe })
           });
           var data = await r.json().catch(function () { return {}; });
-          if (r.ok && data.success) {
+          console.log('[adminha] handleLogin: response', r.status, data);
+          if (r.ok && (data.success || data.ok)) {
             persistCredentials(email, password, rememberMe);
-            window.location.replace('/site-admin.html');
+            try {
+              localStorage.setItem(SESSION_FLAG, '1');
+            } catch (e) {}
+            showAdminDashboard();
             return;
           }
           if (r.status === 503) {
@@ -108,10 +210,34 @@
           }
           errEl.hidden = false;
         } catch (ex) {
-          errEl.textContent = 'Invalid email or password.';
+          console.error('[adminha] handleLogin: error', ex);
+          errEl.textContent = 'Network error. Check connection and API URL.';
           errEl.hidden = false;
+        } finally {
+          if (submitBtn) submitBtn.disabled = false;
         }
-      });
+      }
+
+      loadSavedCredentials();
+
+      try {
+        if (localStorage.getItem(SESSION_FLAG) === '1') {
+          console.log('[adminha] SESSION_FLAG on load');
+        }
+      } catch (e) {}
+
+      bootstrapSession();
+
+      var form = document.getElementById('adminLoginForm');
+      if (!form) {
+        console.error('[adminha] adminLoginForm not found');
+      } else {
+        form.addEventListener('submit', function (e) {
+          e.preventDefault();
+          console.log('[adminha] form submit');
+          handleLogin();
+        });
+      }
     })();
   </script>
 </body>

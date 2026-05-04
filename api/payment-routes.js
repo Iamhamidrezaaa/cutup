@@ -109,7 +109,7 @@ export async function paymentCreateHandler(req, res) {
   const baseUrl = getFrontendBaseUrl();
 
   const planCfg = PLANS[planKey];
-  const amount = planCfg?.priceUsd?.monthly != null ? planCfg.priceUsd.monthly : null;
+  const amount = planCfg?.priceEur?.monthly != null ? planCfg.priceEur.monthly : null;
   const discountCode = normalizeMarketingDiscount(body?.discount);
 
   if (provider === 'manual') {
@@ -117,7 +117,7 @@ export async function paymentCreateHandler(req, res) {
       email,
       provider: 'manual',
       amount,
-      currency: 'USD',
+      currency: 'EUR',
       externalId: null,
       planKey,
       discountCode
@@ -141,7 +141,7 @@ export async function paymentCreateHandler(req, res) {
       email,
       provider: 'yekpay',
       amount,
-      currency: 'USD',
+      currency: 'EUR',
       externalId: null,
       planKey,
       discountCode
@@ -154,7 +154,7 @@ export async function paymentCreateHandler(req, res) {
 
     const created = await yekpayCreatePaymentRequest({
       amount: Number(amount),
-      currency: 'USD',
+      currency: 'EUR',
       callbackUrl,
       description
     });
@@ -207,7 +207,7 @@ export async function paymentCreateHandler(req, res) {
     email,
     provider: 'stripe',
     amount,
-    currency: 'USD',
+    currency: 'EUR',
     externalId: null,
     planKey,
     discountCode

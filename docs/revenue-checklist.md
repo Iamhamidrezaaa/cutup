@@ -5,7 +5,7 @@
 1. **Environment**
    - [ ] `STRIPE_SECRET_KEY` (live or test)
    - [ ] `STRIPE_WEBHOOK_SECRET` from Dashboard → Webhooks → signing secret
-   - [ ] `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_ADVANCED` (monthly subscription Price IDs: $9.99 / $19.99 / $39.99)
+   - [ ] `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_ADVANCED` (monthly subscription Price IDs in EUR: €9.99 / €19.99 / €39.99)
    - [ ] `FRONTEND_URL` exact origin used in production (e.g. `https://cutup.shop`) for `success_url` / `cancel_url`
 
 2. **Checkout session**

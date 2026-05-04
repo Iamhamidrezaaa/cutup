@@ -32,7 +32,7 @@ export async function yekpayCreatePaymentRequest({ amount, currency, callbackUrl
   const url = `${baseUrl}/payment/request`;
   const body = {
     amount,
-    currency: currency || 'USD',
+    currency: currency || 'EUR',
     callbackUrl,
     description
   };

@@ -839,13 +839,36 @@ export async function getAdminOverviewDb() {
   };
 }
 
+/** Admin Customers: editable plans (must match UI dropdown). */
+const ADMIN_CUSTOMER_PLAN_KEYS = new Set(['free', 'starter', 'pro', 'business', 'advanced']);
+
+function planLabelForAdmin(planKey) {
+  const k = planKey && String(planKey).toLowerCase();
+  if (!k) return 'Free';
+  const def = PLANS[k];
+  if (def?.name) return def.name;
+  return k.charAt(0).toUpperCase() + k.slice(1);
+}
+
+function subscriptionPriceLabel(planKey) {
+  const k = planKey && String(planKey).toLowerCase();
+  if (!k || !PLANS[k]) return '—';
+  const eur = PLANS[k].priceEur?.monthly;
+  if (eur == null || Number(eur) === 0) return '€0';
+  const n = Number(eur);
+  return `€${Number.isInteger(n) ? n : n.toFixed(2)}`;
+}
+
 export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200 } = {}) {
   const pool = getPool();
   const filters = [];
   const params = [];
+  filters.push(`NOT EXISTS (SELECT 1 FROM admins a WHERE lower(a.email) = lower(u.email))`);
   if (search) {
     params.push(`%${search.toLowerCase()}%`);
-    filters.push(`(LOWER(u.email) LIKE $${params.length})`);
+    filters.push(
+      `(LOWER(u.email) LIKE $${params.length} OR LOWER(COALESCE(u.display_name, '')) LIKE $${params.length})`
+    );
   }
   if (plan && plan !== 'all') {
     params.push(plan);
@@ -855,9 +878,19 @@ export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200 }
   const whereSql = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
   const r = await pool.query(
     `SELECT
+       u.id AS user_id,
        u.email,
-       COALESCE(s.plan, 'free') AS plan,
-       COALESCE(s.status, 'active') AS status,
+       u.display_name,
+       s.id AS subscription_id,
+       s.plan AS subscription_plan,
+       s.status AS subscription_status,
+       s.billing_period AS subscription_billing_period,
+       s.current_period_end AS subscription_current_period_end,
+       s.created_at AS subscription_created_at,
+       lp.last_pay_at,
+       lp.last_pay_amount,
+       lp.last_pay_currency,
+       lp.last_pay_plan_key,
        u.created_at,
        us.minutes_used,
        COALESCE(so.saved_count, 0)::int AS saved_outputs_count,
@@ -871,21 +904,149 @@ export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200 }
      LEFT JOIN (
        SELECT user_id, MAX(created_at) AS created_at FROM usage_history GROUP BY user_id
      ) last_h ON last_h.user_id = u.id
+     LEFT JOIN LATERAL (
+       SELECT
+         p.created_at AS last_pay_at,
+         p.amount AS last_pay_amount,
+         p.currency AS last_pay_currency,
+         p.plan_key AS last_pay_plan_key
+       FROM payments p
+       WHERE p.user_id = u.id AND p.status = 'success'
+       ORDER BY p.created_at DESC
+       LIMIT 1
+     ) lp ON true
      ${whereSql}
      ORDER BY u.created_at DESC
      LIMIT $${params.length}`,
     params
   );
-  return r.rows.map((row) => ({
-    email: row.email,
-    name: row.email.split('@')[0],
-    plan: row.plan,
-    status: row.status,
-    createdAt: row.created_at?.toISOString ? row.created_at.toISOString() : row.created_at,
-    lastActivityAt: row.last_activity_at?.toISOString ? row.last_activity_at.toISOString() : row.last_activity_at,
-    usageMinutesThisMonth: Number(row.minutes_used || 0),
-    savedOutputsCount: Number(row.saved_outputs_count || 0)
-  }));
+  return r.rows.map((row) => {
+    const hasSubscriptionRow = Boolean(row.subscription_id);
+    const subPlan = hasSubscriptionRow
+      ? String(row.subscription_plan || 'free').toLowerCase().trim() || 'free'
+      : null;
+    const effectivePlan = hasSubscriptionRow ? subPlan : 'free';
+    const uiStatus =
+      String(row.subscription_status || 'active').toLowerCase() === 'canceled' ? 'inactive' : 'active';
+    const dn = row.display_name != null && String(row.display_name).trim() !== '' ? String(row.display_name).trim() : '';
+    return {
+      id: row.user_id,
+      email: row.email,
+      name: dn || row.email.split('@')[0],
+      plan: effectivePlan,
+      planLabel: planLabelForAdmin(effectivePlan),
+      status: hasSubscriptionRow ? uiStatus : 'active',
+      subscription: hasSubscriptionRow
+        ? {
+            plan: subPlan,
+            planLabel: planLabelForAdmin(subPlan),
+            priceLabel: subscriptionPriceLabel(subPlan),
+            billingPeriod: row.subscription_billing_period || 'monthly',
+            startedAt: row.subscription_created_at?.toISOString
+              ? row.subscription_created_at.toISOString()
+              : row.subscription_created_at,
+            currentPeriodEnd: row.subscription_current_period_end?.toISOString
+              ? row.subscription_current_period_end.toISOString()
+              : row.subscription_current_period_end || null,
+            rawStatus: row.subscription_status || 'active'
+          }
+        : null,
+      lastPayment:
+        row.last_pay_at
+          ? {
+              at: row.last_pay_at?.toISOString ? row.last_pay_at.toISOString() : row.last_pay_at,
+              amount: row.last_pay_amount != null ? Number(row.last_pay_amount) : null,
+              currency: row.last_pay_currency || 'EUR',
+              planKey: row.last_pay_plan_key || null
+            }
+          : null,
+      createdAt: row.created_at?.toISOString ? row.created_at.toISOString() : row.created_at,
+      lastActivityAt: row.last_activity_at?.toISOString ? row.last_activity_at.toISOString() : row.last_activity_at,
+      usageMinutesThisMonth: Number(row.minutes_used || 0),
+      savedOutputsCount: Number(row.saved_outputs_count || 0)
+    };
+  });
+}
+
+/**
+ * Update customer profile + subscription (panel users only; blocked for rows that match admins email).
+ */
+export async function adminPatchCustomerUser(userId, { name, plan, status } = {}) {
+  const pool = getPool();
+  const uid = String(userId || '').trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uid)) {
+    return { ok: false, error: 'invalid_id' };
+  }
+  const uRes = await pool.query('SELECT id, email FROM users WHERE id = $1::uuid', [uid]);
+  if (!uRes.rows[0]) return { ok: false, error: 'not_found' };
+  const email = uRes.rows[0].email;
+  const adm = await pool.query('SELECT 1 FROM admins WHERE lower(email) = lower($1)', [email]);
+  if (adm.rows.length) return { ok: false, error: 'cannot_edit_admin' };
+
+  const nameStr = name !== undefined ? String(name).trim().slice(0, 255) : undefined;
+  const planStr = plan !== undefined ? String(plan).trim().toLowerCase() : undefined;
+  const statusStr = status !== undefined ? String(status).trim().toLowerCase() : undefined;
+
+  if (planStr !== undefined && !ADMIN_CUSTOMER_PLAN_KEYS.has(planStr)) {
+    return { ok: false, error: 'invalid_plan' };
+  }
+  if (statusStr !== undefined && !['active', 'inactive'].includes(statusStr)) {
+    return { ok: false, error: 'invalid_status' };
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    if (nameStr !== undefined) {
+      await client.query('UPDATE users SET display_name = $2 WHERE id = $1::uuid', [
+        uid,
+        nameStr === '' ? null : nameStr
+      ]);
+    }
+    if (planStr !== undefined || statusStr !== undefined) {
+      const cur = await client.query(
+        'SELECT plan, status FROM subscriptions WHERE user_id = $1::uuid FOR UPDATE',
+        [uid]
+      );
+      const nextPlan = planStr !== undefined ? planStr : cur.rows[0]?.plan || 'free';
+      let nextSubStatus = cur.rows[0]?.status || 'active';
+      if (statusStr === 'inactive') nextSubStatus = 'canceled';
+      if (statusStr === 'active') nextSubStatus = 'active';
+      if (!cur.rows.length) {
+        await client.query(
+          `INSERT INTO subscriptions (user_id, plan, status, billing_period, updated_at)
+           VALUES ($1::uuid, $2, $3, 'monthly', NOW())`,
+          [uid, nextPlan, nextSubStatus]
+        );
+      } else {
+        await client.query(
+          `UPDATE subscriptions SET plan = $2, status = $3, updated_at = NOW() WHERE user_id = $1::uuid`,
+          [uid, nextPlan, nextSubStatus]
+        );
+      }
+    }
+    await client.query('COMMIT');
+    return { ok: true };
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+export async function adminDeleteCustomerUser(userId) {
+  const pool = getPool();
+  const uid = String(userId || '').trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uid)) {
+    return { ok: false, error: 'invalid_id' };
+  }
+  const uRes = await pool.query('SELECT id, email FROM users WHERE id = $1::uuid', [uid]);
+  if (!uRes.rows[0]) return { ok: false, error: 'not_found' };
+  const adm = await pool.query('SELECT 1 FROM admins WHERE lower(email) = lower($1)', [uRes.rows[0].email]);
+  if (adm.rows.length) return { ok: false, error: 'cannot_delete_admin' };
+  await pool.query('DELETE FROM users WHERE id = $1::uuid', [uid]);
+  return { ok: true };
 }
 
 export async function getAdminUsageDb({ type = 'all', platform = 'all', startDate = '', endDate = '', limit = 300 } = {}) {
@@ -1416,7 +1577,7 @@ export async function insertPaymentPending({ email, provider, amount, currency, 
       userId,
       String(provider || 'stripe').slice(0, 64),
       amount != null ? Number(amount) : null,
-      String(currency || 'USD').slice(0, 8),
+      String(currency || 'EUR').slice(0, 8),
       externalId ? String(externalId).slice(0, 255) : null,
       pk,
       dc

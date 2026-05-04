@@ -6,6 +6,191 @@ let panelRole = '';
 let panelAdminId = null;
 let panelAdminEmail = '';
 let blogPostsCache = [];
+const CONFIRM_DELETE_USER_MSG = 'Are you sure you want to delete this user?';
+const TRASH_ICON_SRC = '/assets/icons/trash.png';
+let customersCache = [];
+/** @type {string|null} */
+let customersEditingId = null;
+/** @type {{ id: string, name: string, plan: string, status: string }|null} */
+let customerInlineDraft = null;
+let customerSaveInFlight = false;
+
+const CUSTOMER_PLAN_SELECT_OPTIONS = [
+  ['free', 'Free'],
+  ['starter', 'Starter'],
+  ['pro', 'Pro'],
+  ['business', 'Business']
+];
+/** Admin row ids removed in UI until reload; delete API not wired yet. */
+const adminsDeletedIds = new Set();
+let adminsCache = [];
+let usersFlyoutDismissTimer = null;
+let usersSubmenuHoverCloseTimer = null;
+
+function clearUsersSubmenuHoverClose() {
+  if (usersSubmenuHoverCloseTimer) {
+    clearTimeout(usersSubmenuHoverCloseTimer);
+    usersSubmenuHoverCloseTimer = null;
+  }
+}
+
+function scheduleUsersSubmenuHoverClose() {
+  if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+  clearUsersSubmenuHoverClose();
+  usersSubmenuHoverCloseTimer = setTimeout(() => {
+    document.getElementById('navUsersGroup')?.classList.remove('users-menu--submenu-open');
+    usersSubmenuHoverCloseTimer = null;
+  }, 200);
+}
+
+function openUsersSubmenuHover() {
+  if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+  clearUsersSubmenuHoverClose();
+  document.getElementById('navUsersGroup')?.classList.add('users-menu--submenu-open');
+}
+
+/** UI + future backend: granular admin roles (permissions are not enforced server-side yet). */
+const ADMIN_ROLES = {
+  FULL_ACCESS: {
+    name: 'Full Access',
+    permissions: ['ALL']
+  },
+  MANAGER: {
+    name: 'Manager',
+    permissions: ['CONTENT', 'USERS', 'REPORTS']
+  },
+  EDITOR: {
+    name: 'Editor',
+    permissions: ['CONTENT']
+  },
+  USER_MANAGER: {
+    name: 'User Manager',
+    permissions: ['USERS']
+  },
+  SITE_CONFIGURATION: {
+    name: 'Site Configuration',
+    permissions: ['THEME', 'LAYOUT']
+  },
+  SECURITY: {
+    name: 'Security/Maintenance',
+    permissions: ['BACKUP', 'SECURITY']
+  }
+};
+
+const UI_ROLES_CAN_MANAGE_ADMINS = new Set(['FULL_ACCESS', 'MANAGER', 'USER_MANAGER']);
+
+function mapApiRoleToUiRole(apiRole) {
+  const r = String(apiRole || '').trim();
+  if (r === 'super_admin') return 'FULL_ACCESS';
+  if (r === 'editor') return 'EDITOR';
+  return 'MANAGER';
+}
+
+function mapUiRoleToApiRole(uiKey) {
+  const k = String(uiKey || '').trim();
+  if (k === 'FULL_ACCESS') return 'super_admin';
+  if (k === 'EDITOR') return 'editor';
+  return 'admin';
+}
+
+function currentAdministratorCapabilityRole() {
+  if (panelRole === 'super_admin') return 'FULL_ACCESS';
+  if (panelRole === 'admin') return 'MANAGER';
+  if (panelRole === 'editor') return 'EDITOR';
+  return '';
+}
+
+function canManageAdminUsersInUI() {
+  return UI_ROLES_CAN_MANAGE_ADMINS.has(currentAdministratorCapabilityRole());
+}
+
+/** Current API only allows super_admin to list or change admin accounts. */
+function canMutateAdminDirectory() {
+  return panelRole === 'super_admin';
+}
+
+function adminAbsoluteUrl(pathname) {
+  if (typeof window === 'undefined' || !window.location?.origin) return pathname;
+  const p = pathname.startsWith('/') ? pathname : `/${pathname}`;
+  return `${window.location.origin}${p}`;
+}
+
+function redirectToAdminLogin() {
+  const url = adminAbsoluteUrl('/adminha.html');
+  if (typeof window !== 'undefined' && window.self !== window.top) {
+    window.top.location.replace(url);
+  } else {
+    window.location.replace(url);
+  }
+}
+
+function goToAdminLoginPage() {
+  const url = adminAbsoluteUrl('/adminha.html');
+  if (typeof window !== 'undefined' && window.self !== window.top) {
+    window.top.location.href = url;
+  } else {
+    window.location.href = url;
+  }
+}
+
+function displayAdminNameFromRow(adminRow) {
+  const email = String(adminRow?.email || '').trim();
+  if (!email) return '—';
+  const local = email.split('@')[0];
+  return local || '—';
+}
+
+function adminRoleSelectOptions(selectedUiKey) {
+  return Object.entries(ADMIN_ROLES).map(([key, def]) => `
+    <option value="${escapeHtml(key)}"${key === selectedUiKey ? ' selected' : ''}>${escapeHtml(def.name)}</option>`).join('');
+}
+
+function fillNewAdminRoleSelect() {
+  const sel = document.getElementById('newAdminRole');
+  if (!sel) return;
+  sel.innerHTML = Object.entries(ADMIN_ROLES).map(([k, v]) => `
+    <option value="${escapeHtml(k)}">${escapeHtml(v.name)}</option>`).join('');
+  sel.value = 'MANAGER';
+}
+
+function updateAdministratorsToolbarState() {
+  const can = canManageAdminUsersInUI() && canMutateAdminDirectory();
+  ['newAdminEmail', 'newAdminPassword', 'newAdminRole', 'createAdminBtn'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !can;
+  });
+}
+
+function closeUsersFlyout() {
+  const g = document.getElementById('navUsersGroup');
+  if (!g) return;
+  clearUsersSubmenuHoverClose();
+  g.classList.remove('users-menu--submenu-open');
+  g.classList.remove('users-menu--tap-open');
+  const ae = document.activeElement;
+  if (ae && typeof ae.blur === 'function' && g.contains(ae)) ae.blur();
+  g.classList.add('users-menu--flyout-dismissed');
+  if (usersFlyoutDismissTimer) clearTimeout(usersFlyoutDismissTimer);
+  usersFlyoutDismissTimer = setTimeout(() => {
+    g.classList.remove('users-menu--flyout-dismissed');
+  }, 280);
+}
+
+function syncUsersNavParentState() {
+  const group = document.getElementById('navUsersGroup');
+  if (!group) return;
+  const activeSub = group.querySelector('.nav-submenu-item[data-section].active');
+  group.classList.toggle('nav-group--child-active', Boolean(activeSub));
+}
+
+function activateAdminSection(section) {
+  document.querySelectorAll('.nav-btn[data-section]').forEach((n) => n.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
+  const trigger = document.querySelector(`.nav-btn[data-section="${section}"]`);
+  trigger?.classList.add('active');
+  document.getElementById(`section-${section}`)?.classList.add('active');
+  syncUsersNavParentState();
+}
 let slugManuallyEdited = false;
 
 const MD_CTA_TEXT = 'Try it now — paste your video and generate subtitles in seconds.\nhttps://cutup.shop/#tool';
@@ -663,6 +848,34 @@ async function apiPost(action, payload = {}) {
   return data;
 }
 
+async function apiPatchCustomer(userId, body) {
+  const response = await fetch(`${API_BASE_URL}/api/admin/users/${encodeURIComponent(userId)}`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = data.message || data.error || `Request failed (${response.status})`;
+    throw new Error(message);
+  }
+  return data;
+}
+
+async function apiDeleteCustomer(userId) {
+  const response = await fetch(`${API_BASE_URL}/api/admin/users/${encodeURIComponent(userId)}`, {
+    method: 'DELETE',
+    credentials: 'include'
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = data.message || data.error || `Request failed (${response.status})`;
+    throw new Error(message);
+  }
+  return data;
+}
+
 async function loadMe() {
   const response = await fetch(`${API_BASE_URL}/api/admin/auth/me`, { credentials: 'include' });
   const data = await response.json().catch(() => ({}));
@@ -675,12 +888,10 @@ async function loadMe() {
 }
 
 function applyRoleToNav() {
-  const adminsNav = document.getElementById('navAdminsBtn');
-  if (adminsNav) adminsNav.hidden = panelRole !== 'super_admin';
-
-  const opsSections = ['overview', 'users', 'usage', 'outputs', 'payments', 'health'];
+  const usersGroup = document.getElementById('navUsersGroup');
   const allNav = document.querySelectorAll('.nav-btn[data-section]');
   if (panelRole === 'editor') {
+    if (usersGroup) usersGroup.hidden = true;
     allNav.forEach((btn) => {
       const s = btn.getAttribute('data-section');
       btn.hidden = s !== 'blog';
@@ -690,16 +901,15 @@ function applyRoleToNav() {
     document.getElementById('section-blog')?.classList.add('active');
     const blogBtn = document.querySelector('.nav-btn[data-section="blog"]');
     blogBtn?.classList.add('active');
+    syncUsersNavParentState();
     return;
   }
 
+  if (usersGroup) usersGroup.hidden = false;
   allNav.forEach((btn) => {
-    const s = btn.getAttribute('data-section');
-    if (s === 'admins') return;
     btn.hidden = false;
   });
-
-  if (panelRole !== 'super_admin' && adminsNav) adminsNav.hidden = true;
+  syncUsersNavParentState();
 }
 
 function renderOverview(data) {
@@ -724,23 +934,198 @@ function renderOverview(data) {
   `).join('');
 }
 
+function fmtPaymentAmount(p) {
+  if (!p || p.amount == null || Number.isNaN(Number(p.amount))) return '—';
+  const cur = String(p.currency || 'EUR').toUpperCase();
+  const sym = cur === 'EUR' ? '€' : cur === 'USD' ? '$' : `${cur} `;
+  const n = Number(p.amount);
+  return `${sym}${Number.isInteger(n) ? n : n.toFixed(2)}`;
+}
+
+function customerPlanOptionsHtml(selectedPlan) {
+  const sel = String(selectedPlan || 'free').toLowerCase();
+  const opts = [...CUSTOMER_PLAN_SELECT_OPTIONS];
+  if (sel === 'advanced') opts.push(['advanced', 'Advanced']);
+  return opts
+    .map(
+      ([value, label]) =>
+        `<option value="${escapeHtml(value)}"${sel === value ? ' selected' : ''}>${escapeHtml(label)}</option>`
+    )
+    .join('');
+}
+
+function buildCustomerSubscriptionReadonlyHtml(u) {
+  if (!u.subscription) {
+    return '<p class="muted" style="margin:0;">No active subscription</p>';
+  }
+  const sub = u.subscription;
+  const last = u.lastPayment;
+  const lastLine = last
+    ? `<div class="metric-subtle" style="margin-top:10px;"><strong>Last payment:</strong> ${escapeHtml(fmtDate(last.at))} · ${escapeHtml(fmtPaymentAmount(last))}</div>`
+    : '<div class="metric-subtle" style="margin-top:10px;">Last payment: —</div>';
+  return `
+    <div class="customer-subscription-block">
+      <h4>Subscription</h4>
+      <dl>
+        <dt>Plan</dt><dd>${escapeHtml(sub.planLabel || sub.plan)}</dd>
+        <dt>Price</dt><dd>${escapeHtml(sub.priceLabel || '—')}</dd>
+        <dt>Start</dt><dd>${escapeHtml(fmtDate(sub.startedAt))}</dd>
+        <dt>End</dt><dd>${escapeHtml(sub.currentPeriodEnd ? fmtDate(sub.currentPeriodEnd) : '—')}</dd>
+      </dl>
+      ${lastLine}
+    </div>`;
+}
+
 function renderUsersTable(rows) {
   const el = document.getElementById('usersTable');
   if (!el) return;
-  el.innerHTML = `
-    <thead><tr><th>Name</th><th>Email</th><th>Plan</th><th>Status</th><th>Created</th><th>Last activity</th><th>Usage this month</th><th>Saved outputs</th></tr></thead>
-    <tbody>
-      ${(rows.length ? rows : []).map((u) => `<tr>
+  const colCount = 9;
+  const body = (rows.length ? rows : [])
+    .map((u) => {
+      const uid = String(u.id || '');
+      const emailAttr = escapeHtml(String(u.email || ''));
+      const isEditing = customersEditingId && String(customersEditingId) === uid;
+      const planLabel = u.planLabel || (u.plan ? u.plan.charAt(0).toUpperCase() + u.plan.slice(1) : 'Free');
+      const st = (u.status || 'active').toLowerCase() === 'active' ? 'ok' : 'warn';
+      const actions = isEditing
+        ? `<div class="actions-wrapper">
+          <button type="button" class="btn-edit customer-save-btn" data-customer-id="${escapeHtml(uid)}"${customerSaveInFlight ? ' disabled' : ''}>Save</button>
+          <button type="button" class="btn-edit customer-cancel-btn" data-customer-id="${escapeHtml(uid)}"${customerSaveInFlight ? ' disabled' : ''}>Cancel</button>
+        </div>`
+        : `<div class="actions-wrapper">
+          <button type="button" class="btn-edit customer-edit-btn" data-customer-id="${escapeHtml(uid)}">Edit</button>
+          <button type="button" class="btn-delete customer-delete-btn" data-customer-id="${escapeHtml(uid)}" title="Delete user" aria-label="Delete"><img src="${TRASH_ICON_SRC}" alt="delete" width="18" height="18" decoding="async"></button>
+        </div>`;
+      const mainRow = `<tr data-customer-main="${escapeHtml(uid)}">
         <td>${escapeHtml(u.name || '—')}</td>
         <td>${escapeHtml(u.email)}</td>
-        <td>${statusBadge(u.plan || 'free')}</td>
-        <td>${statusBadge(u.status || 'active', (u.status || '').toLowerCase() === 'active' ? 'ok' : 'warn')}</td>
+        <td>${statusBadge(planLabel)}</td>
+        <td>${statusBadge((u.status || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active', st)}</td>
         <td>${fmtDate(u.createdAt)}</td>
         <td>${fmtDate(u.lastActivityAt)}</td>
         <td>${escapeHtml(u.usageMinutesThisMonth)}</td>
         <td>${escapeHtml(u.savedOutputsCount)}</td>
-      </tr>`).join('') || emptyRow(8, 'No users found for this filter.')}
-    </tbody>`;
+        <td class="actions">${actions}</td>
+      </tr>`;
+      if (!isEditing || !customerInlineDraft || String(customerInlineDraft.id) !== uid) {
+        return mainRow;
+      }
+      const d = customerInlineDraft;
+      const panel = `
+      <tr class="customer-expand-row" data-customer-panel-wrap="${escapeHtml(uid)}">
+        <td colspan="${colCount}" class="customer-inline-panel">
+          <div class="customer-inline-panel-inner">
+            <div class="customer-inline-fields">
+              <label for="customer-draft-name-${escapeHtml(uid)}">Name</label>
+              <input id="customer-draft-name-${escapeHtml(uid)}" type="text" data-draft-name autocomplete="name" value="${escapeHtml(d.name)}" maxlength="255">
+              <label for="customer-draft-plan-${escapeHtml(uid)}">Plan</label>
+              <select id="customer-draft-plan-${escapeHtml(uid)}" data-draft-plan>${customerPlanOptionsHtml(d.plan)}</select>
+              <label for="customer-draft-status-${escapeHtml(uid)}">Status</label>
+              <select id="customer-draft-status-${escapeHtml(uid)}" data-draft-status>
+                <option value="active"${d.status === 'active' ? ' selected' : ''}>Active</option>
+                <option value="inactive"${d.status === 'inactive' ? ' selected' : ''}>Inactive</option>
+              </select>
+            </div>
+            ${buildCustomerSubscriptionReadonlyHtml(u)}
+          </div>
+        </td>
+      </tr>`;
+      return mainRow + panel;
+    })
+    .join('');
+
+  el.innerHTML = `
+    <thead><tr><th>Name</th><th>Email</th><th>Plan</th><th>Status</th><th>Created</th><th>Last activity</th><th>Usage this month</th><th>Saved outputs</th><th>Actions</th></tr></thead>
+    <tbody>${body || emptyRow(colCount, 'No users found for this filter.')}</tbody>`;
+
+  el.querySelectorAll('[data-draft-name]').forEach((inp) => {
+    inp.addEventListener('input', () => {
+      if (!customerInlineDraft) return;
+      customerInlineDraft.name = inp.value;
+    });
+  });
+  el.querySelectorAll('[data-draft-plan]').forEach((sel) => {
+    sel.addEventListener('change', () => {
+      if (!customerInlineDraft) return;
+      customerInlineDraft.plan = sel.value;
+    });
+  });
+  el.querySelectorAll('[data-draft-status]').forEach((sel) => {
+    sel.addEventListener('change', () => {
+      if (!customerInlineDraft) return;
+      customerInlineDraft.status = sel.value;
+    });
+  });
+
+  el.querySelectorAll('.customer-edit-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-customer-id') || '';
+      const row = customersCache.find((x) => String(x.id) === id);
+      if (!row || !id) return;
+      customersEditingId = id;
+      customerInlineDraft = {
+        id,
+        name: row.name || row.email?.split('@')[0] || '',
+        plan: String(row.plan || 'free').toLowerCase(),
+        status: (row.status || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active'
+      };
+      renderUsersTable(customersCache);
+    });
+  });
+
+  el.querySelectorAll('.customer-cancel-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      customersEditingId = null;
+      customerInlineDraft = null;
+      renderUsersTable(customersCache);
+    });
+  });
+
+  el.querySelectorAll('.customer-save-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-customer-id') || '';
+      if (!id || !customerInlineDraft || String(customerInlineDraft.id) !== id) return;
+      customerSaveInFlight = true;
+      renderUsersTable(customersCache);
+      try {
+        await apiPatchCustomer(id, {
+          name: customerInlineDraft.name,
+          plan: customerInlineDraft.plan,
+          status: customerInlineDraft.status
+        });
+        showBanner('Customer updated.');
+        customersEditingId = null;
+        customerInlineDraft = null;
+        await loadUsers();
+      } catch (err) {
+        console.error('[admin] customer save', err);
+        showBanner(err.message || 'Could not save customer.');
+      } finally {
+        customerSaveInFlight = false;
+        renderUsersTable(customersCache);
+      }
+    });
+  });
+
+  el.querySelectorAll('.customer-delete-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = (btn.getAttribute('data-customer-id') || '').trim();
+      if (!id) return;
+      if (!window.confirm(CONFIRM_DELETE_USER_MSG)) return;
+      if (customersEditingId === id) {
+        customersEditingId = null;
+        customerInlineDraft = null;
+      }
+      try {
+        await apiDeleteCustomer(id);
+        showBanner('User deleted.');
+        await loadUsers();
+      } catch (err) {
+        console.error('[admin] customer delete', err);
+        showBanner(err.message || 'Could not delete user.');
+      }
+    });
+  });
 }
 
 function renderUsageTable(rows) {
@@ -993,7 +1378,24 @@ async function loadUsers() {
   const search = document.getElementById('usersSearch')?.value || '';
   const plan = document.getElementById('usersPlanFilter')?.value || 'all';
   const data = await apiGet('users', { search, plan });
-  renderUsersTable(data.users || []);
+  customersCache = data.users || [];
+  const stillThere =
+    customersEditingId && customersCache.some((u) => String(u.id) === String(customersEditingId));
+  if (!stillThere) {
+    customersEditingId = null;
+    customerInlineDraft = null;
+  } else if (customerInlineDraft && stillThere) {
+    const fresh = customersCache.find((u) => String(u.id) === String(customerInlineDraft.id));
+    if (fresh) {
+      customerInlineDraft = {
+        id: fresh.id,
+        name: fresh.name || fresh.email?.split('@')[0] || '',
+        plan: String(fresh.plan || 'free').toLowerCase(),
+        status: (fresh.status || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active'
+      };
+    }
+  }
+  renderUsersTable(customersCache);
 }
 async function loadUsage() {
   const data = await apiGet('usage', {
@@ -1016,70 +1418,128 @@ async function loadBlogPosts() {
   renderBlogTable(blogPostsCache);
 }
 
-function renderAdminsTable(rows) {
+function renderAdminsTable(rows, options = {}) {
   const el = document.getElementById('adminsTable');
   if (!el) return;
+  const lockedReason = options.lockedReason || '';
+  const roleSelectDisabled = !canMutateAdminDirectory() || !canManageAdminUsersInUI();
+  const canAct = canMutateAdminDirectory() && canManageAdminUsersInUI();
+
+  if (lockedReason) {
+    el.innerHTML = `
+      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Created at</th><th>Actions</th></tr></thead>
+      <tbody>${emptyRow(5, lockedReason)}</tbody>`;
+    updateAdministratorsToolbarState();
+    return;
+  }
+
+  const body = (rows.length ? rows : []).map((a) => {
+    const isSelf = panelAdminId != null && Number(a.id) === panelAdminId;
+    const uiRole = mapApiRoleToUiRole(a.role);
+    const name = displayAdminNameFromRow(a);
+    const statusNote = (a.status || '').toLowerCase() !== 'active'
+      ? `<div class="metric-subtle" style="margin-top:4px;">${statusBadge('Access revoked', 'warn')}</div>`
+      : '';
+    const roleSelect = `
+      <select class="admin-role-select" data-admin-id="${escapeHtml(String(a.id))}"
+        aria-label="Role for ${escapeHtml(a.email)}"${roleSelectDisabled ? ' disabled' : ''}>
+        ${adminRoleSelectOptions(uiRole)}
+      </select>`;
+    const editBtn = `<button type="button" class="btn-edit admin-edit-btn" data-admin-id="${escapeHtml(String(a.id))}"${!canAct ? ' disabled' : ''}>Edit</button>`;
+    const isActive = (a.status || '').toLowerCase() === 'active';
+    const trashDisabled = isSelf || !isActive || !canAct;
+    const trashTitle = isSelf
+      ? 'You cannot delete your own account here'
+      : (!isActive ? 'Account is not active' : 'Delete user');
+    const trashBtn = `<button type="button" class="btn-delete admin-delete-btn" data-admin-id="${escapeHtml(String(a.id))}" title="${escapeHtml(trashTitle)}" aria-label="Delete"${trashDisabled ? ' disabled' : ''}><img src="${TRASH_ICON_SRC}" alt="delete" width="18" height="18" decoding="async"></button>`;
+    const actionParts = [editBtn, trashBtn];
+    if (!isActive) {
+      actionParts.push(`<button type="button" class="btn ghost admin-enable-btn" data-admin-id="${escapeHtml(String(a.id))}" data-next-status="active"${!canAct ? ' disabled' : ''}>Enable</button>`);
+    }
+    return `<tr>
+      <td><strong>${escapeHtml(name)}</strong>${statusNote}</td>
+      <td>${escapeHtml(a.email)}</td>
+      <td>${roleSelect}</td>
+      <td>${fmtDate(a.created_at)}</td>
+      <td class="actions"><div class="actions-wrapper">${actionParts.join('')}</div></td>
+    </tr>`;
+  }).join('');
+
   el.innerHTML = `
-    <thead><tr><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Created at</th><th>Actions</th></tr></thead>
     <tbody>
-      ${(rows.length ? rows : []).map((a) => {
-        const isSelf = panelAdminId != null && Number(a.id) === panelAdminId;
-        const roleSelect = `
-          <select class="admin-role-select" data-admin-id="${escapeHtml(String(a.id))}" aria-label="Role for ${escapeHtml(a.email)}">
-            <option value="super_admin"${a.role === 'super_admin' ? ' selected' : ''}>super_admin</option>
-            <option value="admin"${a.role === 'admin' ? ' selected' : ''}>admin</option>
-            <option value="editor"${a.role === 'editor' ? ' selected' : ''}>editor</option>
-          </select>`;
-        const toggleLabel = a.status === 'active' ? 'Disable' : 'Enable';
-        const nextStatus = a.status === 'active' ? 'disabled' : 'active';
-        const toggleBtn = isSelf && a.status === 'active'
-          ? '<span class="muted">—</span>'
-          : `<button type="button" class="btn ghost admin-status-btn" data-admin-id="${escapeHtml(String(a.id))}" data-next-status="${nextStatus}">${escapeHtml(toggleLabel)}</button>`;
-        const saveRoleBtn = `<button type="button" class="btn ghost admin-save-role-btn" data-admin-id="${escapeHtml(String(a.id))}">Save role</button>`;
-        return `<tr>
-          <td>${escapeHtml(a.email)}</td>
-          <td>${roleSelect}</td>
-          <td>${statusBadge(a.status || '—', a.status === 'active' ? 'ok' : 'warn')}</td>
-          <td>${fmtDate(a.created_at)}</td>
-          <td><div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">${saveRoleBtn}${toggleBtn}</div></td>
-        </tr>`;
-      }).join('') || emptyRow(5, 'No admin accounts.')}
+      ${body || emptyRow(5, 'No administrator accounts yet.')}
     </tbody>`;
 
-  el.querySelectorAll('.admin-save-role-btn').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const id = btn.getAttribute('data-admin-id');
-      const row = el.querySelector(`.admin-role-select[data-admin-id="${id}"]`);
-      const role = row?.value;
-      if (!id || !role) return;
+  el.querySelectorAll('.admin-role-select').forEach((sel) => {
+    sel.addEventListener('change', async () => {
+      if (sel.disabled) return;
+      const id = sel.getAttribute('data-admin-id');
+      const uiKey = sel.value;
+      if (!id) return;
       try {
-        await apiPost('updateAdmin', { id, role });
+        await apiPost('updateAdmin', { id, role: mapUiRoleToApiRole(uiKey) });
         showBanner('Role updated.');
         await loadAdmins();
       } catch (err) {
         showBanner(err.message || 'Could not update role.');
+        await loadAdmins();
       }
     });
   });
-  el.querySelectorAll('.admin-status-btn').forEach((btn) => {
+
+  el.querySelectorAll('.admin-edit-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-admin-id');
+      if (btn.disabled || !id) return;
+      const sel = el.querySelector(`.admin-role-select[data-admin-id="${id}"]`);
+      sel?.focus();
+      sel?.classList.add('admin-role-select--pulse');
+      setTimeout(() => sel?.classList.remove('admin-role-select--pulse'), 600);
+    });
+  });
+
+  el.querySelectorAll('.admin-delete-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-admin-id');
+      if (btn.disabled || !id) return;
+      if (!window.confirm(CONFIRM_DELETE_USER_MSG)) return;
+      const nid = Number(id);
+      if (Number.isFinite(nid)) adminsDeletedIds.add(nid);
+      adminsCache = adminsCache.filter((a) => Number(a.id) !== nid);
+      renderAdminsTable(adminsCache);
+      showBanner('Administrator removed from list (delete API not wired yet).');
+    });
+  });
+
+  el.querySelectorAll('.admin-enable-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const id = btn.getAttribute('data-admin-id');
-      const status = btn.getAttribute('data-next-status');
-      if (!id || !status) return;
+      if (btn.disabled || !id) return;
       try {
-        await apiPost('updateAdmin', { id, status });
-        showBanner(status === 'disabled' ? 'Admin disabled.' : 'Admin enabled.');
+        await apiPost('updateAdmin', { id, status: 'active' });
+        showBanner('Administrator re-enabled.');
         await loadAdmins();
       } catch (err) {
-        showBanner(err.message || 'Could not update status.');
+        showBanner(err.message || 'Could not enable account.');
       }
     });
   });
+
+  updateAdministratorsToolbarState();
 }
 
 async function loadAdmins() {
+  if (panelRole !== 'super_admin') {
+    renderAdminsTable([], {
+      lockedReason: 'Only Full Access (super admin) accounts can load this directory with the current API. Open this view as a super admin, or extend the admins endpoint for other roles.'
+    });
+    return;
+  }
   const data = await apiGet('admins');
-  renderAdminsTable(data.admins || []);
+  const rows = (data.admins || []).filter((a) => !adminsDeletedIds.has(Number(a.id)));
+  adminsCache = rows;
+  renderAdminsTable(adminsCache);
 }
 
 async function refreshSection(section) {
@@ -1090,20 +1550,42 @@ async function refreshSection(section) {
   if (section === 'payments') return loadPayments();
   if (section === 'health') return loadHealth();
   if (section === 'blog') return loadBlogPosts();
-  if (section === 'admins') return loadAdmins();
+  if (section === 'administrators') return loadAdmins();
 }
 
 function setupNavigation() {
-  document.querySelectorAll('.nav-btn').forEach((btn) => {
+  document.querySelectorAll('.nav-btn[data-section]').forEach((btn) => {
     btn.addEventListener('click', async () => {
+      if (btn.closest('.users-submenu')) closeUsersFlyout();
       const section = btn.getAttribute('data-section');
-      document.querySelectorAll('.nav-btn').forEach((n) => n.classList.remove('active'));
-      document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
-      btn.classList.add('active');
-      document.getElementById(`section-${section}`)?.classList.add('active');
-      try { await refreshSection(section); } catch (e) { showBanner(e.message || 'Could not load data.'); }
+      activateAdminSection(section);
+      document.getElementById('navUsersGroup')?.classList.remove('users-menu--tap-open');
+      try {
+        await refreshSection(section);
+      } catch (e) {
+        showBanner(e.message || 'Could not load data.');
+      }
     });
   });
+
+  const usersFlyout = document.getElementById('navUsersGroup');
+  const usersTrigger = document.getElementById('navUsersTrigger');
+  if (usersFlyout && usersTrigger) {
+    const isCoarseOrNoHover = () => window.matchMedia('(hover: none), (pointer: coarse)').matches;
+    usersTrigger.addEventListener('click', (ev) => {
+      if (!isCoarseOrNoHover()) return;
+      ev.preventDefault();
+      usersFlyout.classList.toggle('users-menu--tap-open');
+    });
+    document.addEventListener('click', (ev) => {
+      if (!isCoarseOrNoHover() || !usersFlyout.classList.contains('users-menu--tap-open')) return;
+      if (!usersFlyout.contains(ev.target)) usersFlyout.classList.remove('users-menu--tap-open');
+    });
+    if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+      usersFlyout.addEventListener('mouseenter', openUsersSubmenuHover);
+      usersFlyout.addEventListener('mouseleave', scheduleUsersSubmenuHoverClose);
+    }
+  }
 }
 
 function setupActions() {
@@ -1114,12 +1596,13 @@ function setupActions() {
         credentials: 'include'
       });
     } catch {}
-    window.location.href = '/adminha.html';
+    goToAdminLoginPage();
   });
   document.getElementById('createAdminBtn')?.addEventListener('click', async () => {
     const email = document.getElementById('newAdminEmail')?.value?.trim() || '';
     const password = document.getElementById('newAdminPassword')?.value || '';
-    const role = document.getElementById('newAdminRole')?.value || 'admin';
+    const uiRole = document.getElementById('newAdminRole')?.value || 'MANAGER';
+    const role = mapUiRoleToApiRole(uiRole);
     if (!email || !password) {
       showBanner('Email and password are required.');
       return;
@@ -1273,11 +1756,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
     await loadMe();
   } catch {
-    window.location.replace('/adminha.html');
+    redirectToAdminLogin();
     return;
   }
   try {
     applyRoleToNav();
+    fillNewAdminRoleSelect();
+    updateAdministratorsToolbarState();
     const loads = [loadBlogPosts()];
     if (panelRole !== 'editor') {
       loads.push(
