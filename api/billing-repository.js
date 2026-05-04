@@ -885,7 +885,46 @@ export function formatProfileFullName(firstName, lastName) {
   return a.join(' ').trim();
 }
 
+let _userProfilesTableEnsured = false;
+
+/**
+ * Production safety: create user_profiles if migration was never applied.
+ * Schema matches api/db/schema.sql (UUID user_id — NOT integer; users.id is UUID).
+ */
+export async function ensureUserProfilesTable() {
+  if (!isBillingDbConfigured()) return;
+  if (_userProfilesTableEnsured) return;
+  const pool = getPool();
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_profiles (
+        user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        first_name VARCHAR(255),
+        last_name VARCHAR(255),
+        phone VARCHAR(64),
+        country VARCHAR(2),
+        address TEXT,
+        postal_code VARCHAR(32),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id ON user_profiles (user_id)`
+    );
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS idx_user_profiles_country ON user_profiles (country)`
+    );
+    _userProfilesTableEnsured = true;
+  } catch (e) {
+    console.error('[billing] ensureUserProfilesTable failed', e);
+    _userProfilesTableEnsured = false;
+    throw e;
+  }
+}
+
 async function ensureUserProfileRow(pool, userId) {
+  await ensureUserProfilesTable();
   await pool.query(
     `INSERT INTO user_profiles (user_id) VALUES ($1::uuid)
      ON CONFLICT (user_id) DO NOTHING`,
@@ -912,6 +951,7 @@ export function isUserProfileIncompleteForOnboarding(row) {
 
 export async function getUserProfileApiPayload(email) {
   if (!email || !isBillingDbConfigured()) return null;
+  await ensureUserProfilesTable();
   const pool = getPool();
   const r = await pool.query(
     `SELECT u.id AS user_id, u.email, up.first_name, up.last_name, up.phone, up.country, up.address, up.postal_code
@@ -951,87 +991,99 @@ export async function upsertUserProfileFromApi(email, body) {
   if (!em) return { ok: false, error: 'email_required' };
   if (em !== String(email).trim().toLowerCase()) return { ok: false, error: 'email_mismatch' };
 
-  const pool = getPool();
-  const uRes = await pool.query('SELECT id FROM users WHERE lower(email) = lower($1)', [email]);
-  if (!uRes.rows[0]) return { ok: false, error: 'not_found' };
-  const userId = uRes.rows[0].id;
-  await ensureUserProfileRow(pool, userId);
+  try {
+    await ensureUserProfilesTable();
+    const pool = getPool();
+    const uRes = await pool.query('SELECT id FROM users WHERE lower(email) = lower($1)', [email]);
+    if (!uRes.rows[0]) return { ok: false, error: 'not_found' };
+    const userId = uRes.rows[0].id;
+    await ensureUserProfileRow(pool, userId);
 
-  const nz = (v, max) => {
-    if (v === undefined || v === null) return null;
-    const s = String(v).trim();
-    if (!s) return null;
-    return s.slice(0, max);
-  };
-  const first = nz(body.first_name, 255);
-  const last = nz(body.last_name, 255);
-  const phone = nz(body.phone, 64);
-  const countryRaw = nz(body.country, 8);
-  const country = countryRaw ? countryRaw.toUpperCase().slice(0, 2) : null;
-  const address = nz(body.address, 2000);
-  const postal = nz(body.postal_code, 32);
+    const nz = (v, max) => {
+      if (v === undefined || v === null) return null;
+      const s = String(v).trim();
+      if (!s) return null;
+      return s.slice(0, max);
+    };
+    const first = nz(body.first_name, 255);
+    const last = nz(body.last_name, 255);
+    const phone = nz(body.phone, 64);
+    const countryRaw = nz(body.country, 8);
+    const country = countryRaw ? countryRaw.toUpperCase().slice(0, 2) : null;
+    const address = nz(body.address, 2000);
+    const postal = nz(body.postal_code, 32);
 
-  await pool.query(
-    `UPDATE user_profiles SET
-       first_name = $2,
-       last_name = $3,
-       phone = $4,
-       country = $5,
-       address = $6,
-       postal_code = $7,
-       updated_at = NOW()
-     WHERE user_id = $1::uuid`,
-    [userId, first, last, phone, country, address, postal]
-  );
+    await pool.query(
+      `UPDATE user_profiles SET
+         first_name = $2,
+         last_name = $3,
+         phone = $4,
+         country = $5,
+         address = $6,
+         postal_code = $7,
+         updated_at = NOW()
+       WHERE user_id = $1::uuid`,
+      [userId, first, last, phone, country, address, postal]
+    );
 
-  const hasDn = await usersTableHasDisplayNameColumn(pool);
-  if (hasDn && (first || last)) {
-    const full = formatProfileFullName(first, last);
-    if (full) {
-      await pool.query('UPDATE users SET display_name = $2 WHERE id = $1::uuid', [
-        userId,
-        full.slice(0, 255)
-      ]);
+    const hasDn = await usersTableHasDisplayNameColumn(pool);
+    if (hasDn && (first || last)) {
+      const full = formatProfileFullName(first, last);
+      if (full) {
+        await pool.query('UPDATE users SET display_name = $2 WHERE id = $1::uuid', [
+          userId,
+          full.slice(0, 255)
+        ]);
+      }
     }
-  }
 
-  return { ok: true, profile: await getUserProfileApiPayload(email) };
+    return { ok: true, profile: await getUserProfileApiPayload(email) };
+  } catch (e) {
+    console.error('[billing] upsertUserProfileFromApi', e);
+    return { ok: false, error: 'profile_error' };
+  }
 }
 
 export async function mergeSessionUserWithProfile(sessionUser) {
   if (!sessionUser?.email || !isBillingDbConfigured()) return sessionUser;
-  const pool = getPool();
-  const r = await pool.query(
-    `SELECT up.first_name, up.last_name, u.display_name
-     FROM users u
-     LEFT JOIN user_profiles up ON up.user_id = u.id
-     WHERE lower(u.email) = lower($1)`,
-    [sessionUser.email]
-  );
-  const row = r.rows[0];
-  const full = formatProfileFullName(row?.first_name, row?.last_name);
-  const firstOnly = row?.first_name != null ? String(row.first_name).trim() : '';
-  let legacy = '';
-  if (row?.display_name) {
-    const d = String(row.display_name).trim();
-    if (d && !d.includes('@')) legacy = d;
+  try {
+    await ensureUserProfilesTable();
+    const pool = getPool();
+    const r = await pool.query(
+      `SELECT up.first_name, up.last_name, u.display_name
+       FROM users u
+       LEFT JOIN user_profiles up ON up.user_id = u.id
+       WHERE lower(u.email) = lower($1)`,
+      [sessionUser.email]
+    );
+    const row = r.rows[0];
+    const full = formatProfileFullName(row?.first_name, row?.last_name);
+    const firstOnly = row?.first_name != null ? String(row.first_name).trim() : '';
+    let legacy = '';
+    if (row?.display_name) {
+      const d = String(row.display_name).trim();
+      if (d && !d.includes('@')) legacy = d;
+    }
+    const sessionNameOk =
+      sessionUser.name && !String(sessionUser.name).includes('@')
+        ? String(sessionUser.name).trim()
+        : '';
+    const name =
+      full ||
+      firstOnly ||
+      legacy ||
+      sessionNameOk ||
+      sessionUser.email.split('@')[0];
+    return {
+      ...sessionUser,
+      name,
+      first_name: row?.first_name || sessionUser.first_name,
+      last_name: row?.last_name || sessionUser.last_name
+    };
+  } catch (e) {
+    console.warn('[billing] mergeSessionUserWithProfile', e?.message);
+    return sessionUser;
   }
-  const sessionNameOk =
-    sessionUser.name && !String(sessionUser.name).includes('@')
-      ? String(sessionUser.name).trim()
-      : '';
-  const name =
-    full ||
-    firstOnly ||
-    legacy ||
-    sessionNameOk ||
-    sessionUser.email.split('@')[0];
-  return {
-    ...sessionUser,
-    name,
-    first_name: row?.first_name || sessionUser.first_name,
-    last_name: row?.last_name || sessionUser.last_name
-  };
 }
 
 let _usersDisplayNameExists;
@@ -1055,12 +1107,19 @@ async function usersTableHasDisplayNameColumn(pool) {
  */
 export async function syncUserDisplayNameFromGoogleProfile(email, profile) {
   if (!email || !profile || !isBillingDbConfigured()) return;
+  try {
+    await ensureUserProfilesTable();
+  } catch (e) {
+    console.error('[billing] syncUserDisplayNameFromGoogleProfile ensure table', e);
+    return;
+  }
   const given = profile.given_name != null ? String(profile.given_name).trim() : '';
   const family = profile.family_name != null ? String(profile.family_name).trim() : '';
   let googleFull = [given, family].filter(Boolean).join(' ').trim();
   if (!googleFull && profile.name) googleFull = String(profile.name).trim();
   if (!googleFull) return;
 
+  try {
   const pool = getPool();
   const userId = await ensureUserByEmail(email);
   await ensureUserProfileRow(pool, userId);
@@ -1113,6 +1172,9 @@ export async function syncUserDisplayNameFromGoogleProfile(email, profile) {
       ]);
     }
   }
+  } catch (e) {
+    console.error('[billing] syncUserDisplayNameFromGoogleProfile', e);
+  }
 }
 
 /** Avoid referencing optional columns (e.g. users.role) until we know they exist. */
@@ -1139,6 +1201,7 @@ function isExcludedCustomerRole(roleVal) {
 }
 
 export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200, forUserId = null } = {}) {
+  await ensureUserProfilesTable();
   const pool = getPool();
   const filters = [];
   const params = [];
@@ -1171,8 +1234,14 @@ export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200, 
     filters.push(`(${searchParts.join(' OR ')})`);
   }
   if (plan && plan !== 'all') {
-    params.push(plan);
-    filters.push(`COALESCE(s.plan, 'free') = $${params.length}`);
+    params.push(String(plan).toLowerCase().trim());
+    filters.push(
+      `LOWER(TRIM(COALESCE(
+        NULLIF(TRIM(COALESCE(s.plan::text, '')), ''),
+        NULLIF(TRIM(COALESCE(lp.last_pay_plan_key::text, '')), ''),
+        'free'
+      ))) = $${params.length}`
+    );
   }
   const lim = forUserId ? 1 : Math.min(Math.max(Number(limit) || 200, 1), 500);
   params.push(lim);
@@ -1237,10 +1306,16 @@ export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200, 
   return r.rows
     .map((row) => {
       const hasSubscriptionRow = Boolean(row.subscription_id);
-      const planResolved = resolvePlanKeyForCustomer(
-        row.email,
-        hasSubscriptionRow ? row.subscription_plan : null
-      );
+      const planFromSubscription =
+        row.subscription_plan != null && String(row.subscription_plan).trim() !== ''
+          ? row.subscription_plan
+          : null;
+      const planFromLastPayment =
+        row.last_pay_plan_key != null && String(row.last_pay_plan_key).trim() !== ''
+          ? row.last_pay_plan_key
+          : null;
+      const effectivePlanKey = planFromSubscription || planFromLastPayment;
+      const planResolved = resolvePlanKeyForCustomer(row.email, effectivePlanKey);
       const subPlan = planResolved;
 
       const uiStatus =
@@ -1339,6 +1414,12 @@ function nzAdminPatch(v, max) {
  * Update customer profile + subscription (panel users only; blocked for rows that match admins email).
  */
 export async function adminPatchCustomerUser(userId, patch = {}) {
+  try {
+    await ensureUserProfilesTable();
+  } catch (e) {
+    console.error('[billing] adminPatchCustomerUser ensureUserProfilesTable', e);
+    return { ok: false, error: 'profile_error' };
+  }
   const pool = getPool();
   const uid = String(userId || '').trim();
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uid)) {

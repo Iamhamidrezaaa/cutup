@@ -135,69 +135,6 @@
     </main>
   </div>
 
-  <div
-    id="profileOnboardingBackdrop"
-    class="profile-onboarding-backdrop"
-    hidden
-    aria-hidden="true"
-    data-onboarding-strict="1"
-  >
-    <div
-      class="profile-onboarding-modal"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="profileOnboardingTitle"
-      data-onboarding-dialog="1"
-    >
-      <div class="profile-onboarding-card">
-        <h2 id="profileOnboardingTitle" class="profile-onboarding-title">Complete your profile</h2>
-        <p class="profile-onboarding-subtitle">
-          Add your details to unlock the dashboard. This step is required before you can continue.
-        </p>
-        <p id="profileOnboardingError" class="profile-onboarding-error" role="alert" hidden></p>
-        <div id="profileOnboardingSuccess" class="profile-onboarding-success" hidden aria-live="polite">
-          <span class="profile-onboarding-success-check" aria-hidden="true">✓</span>
-          <span class="profile-onboarding-success-text">Profile saved</span>
-        </div>
-        <form id="profileOnboardingForm" class="profile-onboarding-form" novalidate>
-          <div class="profile-onboarding-grid">
-            <label class="profile-onboarding-field">
-              <span>First name</span>
-              <input id="onbFirstName" name="first_name" type="text" autocomplete="given-name" required maxlength="255">
-            </label>
-            <label class="profile-onboarding-field">
-              <span>Last name</span>
-              <input id="onbLastName" name="last_name" type="text" autocomplete="family-name" required maxlength="255">
-            </label>
-            <label class="profile-onboarding-field profile-onboarding-field--wide">
-              <span>Email</span>
-              <input id="onbEmail" name="email" type="email" autocomplete="email" required maxlength="255">
-            </label>
-            <label class="profile-onboarding-field">
-              <span>Phone</span>
-              <input id="onbPhone" name="phone" type="tel" autocomplete="tel" required maxlength="64">
-            </label>
-            <label class="profile-onboarding-field">
-              <span>Country</span>
-              <select id="onbCountry" name="country" required class="profile-onboarding-select"></select>
-            </label>
-            <label class="profile-onboarding-field">
-              <span>Postal code</span>
-              <input id="onbPostal" name="postal_code" type="text" autocomplete="postal-code" required maxlength="32">
-            </label>
-            <label class="profile-onboarding-field profile-onboarding-field--wide">
-              <span>Address</span>
-              <textarea id="onbAddress" name="address" autocomplete="street-address" required maxlength="2000" rows="3"></textarea>
-            </label>
-          </div>
-          <div class="profile-onboarding-actions">
-            <button type="submit" id="onbSubmit" class="profile-onboarding-submit">Save and continue</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
-
   <script type="module">
     import { renderFooter } from '/site-footer.js';
     document.body.insertAdjacentHTML('beforeend', renderFooter());

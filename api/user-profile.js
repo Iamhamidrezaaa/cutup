@@ -23,40 +23,86 @@ export default async function userProfileHandler(req, res) {
   if (req.method === 'OPTIONS') return res.sendStatus(204);
 
   if (!isBillingDbConfigured()) {
-    return res.status(503).json({ error: 'Service not configured' });
+    return res.status(503).json({ ok: false, error: 'Service not configured' });
   }
 
   const ident = resolveSessionUser(req);
   if (ident.error) {
-    return res.status(ident.status).json({ error: ident.error });
+    return res.status(ident.status).json({ ok: false, error: ident.error });
   }
   const { email } = ident;
 
   try {
     if (req.method === 'GET') {
-      const profile = await getUserProfileApiPayload(email);
-      if (!profile) return res.status(404).json({ error: 'user_not_found' });
-      return res.json({ profile });
+      let profile;
+      try {
+        profile = await getUserProfileApiPayload(email);
+      } catch (e) {
+        console.error('[user-profile] GET profile_error', e);
+        return res.status(500).json({ ok: false, error: 'profile_error' });
+      }
+      if (!profile) {
+        return res.status(404).json({ ok: false, error: 'user_not_found' });
+      }
+      return res.json({
+        ok: true,
+        profile: {
+          first_name: profile.first_name,
+          last_name: profile.last_name,
+          email: profile.email,
+          phone: profile.phone,
+          country: profile.country,
+          address: profile.address,
+          postal_code: profile.postal_code,
+          incomplete: profile.incomplete
+        }
+      });
     }
 
     if (req.method === 'POST') {
       const body = req.body && typeof req.body === 'object' ? req.body : {};
-      const result = await upsertUserProfileFromApi(email, body);
+      let result;
+      try {
+        result = await upsertUserProfileFromApi(email, body);
+      } catch (e) {
+        console.error('[user-profile] POST profile_error', e);
+        return res.status(500).json({ ok: false, error: 'profile_error' });
+      }
       if (!result.ok) {
+        const err = result.error || 'update_failed';
+        if (err === 'profile_error') {
+          return res.status(500).json({ ok: false, error: 'profile_error' });
+        }
         const code =
-          result.error === 'email_required' || result.error === 'email_mismatch'
+          err === 'email_required' || err === 'email_mismatch'
             ? 400
-            : result.error === 'not_found'
+            : err === 'not_found'
               ? 404
               : 400;
-        return res.status(code).json({ error: result.error || 'update_failed' });
+        return res.status(code).json({ ok: false, error: err });
       }
-      return res.json({ success: true, profile: result.profile });
+      const p = result.profile;
+      return res.json({
+        ok: true,
+        success: true,
+        profile: p
+          ? {
+              first_name: p.first_name,
+              last_name: p.last_name,
+              email: p.email,
+              phone: p.phone,
+              country: p.country,
+              address: p.address,
+              postal_code: p.postal_code,
+              incomplete: p.incomplete
+            }
+          : null
+      });
     }
 
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({ ok: false, error: 'Method not allowed' });
   } catch (e) {
-    console.error('[user-profile]', e);
-    return res.status(500).json({ error: 'Request failed', message: e?.message });
+    console.error('[user-profile] fatal', e);
+    return res.status(500).json({ ok: false, error: 'profile_error' });
   }
 }

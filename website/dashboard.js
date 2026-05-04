@@ -303,9 +303,8 @@ function setupEventListeners() {
 
 let dashboardCountriesPromise = null;
 let profileOnboardingLatch = false;
-let profileOnboardingFormBound = false;
-/** @type {((e: KeyboardEvent) => void) | null} */
-let onboardingEscHandler = null;
+
+const ONBOARDING_OVERLAY_ID = 'onboardingOverlay';
 
 function loadDashboardCountries() {
   if (!dashboardCountriesPromise) {
@@ -331,183 +330,133 @@ async function fetchGeoCountryCode() {
   }
 }
 
-function attachOnboardingStrictHandlers() {
-  if (onboardingEscHandler) return;
-  onboardingEscHandler = (e) => {
+function getOnboardingOverlayEl() {
+  return document.getElementById(ONBOARDING_OVERLAY_ID);
+}
+
+/**
+ * Tear down body-mounted onboarding overlay (only after success or fatal abort).
+ */
+function teardownOnboardingRealModal(overlay) {
+  const el = overlay || getOnboardingOverlayEl();
+  if (!el) {
+    profileOnboardingLatch = false;
+    document.body.style.overflow = '';
+    const shell = document.getElementById('cutupDashboardShell');
+    shell?.classList.remove('cutup-onboarding-locked');
+    shell?.removeAttribute('inert');
+    shell?.removeAttribute('aria-hidden');
+    return;
+  }
+  const esc = el._cutupOnboardingEscBlocker;
+  if (typeof esc === 'function') {
+    window.removeEventListener('keydown', esc, true);
+  }
+  el.remove();
+  document.body.style.overflow = '';
+  const shell = document.getElementById('cutupDashboardShell');
+  shell?.classList.remove('cutup-onboarding-locked');
+  shell?.removeAttribute('inert');
+  shell?.removeAttribute('aria-hidden');
+  profileOnboardingLatch = false;
+}
+
+/**
+ * Build full-screen overlay + modal card, append ONLY to document.body.
+ */
+async function showProfileOnboardingModal(profile) {
+  if (getOnboardingOverlayEl()) {
+    console.warn('[onboarding] overlay already exists — skip duplicate');
+    return;
+  }
+  if (profileOnboardingLatch) return;
+  profileOnboardingLatch = true;
+
+  console.log('[onboarding] rendering REAL modal');
+
+  document.body.style.overflow = 'hidden';
+  const shell = document.getElementById('cutupDashboardShell');
+  shell?.classList.add('cutup-onboarding-locked');
+  shell?.setAttribute('inert', '');
+  shell?.setAttribute('aria-hidden', 'true');
+
+  const escBlock = (e) => {
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
-      if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
     }
   };
-  document.addEventListener('keydown', onboardingEscHandler, true);
-}
+  window.addEventListener('keydown', escBlock, true);
 
-function detachOnboardingStrictHandlers() {
-  if (!onboardingEscHandler) return;
-  document.removeEventListener('keydown', onboardingEscHandler, true);
-  onboardingEscHandler = null;
-}
+  const overlay = document.createElement('div');
+  overlay.id = ONBOARDING_OVERLAY_ID;
+  overlay.setAttribute('role', 'presentation');
+  overlay._cutupOnboardingEscBlocker = escBlock;
 
-function setDashboardOnboardingBlocked(active) {
-  const shell = document.getElementById('cutupDashboardShell');
-  if (active) {
-    document.body.classList.add('profile-onboarding-body-lock', 'profile-onboarding-active');
-    shell?.setAttribute('inert', '');
-    shell?.setAttribute('aria-hidden', 'true');
-    attachOnboardingStrictHandlers();
-  } else {
-    document.body.classList.remove('profile-onboarding-body-lock', 'profile-onboarding-active');
-    shell?.removeAttribute('inert');
-    shell?.removeAttribute('aria-hidden');
-    detachOnboardingStrictHandlers();
-  }
-}
+  overlay.onclick = (e) => {
+    if (e.target === overlay) {
+      e.stopPropagation();
+    }
+  };
 
-function resetProfileOnboardingChrome() {
-  const form = document.getElementById('profileOnboardingForm');
-  const successEl = document.getElementById('profileOnboardingSuccess');
-  if (form) {
-    form.classList.remove('profile-onboarding-form--hidden');
-    form.removeAttribute('aria-hidden');
-  }
-  if (successEl) successEl.hidden = true;
-}
+  const modal = document.createElement('div');
+  modal.className = 'onboardingModal';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-labelledby', 'onboardingModalTitle');
+  modal.addEventListener('click', (e) => e.stopPropagation());
 
-function bindProfileOnboardingFormOnce() {
-  if (profileOnboardingFormBound) return;
-  const form = document.getElementById('profileOnboardingForm');
-  if (!form) return;
-  profileOnboardingFormBound = true;
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const errEl = document.getElementById('profileOnboardingError');
-    const submitBtn = document.getElementById('onbSubmit');
-    const successEl = document.getElementById('profileOnboardingSuccess');
-    if (errEl) {
-      errEl.hidden = true;
-      errEl.textContent = '';
-    }
-    const payload = {
-      first_name: String(document.getElementById('onbFirstName')?.value || '').trim(),
-      last_name: String(document.getElementById('onbLastName')?.value || '').trim(),
-      email: String(document.getElementById('onbEmail')?.value || '').trim(),
-      phone: String(document.getElementById('onbPhone')?.value || '').trim(),
-      country: String(document.getElementById('onbCountry')?.value || '').trim().toUpperCase().slice(0, 2),
-      address: String(document.getElementById('onbAddress')?.value || '').trim(),
-      postal_code: String(document.getElementById('onbPostal')?.value || '').trim()
-    };
-    if (!payload.first_name) {
-      if (errEl) {
-        errEl.textContent = 'First name is required.';
-        errEl.hidden = false;
-      }
-      return;
-    }
-    if (!payload.last_name) {
-      if (errEl) {
-        errEl.textContent = 'Last name is required.';
-        errEl.hidden = false;
-      }
-      return;
-    }
-    if (!payload.email) {
-      if (errEl) {
-        errEl.textContent = 'Email is required.';
-        errEl.hidden = false;
-      }
-      return;
-    }
-    if (!payload.phone) {
-      if (errEl) {
-        errEl.textContent = 'Phone is required.';
-        errEl.hidden = false;
-      }
-      return;
-    }
-    if (!payload.country) {
-      if (errEl) {
-        errEl.textContent = 'Please select a country.';
-        errEl.hidden = false;
-      }
-      return;
-    }
-    if (!payload.address) {
-      if (errEl) {
-        errEl.textContent = 'Address is required.';
-        errEl.hidden = false;
-      }
-      return;
-    }
-    if (!payload.postal_code) {
-      if (errEl) {
-        errEl.textContent = 'Postal code is required.';
-        errEl.hidden = false;
-      }
-      return;
-    }
-    if (submitBtn) submitBtn.disabled = true;
-    try {
-      const { response, data } = await apiPost(`${API_BASE_URL}/api/user/profile`, payload);
-      if (!response.ok) {
-        const msg =
-          data.error === 'email_mismatch'
-            ? 'Email must match your signed-in account.'
-            : data.error === 'email_required'
-              ? 'Email is required.'
-              : data.message || data.error || 'Could not save profile.';
-        if (errEl) {
-          errEl.textContent = msg;
-          errEl.hidden = false;
-        }
-        return;
-      }
-      if (form && successEl) {
-        form.classList.add('profile-onboarding-form--hidden');
-        form.setAttribute('aria-hidden', 'true');
-        successEl.hidden = false;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 520));
-      closeProfileOnboardingModal();
-      await loadUserProfile();
-      renderOverview();
-    } catch {
-      if (errEl) {
-        errEl.textContent = 'Network error. Please try again.';
-        errEl.hidden = false;
-      }
-    } finally {
-      if (submitBtn) submitBtn.disabled = false;
-    }
-  });
-}
+  modal.innerHTML = `
+    <h2 id="onboardingModalTitle" class="onboardingModalTitle">Complete your profile</h2>
+    <p class="onboardingModalLead">Add your details to unlock the dashboard. This step is required before you can continue.</p>
+    <p class="onboardingModalError" data-onb-error role="alert" hidden></p>
+    <div class="onboardingModalSuccess" data-onb-success hidden aria-live="polite">
+      <span class="onboardingModalSuccessIcon" aria-hidden="true">✓</span>
+      <span>Profile saved</span>
+    </div>
+    <form class="onboardingForm" data-onb-form novalidate>
+      <div class="onboardingFormGrid">
+        <label class="onboardingField">
+          <span>First name</span>
+          <input id="onbFirstName" name="first_name" type="text" autocomplete="given-name" maxlength="255">
+        </label>
+        <label class="onboardingField">
+          <span>Last name</span>
+          <input id="onbLastName" name="last_name" type="text" autocomplete="family-name" maxlength="255">
+        </label>
+        <label class="onboardingField onboardingField--wide">
+          <span>Email</span>
+          <input id="onbEmail" name="email" type="email" autocomplete="email" maxlength="255">
+        </label>
+        <label class="onboardingField">
+          <span>Phone</span>
+          <input id="onbPhone" name="phone" type="tel" autocomplete="tel" maxlength="64">
+        </label>
+        <label class="onboardingField">
+          <span>Country</span>
+          <select id="onbCountry" name="country"></select>
+        </label>
+        <label class="onboardingField">
+          <span>Postal code</span>
+          <input id="onbPostal" name="postal_code" type="text" autocomplete="postal-code" maxlength="32">
+        </label>
+        <label class="onboardingField onboardingField--wide">
+          <span>Address</span>
+          <textarea id="onbAddress" name="address" autocomplete="street-address" maxlength="2000" rows="3"></textarea>
+        </label>
+      </div>
+      <button type="submit" class="onboardingSubmit" id="onbSubmit">Save and continue</button>
+    </form>
+  `;
 
-function closeProfileOnboardingModal() {
-  const backdrop = document.getElementById('profileOnboardingBackdrop');
-  if (!backdrop) return;
-  backdrop.classList.remove('profile-onboarding-backdrop--visible');
-  setTimeout(() => {
-    backdrop.hidden = true;
-    backdrop.setAttribute('aria-hidden', 'true');
-    profileOnboardingLatch = false;
-    resetProfileOnboardingChrome();
-    setDashboardOnboardingBlocked(false);
-  }, 320);
-}
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
 
-async function openProfileOnboardingModal(profile) {
-  if (profileOnboardingLatch) return;
-  profileOnboardingLatch = true;
-  bindProfileOnboardingFormOnce();
-  const backdrop = document.getElementById('profileOnboardingBackdrop');
-  const sel = document.getElementById('onbCountry');
-  if (!backdrop || !sel) {
-    profileOnboardingLatch = false;
-    return;
-  }
-
-  resetProfileOnboardingChrome();
-  setDashboardOnboardingBlocked(true);
+  const errEl = modal.querySelector('[data-onb-error]');
+  const successEl = modal.querySelector('[data-onb-success]');
+  const form = modal.querySelector('[data-onb-form]');
+  const submitBtn = modal.querySelector('#onbSubmit');
+  const sel = modal.querySelector('#onbCountry');
 
   const countries = await loadDashboardCountries().catch(() => []);
   sel.innerHTML =
@@ -529,55 +478,193 @@ async function openProfileOnboardingModal(profile) {
     if (hasOpt) sel.value = prefCountry;
   }
 
-  const fnEl = document.getElementById('onbFirstName');
-  const lnEl = document.getElementById('onbLastName');
-  if (fnEl) {
-    fnEl.value =
-      String(profile.first_name || currentUser?.first_name || '').trim() ||
-      (currentUser?.name && !String(currentUser.name).includes('@')
-        ? String(currentUser.name).split(/\s+/)[0] || ''
-        : '');
+  const fnEl = modal.querySelector('#onbFirstName');
+  const lnEl = modal.querySelector('#onbLastName');
+  fnEl.value =
+    String(profile.first_name || currentUser?.first_name || '').trim() ||
+    (currentUser?.name && !String(currentUser.name).includes('@')
+      ? String(currentUser.name).split(/\s+/)[0] || ''
+      : '');
+  let ln = String(profile.last_name || currentUser?.last_name || '').trim();
+  if (!ln && currentUser?.name && !String(currentUser.name).includes('@')) {
+    const parts = String(currentUser.name).trim().split(/\s+/).filter(Boolean);
+    if (parts.length > 1) ln = parts.slice(1).join(' ');
   }
-  if (lnEl) {
-    let ln = String(profile.last_name || currentUser?.last_name || '').trim();
-    if (!ln && currentUser?.name && !String(currentUser.name).includes('@')) {
-      const parts = String(currentUser.name).trim().split(/\s+/).filter(Boolean);
-      if (parts.length > 1) ln = parts.slice(1).join(' ');
-    }
-    lnEl.value = ln;
-  }
-  const emEl = document.getElementById('onbEmail');
-  if (emEl) emEl.value = String(profile.email || currentUser?.email || '').trim();
-  const phEl = document.getElementById('onbPhone');
-  if (phEl) phEl.value = String(profile.phone || '').trim();
-  const pcEl = document.getElementById('onbPostal');
-  if (pcEl) pcEl.value = String(profile.postal_code || '').trim();
-  const adEl = document.getElementById('onbAddress');
-  if (adEl) adEl.value = String(profile.address || '').trim();
-  const errEl = document.getElementById('profileOnboardingError');
-  if (errEl) {
+  lnEl.value = ln;
+  modal.querySelector('#onbEmail').value = String(profile.email || currentUser?.email || '').trim();
+  modal.querySelector('#onbPhone').value = String(profile.phone || '').trim();
+  modal.querySelector('#onbPostal').value = String(profile.postal_code || '').trim();
+  modal.querySelector('#onbAddress').value = String(profile.address || '').trim();
+
+  errEl.hidden = true;
+  errEl.textContent = '';
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
     errEl.hidden = true;
     errEl.textContent = '';
-  }
-
-  backdrop.hidden = false;
-  backdrop.setAttribute('aria-hidden', 'false');
-  requestAnimationFrame(() => {
-    backdrop.classList.add('profile-onboarding-backdrop--visible');
-    fnEl?.focus();
+    const payload = {
+      first_name: String(fnEl.value || '').trim(),
+      last_name: String(lnEl.value || '').trim(),
+      email: String(modal.querySelector('#onbEmail')?.value || '').trim(),
+      phone: String(modal.querySelector('#onbPhone')?.value || '').trim(),
+      country: String(sel.value || '').trim().toUpperCase().slice(0, 2),
+      address: String(modal.querySelector('#onbAddress')?.value || '').trim(),
+      postal_code: String(modal.querySelector('#onbPostal')?.value || '').trim()
+    };
+    if (!payload.first_name) {
+      errEl.textContent = 'First name is required.';
+      errEl.hidden = false;
+      return;
+    }
+    if (!payload.last_name) {
+      errEl.textContent = 'Last name is required.';
+      errEl.hidden = false;
+      return;
+    }
+    if (!payload.email) {
+      errEl.textContent = 'Email is required.';
+      errEl.hidden = false;
+      return;
+    }
+    if (!payload.phone) {
+      errEl.textContent = 'Phone is required.';
+      errEl.hidden = false;
+      return;
+    }
+    if (!payload.country) {
+      errEl.textContent = 'Please select a country.';
+      errEl.hidden = false;
+      return;
+    }
+    if (!payload.address) {
+      errEl.textContent = 'Address is required.';
+      errEl.hidden = false;
+      return;
+    }
+    if (!payload.postal_code) {
+      errEl.textContent = 'Postal code is required.';
+      errEl.hidden = false;
+      return;
+    }
+    submitBtn.disabled = true;
+    try {
+      const { response, data } = await apiPost(`${API_BASE_URL}/api/user/profile`, payload);
+      if (!response.ok) {
+        const msg =
+          data.error === 'profile_error'
+            ? 'Could not save your profile (server error). Please try again.'
+            : data.error === 'email_mismatch'
+              ? 'Email must match your signed-in account.'
+              : data.error === 'email_required'
+                ? 'Email is required.'
+                : data.message || data.error || 'Could not save profile.';
+        errEl.textContent = msg;
+        errEl.hidden = false;
+        return;
+      }
+      form.classList.add('is-hidden');
+      successEl.hidden = false;
+      await new Promise((resolve) => setTimeout(resolve, 520));
+      teardownOnboardingRealModal(overlay);
+      await loadUserProfile();
+      renderOverview();
+    } catch (ex) {
+      console.error('[onboarding] submit', ex);
+      errEl.textContent = 'Network error. Please try again.';
+      errEl.hidden = false;
+    } finally {
+      submitBtn.disabled = false;
+    }
   });
+
+  requestAnimationFrame(() => fnEl?.focus());
+}
+
+async function showOnboardingModal() {
+  console.log('[onboarding] showOnboardingModal()');
+  if (!currentSession) {
+    console.warn('[onboarding] no session — cannot open modal');
+    return;
+  }
+  try {
+    const { response, data } = await apiGet(`${API_BASE_URL}/api/user/profile`);
+    if (!response.ok) {
+      console.error('[onboarding] showOnboardingModal API failed', response.status, data);
+      showDashboardBanner(
+        data?.error === 'profile_error'
+          ? 'Profile service error. Please try again.'
+          : 'Could not load profile.',
+        'error',
+        { persistent: true }
+      );
+      return;
+    }
+    const profile = data.profile || {};
+    console.log('[onboarding] profile:', profile);
+    await showProfileOnboardingModal(profile);
+  } catch (e) {
+    console.error('[onboarding] showOnboardingModal', e);
+    showDashboardBanner('Could not open profile form.', 'error', { persistent: true });
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.showOnboardingModal = showOnboardingModal;
 }
 
 async function maybeShowProfileOnboarding() {
+  console.log('[onboarding] start');
   if (!currentSession) return;
+
+  if (window.__FORCE_ONBOARDING__ === true) {
+    console.log('[onboarding] FORCE mode (__FORCE_ONBOARDING__)');
+    await showOnboardingModal();
+    return;
+  }
+
   try {
     const { response, data } = await apiGet(`${API_BASE_URL}/api/user/profile`);
-    if (response.status === 503 || !response.ok) return;
+    if (response.status === 503) {
+      console.warn('[onboarding] service unavailable (503)', data);
+      return;
+    }
+    if (!response.ok) {
+      console.error('[onboarding] profile API failed', response.status, data);
+      showDashboardBanner(
+        data?.error === 'profile_error'
+          ? 'Profile service is temporarily unavailable. Please try again.'
+          : 'Could not load your profile. Please refresh.',
+        'error',
+        { persistent: true }
+      );
+      return;
+    }
+    if (data.ok === false) {
+      console.error('[onboarding] response ok:false', data);
+      showDashboardBanner('Could not load your profile.', 'error', { persistent: true });
+      return;
+    }
     const profile = data.profile;
-    if (!profile || !profile.incomplete) return;
-    await openProfileOnboardingModal(profile);
-  } catch {
-    /* noop */
+    console.log('[onboarding] profile:', profile);
+    if (!profile) {
+      console.error('[onboarding] no profile in response', data);
+      showDashboardBanner('Invalid profile response.', 'error', { persistent: true });
+      return;
+    }
+    const isIncomplete =
+      !String(profile.first_name || '').trim() ||
+      !String(profile.last_name || '').trim() ||
+      !String(profile.phone || '').trim() ||
+      !String(profile.country || '').trim() ||
+      !String(profile.address || '').trim() ||
+      !String(profile.postal_code || '').trim();
+    console.log('[onboarding] isIncomplete:', isIncomplete);
+    if (!isIncomplete) return;
+    await showProfileOnboardingModal(profile);
+  } catch (e) {
+    console.error('[onboarding] error', e);
+    showDashboardBanner('Profile check failed. Please refresh the page.', 'error', { persistent: true });
   }
 }
 

@@ -1906,84 +1906,69 @@
   }
 }
 
-/* —— Profile onboarding (strict full-screen gate) —— */
-body.profile-onboarding-body-lock {
-  overflow: hidden;
-}
-
-/* Dashboard non-interactive while gate open; visual blur comes from overlay backdrop-filter */
-body.profile-onboarding-active #cutupDashboardShell {
+/* —— Onboarding: real body-mounted overlay (see dashboard.js) —— */
+#cutupDashboardShell.cutup-onboarding-locked {
   pointer-events: none;
   user-select: none;
 }
 
-.profile-onboarding-backdrop {
+#onboardingOverlay {
   position: fixed;
-  inset: 0;
-  z-index: 100000;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  z-index: 999999;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: 20px;
   box-sizing: border-box;
-  /* Spec: rgba(0,0,0,0.4) + backdrop blur (~65% perceived strength) */
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(22px) saturate(1.05);
-  -webkit-backdrop-filter: blur(22px) saturate(1.05);
-  pointer-events: auto;
-  cursor: default;
-  opacity: 0;
-  transition: opacity 0.4s ease;
 }
 
-.profile-onboarding-backdrop.profile-onboarding-backdrop--visible {
-  opacity: 1;
-}
-
-.profile-onboarding-modal {
-  width: 100%;
-  max-width: 480px;
+.onboardingModal {
+  width: 480px;
+  max-width: 90%;
   max-height: min(92vh, 720px);
   overflow: auto;
-  pointer-events: auto;
-  transform: translateY(16px) scale(0.97);
-  opacity: 0;
-  transition:
-    transform 0.45s cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 0.4s ease;
+  background: #fff;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+  animation: fadeInScale 0.25s ease;
+  box-sizing: border-box;
 }
 
-.profile-onboarding-backdrop--visible .profile-onboarding-modal {
-  transform: translateY(0) scale(1);
-  opacity: 1;
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
-.profile-onboarding-card {
-  background: var(--surface-elevated, #fff);
-  border-radius: 18px;
-  padding: 32px 32px 28px;
-  box-shadow:
-    0 32px 64px -16px rgba(0, 0, 0, 0.22),
-    0 0 0 1px rgba(255, 255, 255, 0.08) inset,
-    0 0 0 1px rgba(15, 23, 42, 0.06);
-}
-
-.profile-onboarding-title {
+.onboardingModalTitle {
   margin: 0 0 8px;
   font-size: 1.35rem;
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: var(--text-primary, #0f172a);
+  color: #0f172a;
 }
 
-.profile-onboarding-subtitle {
+.onboardingModalLead {
   margin: 0 0 20px;
   font-size: 14px;
   line-height: 1.5;
-  color: var(--text-secondary, #64748b);
+  color: #64748b;
 }
 
-.profile-onboarding-error {
+.onboardingModalError {
   margin: 0 0 16px;
   padding: 10px 12px;
   border-radius: 10px;
@@ -1993,7 +1978,12 @@ body.profile-onboarding-active #cutupDashboardShell {
   border: 1px solid #fecaca;
 }
 
-.profile-onboarding-success {
+.onboardingModalError[hidden],
+.onboardingModalSuccess[hidden] {
+  display: none !important;
+}
+
+.onboardingModalSuccess {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2006,10 +1996,9 @@ body.profile-onboarding-active #cutupDashboardShell {
   color: #166534;
   background: linear-gradient(180deg, #ecfdf5, #d1fae5);
   border: 1px solid #6ee7b7;
-  animation: profile-onboarding-success-pop 0.45s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.profile-onboarding-success-check {
+.onboardingModalSuccessIcon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2019,77 +2008,58 @@ body.profile-onboarding-active #cutupDashboardShell {
   background: #22c55e;
   color: #fff;
   font-size: 16px;
-  line-height: 1;
   font-weight: 700;
 }
 
-@keyframes profile-onboarding-success-pop {
-  0% {
-    transform: scale(0.92);
-    opacity: 0;
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-.profile-onboarding-form {
+.onboardingForm {
   margin: 0;
 }
 
-.profile-onboarding-form.profile-onboarding-form--hidden {
+.onboardingForm.is-hidden {
   display: none;
 }
 
-.profile-onboarding-grid {
+.onboardingFormGrid {
   display: grid;
   gap: 14px 16px;
   grid-template-columns: 1fr 1fr;
 }
 
-.profile-onboarding-field {
+.onboardingField {
   display: flex;
   flex-direction: column;
   gap: 6px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-secondary, #64748b);
+  color: #64748b;
 }
 
-.profile-onboarding-field--wide {
+.onboardingField--wide {
   grid-column: 1 / -1;
 }
 
-.profile-onboarding-field input,
-.profile-onboarding-field select,
-.profile-onboarding-field textarea {
+.onboardingField input,
+.onboardingField select,
+.onboardingField textarea {
   font: inherit;
   font-weight: 500;
   padding: 10px 12px;
   border-radius: 10px;
-  border: 1px solid var(--border-subtle, #e2e8f0);
+  border: 1px solid #e2e8f0;
   background: #fff;
-  color: var(--text-primary, #0f172a);
+  color: #0f172a;
   width: 100%;
   box-sizing: border-box;
 }
 
-.profile-onboarding-field textarea {
+.onboardingField textarea {
   resize: vertical;
   min-height: 88px;
 }
 
-.profile-onboarding-select {
-  cursor: pointer;
-}
-
-.profile-onboarding-actions {
-  margin-top: 22px;
-}
-
-.profile-onboarding-submit {
+.onboardingSubmit {
   width: 100%;
+  margin-top: 22px;
   padding: 12px 18px;
   border: none;
   border-radius: 10px;
@@ -2100,33 +2070,24 @@ body.profile-onboarding-active #cutupDashboardShell {
   background: linear-gradient(135deg, #6366f1, #5b4ce6);
   color: #fff;
   box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
-  transition:
-    transform 0.15s ease,
-    box-shadow 0.15s ease;
 }
 
-.profile-onboarding-submit:hover {
+.onboardingSubmit:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
 }
 
-.profile-onboarding-submit:disabled {
+.onboardingSubmit:disabled {
   opacity: 0.65;
   cursor: not-allowed;
-  transform: none;
 }
 
 @media (max-width: 560px) {
-  .profile-onboarding-grid {
+  .onboardingFormGrid {
     grid-template-columns: 1fr;
   }
 
-  .profile-onboarding-field--wide {
+  .onboardingField--wide {
     grid-column: 1;
-  }
-
-  .profile-onboarding-card {
-    padding: 22px 18px 18px;
   }
 }
 
