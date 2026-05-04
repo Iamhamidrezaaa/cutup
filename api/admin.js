@@ -172,12 +172,17 @@ export default async function handler(req, res) {
 
     if (req.method === 'GET' && action === 'users') {
       if (!requireOpsAccess(auth, res)) return;
-      const data = await getAdminUsersDb({
-        search: req.query.search || '',
-        plan: req.query.plan || 'all',
-        limit: req.query.limit || 200
-      });
-      return res.json({ users: data, total: data.length });
+      try {
+        const data = await getAdminUsersDb({
+          search: req.query.search || '',
+          plan: req.query.plan || 'all',
+          limit: req.query.limit || 200
+        });
+        return res.json({ users: data, total: data.length });
+      } catch (err) {
+        console.error('ADMIN USERS ERROR:', err);
+        return res.status(500).json({ error: err?.message || 'users_fetch_failed' });
+      }
     }
 
     if (req.method === 'GET' && action === 'usage') {

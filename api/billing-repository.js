@@ -859,16 +859,45 @@ function subscriptionPriceLabel(planKey) {
   return `€${Number.isInteger(n) ? n : n.toFixed(2)}`;
 }
 
+/** Avoid referencing optional columns (e.g. users.role) until we know they exist. */
+let _usersRoleColumnExists;
+async function usersTableHasRoleColumn(pool) {
+  if (_usersRoleColumnExists !== undefined) return _usersRoleColumnExists;
+  try {
+    const chk = await pool.query(
+      `SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'role'
+       LIMIT 1`
+    );
+    _usersRoleColumnExists = chk.rows.length > 0;
+  } catch {
+    _usersRoleColumnExists = false;
+  }
+  return _usersRoleColumnExists;
+}
+
+function isExcludedCustomerRole(roleVal) {
+  if (roleVal == null || roleVal === '') return false;
+  const r = String(roleVal).trim().toLowerCase();
+  return r === 'admin' || r === 'super_admin';
+}
+
 export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200 } = {}) {
   const pool = getPool();
   const filters = [];
   const params = [];
   filters.push(`NOT EXISTS (SELECT 1 FROM admins a WHERE lower(a.email) = lower(u.email))`);
+
+  const hasRoleCol = await usersTableHasRoleColumn(pool);
+  if (hasRoleCol) {
+    filters.push(
+      `(u.role IS NULL OR TRIM(u.role::text) = '' OR LOWER(TRIM(u.role::text)) NOT IN ('admin', 'super_admin'))`
+    );
+  }
+
   if (search) {
     params.push(`%${search.toLowerCase()}%`);
-    filters.push(
-      `(LOWER(u.email) LIKE $${params.length} OR LOWER(COALESCE(u.display_name, '')) LIKE $${params.length})`
-    );
+    filters.push(`(LOWER(u.email) LIKE $${params.length})`);
   }
   if (plan && plan !== 'all') {
     params.push(plan);
@@ -876,11 +905,14 @@ export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200 }
   }
   params.push(Math.min(Math.max(Number(limit) || 200, 1), 500));
   const whereSql = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+
+  const roleSelect = hasRoleCol ? 'u.role AS user_role,' : 'NULL::text AS user_role,';
+
   const r = await pool.query(
     `SELECT
        u.id AS user_id,
        u.email,
-       u.display_name,
+       ${roleSelect}
        s.id AS subscription_id,
        s.plan AS subscription_plan,
        s.status AS subscription_status,
@@ -920,27 +952,25 @@ export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200 }
      LIMIT $${params.length}`,
     params
   );
-  return r.rows.map((row) => {
-    const hasSubscriptionRow = Boolean(row.subscription_id);
-    const subPlan = hasSubscriptionRow
-      ? String(row.subscription_plan || 'free').toLowerCase().trim() || 'free'
-      : null;
-    const effectivePlan = hasSubscriptionRow ? subPlan : 'free';
-    const uiStatus =
-      String(row.subscription_status || 'active').toLowerCase() === 'canceled' ? 'inactive' : 'active';
-    const dn = row.display_name != null && String(row.display_name).trim() !== '' ? String(row.display_name).trim() : '';
-    return {
-      id: row.user_id,
-      email: row.email,
-      name: dn || row.email.split('@')[0],
-      plan: effectivePlan,
-      planLabel: planLabelForAdmin(effectivePlan),
-      status: hasSubscriptionRow ? uiStatus : 'active',
-      subscription: hasSubscriptionRow
+
+  return r.rows
+    .map((row) => {
+      const hasSubscriptionRow = Boolean(row.subscription_id);
+      const subPlan = hasSubscriptionRow
+        ? String(row.subscription_plan || 'free').toLowerCase().trim() || 'free'
+        : null;
+      const planFromSubscription = hasSubscriptionRow ? subPlan : null;
+      const effectivePlan = planFromSubscription || 'free';
+      const uiStatus =
+        String(row.subscription_status || 'active').toLowerCase() === 'canceled' ? 'inactive' : 'active';
+      const emailLocal = row.email && typeof row.email === 'string' ? row.email.split('@')[0] : '—';
+      const role = row.user_role != null && String(row.user_role).trim() !== '' ? String(row.user_role).trim() : null;
+
+      const subscriptionObj = hasSubscriptionRow
         ? {
             plan: subPlan,
-            planLabel: planLabelForAdmin(subPlan),
-            priceLabel: subscriptionPriceLabel(subPlan),
+            planLabel: planLabelForAdmin(subPlan || 'free'),
+            priceLabel: subscriptionPriceLabel(subPlan || 'free'),
             billingPeriod: row.subscription_billing_period || 'monthly',
             startedAt: row.subscription_created_at?.toISOString
               ? row.subscription_created_at.toISOString()
@@ -950,22 +980,35 @@ export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200 }
               : row.subscription_current_period_end || null,
             rawStatus: row.subscription_status || 'active'
           }
-        : null,
-      lastPayment:
-        row.last_pay_at
-          ? {
-              at: row.last_pay_at?.toISOString ? row.last_pay_at.toISOString() : row.last_pay_at,
-              amount: row.last_pay_amount != null ? Number(row.last_pay_amount) : null,
-              currency: row.last_pay_currency || 'EUR',
-              planKey: row.last_pay_plan_key || null
-            }
-          : null,
-      createdAt: row.created_at?.toISOString ? row.created_at.toISOString() : row.created_at,
-      lastActivityAt: row.last_activity_at?.toISOString ? row.last_activity_at.toISOString() : row.last_activity_at,
-      usageMinutesThisMonth: Number(row.minutes_used || 0),
-      savedOutputsCount: Number(row.saved_outputs_count || 0)
-    };
-  });
+        : null;
+
+      const planResolved = subscriptionObj?.plan || effectivePlan || 'free';
+
+      return {
+        id: row.user_id,
+        email: row.email,
+        role: role || undefined,
+        name: emailLocal,
+        plan: planResolved,
+        planLabel: planLabelForAdmin(planResolved),
+        status: hasSubscriptionRow ? uiStatus : 'active',
+        subscription: subscriptionObj,
+        lastPayment:
+          row.last_pay_at
+            ? {
+                at: row.last_pay_at?.toISOString ? row.last_pay_at.toISOString() : row.last_pay_at,
+                amount: row.last_pay_amount != null ? Number(row.last_pay_amount) : null,
+                currency: row.last_pay_currency || 'EUR',
+                planKey: row.last_pay_plan_key || null
+              }
+            : null,
+        createdAt: row.created_at?.toISOString ? row.created_at.toISOString() : row.created_at,
+        lastActivityAt: row.last_activity_at?.toISOString ? row.last_activity_at.toISOString() : row.last_activity_at,
+        usageMinutesThisMonth: Number(row.minutes_used || 0),
+        savedOutputsCount: Number(row.saved_outputs_count || 0)
+      };
+    })
+    .filter((user) => !isExcludedCustomerRole(user.role));
 }
 
 /**
