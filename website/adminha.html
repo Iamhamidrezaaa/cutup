@@ -203,24 +203,60 @@
         </section>
 
         <section id="section-audit" class="panel">
-          <h2>Audit Log</h2>
-          <p class="admin-muted">Event pipeline: product usage, errors, and security (super admin only).</p>
+          <h2>Product analytics</h2>
+          <p class="admin-muted">Usage, conversion, and reliability — same access as Customers (admin &amp; super admin).</p>
           <div id="auditSummaryCards" class="cards-grid"></div>
+          <div class="audit-charts-grid">
+            <div class="audit-chart-card">
+              <h3>Events over time</h3>
+              <canvas id="auditChartEvents" height="120" aria-label="Events time series"></canvas>
+            </div>
+            <div class="audit-chart-card">
+              <h3>Active users</h3>
+              <canvas id="auditChartDau" height="120" aria-label="Active users by day"></canvas>
+            </div>
+            <div class="audit-chart-card">
+              <h3>Errors</h3>
+              <canvas id="auditChartErrors" height="120" aria-label="Errors time series"></canvas>
+            </div>
+          </div>
+          <div class="audit-alerts-bar" id="auditAlertsBar">
+            <h3>Alerts</h3>
+            <ul id="auditAlertsList" class="audit-alerts-list"></ul>
+            <button type="button" id="auditRunRulesBtn" class="btn ghost">Run alert rules now</button>
+          </div>
           <h3>Funnel snapshot</h3>
-          <p class="admin-muted">Counts for preset event names in the selected time range (page_view → signup → onboarding_completed → payment_success).</p>
+          <p class="admin-muted">Preset counts in the selected date range.</p>
           <div class="table-wrap"><table id="auditFunnelTable" aria-label="Funnel snapshot"></table></div>
+          <h3>Dynamic funnel</h3>
+          <p class="admin-muted">Comma or newline-separated <code>event_name</code> steps; conversion is ordered (prior step before next).</p>
+          <div class="toolbar audit-funnel-builder">
+            <textarea id="auditFunnelStepsInput" rows="2" placeholder="signup, onboarding_completed, payment_success" aria-label="Funnel steps"></textarea>
+            <button type="button" id="auditFunnelRunBtn" class="btn">Calculate funnel</button>
+          </div>
+          <div class="table-wrap"><table id="auditDynamicFunnelTable" aria-label="Dynamic funnel results"></table></div>
           <div class="audit-split">
             <div>
               <h3>Live feed</h3>
-              <p class="admin-muted">Recent events (refreshes every 10s while this tab is open).</p>
+              <p class="admin-muted" id="auditLiveFeedStatus">Connecting…</p>
               <div id="auditLiveFeed" class="audit-live-feed" aria-live="polite"></div>
             </div>
             <div>
-              <h3>Filters &amp; user journey</h3>
+              <h3>Segmentation &amp; journey</h3>
               <div class="toolbar audit-toolbar">
                 <input id="auditFilterUserId" type="text" placeholder="User UUID" autocomplete="off" aria-label="Filter by user id">
                 <input id="auditFilterEvent" type="text" placeholder="event_name" autocomplete="off" aria-label="Filter by event name">
                 <input id="auditFilterType" type="text" placeholder="event_type" autocomplete="off" aria-label="Filter by event type">
+                <select id="auditFilterPlan" aria-label="Filter by plan">
+                  <option value="all">All plans</option>
+                  <option value="free">free</option>
+                  <option value="starter">starter</option>
+                  <option value="pro">pro</option>
+                  <option value="business">business</option>
+                  <option value="advanced">advanced</option>
+                </select>
+                <input id="auditFilterCountry" type="text" placeholder="Country (ISO)" maxlength="2" autocomplete="off" aria-label="Filter by country code">
+                <input id="auditFilterActivityMin" type="number" min="1" placeholder="Min events/user" aria-label="Activity level min events">
                 <input id="auditDateFrom" type="date" aria-label="From date">
                 <input id="auditDateTo" type="date" aria-label="To date">
                 <button type="button" id="auditApplyBtn" class="btn">Apply filters</button>
@@ -229,7 +265,7 @@
                 <input id="auditJourneyUserId" type="text" placeholder="User UUID for timeline" autocomplete="off" aria-label="Journey user id">
                 <button type="button" id="auditJourneyBtn" class="btn">Load user journey</button>
               </div>
-              <div id="auditJourneyPanel" class="audit-journey-panel"></div>
+              <div id="auditJourneyPanel" class="audit-journey-panel audit-timeline"></div>
             </div>
           </div>
           <h3>Search results</h3>
@@ -360,6 +396,7 @@
         if (shell) observer.observe(shell, { childList: true, subtree: true });
       })();
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
     <script src="api-config.js"></script>
     <script src="admin.js"></script>
   </div>

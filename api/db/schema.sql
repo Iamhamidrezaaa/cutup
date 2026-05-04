@@ -300,3 +300,31 @@ CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events (created_
 CREATE INDEX IF NOT EXISTS idx_audit_events_event_type ON audit_events (event_type);
 CREATE INDEX IF NOT EXISTS idx_audit_events_session_id ON audit_events (session_id)
   WHERE session_id IS NOT NULL;
+
+-- SaaS analytics enrichment (idempotent adds)
+ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS analytics_session_id TEXT;
+ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS country_code TEXT;
+ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS device TEXT;
+ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS browser TEXT;
+ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS plan TEXT;
+ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS user_segment TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_audit_events_analytics_session
+  ON audit_events (analytics_session_id) WHERE analytics_session_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_audit_events_country ON audit_events (country_code)
+  WHERE country_code IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_audit_events_plan ON audit_events (plan) WHERE plan IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_audit_events_segment ON audit_events (user_segment)
+  WHERE user_segment IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS audit_alerts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  rule TEXT NOT NULL,
+  severity TEXT NOT NULL DEFAULT 'warning',
+  message TEXT NOT NULL,
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_alerts_created_at ON audit_alerts (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_alerts_rule ON audit_alerts (rule);

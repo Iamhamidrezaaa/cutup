@@ -29,13 +29,45 @@
     }
   }
 
+  var AX_PAIR_KEY = 'cutup_ax_auth_pair';
+
+  function getAnalyticsSessionId() {
+    try {
+      var authSid = getSessionId() || '';
+      var guestKey = authSid ? authSid : '_guest_';
+      var prev = sessionStorage.getItem(AX_PAIR_KEY);
+      if (prev !== guestKey) {
+        sessionStorage.setItem(AX_PAIR_KEY, guestKey);
+        var id =
+          typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : 'ax-' + Date.now() + '-' + Math.random().toString(36).slice(2, 12);
+        localStorage.setItem('cutup_analytics_session', id);
+        return id;
+      }
+      var existing = localStorage.getItem('cutup_analytics_session');
+      if (!existing) {
+        existing =
+          typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : 'ax-' + Date.now() + '-' + Math.random().toString(36).slice(2, 12);
+        localStorage.setItem('cutup_analytics_session', existing);
+      }
+      return existing;
+    } catch (_e) {
+      return null;
+    }
+  }
+
   function send(name, metadata, eventType) {
     const base = getApiBase();
     if (!base) return;
+    const ax = getAnalyticsSessionId();
     const payload = {
       event_name: String(name || '').slice(0, 128),
       event_type: eventType != null ? String(eventType).slice(0, 64) : 'ui',
       metadata: metadata && typeof metadata === 'object' ? metadata : {},
+      analytics_session_id: ax,
       path:
         typeof location !== 'undefined'
           ? `${location.pathname || ''}${location.search || ''}`.slice(0, 2048)
@@ -45,6 +77,7 @@
     const headers = { 'Content-Type': 'application/json' };
     const sid = getSessionId();
     if (sid) headers['X-Session-Id'] = sid;
+    if (ax) headers['X-Analytics-Session-Id'] = ax;
     fetch(`${base}/api/audit/event`, {
       method: 'POST',
       headers,

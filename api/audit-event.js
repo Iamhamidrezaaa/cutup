@@ -1,6 +1,6 @@
 import { setCORSHeaders } from './cors.js';
 import { sessions } from './auth.js';
-import { resolveUserIdForAnalytics } from './billing-repository.js';
+import { resolveUserIdForAnalytics, getUserPlanForAudit } from './billing-repository.js';
 import { isBillingDbConfigured } from './db/pool.js';
 import {
   insertAuditEventRow,
@@ -9,6 +9,8 @@ import {
   clampEventType,
   getRequestAuditContext
 } from './audit-repository.js';
+import { parseClientUa } from './audit-ua.js';
+import { resolveCountryFromIp } from './audit-geo.js';
 
 function readBody(req) {
   const b = req.body;
@@ -56,10 +58,47 @@ export default async function auditEventHandler(req, res) {
       ? String(body.referrer).slice(0, 2048)
       : ctx.referrer || (typeof body.referer === 'string' ? body.referer.slice(0, 2048) : null);
 
+  const axRaw =
+    body.analytics_session_id != null
+      ? body.analytics_session_id
+      : body.analyticsSessionId != null
+        ? body.analyticsSessionId
+        : req.headers['x-analytics-session-id'];
+  const analyticsSessionId = axRaw != null ? String(axRaw).slice(0, 128) : null;
+
+  const uaInfo = parseClientUa(ctx.userAgent);
+  let countryCode = null;
+  if (ctx.ip) {
+    try {
+      countryCode = await resolveCountryFromIp(ctx.ip);
+    } catch {
+      countryCode = null;
+    }
+  }
+
+  let plan = null;
+  let userSegment = null;
+  if (userId) {
+    try {
+      const pl = await getUserPlanForAudit(userId);
+      plan = pl.plan;
+      userSegment = pl.userSegment;
+    } catch {
+      plan = null;
+      userSegment = null;
+    }
+  }
+
   try {
     const row = await insertAuditEventRow({
       userId,
       sessionId,
+      analyticsSessionId,
+      countryCode,
+      device: uaInfo.device,
+      browser: uaInfo.browser,
+      plan,
+      userSegment,
       eventType,
       eventName,
       metadata: meta,

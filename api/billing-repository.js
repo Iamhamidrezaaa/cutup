@@ -2274,6 +2274,21 @@ export async function resolveUserIdForAnalytics(email) {
   return r.rows[0]?.id || null;
 }
 
+/** Plan + free/paid segment for audit enrichment (subscriptions row). */
+export async function getUserPlanForAudit(userId) {
+  if (!userId) return { plan: null, userSegment: 'free' };
+  const pool = getPool();
+  const r = await pool.query(
+    `SELECT plan, status FROM subscriptions WHERE user_id = $1::uuid LIMIT 1`,
+    [String(userId)]
+  );
+  const row = r.rows[0];
+  const plan = row?.plan != null ? String(row.plan).slice(0, 32) : 'free';
+  const status = row?.status != null ? String(row.status) : '';
+  const paid = plan !== 'free' && status === 'active';
+  return { plan, userSegment: paid ? 'paid' : 'free' };
+}
+
 export async function insertAnalyticsEvent({ userId, guestId, event, variant, plan }) {
   const pool = getPool();
   const v = variant === 'B' ? 'B' : 'A';

@@ -71,7 +71,7 @@ try {
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'X-Session-Id'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'X-Session-Id', 'X-Analytics-Session-Id'],
   credentials: false
 }));
 
@@ -79,7 +79,7 @@ app.use(cors({
 app.options('*', (req, res) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Session-Id');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Session-Id, X-Analytics-Session-Id');
   res.sendStatus(200);
 });
 
@@ -106,7 +106,7 @@ app.get('/api/health', (req, res) => {
 app.get('/sitemap.xml', async (req, res) => sitemapHandler(req, res));
 
 // Import and use API routes
-let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler, userProfileHandler, auditEventHandler, adminAuditSummaryHandler, adminAuditListHandler, adminAuditUserTimelineHandler;
+let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler, userProfileHandler, auditEventHandler, adminAuditSummaryHandler, adminAuditListHandler, adminAuditUserTimelineHandler, adminAuditChartsHandler, adminAuditFunnelHandler, adminAuditAlertsHandler, adminAuditEvaluateAlertsHandler;
 
 async function loadRoutes() {
   try {
@@ -256,6 +256,10 @@ async function loadRoutes() {
     adminAuditSummaryHandler = adminAuditModule.adminAuditSummaryHandler;
     adminAuditListHandler = adminAuditModule.adminAuditListHandler;
     adminAuditUserTimelineHandler = adminAuditModule.adminAuditUserTimelineHandler;
+    adminAuditChartsHandler = adminAuditModule.adminAuditChartsHandler;
+    adminAuditFunnelHandler = adminAuditModule.adminAuditFunnelHandler;
+    adminAuditAlertsHandler = adminAuditModule.adminAuditAlertsHandler;
+    adminAuditEvaluateAlertsHandler = adminAuditModule.adminAuditEvaluateAlertsHandler;
     console.log('✅ Audit log handlers loaded');
 
     console.log('All routes loaded successfully');
@@ -546,6 +550,34 @@ app.get('/api/admin/audit', async (req, res) => {
   return adminAuditListHandler(req, res);
 });
 
+app.get('/api/admin/audit/charts', async (req, res) => {
+  if (!adminAuditChartsHandler) {
+    return res.status(503).json({ error: 'not_loaded' });
+  }
+  return adminAuditChartsHandler(req, res);
+});
+
+app.get('/api/admin/audit/funnel', async (req, res) => {
+  if (!adminAuditFunnelHandler) {
+    return res.status(503).json({ error: 'not_loaded' });
+  }
+  return adminAuditFunnelHandler(req, res);
+});
+
+app.get('/api/admin/audit/alerts', async (req, res) => {
+  if (!adminAuditAlertsHandler) {
+    return res.status(503).json({ error: 'not_loaded' });
+  }
+  return adminAuditAlertsHandler(req, res);
+});
+
+app.post('/api/admin/audit/evaluate-alerts', async (req, res) => {
+  if (!adminAuditEvaluateAlertsHandler) {
+    return res.status(503).json({ error: 'not_loaded' });
+  }
+  return adminAuditEvaluateAlertsHandler(req, res);
+});
+
 app.post('/api/admin/forgot-password', async (req, res) => {
   if (!adminForgotPasswordHandler) {
     return res.status(503).json({ ok: false });
@@ -615,9 +647,15 @@ app.use((req, res) => {
 });
 
 // Start server
-loadRoutes().then(() => {
+loadRoutes().then(async () => {
   const server = createServer(app);
-  
+  try {
+    const { attachAuditLiveWebSocket } = await import('./api/audit-ws-setup.js');
+    attachAuditLiveWebSocket(server);
+  } catch (e) {
+    console.warn('[audit] WebSocket live feed not attached:', e?.message || e);
+  }
+
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server running on http://0.0.0.0:${PORT} (PID: ${process.pid})`);
     console.log(`📡 API endpoints:`);

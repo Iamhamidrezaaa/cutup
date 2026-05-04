@@ -2,6 +2,23 @@ const API_BASE_URL =
   typeof window !== 'undefined' && typeof window.CUTUP_API_BASE !== 'undefined'
     ? window.CUTUP_API_BASE
     : '';
+
+/** Align API role string with UI checks (DevTools: `window.panelRole` after login). */
+function normalizeAdminPanelRole(raw) {
+  const r = String(raw ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+  if (r === 'superadmin') return 'super_admin';
+  if (r === 'super_admin' || r === 'admin' || r === 'editor') return r;
+  return r;
+}
+
+/** Audit Log: same access tier as Customers / Usage (admin + super_admin). Editors excluded. */
+function canAccessAuditLogUi() {
+  return panelRole === 'super_admin' || panelRole === 'admin';
+}
+
 let panelRole = '';
 let panelAdminId = null;
 let panelAdminEmail = '';
@@ -189,6 +206,7 @@ function syncUsersNavParentState() {
 
 function activateAdminSection(section) {
   stopAuditFeedPoll();
+  stopAuditLiveWs();
   document.querySelectorAll('.nav-btn[data-section]').forEach((n) => n.classList.remove('active'));
   document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
   const trigger = document.querySelector(`.nav-btn[data-section="${section}"]`);
@@ -906,9 +924,15 @@ async function loadMe() {
   const response = await fetch(`${API_BASE_URL}/api/admin/auth/me`, { credentials: 'include' });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data.ok) throw new Error('Please sign in.');
-  panelRole = data.role || '';
+  const rawRole = data.role || '';
+  panelRole = normalizeAdminPanelRole(rawRole);
   panelAdminId = data.adminId != null ? Number(data.adminId) : null;
   panelAdminEmail = String(data.email || '');
+  if (typeof window !== 'undefined') {
+    window.panelRole = panelRole;
+    window.__CUTUP_ADMIN_ROLE__ = panelRole;
+  }
+  console.log('[admin] panelRole:', panelRole, '| raw from API:', JSON.stringify(rawRole), '| super_admin:', panelRole === 'super_admin');
   const identity = document.getElementById('adminIdentity');
   if (identity) identity.textContent = `${panelAdminEmail} · role: ${panelRole}`;
 }
@@ -936,7 +960,7 @@ function applyRoleToNav() {
     btn.hidden = false;
   });
   const auditNav = document.querySelector('.nav-btn[data-section="audit"]');
-  if (auditNav) auditNav.hidden = panelRole !== 'super_admin';
+  if (auditNav) auditNav.hidden = !canAccessAuditLogUi();
   syncUsersNavParentState();
 }
 
@@ -1839,6 +1863,30 @@ function setupActions() {
 let auditFeedTimer = null;
 let auditPage = 1;
 const AUDIT_PAGE_SIZE = 40;
+/** @type {WebSocket|null} */
+let auditWs = null;
+let auditChartEventsInst = null;
+let auditChartDauInst = null;
+let auditChartErrorsInst = null;
+
+function stopAuditLiveWs() {
+  if (auditWs) {
+    try {
+      auditWs.close();
+    } catch (_e) {
+      /* noop */
+    }
+    auditWs = null;
+  }
+}
+
+function auditLiveWsUrl() {
+  const base =
+    API_BASE_URL || (typeof window !== 'undefined' ? String(window.location.origin || '').replace(/\/$/, '') : '');
+  if (!base) return '';
+  if (base.startsWith('https://')) return `${base.replace(/^https/, 'wss')}/api/admin/audit/live`;
+  return `${base.replace(/^http/, 'ws')}/api/admin/audit/live`;
+}
 
 function stopAuditFeedPoll() {
   if (auditFeedTimer) {
@@ -1852,8 +1900,83 @@ function scheduleAuditFeedPoll() {
   auditFeedTimer = setInterval(() => {
     const sec = document.getElementById('section-audit');
     if (!sec?.classList.contains('active')) return;
+    if (auditWs && auditWs.readyState === 1) return;
     loadAuditFeedOnly().catch(() => {});
   }, 10000);
+}
+
+function setAuditLiveStatus(text) {
+  const el = document.getElementById('auditLiveFeedStatus');
+  if (el) el.textContent = text;
+}
+
+function connectAuditLiveWs() {
+  stopAuditLiveWs();
+  if (typeof WebSocket === 'undefined') {
+    setAuditLiveStatus('Live updates: polling every 10s (WebSocket not available).');
+    scheduleAuditFeedPoll();
+    return;
+  }
+  const url = auditLiveWsUrl();
+  if (!url) {
+    setAuditLiveStatus('Live updates: polling every 10s.');
+    scheduleAuditFeedPoll();
+    return;
+  }
+  setAuditLiveStatus('Live feed: connecting…');
+  try {
+    auditWs = new WebSocket(url);
+  } catch (_e) {
+    auditWs = null;
+    setAuditLiveStatus('Live updates: polling every 10s (connection failed).');
+    scheduleAuditFeedPoll();
+    return;
+  }
+  auditWs.onopen = () => {
+    setAuditLiveStatus('Live feed: connected (push).');
+    stopAuditFeedPoll();
+  };
+  auditWs.onclose = () => {
+    auditWs = null;
+    setAuditLiveStatus('Live feed: reconnecting via polling every 10s…');
+    scheduleAuditFeedPoll();
+  };
+  auditWs.onerror = () => {
+    try {
+      auditWs?.close();
+    } catch (_e) {
+      /* noop */
+    }
+  };
+  auditWs.onmessage = (ev) => {
+    let msg;
+    try {
+      msg = JSON.parse(ev.data);
+    } catch {
+      return;
+    }
+    if (msg?.type === 'audit' && msg.payload) {
+      prependAuditLiveFeed(msg.payload);
+    }
+  };
+}
+
+function prependAuditLiveFeed(payload) {
+  const el = document.getElementById('auditLiveFeed');
+  if (!el) return;
+  const name = escapeHtml(payload.eventName || payload.event_name || '—');
+  const typ = escapeHtml(payload.eventType || payload.event_type || 'ui');
+  const when = escapeHtml(fmtDate(payload.createdAt || payload.created_at));
+  const plan = payload.plan ? escapeHtml(String(payload.plan)) : '';
+  const cc = payload.countryCode ? escapeHtml(String(payload.countryCode)) : '';
+  const meta = [plan && `plan ${plan}`, cc && cc].filter(Boolean).join(' · ');
+  const row = document.createElement('div');
+  row.className = 'audit-feed-row audit-feed-row--live';
+  row.innerHTML = `<strong>${name}</strong> <span class="badge badge-neutral">${typ}</span>
+        <div class="audit-feed-meta">${when}${meta ? ` · ${meta}` : ''}</div>`;
+  if (el.firstChild) el.insertBefore(row, el.firstChild);
+  else el.appendChild(row);
+  while (el.children.length > 40) el.removeChild(el.lastChild);
 }
 
 async function adminAuditFetch(path) {
@@ -1870,11 +1993,17 @@ function auditQueryFromFilters() {
   const uid = document.getElementById('auditFilterUserId')?.value?.trim();
   const ev = document.getElementById('auditFilterEvent')?.value?.trim();
   const ty = document.getElementById('auditFilterType')?.value?.trim();
+  const plan = document.getElementById('auditFilterPlan')?.value?.trim();
+  const country = document.getElementById('auditFilterCountry')?.value?.trim();
+  const actMin = document.getElementById('auditFilterActivityMin')?.value?.trim();
   const d0 = document.getElementById('auditDateFrom')?.value;
   const d1 = document.getElementById('auditDateTo')?.value;
   if (uid) q.set('user_id', uid);
   if (ev) q.set('event_name', ev);
   if (ty) q.set('event_type', ty);
+  if (plan && plan !== 'all') q.set('plan', plan);
+  if (country) q.set('country', country.toUpperCase().slice(0, 2));
+  if (actMin && Number(actMin) > 0) q.set('activity_min', String(Math.floor(Number(actMin))));
   if (d0) q.set('date_from', `${d0}T00:00:00.000Z`);
   if (d1) q.set('date_to', `${d1}T23:59:59.999Z`);
   return q.toString();
@@ -1931,9 +2060,12 @@ function renderAuditFeed(events) {
   el.innerHTML = events
     .map((e) => {
       const who = e.userEmail || e.userId || '—';
+      const seg = e.userSegment ? ` · ${e.userSegment}` : '';
+      const pl = e.plan ? ` · ${e.plan}` : '';
+      const cc = e.countryCode ? ` · ${e.countryCode}` : '';
       return `<div class="audit-feed-row">
         <strong>${escapeHtml(e.eventName)}</strong> <span class="badge badge-neutral">${escapeHtml(e.eventType)}</span>
-        <div class="audit-feed-meta">${escapeHtml(fmtDate(e.createdAt))} · ${escapeHtml(String(who))}</div>
+        <div class="audit-feed-meta">${escapeHtml(fmtDate(e.createdAt))} · ${escapeHtml(String(who))}${pl}${cc}${seg}</div>
       </div>`;
     })
     .join('');
@@ -1945,10 +2077,10 @@ function renderAuditTable(payload) {
   if (!table) return;
   const events = payload.events || [];
   if (!events.length) {
-    table.innerHTML = `<tbody>${emptyRow(7, 'No rows for this query.')}</tbody>`;
+    table.innerHTML = `<tbody>${emptyRow(11, 'No rows for this query.')}</tbody>`;
   } else {
     table.innerHTML = `
-      <thead><tr><th>Time</th><th>Event</th><th>Type</th><th>User</th><th>Session</th><th>Path</th><th>Meta</th></tr></thead>
+      <thead><tr><th>Time</th><th>Event</th><th>Type</th><th>User</th><th>Plan</th><th>Seg</th><th>CC</th><th>Device</th><th>Ax.session</th><th>Path</th><th>Meta</th></tr></thead>
       <tbody>
         ${events
           .map(
@@ -1958,9 +2090,13 @@ function renderAuditTable(payload) {
             <td>${escapeHtml(e.eventName)}</td>
             <td>${escapeHtml(e.eventType)}</td>
             <td>${escapeHtml(e.userEmail || e.userId || '—')}</td>
-            <td title="${escapeHtml(e.sessionId || '')}">${escapeHtml((e.sessionId || '').slice(0, 12))}${e.sessionId?.length > 12 ? '…' : ''}</td>
-            <td title="${escapeHtml(e.path || '')}">${escapeHtml((e.path || '').slice(0, 48))}</td>
-            <td><code style="font-size:11px">${escapeHtml(JSON.stringify(e.metadata || {}).slice(0, 120))}${JSON.stringify(e.metadata || {}).length > 120 ? '…' : ''}</code></td>
+            <td>${escapeHtml(e.plan || '—')}</td>
+            <td>${escapeHtml(e.userSegment || '—')}</td>
+            <td>${escapeHtml(e.countryCode || '—')}</td>
+            <td title="${escapeHtml(e.browser || '')}">${escapeHtml((e.device || '—').slice(0, 12))}</td>
+            <td title="${escapeHtml(e.analyticsSessionId || '')}">${escapeHtml((e.analyticsSessionId || '').slice(0, 8))}${e.analyticsSessionId?.length > 8 ? '…' : ''}</td>
+            <td title="${escapeHtml(e.path || '')}">${escapeHtml((e.path || '').slice(0, 40))}</td>
+            <td><code style="font-size:11px">${escapeHtml(JSON.stringify(e.metadata || {}).slice(0, 100))}${JSON.stringify(e.metadata || {}).length > 100 ? '…' : ''}</code></td>
           </tr>`
           )
           .join('')}
@@ -1973,9 +2109,164 @@ function renderAuditTable(payload) {
   }
 }
 
+function destroyAuditCharts() {
+  [auditChartEventsInst, auditChartDauInst, auditChartErrorsInst].forEach((c) => {
+    try {
+      c?.destroy();
+    } catch (_e) {
+      /* noop */
+    }
+  });
+  auditChartEventsInst = auditChartDauInst = auditChartErrorsInst = null;
+}
+
+async function loadAuditCharts() {
+  if (typeof Chart === 'undefined') return;
+  const q = summaryQueryFromDates();
+  const qs = q ? `${q}&bucket=hour` : '?bucket=hour';
+  let data;
+  try {
+    data = await adminAuditFetch(`/api/admin/audit/charts${qs}`);
+  } catch (_e) {
+    return;
+  }
+  destroyAuditCharts();
+  const gridColor = getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#e5e7eb';
+  const primary =
+    getComputedStyle(document.documentElement).getPropertyValue('--primary').trim() || '#5b4ce6';
+
+  const evCanvas = document.getElementById('auditChartEvents');
+  const dauCanvas = document.getElementById('auditChartDau');
+  const errCanvas = document.getElementById('auditChartErrors');
+  if (!evCanvas || !dauCanvas || !errCanvas) return;
+
+  const evLabels = (data.events || []).map((x) => {
+    const d = new Date(x.t);
+    return Number.isNaN(d.getTime()) ? x.t : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit' });
+  });
+  auditChartEventsInst = new Chart(evCanvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: evLabels,
+      datasets: [{ label: 'Events', data: (data.events || []).map((x) => x.count), borderColor: primary, tension: 0.2, fill: false }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8 }, grid: { color: gridColor } },
+        y: { beginAtZero: true, grid: { color: gridColor } }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+
+  const dauLabels = (data.dau || []).map((x) => {
+    const d = new Date(x.t);
+    return Number.isNaN(d.getTime()) ? x.t : d.toLocaleDateString();
+  });
+  auditChartDauInst = new Chart(dauCanvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: dauLabels,
+      datasets: [
+        { label: 'DAU', data: (data.dau || []).map((x) => x.activeUsers), borderColor: '#0d9488', tension: 0.2, fill: true, backgroundColor: 'rgba(13,148,136,0.08)' }
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10 }, grid: { color: gridColor } },
+        y: { beginAtZero: true, grid: { color: gridColor } }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+
+  const errLabels = (data.errors || []).map((x) => {
+    const d = new Date(x.t);
+    return Number.isNaN(d.getTime()) ? x.t : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit' });
+  });
+  auditChartErrorsInst = new Chart(errCanvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: errLabels,
+      datasets: [{ label: 'Errors', data: (data.errors || []).map((x) => x.count), borderColor: '#dc2626', tension: 0.2, fill: false }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8 }, grid: { color: gridColor } },
+        y: { beginAtZero: true, grid: { color: gridColor } }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+}
+
+async function loadAuditAlertsPanel() {
+  const wrap = document.getElementById('auditAlertsBar');
+  const ul = document.getElementById('auditAlertsList');
+  if (!wrap || !ul) return;
+  try {
+    const data = await adminAuditFetch('/api/admin/audit/alerts?limit=20');
+    const rows = data.alerts || [];
+    wrap.hidden = false;
+    if (!rows.length) {
+      ul.innerHTML = '<li class="admin-muted">No stored alerts yet. Run rules after traffic builds up.</li>';
+      return;
+    }
+    ul.innerHTML = rows
+      .map(
+        (a) => `<li><span class="audit-alert-rule">${escapeHtml(a.rule)}</span>
+          <span class="badge badge-neutral">${escapeHtml(a.severity)}</span>
+          <span>${escapeHtml(fmtDate(a.createdAt))}</span>
+          <span>${escapeHtml(a.message || '')}</span></li>`
+      )
+      .join('');
+  } catch {
+    wrap.hidden = false;
+    ul.innerHTML = '<li class="admin-muted">Could not load alerts.</li>';
+  }
+}
+
+async function runDynamicFunnel() {
+  const input = document.getElementById('auditFunnelStepsInput');
+  const table = document.getElementById('auditDynamicFunnelTable');
+  if (!input || !table) return;
+  const steps = input.value.trim();
+  if (!steps) {
+    showBanner('Enter at least one funnel step (event name).');
+    return;
+  }
+  const q = new URLSearchParams();
+  q.set('steps', steps);
+  const d0 = document.getElementById('auditDateFrom')?.value;
+  const d1 = document.getElementById('auditDateTo')?.value;
+  if (d0) q.set('date_from', `${d0}T00:00:00.000Z`);
+  if (d1) q.set('date_to', `${d1}T23:59:59.999Z`);
+  try {
+    const data = await adminAuditFetch(`/api/admin/audit/funnel?${q.toString()}`);
+    const stepsOut = data.funnel?.steps || [];
+    if (!stepsOut.length) {
+      table.innerHTML = '<tbody><tr><td colspan="3">No valid steps.</td></tr></tbody>';
+      return;
+    }
+    table.innerHTML = `<thead><tr><th>Step</th><th>Users</th><th>Conv. vs prev</th></tr></thead><tbody>${stepsOut
+      .map(
+        (s) => `<tr><td>${escapeHtml(s.eventName)}</td><td>${escapeHtml(String(s.distinctUsers))}</td><td>${
+          s.conversionFromPrevious != null ? `${escapeHtml(String(s.conversionFromPrevious))}%` : '—'
+        }</td></tr>`
+      )
+      .join('')}</tbody>`;
+  } catch (e) {
+    showBanner(e.message || 'Funnel failed.');
+  }
+}
+
 async function loadAuditSummaryOnly() {
   const data = await adminAuditFetch(`/api/admin/audit/summary${summaryQueryFromDates()}`);
   renderAuditSummary(data.summary);
+  await loadAuditCharts();
 }
 
 async function loadAuditFeedOnly() {
@@ -1989,15 +2280,49 @@ async function loadAuditTableOnly() {
 }
 
 async function loadAuditPanel() {
-  if (panelRole !== 'super_admin') {
-    showBanner('Audit log requires super admin.');
+  console.log('[audit] loading… panelRole=', panelRole, 'canAccess=', canAccessAuditLogUi());
+  if (!canAccessAuditLogUi()) {
+    showBanner('Audit log requires an admin or super admin account.');
+    console.warn('[audit] blocked: insufficient role');
     return;
   }
-  await loadAuditSummaryOnly();
-  await loadAuditFeedOnly();
+  try {
+    const summaryData = await adminAuditFetch(`/api/admin/audit/summary${summaryQueryFromDates()}`);
+    console.log('[audit] summary:', summaryData.summary);
+    renderAuditSummary(summaryData.summary);
+  } catch (e) {
+    console.error('[audit] summary failed', e);
+    showBanner(e.message || 'Could not load audit summary.');
+    return;
+  }
+  try {
+    await loadAuditCharts();
+  } catch (e) {
+    console.warn('[audit] charts', e);
+  }
+  try {
+    await loadAuditAlertsPanel();
+  } catch (e) {
+    console.warn('[audit] alerts', e);
+  }
+  try {
+    const feedData = await adminAuditFetch(`/api/admin/audit?page=1&limit=25`);
+    console.log('[audit] feed count:', feedData.events?.length, 'sample:', feedData.events?.[0]);
+    renderAuditFeed(feedData.events || []);
+  } catch (e) {
+    console.error('[audit] feed failed', e);
+    renderAuditFeed([]);
+  }
   auditPage = 1;
-  await loadAuditTableOnly();
-  scheduleAuditFeedPoll();
+  try {
+    const tableData = await adminAuditFetch(`/api/admin/audit?${auditQueryFromFilters()}`);
+    console.log('[audit] table total:', tableData.total, 'page:', tableData.page);
+    renderAuditTable(tableData);
+  } catch (e) {
+    console.error('[audit] table failed', e);
+    showBanner(e.message || 'Could not load audit events.');
+  }
+  connectAuditLiveWs();
 }
 
 async function loadUserJourneyTimeline() {
@@ -2014,15 +2339,33 @@ async function loadUserJourneyTimeline() {
       panel.innerHTML = '<p class="admin-muted">No audit events for this user.</p>';
       return;
     }
-    panel.innerHTML = rows
-      .map(
-        (e) => `
-      <div class="audit-journey-step">
-        <strong>${escapeHtml(e.eventName)}</strong> <span class="badge badge-neutral">${escapeHtml(e.eventType)}</span>
-        <div class="audit-feed-meta">${escapeHtml(fmtDate(e.createdAt))}</div>
-        <div class="audit-feed-meta">${escapeHtml(JSON.stringify(e.metadata || {}).slice(0, 200))}</div>
-      </div>`
-      )
+    const groups = [];
+    let cur = null;
+    for (const e of rows) {
+      const day = String(e.createdAt || '').slice(0, 10) || '—';
+      if (!cur || cur.day !== day) {
+        cur = { day, items: [] };
+        groups.push(cur);
+      }
+      cur.items.push(e);
+    }
+    panel.innerHTML = groups
+      .map((g) => {
+        const body = g.items
+          .map((e) => {
+            const meta = JSON.stringify(e.metadata || {});
+            const extra = [e.plan && `plan: ${e.plan}`, e.countryCode && e.countryCode, e.device && `${e.device}/${e.browser || ''}`]
+              .filter(Boolean)
+              .join(' · ');
+            return `<div class="audit-timeline-event">
+            <strong>${escapeHtml(e.eventName)}</strong> <span class="badge badge-neutral">${escapeHtml(e.eventType)}</span>
+            <div class="audit-timeline-meta">${escapeHtml(fmtDate(e.createdAt))}${extra ? ` · ${escapeHtml(extra)}` : ''}</div>
+            <div class="audit-timeline-meta"><code style="font-size:11px">${escapeHtml(meta.slice(0, 180))}${meta.length > 180 ? '…' : ''}</code></div>
+          </div>`;
+          })
+          .join('');
+        return `<div class="audit-timeline-day"><div class="audit-timeline-day-label">${escapeHtml(g.day)}</div>${body}</div>`;
+      })
       .join('');
   } catch (e) {
     showBanner(e.message || 'Could not load journey.');
@@ -2035,8 +2378,26 @@ function setupAuditPanel() {
     try {
       await loadAuditSummaryOnly();
       await loadAuditTableOnly();
+      await loadAuditAlertsPanel();
     } catch (e) {
       showBanner(e.message || 'Filter failed.');
+    }
+  });
+  document.getElementById('auditFunnelRunBtn')?.addEventListener('click', () => runDynamicFunnel().catch((e) => showBanner(e.message)));
+  document.getElementById('auditRunRulesBtn')?.addEventListener('click', async () => {
+    try {
+      const r = await fetch(`${API_BASE_URL}/api/admin/audit/evaluate-alerts`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || j.message || 'Evaluate failed');
+      showBanner(`Alert rules finished. New alerts: ${j.inserted ?? 0}.`);
+      await loadAuditAlertsPanel();
+    } catch (e) {
+      showBanner(e.message || 'Could not run rules.');
     }
   });
   document.getElementById('auditJourneyBtn')?.addEventListener('click', () => loadUserJourneyTimeline().catch((e) => showBanner(e.message)));
