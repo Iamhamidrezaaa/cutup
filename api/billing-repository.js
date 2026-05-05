@@ -2107,21 +2107,22 @@ export async function mergeRetentionGuestToUser(guestKey, email) {
 }
 
 /** Pending payment row; plan_key is source of truth for upgrades (not amount). */
-export async function insertPaymentPending({ email, provider, amount, currency, externalId, planKey, discountCode }) {
+export async function insertPaymentPending({ email, provider, amount, amountIrr = null, currency, externalId, planKey, discountCode }) {
   const userId = await ensureUserByEmail(email);
   const pool = getPool();
   const pk = planKey && PLANS[planKey] ? String(planKey).slice(0, 32) : null;
   const dc = discountCode ? String(discountCode).slice(0, 32) : null;
   const r = await pool.query(
     `INSERT INTO payments (
-      user_id, provider, gateway, status, amount, amount_eur, currency, external_id, authority, plan_key, plan, discount_code
+      user_id, provider, gateway, status, amount, amount_eur, amount_irr, currency, external_id, authority, plan_key, plan, discount_code
      )
-     VALUES ($1, $2, $2, 'pending', $3, $3, $4, $5, $5, $6, $6, $7)
+     VALUES ($1, $2, $2, 'pending', $3, $3, $4, $5, $6, $6, $7, $7, $8)
      RETURNING id`,
     [
       userId,
       String(provider || 'stripe').slice(0, 64),
       amount != null ? Number(amount) : null,
+      amountIrr != null ? Number(amountIrr) : null,
       String(currency || 'EUR').slice(0, 8),
       externalId ? String(externalId).slice(0, 255) : null,
       pk,

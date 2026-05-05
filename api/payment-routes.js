@@ -61,6 +61,15 @@ function normalizeAmountEur(raw, fallback) {
   return Number.isFinite(fb) && fb > 0 ? fb : null;
 }
 
+function convertEurToIrr(eur) {
+  const value = Number(eur);
+  const rate = Number(process.env.YEKPAY_EUR_TO_IRR || 550000);
+  if (!Number.isFinite(value) || value <= 0) return { ok: false, rate, irr: null };
+  const rateSafe = Number.isFinite(rate) && rate > 0 ? rate : 550000;
+  const irr = Math.round(value * rateSafe);
+  return { ok: true, rate: rateSafe, irr };
+}
+
 function readJsonBody(req) {
   let body = req.body;
   if (typeof body === 'string' && body.length) {
@@ -240,34 +249,41 @@ export async function paymentCreateHandler(req, res) {
 
   const yk = getYekpayConfig();
   if (provider === 'yekpay') {
-    const allowMock = String(process.env.YEKPAY_MOCK_MODE || '').trim() === '1';
     if (!yk.merchantId) {
-      if (allowMock) {
-        console.warn('[payment] yekpay mock mode enabled (YEKPAY_MOCK_MODE=1)');
-        return res.status(200).json({
-          ok: true,
-          redirect_url: '/payment-success.html?payment=success&mock=true',
-          payment_url: '/payment-success.html?payment=success&mock=true'
-        });
-      }
       return res.status(500).json({
         ok: false,
-        error: 'payment_failed',
+        error: 'missing_merchant_id',
         details: { Message: 'YEKPAY_MERCHANT_ID is missing on server.' }
       });
     }
 
+    const eur = Number(amount);
+    if (!eur || eur <= 0) {
+      return res.status(400).json({
+        ok: false,
+        error: 'invalid_amount'
+      });
+    }
+    const conv = convertEurToIrr(eur);
+    if (!conv.ok || !conv.irr) {
+      return res.status(400).json({
+        ok: false,
+        error: 'invalid_amount'
+      });
+    }
+    const amountIrr = conv.irr;
+    const conversionRate = conv.rate;
+
     const paymentId = await insertPaymentPending({
       email,
       provider: 'yekpay',
-      amount,
+      amount: eur,
+      amountIrr,
       currency: 'EUR',
       externalId: null,
       planKey,
       discountCode
     });
-
-    const amountIrr = Math.max(1, Math.round(Number(amount) * Number(yk.eurToIrrRate || 900000)));
     const callbackUrl = yk.callbackUrl;
     const profilePayload = {
       email: normalizeText(body?.email || profile?.email || email, 320),
@@ -284,9 +300,14 @@ export async function paymentCreateHandler(req, res) {
         error: 'Missing required payment data'
       });
     }
+    console.log('PAYMENT AMOUNT:', {
+      eur,
+      rate: conversionRate,
+      irr: amountIrr
+    });
     console.log('PAYMENT CREATE INPUT:', {
       plan: planKey,
-      amount_eur: Number(amount),
+      amount_eur: eur,
       amount_irr: amountIrr,
       email: profilePayload.email,
       mobile: profilePayload.mobile,
@@ -451,7 +472,8 @@ export async function paymentRetryHandler(req, res) {
   });
   const yk = getYekpayConfig();
   const amountEur = Number(failed.amount_eur || failed.amount || 0);
-  const amountIrr = Math.max(1, Math.round(amountEur * Number(yk.eurToIrrRate || 900000)));
+  const conv = convertEurToIrr(amountEur);
+  const amountIrr = conv.ok && conv.irr ? conv.irr : Math.max(1, Math.round(amountEur * 550000));
   const created = await yekpayCreatePaymentRequest({
     merchantId: yk.merchantId,
     fromCurrencyCode: 978,

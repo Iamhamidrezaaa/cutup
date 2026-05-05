@@ -12,11 +12,11 @@ export function getYekpayConfig() {
     'https://cutup.shop/api/payment/callback'
   ).trim();
   const merchantId = (process.env.YEKPAY_MERCHANT_ID || '').trim();
-  const eurToIrrRate = Number(process.env.YEKPAY_EUR_TO_IRR || 900000);
+  const eurToIrrRate = Number(process.env.YEKPAY_EUR_TO_IRR || 550000);
   return {
     callbackUrl,
     merchantId,
-    eurToIrrRate: Number.isFinite(eurToIrrRate) && eurToIrrRate > 0 ? eurToIrrRate : 900000,
+    eurToIrrRate: Number.isFinite(eurToIrrRate) && eurToIrrRate > 0 ? eurToIrrRate : 550000,
     isConfigured: Boolean(merchantId)
   };
 }
