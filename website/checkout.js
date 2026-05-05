@@ -159,7 +159,19 @@
       }
       const provider = inferPaymentProvider();
       let discount = getHotDiscountCodeForCheckout();
-      const body = { plan, provider, ...(discount ? { discount } : {}) };
+      const body = {
+        plan,
+        provider,
+        amount: typeof eur === 'number' ? eur : undefined,
+        email: p.email || '',
+        mobile: p.phone || '',
+        firstName: p.first_name || '',
+        lastName: p.last_name || '',
+        address: p.address || '',
+        postalCode: p.postal_code || '',
+        country: p.country || '',
+        ...(discount ? { discount } : {}),
+      };
       try {
         const response = await fetch(`${API_BASE_URL}/api/payment/create`, {
           method: 'POST',

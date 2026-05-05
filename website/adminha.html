@@ -195,6 +195,28 @@
 
         <section id="section-payments" class="panel">
           <h2>Payments</h2>
+          <div class="filters-row">
+            <label>From <input type="date" id="paymentsStartDate"></label>
+            <label>To <input type="date" id="paymentsEndDate"></label>
+            <label>Plan
+              <select id="paymentsPlanFilter">
+                <option value="all">All</option>
+                <option value="starter">Starter</option>
+                <option value="pro">Pro</option>
+                <option value="advanced">Advanced</option>
+                <option value="business">Business</option>
+              </select>
+            </label>
+            <label>Status
+              <select id="paymentsStatusFilter">
+                <option value="all">All</option>
+                <option value="success">Success</option>
+                <option value="failed">Failed</option>
+                <option value="pending">Pending</option>
+              </select>
+            </label>
+            <button type="button" class="btn" id="paymentsApplyFiltersBtn">Apply</button>
+          </div>
           <div id="paymentsPanel"></div>
         </section>
 

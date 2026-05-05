@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment failed — Cutup</title>
+  <meta name="robots" content="noindex, follow">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: #0b1020;
+      color: #e4e7ef;
+    }
+    .card {
+      width: min(560px, 92vw);
+      padding: 28px;
+      border-radius: 14px;
+      background: #121a30;
+      border: 1px solid #273357;
+      text-align: center;
+    }
+    h1 { margin: 0 0 12px; font-size: 1.5rem; }
+    p { margin: 0 0 18px; color: #bfc7df; }
+    a {
+      display: inline-block;
+      text-decoration: none;
+      color: #fff;
+      background: #4f46e5;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+    button {
+      display: inline-block;
+      margin-left: 10px;
+      border: 1px solid #465089;
+      color: #e4e7ef;
+      background: transparent;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Payment failed</h1>
+    <p>Your payment was not completed. Please try again from your dashboard.</p>
+    <a href="/dashboard.html">Back to dashboard</a>
+    <button type="button" id="retryPaymentBtn">Retry payment</button>
+  </main>
+  <script src="payment-failed.js"></script>
+</body>
+</html>

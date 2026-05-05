@@ -70,6 +70,22 @@
       "dest": "/api/payment-verify.js"
     },
     {
+      "src": "/api/payment/callback",
+      "dest": "/api/payment-callback.js"
+    },
+    {
+      "src": "/api/payment/retry",
+      "dest": "/api/payment-retry.js"
+    },
+    {
+      "src": "/api/invoices",
+      "dest": "/api/invoices.js"
+    },
+    {
+      "src": "/api/invoices/(.*)",
+      "dest": "/api/invoice-by-id.js"
+    },
+    {
       "src": "/sitemap.xml",
       "dest": "/api/sitemap.js"
     },

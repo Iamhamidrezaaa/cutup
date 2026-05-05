@@ -1285,9 +1285,42 @@ function renderPaymentsPanel(data, abData) {
   if (!container) return;
   container.innerHTML = `
     <div class="cards-grid">
-      <article class="card"><h3>Paid users</h3><p>${escapeHtml(data.paidUsers)}</p><div class="metric-subtle">Starter / Pro / Business (Stripe) · custom Business accounts</div></article>
-      <article class="card"><h3>Revenue</h3><p>—</p><div class="metric-subtle">${escapeHtml(data.revenueNote)}</div></article>
+      <article class="card"><h3>Total Revenue (EUR)</h3><p>${escapeHtml((data.metrics?.totalRevenueEur || 0).toFixed(2))}</p><div class="metric-subtle">Successful payments only</div></article>
+      <article class="card"><h3>Successful payments</h3><p>${escapeHtml(data.metrics?.totalSuccessful || 0)}</p><div class="metric-subtle">All gateways</div></article>
+      <article class="card"><h3>Failed payments</h3><p>${escapeHtml(data.metrics?.totalFailed || 0)}</p><div class="metric-subtle">Includes verify/callback failures</div></article>
+      <article class="card"><h3>Conversion rate</h3><p>${escapeHtml((data.metrics?.conversionRate || 0).toFixed(2))}%</p><div class="metric-subtle">Success / total attempts</div></article>
     </div>
+    <h3>Revenue over time</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Date</th><th>Revenue EUR</th><th>Payments</th><th>Success</th><th>Failed</th></tr></thead>
+      <tbody>
+        ${(data.timeline || []).length
+          ? (data.timeline || []).map((r) => `<tr>
+            <td>${escapeHtml(r.day)}</td>
+            <td>${escapeHtml(Number(r.revenue_eur || 0).toFixed(2))}</td>
+            <td>${escapeHtml(r.payments)}</td>
+            <td>${escapeHtml(r.success)}</td>
+            <td>${escapeHtml(r.failed)}</td>
+          </tr>`).join('')
+          : emptyRow(5, 'No payment timeline data yet.')}
+      </tbody>
+    </table></div>
+    <h3>Payments table</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>User</th><th>Plan</th><th>Amount (EUR)</th><th>Status</th><th>Date</th><th>Payment ID</th></tr></thead>
+      <tbody>
+        ${(data.payments || []).length
+          ? (data.payments || []).map((p) => `<tr>
+            <td><button type="button" class="btn ghost payment-user-history-btn" data-email="${escapeHtml(p.email)}">${escapeHtml(p.email)}</button></td>
+            <td>${escapeHtml(p.plan || 'free')}</td>
+            <td>${escapeHtml(Number(p.amount_eur || 0).toFixed(2))}</td>
+            <td>${statusBadge(p.status || 'unknown')}</td>
+            <td>${fmtDate(p.created_at)}</td>
+            <td>${escapeHtml(p.id)}</td>
+          </tr>`).join('')
+          : emptyRow(6, 'No payments match current filters.')}
+      </tbody>
+    </table></div>
     <h3>Pricing A/B test</h3>
     <p class="metric-subtle">Full funnel: pricing_viewed → upgrade_clicked → payment_started → payment_success. Conversion = payments ÷ views (same variant).</p>
     <div class="table-wrap"><table>
@@ -1334,6 +1367,18 @@ function renderPaymentsPanel(data, abData) {
       </tbody>
     </table></div>
   `;
+  container.querySelectorAll('.payment-user-history-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const email = btn.getAttribute('data-email');
+      if (!email) return;
+      try {
+        const d = await apiGet('paymentUserHistory', { email });
+        alert(`User: ${email}\nPayments: ${d.payments?.length || 0}\nInvoices: ${d.invoices?.length || 0}`);
+      } catch (e) {
+        alert(e.message || 'Could not load user payment history.');
+      }
+    });
+  });
 }
 
 function renderHealthPanel(data) {
@@ -1520,7 +1565,15 @@ async function loadUsage() {
 }
 async function loadOutputs() { renderOutputsTable((await apiGet('savedOutputs')).outputs || []); }
 async function loadPayments() {
-  const [pay, ab] = await Promise.all([apiGet('payments'), apiGet('pricingAb')]);
+  const [pay, ab] = await Promise.all([
+    apiGet('payments', {
+      startDate: document.getElementById('paymentsStartDate')?.value || '',
+      endDate: document.getElementById('paymentsEndDate')?.value || '',
+      plan: document.getElementById('paymentsPlanFilter')?.value || 'all',
+      status: document.getElementById('paymentsStatusFilter')?.value || 'all'
+    }),
+    apiGet('pricingAb')
+  ]);
   renderPaymentsPanel(pay, ab);
 }
 async function loadHealth() { renderHealthPanel(await apiGet('health')); }
@@ -1776,6 +1829,7 @@ function setupActions() {
   });
   document.getElementById('usersReloadBtn')?.addEventListener('click', () => loadUsers().catch((e) => showBanner(e.message)));
   document.getElementById('usageReloadBtn')?.addEventListener('click', () => loadUsage().catch((e) => showBanner(e.message)));
+  document.getElementById('paymentsApplyFiltersBtn')?.addEventListener('click', () => loadPayments().catch((e) => showBanner(e.message)));
   const titleEl = document.getElementById('postTitle');
   const slugEl = document.getElementById('postSlug');
   const contentEl = document.getElementById('postContent');

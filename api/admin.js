@@ -11,7 +11,9 @@ import {
   getAdminUsageDb,
   getAdminSavedOutputsDb,
   getAdminPaymentsSnapshotDb,
+  getAdminPaymentsAnalyticsDb,
   getAdminPricingAbMetricsDb,
+  listInvoicesByEmail,
   listAdminBlogPostsDb,
   saveAdminBlogPostDb,
   publishAdminBlogPostDb
@@ -208,9 +210,19 @@ export default async function handler(req, res) {
 
     if (req.method === 'GET' && action === 'payments') {
       if (!requireOpsAccess(auth, res)) return;
-      const snapshot = await getAdminPaymentsSnapshotDb();
+      const [snapshot, analytics] = await Promise.all([
+        getAdminPaymentsSnapshotDb(),
+        getAdminPaymentsAnalyticsDb({
+          startDate: req.query.startDate || '',
+          endDate: req.query.endDate || '',
+          plan: req.query.plan || 'all',
+          status: req.query.status || 'all',
+          userId: req.query.userId || ''
+        })
+      ]);
       return res.json({
         ...snapshot,
+        ...analytics,
         stripeConfig: {
           STRIPE_SECRET_KEY: boolConfigured('STRIPE_SECRET_KEY'),
           STRIPE_WEBHOOK_SECRET: boolConfigured('STRIPE_WEBHOOK_SECRET'),
@@ -221,6 +233,21 @@ export default async function handler(req, res) {
         revenue: null,
         revenueNote: 'Revenue reporting requires Stripe event sync.'
       });
+    }
+
+    if (req.method === 'GET' && action === 'paymentUserHistory') {
+      if (!requireOpsAccess(auth, res)) return;
+      const email = String(req.query.email || '').trim().toLowerCase();
+      if (!email) return res.status(400).json({ error: 'email_required' });
+      const invoices = await listInvoicesByEmail(email, req.query.limit || 100);
+      const analytics = await getAdminPaymentsAnalyticsDb({
+        startDate: req.query.startDate || '',
+        endDate: req.query.endDate || '',
+        plan: 'all',
+        status: 'all'
+      });
+      const payments = (analytics.payments || []).filter((p) => String(p.email || '').toLowerCase() === email);
+      return res.json({ email, payments, invoices });
     }
 
     if (req.method === 'GET' && action === 'pricingAb') {

@@ -190,6 +190,67 @@ CREATE INDEX IF NOT EXISTS idx_payments_provider_external
 
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS plan_key VARCHAR(32);
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS discount_code VARCHAR(32);
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS amount_eur NUMERIC(14, 4);
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS amount_irr NUMERIC(20, 2);
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS authority VARCHAR(255);
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS ref_id VARCHAR(255);
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS gateway VARCHAR(64) NOT NULL DEFAULT 'yekpay';
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS provider VARCHAR(64) NOT NULL DEFAULT 'yekpay';
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS plan VARCHAR(32);
+
+UPDATE payments
+SET amount_eur = COALESCE(amount_eur, amount),
+    gateway = COALESCE(NULLIF(gateway, ''), provider, 'yekpay'),
+    authority = COALESCE(authority, external_id),
+    plan = COALESCE(plan, plan_key)
+WHERE amount_eur IS NULL OR gateway IS NULL OR authority IS NULL OR plan IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_payments_authority ON payments (authority) WHERE authority IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_payments_status ON payments (status);
+CREATE INDEX IF NOT EXISTS idx_payments_user_id ON payments (user_id);
+
+CREATE TABLE IF NOT EXISTS payment_attempts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  payment_id UUID NOT NULL REFERENCES payments(id) ON DELETE CASCADE,
+  attempt_number INTEGER NOT NULL DEFAULT 1,
+  status VARCHAR(32) NOT NULL DEFAULT 'pending',
+  error_message TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT payment_attempts_status_check CHECK (status IN ('pending', 'success', 'failed'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_payment_attempts_user_id ON payment_attempts (user_id);
+CREATE INDEX IF NOT EXISTS idx_payment_attempts_payment_id ON payment_attempts (payment_id, attempt_number DESC);
+
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS auto_renew BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS last_payment_id UUID REFERENCES payments(id) ON DELETE SET NULL;
+
+UPDATE subscriptions
+SET started_at = COALESCE(started_at, created_at),
+    expires_at = COALESCE(expires_at, current_period_end)
+WHERE started_at IS NULL OR expires_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions (user_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions (status);
+
+CREATE TABLE IF NOT EXISTS invoices (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  payment_id UUID NOT NULL REFERENCES payments(id) ON DELETE CASCADE,
+  invoice_number VARCHAR(64) NOT NULL UNIQUE,
+  amount NUMERIC(20, 2) NOT NULL,
+  currency VARCHAR(8) NOT NULL DEFAULT 'EUR',
+  status VARCHAR(16) NOT NULL DEFAULT 'paid',
+  issued_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  pdf_url TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_invoices_user_id ON invoices (user_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_payment_id ON invoices (payment_id);
 
 CREATE TABLE IF NOT EXISTS analytics_events (
   id BIGSERIAL PRIMARY KEY,

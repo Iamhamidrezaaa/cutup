@@ -9,6 +9,18 @@ import {
   insertPaymentPending,
   updatePaymentExternalId,
   getPaymentForUserById,
+  getPaymentByProviderExternalId,
+  getUserIdByEmail,
+  createPaymentAttempt,
+  getMaxPaymentAttemptNumber,
+  getLatestFailedPaymentByUser,
+  markPaymentAttemptStatus,
+  markPaymentSuccess,
+  markPaymentFailed,
+  upsertSubscriptionFromPayment,
+  createInvoiceForPayment,
+  listInvoicesByEmail,
+  getInvoiceByIdForEmail,
   finalizePendingPaymentSuccess,
   markPaymentTerminalStatus,
   markPendingPaymentExpiredIfStale,
@@ -45,6 +57,19 @@ function normalizePaidPlanKey(raw) {
   const p = String(raw || 'pro').toLowerCase();
   if (PAID_PLAN_KEYS.includes(p)) return p;
   return 'pro';
+}
+
+function normalizeText(v, max) {
+  const s = String(v ?? '').trim();
+  if (!s) return '';
+  return s.slice(0, max);
+}
+
+function normalizeAmountEur(raw, fallback) {
+  const n = Number(raw);
+  if (Number.isFinite(n) && n > 0) return n;
+  const fb = Number(fallback);
+  return Number.isFinite(fb) && fb > 0 ? fb : null;
 }
 
 function readJsonBody(req) {
@@ -109,6 +134,59 @@ function normalizeMarketingDiscount(raw) {
   return s === 'hot20' ? 'hot20' : null;
 }
 
+async function processSuccessfulPayment({ payment, authority, verifyResult, req, sessionId = null }) {
+  const planKeyResolved = String(payment.plan_key || payment.plan || 'pro').toLowerCase();
+  if (!PAID_PLAN_KEYS.includes(planKeyResolved)) {
+    return { ok: false, error: 'invalid_plan' };
+  }
+  const paid = await markPaymentSuccess(payment.id, {
+    refId: verifyResult?.raw?.Result?.ReferenceNumber || verifyResult?.raw?.ReferenceNumber || null,
+    amountIrr: verifyResult?.amount ?? null
+  });
+  if (!paid) return { ok: false, error: 'payment_not_found' };
+  const userId = payment.user_id || (await getUserIdByEmail(payment.email));
+  const sub = await upsertSubscriptionFromPayment({
+    userId,
+    planKey: planKeyResolved,
+    paymentId: payment.id,
+    autoRenew: true,
+    durationDays: 30
+  });
+  const invoice = await createInvoiceForPayment({
+    userId,
+    paymentId: payment.id,
+    amount: Number(payment.amount_eur || payment.amount || 0),
+    currency: String(payment.currency || 'EUR')
+  });
+  const end = new Date(sub.expiresAt || Date.now());
+  const out = await finalizePendingPaymentSuccess(
+    payment.email,
+    payment.id,
+    planKeyResolved,
+    null,
+    null,
+    end
+  );
+  if (!out.ok && !out.idempotent) return { ok: false, error: out.error || 'finalize_failed' };
+  void recordServerAuditEvent({
+    eventType: 'product',
+    eventName: sub.created ? 'subscription_created' : 'subscription_extended',
+    userId,
+    sessionId,
+    metadata: { plan: planKeyResolved, paymentId: String(payment.id), authority },
+    req
+  });
+  void recordServerAuditEvent({
+    eventType: 'product',
+    eventName: 'payment_success',
+    userId,
+    sessionId,
+    metadata: { plan: planKeyResolved, paymentId: String(payment.id), authority, invoiceNumber: invoice?.invoice_number || null },
+    req
+  });
+  return { ok: true, payment: paid, subscription: sub, invoice };
+}
+
 export async function paymentCreateHandler(req, res) {
   setCORSHeaders(res);
   if (req.method === 'OPTIONS') return res.sendStatus(204);
@@ -152,7 +230,8 @@ export async function paymentCreateHandler(req, res) {
   });
 
   const planCfg = PLANS[planKey];
-  const amount = planCfg?.priceEur?.monthly != null ? planCfg.priceEur.monthly : null;
+  const planAmountEur = planCfg?.priceEur?.monthly != null ? planCfg.priceEur.monthly : null;
+  const amount = normalizeAmountEur(body?.amount, planAmountEur);
   const discountCode = normalizeMarketingDiscount(body?.discount);
 
   if (provider === 'manual') {
@@ -164,6 +243,12 @@ export async function paymentCreateHandler(req, res) {
       externalId: null,
       planKey,
       discountCode
+    });
+    await createPaymentAttempt({
+      paymentId,
+      userId: auditUserId,
+      attemptNumber: 1,
+      status: 'pending'
     });
     const redirect_url = `${baseUrl}/payment-success.html?session=${encodeURIComponent(sessionId)}&payment=pending&payment_id=${encodeURIComponent(paymentId)}`;
     console.log('[payment] created', paymentId, email, 'manual');
@@ -195,16 +280,35 @@ export async function paymentCreateHandler(req, res) {
       discountCode
     });
 
-    const sep = yk.callbackUrl.includes('?') ? '&' : '?';
-    const callbackUrl = `${yk.callbackUrl}${sep}payment_id=${encodeURIComponent(paymentId)}`;
-    const description =
-      `Cutup subscription: ${planKey}` + (discountCode ? ` (offer ${discountCode})` : '');
+    const amountIrr = Math.max(1, Math.round(Number(amount) * Number(yk.eurToIrrRate || 900000)));
+    const callbackUrl = yk.callbackUrl;
+    const profilePayload = {
+      email: normalizeText(body?.email || profile?.email || email, 320),
+      mobile: normalizeText(body?.mobile || body?.phone || profile?.phone, 64),
+      firstName: normalizeText(body?.firstName || body?.first_name || profile?.first_name, 255),
+      lastName: normalizeText(body?.lastName || body?.last_name || profile?.last_name, 255),
+      address: normalizeText(body?.address || profile?.address, 1024),
+      postalCode: normalizeText(body?.postalCode || body?.postal_code || profile?.postal_code, 64),
+      country: normalizeText(body?.country || profile?.country, 8).toUpperCase()
+    };
+    const orderNumber = String(paymentId);
 
     const created = await yekpayCreatePaymentRequest({
-      amount: Number(amount),
-      currency: 'EUR',
-      callbackUrl,
-      description
+      merchantId: yk.merchantId,
+      fromCurrencyCode: 978,
+      toCurrencyCode: 364,
+      email: profilePayload.email,
+      mobile: profilePayload.mobile,
+      firstName: profilePayload.firstName,
+      lastName: profilePayload.lastName,
+      address: profilePayload.address,
+      postalCode: profilePayload.postalCode,
+      country: profilePayload.country || 'IR',
+      city: 'N/A',
+      description: `Cutup ${planKey} plan`,
+      amount: amountIrr,
+      orderNumber,
+      callback: callbackUrl
     });
 
     if (!created.ok || !created.authority || !created.paymentUrl) {
@@ -218,6 +322,15 @@ export async function paymentCreateHandler(req, res) {
     }
 
     await updatePaymentExternalId(paymentId, email, created.authority);
+    await markPaymentAttemptStatus(paymentId, 1, 'success');
+    void recordServerAuditEvent({
+      eventType: 'product',
+      eventName: 'payment_redirected',
+      userId: auditUserId,
+      sessionId,
+      metadata: { plan: planKey, provider: 'yekpay', paymentId: String(paymentId) },
+      req
+    });
     console.log('[payment] yekpay created', paymentId, email, created.authority);
     console.log('[payment] yekpay redirect', paymentId, created.paymentUrl);
     return res.status(200).json({
@@ -316,6 +429,171 @@ export async function paymentCreateHandler(req, res) {
     }
     return res.status(500).json({ error: 'Payment failed. Please try again.' });
   }
+}
+
+export async function paymentCallbackHandler(req, res) {
+  setCORSHeaders(res);
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  if (req.method !== 'POST' && req.method !== 'GET') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+  if (!isBillingDbConfigured()) {
+    return res.status(503).json({ error: 'Billing database not configured' });
+  }
+
+  const body = readJsonBody(req);
+  const authority = normalizeText(
+    body?.authority ?? body?.Authority ?? req.query?.authority ?? req.query?.Authority,
+    255
+  );
+  const successRaw = String(
+    body?.success ?? body?.Success ?? req.query?.success ?? req.query?.Success ?? ''
+  ).toLowerCase();
+  const isSuccess = successRaw === '1' || successRaw === 'true' || successRaw === 'yes';
+
+  if (!authority) {
+    return res.redirect('/payment-failed.html');
+  }
+
+  const payment = await getPaymentByProviderExternalId('yekpay', authority);
+  if (!payment?.id || !payment?.email) {
+    return res.redirect('/payment-failed.html');
+  }
+
+  const sessionId = null;
+  const userId = await resolveUserIdForAnalytics(payment.email);
+  if (!isSuccess) {
+    await markPaymentFailed(payment.id, 'gateway_callback_unsuccess');
+    void recordServerAuditEvent({
+      eventType: 'product',
+      eventName: 'payment_failed',
+      userId,
+      sessionId,
+      metadata: { plan: payment.plan_key || null, provider: 'yekpay', reason: 'gateway_callback_unsuccess' },
+      req
+    });
+    return res.redirect('/payment-failed.html');
+  }
+
+  const verified = await yekpayVerifyPayment(authority);
+  if (!verified.ok || !verified.success) {
+    await markPaymentFailed(payment.id, verified.error || 'verify_failed');
+    void recordServerAuditEvent({
+      eventType: 'product',
+      eventName: 'payment_failed',
+      userId,
+      sessionId,
+      metadata: { plan: payment.plan_key || null, provider: 'yekpay', reason: verified.error || 'verify_failed' },
+      req
+    });
+    return res.redirect('/payment-failed.html');
+  }
+
+  const out = await processSuccessfulPayment({
+    payment,
+    authority,
+    verifyResult: verified,
+    req,
+    sessionId
+  });
+  if (!out.ok) {
+    await markPaymentFailed(payment.id, out.error || 'finalize_failed');
+    void recordServerAuditEvent({
+      eventType: 'product',
+      eventName: 'payment_failed',
+      userId,
+      sessionId,
+      metadata: { plan: payment.plan_key || null, provider: 'yekpay', reason: out.error || 'finalize_failed' },
+      req
+    });
+    return res.redirect('/payment-failed.html');
+  }
+
+  return res.redirect('/payment-success.html?status=success');
+}
+
+export async function paymentRetryHandler(req, res) {
+  setCORSHeaders(res);
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (!isBillingDbConfigured()) return res.status(503).json({ error: 'Billing database not configured' });
+  const auth = requireSessionUser(req, res);
+  if (!auth) return;
+  const failed = await getLatestFailedPaymentByUser(auth.email);
+  if (!failed) return res.status(404).json({ error: 'No failed payment found' });
+  const maxAttempt = await getMaxPaymentAttemptNumber(failed.id);
+  if (maxAttempt >= 3) return res.status(429).json({ error: 'max_retries_reached' });
+  const attemptNumber = maxAttempt + 1;
+  await createPaymentAttempt({
+    paymentId: failed.id,
+    userId: failed.user_id,
+    attemptNumber,
+    status: 'pending'
+  });
+  const yk = getYekpayConfig();
+  const amountEur = Number(failed.amount_eur || failed.amount || 0);
+  const amountIrr = Math.max(1, Math.round(amountEur * Number(yk.eurToIrrRate || 900000)));
+  const created = await yekpayCreatePaymentRequest({
+    merchantId: yk.merchantId,
+    fromCurrencyCode: 978,
+    toCurrencyCode: 364,
+    email: auth.email,
+    mobile: '',
+    firstName: '',
+    lastName: '',
+    address: '',
+    postalCode: '',
+    country: 'IR',
+    city: 'N/A',
+    description: `Cutup ${failed.plan_key || failed.plan || 'pro'} plan`,
+    amount: amountIrr,
+    orderNumber: String(failed.id),
+    callback: yk.callbackUrl
+  });
+  if (!created.ok || !created.authority || !created.paymentUrl) {
+    await markPaymentAttemptStatus(failed.id, attemptNumber, 'failed', created.error || 'retry_create_failed');
+    await markPaymentFailed(failed.id, created.error || 'retry_create_failed');
+    return res.status(502).json({ error: 'retry_failed' });
+  }
+  await updatePaymentExternalId(failed.id, auth.email, created.authority);
+  await markPaymentAttemptStatus(failed.id, attemptNumber, 'success');
+  void recordServerAuditEvent({
+    eventType: 'product',
+    eventName: 'payment_retry',
+    userId: failed.user_id,
+    sessionId: auth.sessionId,
+    metadata: { paymentId: String(failed.id), retryAttempt: attemptNumber, plan: failed.plan_key || failed.plan || null },
+    req
+  });
+  return res.status(200).json({
+    ok: true,
+    payment_id: failed.id,
+    retry_attempt: attemptNumber,
+    redirect_url: created.paymentUrl
+  });
+}
+
+export async function invoicesListHandler(req, res) {
+  setCORSHeaders(res);
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+  const auth = requireSessionUser(req, res);
+  if (!auth) return;
+  const rows = await listInvoicesByEmail(auth.email, Number(req.query?.limit || 100));
+  return res.status(200).json({ ok: true, invoices: rows });
+}
+
+export async function invoiceByIdHandler(req, res) {
+  setCORSHeaders(res);
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+  const auth = requireSessionUser(req, res);
+  if (!auth) return;
+  const invoiceId = String(req.params?.id || req.query?.id || req.query?.[0] || '').trim();
+  if (!invoiceId) return res.status(400).json({ error: 'invoice_id_required' });
+  const row = await getInvoiceByIdForEmail(invoiceId, auth.email);
+  if (!row) return res.status(404).json({ error: 'not_found' });
+  return res.status(200).json({ ok: true, invoice: row });
 }
 
 export async function paymentVerifyHandler(req, res) {
@@ -422,7 +700,7 @@ export async function paymentVerifyHandler(req, res) {
 
   if (payment.provider === 'yekpay') {
     const yk = getYekpayConfig();
-    if (!yk.apiKey) {
+    if (!yk.isConfigured) {
       console.log('[payment] yekpay failed', 'not configured');
       return res.status(503).json({ error: 'Payment provider not configured', success: false });
     }
@@ -463,29 +741,22 @@ export async function paymentVerifyHandler(req, res) {
       return res.status(200).json({ success: false, status: 'failed' });
     }
 
-    const end = new Date();
-    end.setMonth(end.getMonth() + 1);
-    const out = await finalizePendingPaymentSuccess(
-      email,
-      paymentId,
-      planKeyResolved,
-      null,
-      null,
-      end
-    );
+    const out = await processSuccessfulPayment({
+      payment: { ...payment, email },
+      authority: authGiven,
+      verifyResult: verified,
+      req,
+      sessionId: auth.sessionId
+    });
     if (!out.ok) {
       console.log('[payment] yekpay failed', 'finalize', out.error, paymentId);
       return res.status(409).json({ success: false, status: out.error || 'failed' });
     }
-
     console.log('[payment] yekpay verified', paymentId, email);
-    if (!out.idempotent) {
-      await auditPaymentSuccess(req, email, auth.sessionId, planKeyResolved, 'yekpay_verify');
-    }
     return res.status(200).json({
       success: true,
       status: 'success',
-      idempotent: Boolean(out.idempotent),
+      idempotent: false,
       plan: planKeyResolved
     });
   }

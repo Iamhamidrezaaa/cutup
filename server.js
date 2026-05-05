@@ -106,7 +106,7 @@ app.get('/api/health', (req, res) => {
 app.get('/sitemap.xml', async (req, res) => sitemapHandler(req, res));
 
 // Import and use API routes
-let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler, userProfileHandler, auditEventHandler, adminAuditSummaryHandler, adminAuditListHandler, adminAuditUserTimelineHandler, adminAuditChartsHandler, adminAuditFunnelHandler, adminAuditAlertsHandler, adminAuditEvaluateAlertsHandler, adminAuditSeedHandler;
+let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, paymentCallbackHandler, paymentRetryHandler, invoicesHandler, invoiceByIdHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler, userProfileHandler, auditEventHandler, adminAuditSummaryHandler, adminAuditListHandler, adminAuditUserTimelineHandler, adminAuditChartsHandler, adminAuditFunnelHandler, adminAuditAlertsHandler, adminAuditEvaluateAlertsHandler, adminAuditSeedHandler;
 
 async function loadRoutes() {
   try {
@@ -190,7 +190,15 @@ async function loadRoutes() {
     paymentCreateHandler = paymentCreateModule.default;
     const paymentVerifyModule = await import('./api/payment-verify.js');
     paymentVerifyHandler = paymentVerifyModule.default;
-    console.log('✅ Payment create/verify handlers loaded');
+    const paymentCallbackModule = await import('./api/payment-callback.js');
+    paymentCallbackHandler = paymentCallbackModule.default;
+    const paymentRetryModule = await import('./api/payment-retry.js');
+    paymentRetryHandler = paymentRetryModule.default;
+    const invoicesModule = await import('./api/invoices.js');
+    invoicesHandler = invoicesModule.default;
+    const invoiceByIdModule = await import('./api/invoice-by-id.js');
+    invoiceByIdHandler = invoiceByIdModule.default;
+    console.log('✅ Payment create/verify/callback/retry/invoice handlers loaded');
 
     const adminModule = await import('./api/admin.js');
     adminHandler = adminModule.default;
@@ -423,6 +431,38 @@ app.post('/api/payment/verify', async (req, res) => {
     return res.status(503).json({ error: 'Payment verify not loaded' });
   }
   return paymentVerifyHandler(req, res);
+});
+
+app.post('/api/payment/callback', async (req, res) => {
+  if (!paymentCallbackHandler) {
+    return res.status(503).json({ error: 'Payment callback not loaded' });
+  }
+  return paymentCallbackHandler(req, res);
+});
+app.get('/api/payment/callback', async (req, res) => {
+  if (!paymentCallbackHandler) {
+    return res.status(503).json({ error: 'Payment callback not loaded' });
+  }
+  return paymentCallbackHandler(req, res);
+});
+app.post('/api/payment/retry', async (req, res) => {
+  if (!paymentRetryHandler) {
+    return res.status(503).json({ error: 'Payment retry not loaded' });
+  }
+  return paymentRetryHandler(req, res);
+});
+
+app.get('/api/invoices', async (req, res) => {
+  if (!invoicesHandler) {
+    return res.status(503).json({ error: 'Invoices not loaded' });
+  }
+  return invoicesHandler(req, res);
+});
+app.get('/api/invoices/:id', async (req, res) => {
+  if (!invoiceByIdHandler) {
+    return res.status(503).json({ error: 'Invoice by id not loaded' });
+  }
+  return invoiceByIdHandler(req, res);
 });
 
 app.post('/api/analytics', async (req, res) => {
@@ -690,6 +730,10 @@ loadRoutes().then(async () => {
     console.log(`   POST /api/stripe/create-checkout-session`);
     console.log(`   POST /api/payment/create`);
     console.log(`   POST /api/payment/verify`);
+    console.log(`   POST /api/payment/callback`);
+    console.log(`   POST /api/payment/retry`);
+    console.log(`   GET  /api/invoices`);
+    console.log(`   GET  /api/invoices/:id`);
     console.log(`   POST /api/analytics`);
     console.log(`   POST /api/leads`);
     console.log(`   POST /api/contact`);

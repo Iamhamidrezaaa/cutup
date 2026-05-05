@@ -2113,8 +2113,10 @@ export async function insertPaymentPending({ email, provider, amount, currency, 
   const pk = planKey && PLANS[planKey] ? String(planKey).slice(0, 32) : null;
   const dc = discountCode ? String(discountCode).slice(0, 32) : null;
   const r = await pool.query(
-    `INSERT INTO payments (user_id, provider, status, amount, currency, external_id, plan_key, discount_code)
-     VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7)
+    `INSERT INTO payments (
+      user_id, provider, gateway, status, amount, amount_eur, currency, external_id, authority, plan_key, plan, discount_code
+     )
+     VALUES ($1, $2, $2, 'pending', $3, $3, $4, $5, $5, $6, $6, $7)
      RETURNING id`,
     [
       userId,
@@ -2127,6 +2129,52 @@ export async function insertPaymentPending({ email, provider, amount, currency, 
     ]
   );
   return r.rows[0].id;
+}
+
+export async function createPaymentAttempt({ paymentId, userId, attemptNumber = 1, status = 'pending', errorMessage = null }) {
+  const pool = getPool();
+  await pool.query(
+    `INSERT INTO payment_attempts (user_id, payment_id, attempt_number, status, error_message)
+     VALUES ($1::uuid, $2::uuid, $3::int, $4::text, $5)`,
+    [userId, paymentId, Number(attemptNumber) || 1, String(status || 'pending'), errorMessage]
+  );
+}
+
+export async function markPaymentAttemptStatus(paymentId, attemptNumber, status, errorMessage = null) {
+  const pool = getPool();
+  const r = await pool.query(
+    `UPDATE payment_attempts
+     SET status = $3, error_message = $4
+     WHERE payment_id = $1::uuid AND attempt_number = $2::int`,
+    [paymentId, Number(attemptNumber) || 1, String(status || 'failed'), errorMessage]
+  );
+  return r.rowCount;
+}
+
+export async function getMaxPaymentAttemptNumber(paymentId) {
+  const pool = getPool();
+  const r = await pool.query(
+    `SELECT COALESCE(MAX(attempt_number), 0)::int AS n
+     FROM payment_attempts
+     WHERE payment_id = $1::uuid`,
+    [paymentId]
+  );
+  return Number(r.rows[0]?.n || 0);
+}
+
+export async function getLatestFailedPaymentByUser(email) {
+  const pool = getPool();
+  const r = await pool.query(
+    `SELECT p.*, u.email
+     FROM payments p
+     JOIN users u ON u.id = p.user_id
+     WHERE lower(u.email) = lower($1)
+       AND p.status = 'failed'
+     ORDER BY p.updated_at DESC
+     LIMIT 1`,
+    [email]
+  );
+  return r.rows[0] || null;
 }
 
 /** Pending longer than 30 minutes → failed (abandoned checkout). */
@@ -2151,7 +2199,7 @@ export async function markPendingPaymentExpiredIfStale(email, paymentId) {
 export async function updatePaymentExternalId(paymentId, email, externalId) {
   const pool = getPool();
   const r = await pool.query(
-    `UPDATE payments p SET external_id = $3, updated_at = NOW()
+    `UPDATE payments p SET external_id = $3, authority = $3, updated_at = NOW()
      FROM users u WHERE p.id = $1::uuid AND p.user_id = u.id AND u.email = $2
      RETURNING p.id`,
     [paymentId, email, String(externalId).slice(0, 255)]
@@ -2166,6 +2214,21 @@ export async function getPaymentForUserById(paymentId, email) {
      JOIN users u ON u.id = p.user_id
      WHERE p.id = $1::uuid AND u.email = $2`,
     [paymentId, email]
+  );
+  return r.rows[0] || null;
+}
+
+export async function getPaymentByProviderExternalId(provider, externalId) {
+  const pool = getPool();
+  const r = await pool.query(
+    `SELECT p.*, u.email
+     FROM payments p
+     JOIN users u ON u.id = p.user_id
+     WHERE lower(p.provider) = lower($1)
+       AND p.external_id = $2
+     ORDER BY p.created_at DESC
+     LIMIT 1`,
+    [String(provider || '').slice(0, 64), String(externalId || '').slice(0, 255)]
   );
   return r.rows[0] || null;
 }
@@ -2243,6 +2306,228 @@ export async function finalizePendingPaymentSuccess(
   } finally {
     client.release();
   }
+}
+
+export async function markPaymentSuccess(paymentId, { refId = null, paidAt = new Date(), amountIrr = null } = {}) {
+  const pool = getPool();
+  const r = await pool.query(
+    `UPDATE payments
+     SET status = 'success',
+         paid_at = COALESCE($2::timestamptz, NOW()),
+         ref_id = COALESCE($3, ref_id),
+         amount_irr = COALESCE($4::numeric, amount_irr),
+         updated_at = NOW()
+     WHERE id = $1::uuid
+     RETURNING *`,
+    [paymentId, paidAt, refId, amountIrr]
+  );
+  return r.rows[0] || null;
+}
+
+export async function markPaymentFailed(paymentId, errorMessage = null) {
+  const pool = getPool();
+  const r = await pool.query(
+    `UPDATE payments
+     SET status = 'failed', updated_at = NOW()
+     WHERE id = $1::uuid
+     RETURNING *`,
+    [paymentId]
+  );
+  if (r.rowCount > 0) {
+    const n = await getMaxPaymentAttemptNumber(paymentId);
+    if (n > 0) {
+      await markPaymentAttemptStatus(paymentId, n, 'failed', errorMessage || null);
+    }
+  }
+  return r.rows[0] || null;
+}
+
+export async function upsertSubscriptionFromPayment({ userId, planKey, paymentId, autoRenew = false, durationDays = 30 }) {
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const existing = await client.query(
+      `SELECT id, status, expires_at
+       FROM subscriptions
+       WHERE user_id = $1::uuid
+       FOR UPDATE`,
+      [userId]
+    );
+    const now = new Date();
+    const base = existing.rows[0]?.expires_at && new Date(existing.rows[0].expires_at) > now
+      ? new Date(existing.rows[0].expires_at)
+      : now;
+    const nextExpiry = new Date(base);
+    nextExpiry.setDate(nextExpiry.getDate() + Number(durationDays || 30));
+    if (!existing.rows.length) {
+      await client.query(
+        `INSERT INTO subscriptions (user_id, plan, status, billing_period, started_at, expires_at, auto_renew, last_payment_id, created_at, updated_at)
+         VALUES ($1::uuid, $2, 'active', 'monthly', NOW(), $3::timestamptz, $4::boolean, $5::uuid, NOW(), NOW())`,
+        [userId, planKey, nextExpiry, Boolean(autoRenew), paymentId]
+      );
+      await client.query('COMMIT');
+      return { created: true, extended: false, expiresAt: nextExpiry };
+    }
+    await client.query(
+      `UPDATE subscriptions
+       SET plan = $2,
+           status = 'active',
+           started_at = COALESCE(started_at, NOW()),
+           expires_at = $3::timestamptz,
+           current_period_end = $3::timestamptz,
+           auto_renew = $4::boolean,
+           last_payment_id = $5::uuid,
+           updated_at = NOW()
+       WHERE user_id = $1::uuid`,
+      [userId, planKey, nextExpiry, Boolean(autoRenew), paymentId]
+    );
+    await client.query('COMMIT');
+    return { created: false, extended: true, expiresAt: nextExpiry };
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+export async function createInvoiceForPayment({ userId, paymentId, amount, currency = 'EUR' }) {
+  const pool = getPool();
+  const serialRow = await pool.query(
+    `SELECT COUNT(*)::bigint AS c
+     FROM invoices
+     WHERE date_trunc('year', issued_at) = date_trunc('year', NOW())`
+  );
+  const next = Number(serialRow.rows[0]?.c || 0) + 1;
+  const year = new Date().getUTCFullYear();
+  const invoiceNumber = `CUT-${year}-${String(next).padStart(6, '0')}`;
+  const r = await pool.query(
+    `INSERT INTO invoices (user_id, payment_id, invoice_number, amount, currency, status, issued_at)
+     VALUES ($1::uuid, $2::uuid, $3, $4::numeric, $5, 'paid', NOW())
+     RETURNING *`,
+    [userId, paymentId, invoiceNumber, Number(amount) || 0, String(currency || 'EUR').slice(0, 8)]
+  );
+  return r.rows[0] || null;
+}
+
+export async function listInvoicesByEmail(email, limit = 100) {
+  const pool = getPool();
+  const r = await pool.query(
+    `SELECT i.*, p.plan_key, p.plan, p.amount_eur, p.amount_irr
+     FROM invoices i
+     JOIN users u ON u.id = i.user_id
+     LEFT JOIN payments p ON p.id = i.payment_id
+     WHERE lower(u.email) = lower($1)
+     ORDER BY i.issued_at DESC
+     LIMIT $2`,
+    [email, Math.min(Math.max(Number(limit) || 100, 1), 500)]
+  );
+  return r.rows;
+}
+
+export async function getInvoiceByIdForEmail(invoiceId, email) {
+  const pool = getPool();
+  const r = await pool.query(
+    `SELECT i.*, p.plan_key, p.plan, p.amount_eur, p.amount_irr, u.email
+     FROM invoices i
+     JOIN users u ON u.id = i.user_id
+     LEFT JOIN payments p ON p.id = i.payment_id
+     WHERE i.id = $1::uuid
+       AND lower(u.email) = lower($2)
+     LIMIT 1`,
+    [invoiceId, email]
+  );
+  return r.rows[0] || null;
+}
+
+export async function checkExpiringSubscriptions(days = 3) {
+  const pool = getPool();
+  const r = await pool.query(
+    `SELECT s.id, s.user_id, s.plan, s.expires_at, u.email
+     FROM subscriptions s
+     JOIN users u ON u.id = s.user_id
+     WHERE s.status = 'active'
+       AND s.expires_at IS NOT NULL
+       AND s.expires_at <= NOW() + (($1::int || ' days')::interval)
+     ORDER BY s.expires_at ASC`,
+    [Math.max(1, Number(days) || 3)]
+  );
+  return r.rows;
+}
+
+export async function getAdminPaymentsAnalyticsDb({ startDate = '', endDate = '', plan = 'all', status = 'all', userId = '' } = {}) {
+  const pool = getPool();
+  const params = [];
+  const where = [];
+  if (startDate) {
+    params.push(startDate);
+    where.push(`p.created_at >= $${params.length}::timestamptz`);
+  }
+  if (endDate) {
+    params.push(endDate);
+    where.push(`p.created_at <= $${params.length}::timestamptz`);
+  }
+  if (plan && plan !== 'all') {
+    params.push(String(plan).toLowerCase());
+    where.push(`LOWER(COALESCE(NULLIF(TRIM(p.plan), ''), p.plan_key, 'free')) = $${params.length}`);
+  }
+  if (status && status !== 'all') {
+    params.push(String(status).toLowerCase());
+    where.push(`LOWER(p.status) = $${params.length}`);
+  }
+  if (userId) {
+    params.push(String(userId));
+    where.push(`p.user_id = $${params.length}::uuid`);
+  }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const metrics = await pool.query(
+    `SELECT
+      COALESCE(SUM(CASE WHEN p.status = 'success' THEN COALESCE(p.amount_eur, p.amount, 0) ELSE 0 END), 0)::numeric AS total_revenue_eur,
+      COUNT(*) FILTER (WHERE p.status = 'success')::int AS total_successful,
+      COUNT(*) FILTER (WHERE p.status = 'failed')::int AS total_failed,
+      COUNT(*)::int AS total_attempts
+    FROM payments p
+    ${whereSql}`,
+    params
+  );
+  const timeline = await pool.query(
+    `SELECT
+       to_char(date_trunc('day', p.created_at), 'YYYY-MM-DD') AS day,
+       COALESCE(SUM(CASE WHEN p.status = 'success' THEN COALESCE(p.amount_eur, p.amount, 0) ELSE 0 END), 0)::numeric AS revenue_eur,
+       COUNT(*)::int AS payments,
+       COUNT(*) FILTER (WHERE p.status = 'success')::int AS success,
+       COUNT(*) FILTER (WHERE p.status = 'failed')::int AS failed
+     FROM payments p
+     ${whereSql}
+     GROUP BY 1
+     ORDER BY 1 ASC`,
+    params
+  );
+  const rows = await pool.query(
+    `SELECT p.id, p.user_id, u.email, COALESCE(NULLIF(TRIM(p.plan), ''), p.plan_key, 'free') AS plan,
+            COALESCE(p.amount_eur, p.amount, 0)::numeric AS amount_eur,
+            p.status, p.created_at
+     FROM payments p
+     JOIN users u ON u.id = p.user_id
+     ${whereSql}
+     ORDER BY p.created_at DESC
+     LIMIT 300`,
+    params
+  );
+  const m = metrics.rows[0] || {};
+  const totalAttempts = Number(m.total_attempts || 0);
+  const totalSuccessful = Number(m.total_successful || 0);
+  return {
+    metrics: {
+      totalRevenueEur: Number(m.total_revenue_eur || 0),
+      totalSuccessful,
+      totalFailed: Number(m.total_failed || 0),
+      conversionRate: totalAttempts > 0 ? (totalSuccessful / totalAttempts) * 100 : 0
+    },
+    timeline: timeline.rows,
+    payments: rows.rows
+  };
 }
 
 /** Webhook or async path: subscription already upgraded; only flip payment row from pending. */
