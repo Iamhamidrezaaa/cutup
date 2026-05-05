@@ -104,6 +104,7 @@
     }
 
     const paymentResult = params.get('payment');
+    const isMock = params.get('mock') === 'true';
     const paymentId = params.get('payment_id');
     const checkoutSessionId = params.get('checkout_session_id');
     const authority = params.get('authority');
@@ -178,16 +179,16 @@
         sub.label
       );
     } else if (paymentResult === 'cancel') {
-      window.location.href = `/dashboard.html?session=${encodeURIComponent(sessionId)}`;
+      renderWarn('Checkout was cancelled. No charge was made.', sub.label);
     } else if (hadStripeReturn) {
       renderWarn(
         'We could not confirm this payment automatically. If you completed checkout, open your dashboard — your plan usually updates within a minute.',
         sub.label
       );
-    } else if (paymentResult === 'success') {
+    } else if (paymentResult === 'success' || isMock) {
       renderOk(sub.label);
     } else {
-      window.location.href = `/dashboard.html?session=${encodeURIComponent(sessionId)}`;
+      renderErr('Missing payment return data. Please retry payment from checkout.');
     }
   }
 

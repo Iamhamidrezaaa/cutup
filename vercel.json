@@ -20,27 +20,11 @@
   ],
   "routes": [
     {
-      "src": "/index.html",
-      "status": 301,
-      "headers": { "Location": "/" }
+      "src": "^/(manifest.json|sw.js|favicon.ico)$",
+      "dest": "/website/$1"
     },
     {
-      "src": "/(.*)/index.html",
-      "status": 301,
-      "headers": { "Location": "/$1/" }
-    },
-    {
-      "src": "/manifest.json",
-      "headers": { "Content-Type": "application/json; charset=utf-8" },
-      "dest": "/public/manifest.json"
-    },
-    {
-      "src": "/sw.js",
-      "headers": { "Content-Type": "application/javascript; charset=utf-8" },
-      "dest": "/public/sw.js"
-    },
-    {
-      "src": "/icons/(.*)",
+      "src": "^/icons/(.*)$",
       "dest": "/public/icons/$1"
     },
     {
@@ -146,6 +130,14 @@
     {
       "src": "/api/admin/reset-password",
       "dest": "/api/admin-reset-password.js"
+    },
+    {
+      "src": "^/(.*\\.(js|css|png|jpg|jpeg|svg|json|ico))$",
+      "dest": "/website/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/website/index.html"
     }
   ],
   "crons": [

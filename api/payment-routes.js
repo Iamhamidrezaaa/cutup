@@ -240,12 +240,20 @@ export async function paymentCreateHandler(req, res) {
 
   const yk = getYekpayConfig();
   if (provider === 'yekpay') {
+    const allowMock = String(process.env.YEKPAY_MOCK_MODE || '').trim() === '1';
     if (!yk.merchantId) {
-      console.warn('[payment] yekpay mock mode: YEKPAY_MERCHANT_ID missing');
-      return res.status(200).json({
-        ok: true,
-        redirect_url: '/payment-success.html?mock=true',
-        payment_url: '/payment-success.html?mock=true'
+      if (allowMock) {
+        console.warn('[payment] yekpay mock mode enabled (YEKPAY_MOCK_MODE=1)');
+        return res.status(200).json({
+          ok: true,
+          redirect_url: '/payment-success.html?payment=success&mock=true',
+          payment_url: '/payment-success.html?payment=success&mock=true'
+        });
+      }
+      return res.status(500).json({
+        ok: false,
+        error: 'payment_failed',
+        details: { Message: 'YEKPAY_MERCHANT_ID is missing on server.' }
       });
     }
 
