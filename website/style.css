@@ -1915,6 +1915,7 @@ main {
   grid-template-columns: repeat(4, 1fr);
   gap: 24px;
   align-items: stretch;
+  overflow: visible;
 }
 
 .pricing-plans-grid .feature-card {
@@ -2654,6 +2655,20 @@ body {
 
 .pricing-plans-grid {
   gap: 28px;
+  overflow: visible;
+}
+
+.plan-card {
+  position: relative;
+  overflow: visible;
+}
+
+.cutup-inline-auth-hint {
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #64748b;
+  text-align: center;
 }
 
 .pricing-card {
@@ -2662,6 +2677,7 @@ body {
   padding: 26px;
   box-shadow: 0 6px 24px rgba(15, 23, 42, 0.05);
   transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+  position: relative;
 }
 
 .pricing-card:hover {
@@ -2675,6 +2691,33 @@ body {
   box-shadow: 0 18px 45px rgba(79, 70, 229, 0.18);
   background: linear-gradient(180deg, #ffffff 0%, #f6f5ff 100%);
   transform: scale(1.04);
+}
+
+.plan-badge {
+  position: absolute;
+  top: -12px;
+  right: 20px;
+  z-index: 10;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
+
+@media (max-width: 768px) {
+  .plan-badge {
+    top: -8px;
+    right: 12px;
+    font-size: 11px;
+  }
+}
+
+.plan--popular {
+  border: 2px solid #6366f1;
+  transform: scale(1.03);
 }
 
 .pricing-badge {

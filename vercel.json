@@ -19,6 +19,7 @@
     }
   ],
   "routes": [
+    { "handle": "filesystem" },
     {
       "src": "^/(manifest.json|sw.js|favicon.ico)$",
       "dest": "/website/$1"
@@ -137,7 +138,8 @@
     },
     {
       "src": "/(.*)",
-      "dest": "/website/index.html"
+      "dest": "/website/404.html",
+      "status": 404
     }
   ],
   "crons": [

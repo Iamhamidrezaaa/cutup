@@ -230,6 +230,101 @@ function cutupIsLoggedIn() {
   }
 }
 
+/** Survives Google OAuth full-page redirect; mirrored on window for debugging */
+const CUTUP_PENDING_ACTION_KEY = 'cutup_pending_action';
+
+function cutupSocialTranscribeNeedsGoogleAuth(url, file, requestedPlatform) {
+  if (
+    file &&
+    (currentPlatform === 'audiofile' ||
+      !url ||
+      (typeof url === 'string' && url.startsWith('📁')))
+  ) {
+    return false;
+  }
+  const isSocial =
+    (requestedPlatform === 'instagram' && isInstagramUrl(url)) ||
+    (requestedPlatform === 'tiktok' && isTikTokUrl(url));
+  if (!isSocial) return false;
+  return !cutupIsLoggedIn();
+}
+
+function cutupClearPendingAction() {
+  try {
+    sessionStorage.removeItem(CUTUP_PENDING_ACTION_KEY);
+  } catch (_e) {
+    /* ignore */
+  }
+  try {
+    window.__pendingAction = null;
+  } catch (_e) {
+    /* ignore */
+  }
+}
+
+async function cutupTriggerLoginForPendingAction(type, payload) {
+  try {
+    const envelope = { type, payload: payload || {}, v: 1 };
+    sessionStorage.setItem(CUTUP_PENDING_ACTION_KEY, JSON.stringify(envelope));
+    window.__pendingAction = { type, payload: payload || {} };
+  } catch (_e) {
+    /* ignore */
+  }
+  const u = payload && payload.url != null ? payload.url : getCurrentUrl();
+  if (u && String(u).trim()) {
+    localStorage.setItem('cutup_pending_url', String(u).trim());
+    localStorage.setItem(
+      'cutup_pending_platform',
+      (payload && payload.platform) || currentPlatform || 'youtube'
+    );
+  }
+  await cutupTriggerGoogleLogin();
+}
+
+async function resumeCutupPendingAction() {
+  let raw;
+  try {
+    raw = sessionStorage.getItem(CUTUP_PENDING_ACTION_KEY);
+  } catch (_e) {
+    return;
+  }
+  if (!raw) return;
+
+  let action;
+  try {
+    action = JSON.parse(raw);
+  } catch (_e) {
+    cutupClearPendingAction();
+    return;
+  }
+
+  if (!localStorage.getItem('cutup_session')) return;
+
+  cutupClearPendingAction();
+
+  const { type, payload } = action;
+  const p = payload || {};
+
+  await new Promise((r) => setTimeout(r, 400));
+
+  try {
+    if (type === 'generate_subtitle') {
+      await handleSrtSubtitles();
+    } else if (type === 'fulltext') {
+      await handleFullText(p.activeTab || 'fulltext');
+    } else if (type === 'summarize') {
+      await handleSummarize();
+    } else if (type === 'resume_upload_tab') {
+      retentionSwitchPlatformWithUrl('audiofile', '');
+      showMessage('Select your file again to transcribe.', 'info');
+    }
+  } catch (err) {
+    console.error('[script] resumeCutupPendingAction failed:', err);
+    reportClientError('resume_pending', err);
+    showMessage(USER_ERROR_GENERIC, 'error');
+  }
+}
+
 const CUTUP_PENDING_PLAN_AFTER_AUTH_KEY = 'cutup_pending_plan_after_auth';
 const CUTUP_PAYMENT_RETRY_KEY = 'cutup_payment_retry';
 
@@ -396,6 +491,14 @@ function refreshConversionSaveBlockUI() {
       }
     }
   }
+  updateCutupSocialAuthHints();
+}
+
+function updateCutupSocialAuthHints() {
+  const loggedIn = cutupIsLoggedIn();
+  document.querySelectorAll('.cutup-inline-auth-hint').forEach((el) => {
+    el.hidden = loggedIn;
+  });
 }
 
 function showConversionSaveBlock() {
@@ -1269,12 +1372,12 @@ if (authSuccess === 'success' && sessionId) {
     // Remove query params from URL
     window.history.replaceState({}, document.title, window.location.pathname);
     // Load user profile
-    loadUserProfile().then(() => {
-      // After profile is loaded, restore pending URL if exists
+    loadUserProfile().then(async () => {
       if (pendingUrl && pendingPlatform) {
         console.log('[script] Restoring pending URL:', pendingUrl, 'Platform:', pendingPlatform);
-        restorePendingUrl(pendingUrl, pendingPlatform);
+        await restorePendingUrl(pendingUrl, pendingPlatform);
       }
+      await resumeCutupPendingAction();
     });
     
     // Scroll to download section after login
@@ -1311,12 +1414,12 @@ window.addEventListener('DOMContentLoaded', () => {
     currentSession = savedSession;
     // Wait a bit to ensure DOM is fully ready
     setTimeout(() => {
-      loadUserProfile().then(() => {
-        // After profile is loaded, restore pending URL if exists
+      loadUserProfile().then(async () => {
         if (pendingUrl && pendingPlatform) {
           console.log('[script] Restoring pending URL:', pendingUrl, 'Platform:', pendingPlatform);
-          restorePendingUrl(pendingUrl, pendingPlatform);
+          await restorePendingUrl(pendingUrl, pendingPlatform);
         }
+        await resumeCutupPendingAction();
       });
     }, 100);
   } else {
@@ -1325,6 +1428,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   applyCutupPricingPlanLocks(window.userSubscription || { plan: 'free' });
+  updateCutupSocialAuthHints();
 });
 
 // Restore pending URL after login
@@ -1870,6 +1974,7 @@ function showLoginButton() {
     /* noop */
   }
   applyCutupPricingPlanLocks({ plan: 'free' });
+  updateCutupSocialAuthHints();
 }
 
 function showUserProfile(user) {
@@ -2613,6 +2718,33 @@ async function handleSummarize() {
       return;
     }
 
+  const isFileFlow =
+    !!file &&
+    (currentPlatform === 'audiofile' ||
+      !url ||
+      (typeof url === 'string' && url.startsWith('📁')));
+  if (isFileFlow && !cutupIsLoggedIn()) {
+    try {
+      await cutupTriggerLoginForPendingAction('resume_upload_tab', { platform: 'audiofile' });
+    } catch (_e) {
+      cutupClearPendingAction();
+    }
+    return;
+  }
+
+  if (cutupSocialTranscribeNeedsGoogleAuth(url, file, requestedPlatform)) {
+    try {
+      await cutupTriggerLoginForPendingAction('summarize', {
+        url: getCurrentUrl(),
+        platform: requestedPlatform,
+        activeTab: 'summary',
+      });
+    } catch (_e) {
+      cutupClearPendingAction();
+    }
+    return;
+  }
+
   const estMin = file ? Math.max(1, Math.ceil((file.size / 1024 / 1024) * 1.2)) : AVG_VIDEO_MINUTES;
   const monGate = await monetizationPreflightBeforeProcess(sessionId, estMin);
   if (!monGate.allowed) {
@@ -2649,6 +2781,34 @@ async function handleFullText(activeTab = 'fulltext') {
     }
       return;
     }
+
+  const isFileFlowFt =
+    !!file &&
+    (currentPlatform === 'audiofile' ||
+      !url ||
+      (typeof url === 'string' && url.startsWith('📁')));
+  if (isFileFlowFt && !cutupIsLoggedIn()) {
+    try {
+      await cutupTriggerLoginForPendingAction('resume_upload_tab', { platform: 'audiofile' });
+    } catch (_e) {
+      cutupClearPendingAction();
+    }
+    return;
+  }
+
+  if (cutupSocialTranscribeNeedsGoogleAuth(url, file, requestedPlatform)) {
+    const pendingType = activeTab === 'srt' ? 'generate_subtitle' : 'fulltext';
+    try {
+      await cutupTriggerLoginForPendingAction(pendingType, {
+        url: getCurrentUrl(),
+        platform: requestedPlatform,
+        activeTab,
+      });
+    } catch (_e) {
+      cutupClearPendingAction();
+    }
+    return;
+  }
 
   const estMin = file ? Math.max(1, Math.ceil((file.size / 1024 / 1024) * 1.2)) : AVG_VIDEO_MINUTES;
   const monGate = await monetizationPreflightBeforeProcess(sessionId, estMin);
@@ -3250,6 +3410,9 @@ async function transcribeAudio(audioUrlOrFile, languageHint = null, sessionId = 
     if (audioUrlOrFile instanceof File) {
       const formData = new FormData();
       formData.append('file', audioUrlOrFile);
+      if (sessionId) {
+        formData.append('user_id', sessionId);
+      }
       
       console.log('TRANSCRIBE: Sending file to upload endpoint, size:', audioUrlOrFile.size, 'bytes');
       
@@ -3632,12 +3795,7 @@ async function processSummarize(url, sessionId, platform = 'youtube') {
   } catch (error) {
     console.error('Error:', error);
     reportClientError('process', error);
-    const knownMessage = (error && typeof error.message === 'string') ? error.message : '';
-    if (knownMessage.includes('Instagram/TikTok transcription is not available yet') || knownMessage.includes('Sign in required for Instagram/TikTok transcription')) {
-      showMessage(knownMessage, 'error');
-    } else {
-      showMessage(USER_ERROR_GENERIC, 'error');
-    }
+    showMessage(USER_ERROR_GENERIC, 'error');
   } finally {
     hideProgressBar();
   }
@@ -3755,12 +3913,7 @@ async function processFullText(url, sessionId, platform = 'youtube', activeTab =
   } catch (error) {
     console.error('Error:', error);
     reportClientError('process', error);
-    const knownMessage = (error && typeof error.message === 'string') ? error.message : '';
-    if (knownMessage.includes('Instagram/TikTok transcription is not available yet') || knownMessage.includes('Sign in required for Instagram/TikTok transcription')) {
-      showMessage(knownMessage, 'error');
-    } else {
-      showMessage(USER_ERROR_GENERIC, 'error');
-    }
+    showMessage(USER_ERROR_GENERIC, 'error');
   } finally {
     hideProgressBar();
   }
@@ -5621,42 +5774,54 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Handle audio file input (like extension)
-function handleFileSelect(e) {
+async function handleFileSelect(e) {
   const file = e.target.files[0];
   if (!file) {
-    // If no file selected, clear input and reset
     checkInput();
     return;
   }
-  
-  // Check file size (max 100MB)
-  const maxSize = 100 * 1024 * 1024; // 100MB
+
+  const maxSize = 100 * 1024 * 1024;
   if (file.size > maxSize) {
     showMessage(`File is too large (${(file.size / 1024 / 1024).toFixed(2)} MB). Maximum allowed is ${maxSize / 1024 / 1024} MB.`, 'error');
-    audioFileInput.value = ''; // Clear selection
+    audioFileInput.value = '';
     checkInput();
     return;
   }
-  
-  // Check if it's audio or video file
+
   const isAudio = file.type.startsWith('audio/');
   const isVideo = file.type.startsWith('video/');
-  
+
   if (!isAudio && !isVideo) {
     showMessage('Please select an audio or video file.', 'error');
-    audioFileInput.value = ''; // Clear selection
+    audioFileInput.value = '';
     checkInput();
     return;
   }
-  
-  // Store file for later use
+
   window.selectedFile = file;
-  
-  // Show success message
-  showMessage(`File "${file.name}" selected (${(file.size / 1024 / 1024).toFixed(2)} MB)`, 'success');
-  
-  // Check input to show/hide buttons
   checkInput();
+
+  const sessionId = localStorage.getItem('cutup_session');
+  if (!sessionId) {
+    showMessage('Processing will continue after sign-in. Opening Google…', 'info');
+    try {
+      await cutupTriggerLoginForPendingAction('resume_upload_tab', { platform: 'audiofile' });
+    } catch (_err) {
+      cutupClearPendingAction();
+      showMessage('Sign in to transcribe uploads.', 'error');
+    }
+    return;
+  }
+
+  showMessage('Processing started…', 'info');
+  try {
+    await processFullTextFile(file, sessionId, 'fulltext');
+  } catch (err) {
+    reportClientError('file_select_process', err);
+    const msg = err && typeof err.message === 'string' ? err.message : USER_ERROR_GENERIC;
+    showMessage(msg, 'error');
+  }
 }
 
 // Get current URL input based on active tab
@@ -5758,7 +5923,9 @@ function checkInput() {
 
 // Handle audio file input (event listener already set up above)
 if (audioFileInput) {
-  audioFileInput.addEventListener('change', handleFileSelect);
+  audioFileInput.addEventListener('change', (ev) => {
+    void handleFileSelect(ev);
+  });
 }
 
 // Show subtitle modal (like extension)
