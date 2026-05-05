@@ -1,4 +1,3 @@
-import Stripe from 'stripe';
 import { setCORSHeaders } from './cors.js';
 import { sessions } from './auth.js';
 import { PLANS } from './plans-config.js';
@@ -30,7 +29,6 @@ import { getYekpayConfig, yekpayCreatePaymentRequest, yekpayVerifyPayment } from
 import { recordServerAuditEvent } from './audit-internal.js';
 
 const PAID_PLAN_KEYS = ['starter', 'pro', 'advanced', 'business'];
-const STRIPE_PLAN_KEYS = ['starter', 'pro', 'advanced', 'business'];
 
 function getFrontendBaseUrl() {
   const explicit = (process.env.FRONTEND_URL || '').trim();
@@ -43,15 +41,6 @@ function getFrontendBaseUrl() {
   return 'https://cutup.shop';
 }
 
-function resolveStripePriceId(priceKey) {
-  const envMap = {
-    starter: process.env.STRIPE_PRICE_STARTER,
-    pro: process.env.STRIPE_PRICE_PRO,
-    advanced: process.env.STRIPE_PRICE_ADVANCED,
-    business: process.env.STRIPE_PRICE_ADVANCED
-  };
-  return envMap[priceKey] || null;
-}
 
 function normalizePaidPlanKey(raw) {
   const p = String(raw || 'pro').toLowerCase();
@@ -103,11 +92,6 @@ function requireSessionUser(req, res) {
   return { sessionId, email: session.user.email };
 }
 
-function planKeyFromStripeMetadata(meta) {
-  const p = String(meta || '').toLowerCase();
-  if (STRIPE_PLAN_KEYS.includes(p)) return p;
-  return 'pro';
-}
 
 async function auditPaymentSuccess(req, email, sessionId, planKey, source) {
   const userId = await resolveUserIdForAnalytics(email);
@@ -121,12 +105,6 @@ async function auditPaymentSuccess(req, email, sessionId, planKey, source) {
   });
 }
 
-function normalizeStripeId(ref) {
-  if (!ref) return null;
-  if (typeof ref === 'string') return ref;
-  if (typeof ref === 'object' && ref.id) return ref.id;
-  return null;
-}
 
 /** Marketing / attribution only — does not change charged price. */
 function normalizeMarketingDiscount(raw) {
@@ -203,7 +181,7 @@ export async function paymentCreateHandler(req, res) {
 
   const body = readJsonBody(req);
   const planKey = normalizePaidPlanKey(body?.plan ?? body?.planKey ?? body?.priceKey);
-  const provider = String(body?.provider || 'stripe').toLowerCase().slice(0, 64);
+  const provider = 'yekpay';
   const email = auth.email;
   const sessionId = auth.sessionId;
   const baseUrl = getFrontendBaseUrl();
@@ -260,14 +238,15 @@ export async function paymentCreateHandler(req, res) {
     });
   }
 
+  const yk = getYekpayConfig();
   if (provider === 'yekpay') {
-    const yk = getYekpayConfig();
-    if (!yk.isConfigured) {
-      console.log('[payment] yekpay failed', 'not configured');
-      return res.status(503).json({ error: 'Payment provider not configured' });
-    }
-    if (amount == null || !Number.isFinite(Number(amount))) {
-      return res.status(400).json({ error: 'Invalid plan amount' });
+    if (!yk.merchantId) {
+      console.warn('[payment] yekpay mock mode: YEKPAY_MERCHANT_ID missing');
+      return res.status(200).json({
+        ok: true,
+        redirect_url: '/payment-success.html?mock=true',
+        payment_url: '/payment-success.html?mock=true'
+      });
     }
 
     const paymentId = await insertPaymentPending({
@@ -291,6 +270,20 @@ export async function paymentCreateHandler(req, res) {
       postalCode: normalizeText(body?.postalCode || body?.postal_code || profile?.postal_code, 64),
       country: normalizeText(body?.country || profile?.country, 8).toUpperCase()
     };
+    if (!yk.merchantId || !amountIrr || !profilePayload.email) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Missing required payment data'
+      });
+    }
+    console.log('PAYMENT CREATE INPUT:', {
+      plan: planKey,
+      amount_eur: Number(amount),
+      amount_irr: amountIrr,
+      email: profilePayload.email,
+      mobile: profilePayload.mobile,
+      merchantId: process.env.YEKPAY_MERCHANT_ID
+    });
     const orderNumber = String(paymentId);
 
     const created = await yekpayCreatePaymentRequest({
@@ -310,6 +303,7 @@ export async function paymentCreateHandler(req, res) {
       orderNumber,
       callback: callbackUrl
     });
+    console.log('YEKPAY RESPONSE:', created.raw || null);
 
     if (!created.ok || !created.authority || !created.paymentUrl) {
       console.log('[payment] yekpay failed', 'create', created.error || 'bad_response');
@@ -318,7 +312,11 @@ export async function paymentCreateHandler(req, res) {
       } catch (e) {
         console.error('[payment] yekpay failed markPaymentTerminalStatus', e);
       }
-      return res.status(502).json({ error: 'Payment could not be started. Please try again later.' });
+      return res.status(500).json({
+        ok: false,
+        error: 'payment_failed',
+        details: created.raw || { message: created.error || 'bad_response' }
+      });
     }
 
     await updatePaymentExternalId(paymentId, email, created.authority);
@@ -341,94 +339,7 @@ export async function paymentCreateHandler(req, res) {
     });
   }
 
-  if (provider !== 'stripe') {
-    return res.status(400).json({ error: 'Unsupported provider' });
-  }
-
-  const secret = process.env.STRIPE_SECRET_KEY;
-  if (!secret) {
-    console.error('[payment] create STRIPE_SECRET_KEY missing');
-    return res.status(503).json({ error: 'Payment could not be started. Please try again later.' });
-  }
-
-  const priceId = resolveStripePriceId(planKey);
-  if (!priceId) {
-    console.error('[payment] create missing Stripe price env for', planKey);
-    return res.status(503).json({ error: 'Payment could not be started. Please try again later.' });
-  }
-
-  let existingStripeCustomerId = null;
-  try {
-    const row = await getSubscriptionRowByEmail(email);
-    if (row?.stripe_customer_id) existingStripeCustomerId = row.stripe_customer_id;
-  } catch (e) {
-    console.error('[payment] create subscription load failed', e);
-    return res.status(503).json({ error: 'Payment could not be started. Please try again later.' });
-  }
-
-  const paymentId = await insertPaymentPending({
-    email,
-    provider: 'stripe',
-    amount,
-    currency: 'EUR',
-    externalId: null,
-    planKey,
-    discountCode
-  });
-
-  const stripe = new Stripe(secret);
-  try {
-    const q = (k, v) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`;
-    const success_url = `${baseUrl}/payment-success.html?${q('session', sessionId)}&${q('payment', 'success')}&${q('payment_id', String(paymentId))}&checkout_session_id={CHECKOUT_SESSION_ID}`;
-    const cancel_url = `${baseUrl}/checkout.html?${q('plan', planKey)}&${q('session', sessionId)}&${q('payment', 'cancel')}&${q('payment_id', String(paymentId))}`;
-
-    const sessionPayload = {
-      mode: 'subscription',
-      line_items: [{ price: priceId, quantity: 1 }],
-      success_url,
-      cancel_url,
-      client_reference_id: sessionId,
-      metadata: {
-        userEmail: email,
-        plan: planKey,
-        cutupPaymentId: String(paymentId),
-        cutupDiscount: discountCode || ''
-      },
-      subscription_data: {
-        metadata: {
-          userEmail: email,
-          plan: planKey,
-          cutupPaymentId: String(paymentId),
-          cutupDiscount: discountCode || ''
-        }
-      }
-    };
-
-    if (existingStripeCustomerId) {
-      sessionPayload.customer = existingStripeCustomerId;
-    } else {
-      sessionPayload.customer_email = email;
-    }
-
-    const checkoutSession = await stripe.checkout.sessions.create(sessionPayload);
-    await updatePaymentExternalId(paymentId, email, checkoutSession.id);
-
-    console.log('[payment] created', paymentId, email, 'stripe', checkoutSession.id);
-    return res.status(200).json({
-      ok: true,
-      redirect_url: checkoutSession.url,
-      payment_url: checkoutSession.url,
-      payment_id: paymentId
-    });
-  } catch (err) {
-    console.error('[payment] failed', 'create', err.message);
-    try {
-      await markPaymentTerminalStatus(email, paymentId, 'failed');
-    } catch (e) {
-      console.error('[payment] failed to mark payment failed', e);
-    }
-    return res.status(500).json({ error: 'Payment failed. Please try again.' });
-  }
+  return res.status(400).json({ ok: false, error: 'Unsupported provider. yekpay only.' });
 }
 
 export async function paymentCallbackHandler(req, res) {
@@ -761,83 +672,5 @@ export async function paymentVerifyHandler(req, res) {
     });
   }
 
-  if (payment.provider !== 'stripe') {
-    return res.status(400).json({ error: 'Unsupported provider' });
-  }
-
-  const stripeSecret = process.env.STRIPE_SECRET_KEY;
-  if (!stripeSecret) {
-    return res.status(503).json({ error: 'Stripe not configured' });
-  }
-
-  const stripe = new Stripe(stripeSecret);
-  let sess;
-  try {
-    sess = await stripe.checkout.sessions.retrieve(String(providerReference), {
-      expand: ['subscription']
-    });
-  } catch (e) {
-    console.log('[payment] failed', 'stripe retrieve', e.message);
-    return res.status(400).json({ status: 'failed', error: 'invalid_provider_reference' });
-  }
-
-  const metaPid = sess.metadata?.cutupPaymentId ? String(sess.metadata.cutupPaymentId) : '';
-  const metaEmail = String(sess.metadata?.userEmail || '').trim().toLowerCase();
-  if (metaPid !== String(paymentId) || metaEmail !== email.trim().toLowerCase()) {
-    console.log('[payment] failed', 'metadata mismatch', paymentId);
-    return res.status(403).json({ status: 'failed', error: 'session_mismatch' });
-  }
-
-  if (sess.status === 'expired') {
-    await markPaymentTerminalStatus(email, paymentId, 'failed');
-    console.log('[payment] failed', 'session expired', paymentId);
-    return res.status(200).json({ status: 'failed' });
-  }
-
-  if (sess.payment_status !== 'paid' || sess.mode !== 'subscription') {
-    console.log('[payment] verified', paymentId, 'pending', sess.payment_status, sess.status);
-    return res.status(200).json({ status: 'pending' });
-  }
-
-  const planKey = planKeyFromStripeMetadata(sess.metadata?.plan);
-  let subId = normalizeStripeId(sess.subscription);
-  let custId = normalizeStripeId(sess.customer);
-  let periodEnd = null;
-  if (subId) {
-    const sub =
-      typeof sess.subscription === 'object' && sess.subscription?.current_period_end
-        ? sess.subscription
-        : await stripe.subscriptions.retrieve(subId);
-    periodEnd = new Date(sub.current_period_end * 1000);
-    if (!custId) custId = normalizeStripeId(sub.customer);
-  }
-  if (!periodEnd) {
-    const d = new Date();
-    d.setMonth(d.getMonth() + 1);
-    periodEnd = d;
-  }
-
-  const out = await finalizePendingPaymentSuccess(
-    email,
-    paymentId,
-    planKey,
-    custId,
-    subId,
-    periodEnd
-  );
-  if (!out.ok) {
-    console.log('[payment] failed', 'finalize', out.error, paymentId);
-    return res.status(409).json({ status: out.error || 'failed' });
-  }
-
-  console.log('[payment] verified', paymentId, email, 'stripe');
-  if (!out.idempotent) {
-    await auditPaymentSuccess(req, email, auth.sessionId, planKey, 'stripe_verify');
-  }
-  return res.status(200).json({
-    status: 'success',
-    success: true,
-    idempotent: Boolean(out.idempotent),
-    plan: planKey
-  });
+  return res.status(400).json({ error: 'Unsupported provider. yekpay only.' });
 }

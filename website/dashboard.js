@@ -172,7 +172,7 @@ function showDashboardBanner(message, variant = 'info', opts = {}) {
 
 function inferPaymentProvider() {
   if (typeof window !== 'undefined' && window.CUTUP_PAYMENT_PROVIDER) {
-    return window.CUTUP_PAYMENT_PROVIDER === 'yekpay' ? 'yekpay' : 'stripe';
+    return window.CUTUP_PAYMENT_PROVIDER === 'yekpay' ? 'yekpay' : 'yekpay';
   }
   try {
     const lang = (navigator.language || navigator.languages?.[0] || '').toLowerCase();
@@ -180,7 +180,7 @@ function inferPaymentProvider() {
   } catch (_e) {
     /* noop */
   }
-  return 'stripe';
+  return 'yekpay';
 }
 
 function rememberPaymentRetryContext(planKey, provider) {
@@ -1518,7 +1518,7 @@ function renderPlansSection() {
   const plansGrid = document.getElementById('plansGrid');
   if (!subscriptionInfoEl || !plansGrid) return;
 
-  const stripeReady = plansCache.some((p) => Number(p?.priceEur?.monthly ?? p?.priceUsd?.monthly) > 0);
+  const paymentReady = plansCache.some((p) => Number(p?.priceEur?.monthly ?? p?.priceUsd?.monthly) > 0);
   const publicPlanIds = new Set(plansCache.map((p) => p.id));
   const currentUserPlanKey = String(subscriptionInfo?.plan || 'free').toLowerCase();
   const isCurrentPlanPrivate = !publicPlanIds.has(currentUserPlanKey);
@@ -1529,7 +1529,7 @@ function renderPlansSection() {
       <h3>Choose a plan</h3>
       <p class="dashboard-muted-loading">Current: <strong>${displayPlanTitle(subscriptionInfo?.plan, subscriptionInfo?.planName)}</strong></p>
       ${isCurrentPlanPrivate ? '<p class="dashboard-empty-note">You are currently on a Business plan.</p>' : ''}
-      ${stripeReady ? '' : '<p class="dashboard-empty-note">Payments are not available yet.</p>'}
+      ${paymentReady ? '' : '<p class="dashboard-empty-note">Payments are not available yet.</p>'}
     </div>
   `;
 
@@ -1564,7 +1564,7 @@ function renderPlansSection() {
             : pid === 'business' || pid === 'advanced'
               ? 'Upgrade to Business'
               : 'Upgrade';
-      disableButton = !stripeReady;
+      disableButton = !paymentReady;
       cardExtraClass = disableButton ? 'plan-card-disabled disabled-plan' : '';
     }
 
@@ -1643,7 +1643,7 @@ function renderBillingSection() {
   const target = document.getElementById('financialInfo');
   if (!target) return;
   const subscriptionEnd = subscriptionInfo?.subscription?.endDate ? formatDateTime(subscriptionInfo.subscription.endDate) : '—';
-  const stripeReady = plansCache.some((p) => Number(p?.priceEur?.monthly ?? p?.priceUsd?.monthly) > 0);
+  const paymentReady = plansCache.some((p) => Number(p?.priceEur?.monthly ?? p?.priceUsd?.monthly) > 0);
   const paymentStatus = subscriptionInfo?.plan === 'free' ? 'No active paid subscription' : 'Active';
   target.innerHTML = `
     <div class="usage-summary">
@@ -1652,14 +1652,14 @@ function renderBillingSection() {
       <p><strong>Billing period:</strong> ${safeText(subscriptionInfo?.subscription?.billingPeriod, 'monthly')}</p>
       <p><strong>Renewal / expiry:</strong> ${subscriptionEnd}</p>
       <p><strong>Payment status:</strong> ${paymentStatus}</p>
-      ${stripeReady
+      ${paymentReady
         ? '<p class="dashboard-muted-loading">Use the Plans section to change your plan.</p>'
         : '<p class="dashboard-empty-note">Payments are not available yet.</p>'}
     </div>
   `;
 }
 
-async function startPaymentCheckout(planKey, provider = 'stripe') {
+async function startPaymentCheckout(planKey, provider = 'yekpay') {
   try {
     let discount = null;
     try {
@@ -1703,7 +1703,7 @@ async function startPaymentCheckout(planKey, provider = 'stripe') {
 }
 
 async function startStripeCheckout(planKey) {
-  return startPaymentCheckout(planKey, 'stripe');
+  return startPaymentCheckout(planKey, 'yekpay');
 }
 
 async function startYekpayCheckout(planKey) {

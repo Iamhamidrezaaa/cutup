@@ -20,7 +20,7 @@
 
   function inferPaymentProvider() {
     if (typeof window !== 'undefined' && window.CUTUP_PAYMENT_PROVIDER) {
-      return window.CUTUP_PAYMENT_PROVIDER === 'yekpay' ? 'yekpay' : 'stripe';
+      return 'yekpay';
     }
     try {
       const lang = (navigator.language || navigator.languages?.[0] || '').toLowerCase();
@@ -28,7 +28,8 @@
     } catch (_e) {
       /* noop */
     }
-    return 'stripe';
+    // Default to YekPay to avoid accidental Stripe path in production.
+    return 'yekpay';
   }
 
   function rememberPaymentRetryContext(planKey, provider) {
@@ -104,12 +105,12 @@
     }
 
     if (!profileRes.ok || !profileData.profile) {
-      window.location.href = `/dashboard.html?checkoutPlan=${encodeURIComponent(plan)}`;
+      showError('Could not verify your billing profile. Please try again.');
       return;
     }
 
     if (profileData.profile.incomplete) {
-      window.location.href = `/dashboard.html?checkoutPlan=${encodeURIComponent(plan)}`;
+      showError('Your billing profile is incomplete. Please complete it from dashboard and retry.');
       return;
     }
 
@@ -182,18 +183,7 @@
           body: JSON.stringify(body),
         });
         const data = await response.json().catch(() => ({}));
-        if (data.error === 'profile_incomplete') {
-          window.location.href = `/dashboard.html?checkoutPlan=${encodeURIComponent(plan)}`;
-          return;
-        }
-        if (data.error === 'Payment provider not configured' || data.error === 'Billing database not configured') {
-          if (btn) {
-            btn.disabled = false;
-            btn.textContent = 'Pay now';
-          }
-          alert('Payments are not configured right now. Please try again later.');
-          return;
-        }
+        console.log('PAYMENT RESPONSE:', data);
         const redirect = data.redirect_url || data.payment_url || data.url;
         if (response.ok && redirect) {
           if (typeof sendAnalyticsEvent === 'function') {
@@ -210,13 +200,15 @@
           btn.disabled = false;
           btn.textContent = 'Pay now';
         }
-        alert(data.error || 'Could not start payment. Please try again.');
-      } catch (_e) {
+        console.error('Payment error:', data);
+        alert(data?.details?.Message || data?.details?.message || 'Payment failed');
+      } catch (err) {
         if (btn) {
           btn.disabled = false;
           btn.textContent = 'Pay now';
         }
-        alert('Network error. Please try again.');
+        console.error('PAYMENT FETCH ERROR:', err);
+        alert('Network error during payment');
       }
     });
   }

@@ -235,7 +235,7 @@ const CUTUP_PAYMENT_RETRY_KEY = 'cutup_payment_retry';
 
 function inferCutupPaymentProvider() {
   if (typeof window !== 'undefined' && window.CUTUP_PAYMENT_PROVIDER) {
-    return window.CUTUP_PAYMENT_PROVIDER === 'yekpay' ? 'yekpay' : 'stripe';
+    return window.CUTUP_PAYMENT_PROVIDER === 'yekpay' ? 'yekpay' : 'yekpay';
   }
   try {
     const lang = (navigator.language || navigator.languages?.[0] || '').toLowerCase();
@@ -243,7 +243,7 @@ function inferCutupPaymentProvider() {
   } catch (_e) {
     /* noop */
   }
-  return 'stripe';
+  return 'yekpay';
 }
 
 async function cutupTriggerGoogleLogin() {

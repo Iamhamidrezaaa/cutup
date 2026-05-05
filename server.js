@@ -676,8 +676,43 @@ app.post('/api/retention', async (req, res) => {
 });
 
 // Static site (HTML, assets) — after API routes so /api/* is not shadowed.
-app.use(express.static(join(__dirname, 'website')));
-app.use(express.static(join(__dirname, 'public')));
+app.use((req, _res, next) => {
+  if (
+    req.path === '/sw.js' ||
+    req.path === '/manifest.json' ||
+    req.path.startsWith('/icons/') ||
+    req.path.endsWith('.json') ||
+    req.path.endsWith('.js') ||
+    req.path.endsWith('.css')
+  ) {
+    console.log('Serving static:', req.path);
+  }
+  next();
+});
+
+// public MUST come before website (PWA/static precedence)
+app.use(
+  express.static(join(__dirname, 'public'), {
+    setHeaders(res, filePath) {
+      if (filePath.endsWith('.json')) {
+        res.type('application/json; charset=utf-8');
+      } else if (filePath.endsWith('.js')) {
+        res.type('application/javascript; charset=utf-8');
+      }
+    }
+  })
+);
+app.use(
+  express.static(join(__dirname, 'website'), {
+    setHeaders(res, filePath) {
+      if (filePath.endsWith('.json')) {
+        res.type('application/json; charset=utf-8');
+      } else if (filePath.endsWith('.js')) {
+        res.type('application/javascript; charset=utf-8');
+      }
+    }
+  })
+);
 
 // Unknown routes: real HTTP 404 (no redirect to home / index).
 app.use((req, res) => {

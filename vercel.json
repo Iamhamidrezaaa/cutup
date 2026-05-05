@@ -30,6 +30,20 @@
       "headers": { "Location": "/$1/" }
     },
     {
+      "src": "/manifest.json",
+      "headers": { "Content-Type": "application/json; charset=utf-8" },
+      "dest": "/public/manifest.json"
+    },
+    {
+      "src": "/sw.js",
+      "headers": { "Content-Type": "application/javascript; charset=utf-8" },
+      "dest": "/public/sw.js"
+    },
+    {
+      "src": "/icons/(.*)",
+      "dest": "/public/icons/$1"
+    },
+    {
       "src": "/api/upload",
       "dest": "/api/upload.js"
     },
