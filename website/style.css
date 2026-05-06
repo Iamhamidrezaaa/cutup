@@ -2699,11 +2699,13 @@ body {
   box-shadow: 0 18px 45px rgba(79, 70, 229, 0.18);
   background: linear-gradient(180deg, #ffffff 0%, #f6f5ff 100%);
   transform: scale(1.04);
+  padding-top: 40px;
+  overflow: visible;
 }
 
 .plan-badge {
   position: absolute;
-  top: -12px;
+  top: 10px;
   right: 20px;
   z-index: 10;
   background: linear-gradient(135deg, #6366f1, #8b5cf6);
@@ -2717,7 +2719,7 @@ body {
 
 @media (max-width: 768px) {
   .plan-badge {
-    top: -8px;
+    top: 10px;
     right: 12px;
     font-size: 11px;
   }
