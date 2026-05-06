@@ -6182,14 +6182,18 @@ function initFeaturesSlider() {
   
   const featuresGrid = document.querySelector('.features-grid');
   if (!featuresGrid) return;
+  if (featuresGrid.dataset.sliderInitialized === '1' || featuresGrid.querySelector('.features-slider')) return;
   
   // Wrap features in slider
-  const features = Array.from(featuresGrid.children);
+  const features = Array.from(featuresGrid.children).filter((el) => el.classList?.contains('feature-card'));
   if (features.length === 0) return;
   
   const slider = document.createElement('div');
   slider.className = 'features-slider';
+  slider.style.width = `${features.length * 100}%`;
   features.forEach(feature => {
+    feature.style.width = `${100 / features.length}%`;
+    feature.style.minWidth = `${100 / features.length}%`;
     slider.appendChild(feature);
   });
   
@@ -6206,6 +6210,9 @@ function initFeaturesSlider() {
     dotsContainer.appendChild(dot);
   }
   featuresGrid.appendChild(dotsContainer);
+  featuresGrid.dataset.sliderInitialized = '1';
+  currentFeatureIndex = 0;
+  goToFeature(0);
   
   // Auto-play
   featureSliderInterval = setInterval(() => {
@@ -6245,7 +6252,10 @@ function goToFeature(index) {
   const dots = document.querySelectorAll('.features-dot');
   
   if (slider) {
-    slider.style.transform = `translateX(-${index * 100}%)`;
+    const total = slider.children.length || 1;
+    const normalizedIndex = ((index % total) + total) % total;
+    slider.style.transform = `translateX(-${normalizedIndex * (100 / total)}%)`;
+    index = normalizedIndex;
   }
   
   dots.forEach((dot, i) => {
