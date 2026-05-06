@@ -2,6 +2,23 @@ const API_BASE_URL =
   typeof window !== 'undefined' && typeof window.CUTUP_API_BASE !== 'undefined' ? window.CUTUP_API_BASE : '';
 const AVG_VIDEO_MINUTES = 7;
 const PAYMENT_RETRY_KEY = 'cutup_payment_retry';
+const PENDING_ACTION_LS_KEY = 'pending_action';
+const PENDING_ACTION_MAX_MS = 10 * 60 * 1000;
+
+function cutupPendingActionValidForHomeRedirect() {
+  try {
+    const raw = localStorage.getItem(PENDING_ACTION_LS_KEY);
+    if (!raw) return false;
+    const p = JSON.parse(raw);
+    const ts = p.timestamp || 0;
+    if (!ts || Date.now() - ts > PENDING_ACTION_MAX_MS) return false;
+    if (p.payload && p.payload.fileFlow) return true;
+    const input = (p.payload && p.payload.input != null ? String(p.payload.input) : '').trim();
+    return input.length > 0;
+  } catch {
+    return false;
+  }
+}
 let cutupDashboardPricingViewedSent = false;
 
 function peekPaymentRetryPlanKey() {
@@ -806,16 +823,20 @@ function getSessionFromLocation() {
   const checkoutSessionId = params.get('checkout_session_id');
   const authority = params.get('authority');
 
-  if (authSuccess === 'success' && sessionId) {
-    localStorage.setItem('cutup_session', sessionId);
-  }
-
   const paymentReturn = {
     result: paymentResult,
     paymentId,
     checkoutSessionId,
     authority
   };
+
+  if (authSuccess === 'success' && sessionId) {
+    localStorage.setItem('cutup_session', sessionId);
+    if (cutupPendingActionValidForHomeRedirect()) {
+      window.location.replace(`${window.location.origin}/?resume=1`);
+      return { activeSession: sessionId, paymentReturn, bouncingHome: true };
+    }
+  }
 
   const activeSession = sessionId || localStorage.getItem('cutup_session');
   if (paymentResult || authSuccess === 'success') {
@@ -938,7 +959,10 @@ async function initDashboard() {
 
   const pendingCheckoutPlan = readCheckoutPlanFromUrl();
 
-  const { activeSession, paymentReturn } = getSessionFromLocation();
+  const { activeSession, paymentReturn, bouncingHome } = getSessionFromLocation();
+  if (bouncingHome) {
+    return { ok: false };
+  }
   currentSession = activeSession;
   if (!currentSession) {
     hideInitialLoader();

@@ -233,6 +233,122 @@ function cutupIsLoggedIn() {
 /** Survives Google OAuth full-page redirect; mirrored on window for debugging */
 const CUTUP_PENDING_ACTION_KEY = 'cutup_pending_action';
 
+/** User intent through OAuth (localStorage); TTL 10m — see cutupParseLocalPendingAction */
+const PENDING_ACTION_LS_KEY = 'pending_action';
+const PENDING_ACTION_MAX_MS = 10 * 60 * 1000;
+
+function cutupParseLocalPendingAction() {
+  try {
+    const raw = localStorage.getItem(PENDING_ACTION_LS_KEY);
+    if (!raw) return { valid: false, data: null };
+    const p = JSON.parse(raw);
+    const ts = p.timestamp || 0;
+    if (!ts || Date.now() - ts > PENDING_ACTION_MAX_MS) {
+      localStorage.removeItem(PENDING_ACTION_LS_KEY);
+      return { valid: false, data: null };
+    }
+    if (p.payload && p.payload.fileFlow) {
+      return { valid: true, data: p };
+    }
+    const input = (p.payload && p.payload.input != null ? String(p.payload.input) : '').trim();
+    if (!input) {
+      localStorage.removeItem(PENDING_ACTION_LS_KEY);
+      return { valid: false, data: null };
+    }
+    return { valid: true, data: p };
+  } catch {
+    try {
+      localStorage.removeItem(PENDING_ACTION_LS_KEY);
+    } catch (_e2) {
+      /* ignore */
+    }
+    return { valid: false, data: null };
+  }
+}
+
+function cutupMapPendingTypeToLocalMode(type) {
+  if (type === 'generate_subtitle') return { mode: 'subtitle', fileFlow: false };
+  if (type === 'summarize') return { mode: 'summary', fileFlow: false };
+  if (type === 'resume_upload_tab') return { mode: 'fulltext', fileFlow: true };
+  return { mode: 'fulltext', fileFlow: false };
+}
+
+function cutupWriteLocalPendingActionForLogin(type, payload) {
+  const p = payload || {};
+  const { mode, fileFlow } = cutupMapPendingTypeToLocalMode(type);
+  const inputVal = fileFlow ? '' : String(p.url != null ? p.url : getCurrentUrl()).trim();
+  const platform = String(p.platform || currentPlatform || 'youtube').trim();
+  const obj = {
+    type: 'generate',
+    payload: {
+      input: inputVal,
+      platform,
+      mode,
+      fileFlow,
+    },
+    timestamp: Date.now(),
+  };
+  try {
+    localStorage.setItem(PENDING_ACTION_LS_KEY, JSON.stringify(obj));
+  } catch (_e) {
+    /* ignore */
+  }
+}
+
+let cutupLocalResumeStarted = false;
+
+async function cutupExecuteLocalPendingResume(data) {
+  if (cutupLocalResumeStarted || !data || !data.payload) return;
+  cutupLocalResumeStarted = true;
+  cutupClearPendingAction();
+  try {
+    localStorage.removeItem(PENDING_ACTION_LS_KEY);
+  } catch (_e) {
+    /* ignore */
+  }
+
+  showMessage('Resuming your previous request...', 'info');
+  const { payload } = data;
+  const platform = payload.platform || 'youtube';
+
+  if (payload.fileFlow) {
+    retentionSwitchPlatformWithUrl('audiofile', '');
+    try {
+      localStorage.removeItem('cutup_pending_url');
+      localStorage.removeItem('cutup_pending_platform');
+    } catch (_e2) {
+      /* ignore */
+    }
+    showMessage('Select your file again to transcribe.', 'info');
+    return;
+  }
+
+  const input = String(payload.input || '').trim();
+  retentionSwitchPlatformWithUrl(platform, input);
+  await new Promise((r) => setTimeout(r, 450));
+
+  const mode = payload.mode || 'subtitle';
+  try {
+    if (mode === 'subtitle') {
+      await handleSrtSubtitles();
+    } else if (mode === 'summary') {
+      await handleSummarize();
+    } else {
+      await handleFullText('fulltext');
+    }
+    try {
+      localStorage.removeItem('cutup_pending_url');
+      localStorage.removeItem('cutup_pending_platform');
+    } catch (_e3) {
+      /* ignore */
+    }
+  } catch (err) {
+    console.error('[script] cutupExecuteLocalPendingResume failed:', err);
+    reportClientError('resume_local_pending', err);
+    showMessage(USER_ERROR_GENERIC, 'error');
+  }
+}
+
 function cutupSocialTranscribeNeedsGoogleAuth(url, file, requestedPlatform) {
   if (
     file &&
@@ -263,6 +379,7 @@ function cutupClearPendingAction() {
 }
 
 async function cutupTriggerLoginForPendingAction(type, payload) {
+  cutupWriteLocalPendingActionForLogin(type, payload);
   try {
     const envelope = { type, payload: payload || {}, v: 1 };
     sessionStorage.setItem(CUTUP_PENDING_ACTION_KEY, JSON.stringify(envelope));
@@ -1344,11 +1461,9 @@ const sessionId = urlParams.get('session');
 const authError = urlParams.get('error');
 
 if (authSuccess === 'success' && sessionId) {
-  // Save session to localStorage
+  window.__cutupAuthCallbackHandled = true;
   localStorage.setItem('cutup_session', sessionId);
-  // Also notify extension if possible
   try {
-    // Try to send message to extension
     if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
       chrome.runtime.sendMessage({
         type: 'auth_success',
@@ -1356,31 +1471,34 @@ if (authSuccess === 'success' && sessionId) {
       });
     }
   } catch (e) {
-    // Extension might not be available, that's okay
     console.log('Could not notify extension:', e);
   }
-  // Check if we have a pending URL (user logged in after entering URL)
+
+  const pendingLsSnapshot = cutupParseLocalPendingAction();
   const pendingUrl = localStorage.getItem('cutup_pending_url');
   const pendingPlatform = localStorage.getItem('cutup_pending_platform');
-  
-  // If we're on dashboard.html and have pending URL, redirect to main page
-  if (window.location.pathname.includes('dashboard.html') && pendingUrl) {
-    console.log('[script] Redirecting to main page with pending URL');
-    window.location.href = `/?session=${encodeURIComponent(sessionId)}`;
-    // Don't continue execution after redirect
+  const hasResumeIntent =
+    pendingLsSnapshot.valid || !!(pendingUrl && String(pendingUrl).trim());
+
+  if (!hasResumeIntent) {
+    window.location.replace(`${window.location.origin}/dashboard.html`);
   } else {
-    // Remove query params from URL
-    window.history.replaceState({}, document.title, window.location.pathname);
-    // Load user profile
+    window.history.replaceState(
+      {},
+      document.title,
+      `${window.location.pathname}?resume=1`
+    );
+
     loadUserProfile().then(async () => {
-      if (pendingUrl && pendingPlatform) {
+      if (pendingLsSnapshot.valid) {
+        await cutupExecuteLocalPendingResume(pendingLsSnapshot.data);
+      } else if (pendingUrl && pendingPlatform) {
         console.log('[script] Restoring pending URL:', pendingUrl, 'Platform:', pendingPlatform);
         await restorePendingUrl(pendingUrl, pendingPlatform);
       }
       await resumeCutupPendingAction();
     });
-    
-    // Scroll to download section after login
+
     setTimeout(() => {
       const downloadSection = document.querySelector('.download-section');
       if (downloadSection) {
@@ -1406,22 +1524,28 @@ window.addEventListener('DOMContentLoaded', () => {
     if (googleWrap) googleWrap.style.display = '';
   }
 
-  // Check if we have a pending URL (user logged in after entering URL)
-  const pendingUrl = localStorage.getItem('cutup_pending_url');
-  const pendingPlatform = localStorage.getItem('cutup_pending_platform');
-  
   if (savedSession) {
     currentSession = savedSession;
-    // Wait a bit to ensure DOM is fully ready
-    setTimeout(() => {
-      loadUserProfile().then(async () => {
-        if (pendingUrl && pendingPlatform) {
-          console.log('[script] Restoring pending URL:', pendingUrl, 'Platform:', pendingPlatform);
-          await restorePendingUrl(pendingUrl, pendingPlatform);
-        }
-        await resumeCutupPendingAction();
-      });
-    }, 100);
+    if (!window.__cutupAuthCallbackHandled) {
+      setTimeout(() => {
+        loadUserProfile().then(async () => {
+          const rp = new URLSearchParams(window.location.search);
+          if (rp.get('resume') === '1') {
+            const pr = cutupParseLocalPendingAction();
+            if (pr.valid) {
+              await cutupExecuteLocalPendingResume(pr.data);
+            }
+          }
+          const pu = localStorage.getItem('cutup_pending_url');
+          const pp = localStorage.getItem('cutup_pending_platform');
+          if (pu && pp) {
+            console.log('[script] Restoring pending URL:', pu, 'Platform:', pp);
+            await restorePendingUrl(pu, pp);
+          }
+          await resumeCutupPendingAction();
+        });
+      }, 100);
+    }
   } else {
     console.log('[script] No saved session, showing login button');
     showLoginButton();
