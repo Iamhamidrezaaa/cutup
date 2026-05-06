@@ -1,0 +1,88 @@
+{
+  "slug": "free-vs-paid-ai-subtitle-tools-2026",
+  "title": "Free vs Paid AI Subtitle Tools",
+  "titleSuffix": "What Creators Actually Get in 2026",
+  "deck": "Free AI subtitle tools look generous on the pricing page — then you hit the export wall, the watermark, or the queue. Here’s what free plans really include, when paid is worth it, and which tools respect a creator budget.",
+  "excerpt": "Honest 2026 comparison of free vs paid AI subtitle tools: SRT export limits, watermarks, quotas, mobile pain, and when upgrading actually saves time and money.",
+  "category": "Guides",
+  "tags": [
+    "free-ai-subtitle-tools",
+    "paid-subtitle-tools",
+    "ai-subtitle-generator-pricing",
+    "free-subtitle-generator",
+    "subtitle-workflow-costs",
+    "subtitle-software-comparison",
+    "srt-generators",
+    "creator-tools-budget"
+  ],
+  "eyebrow": "Guides · Pricing & value",
+  "author": "Cutup Editorial",
+  "authorInitials": "CT",
+  "authorRole": "Free-tier testing · quota & export audits",
+  "publishedAt": "2026-05-22",
+  "updatedAt": "2026-05-22",
+  "readingTimeMinutes": 12,
+  "coverImageUrl": "/cms-media/images/blog/free-vs-paid-ai-subtitle-tools-2026-cover.jpg",
+  "heroImageAlt": "Creator comparing free vs paid subtitle tool pricing on a workstation",
+  "heroImagePrompt": "Cinematic editorial photograph, realistic creator desk at dusk, dual monitors showing subtitle software pricing grids and an SRT export dialog, soft purple-blue accent lighting from screens, shallow depth of field, premium SaaS blog aesthetic, clean modern UI glow, no brand logos, no readable trademark text, no cyberpunk, no animals, 16:9 hero composition.",
+  "metaTitle": "Free vs Paid AI Subtitle Tools (2026 Honest Comparison) — Cutup",
+  "metaDescription": "What free AI subtitle tools actually allow in 2026 — SRT export, watermarks, quotas, mobile limits — and when paid subtitle software is worth the money.",
+  "ogTitle": "Free vs Paid AI Subtitle Tools: What Creators Actually Get in 2026",
+  "ogDescription": "Not marketing tiers — real limits on free subtitle generators, hidden costs, and the best value for creators.",
+  "status": "published",
+  "source": "static",
+  "faqSchema": [
+    {
+      "question": "Are free AI subtitle generators good enough?",
+      "answer": "For occasional uploads and simple talking-head videos, yes — as a draft. For daily publishing, brand channels, or clean SRT export, free tiers usually hit walls quickly through quotas, watermarks, or paywalled exports."
+    },
+    {
+      "question": "Which subtitle tools allow free SRT export?",
+      "answer": "Cutup includes SRT export on the free tier. Descript offers limited free transcription with export options. VEED and Kapwing typically gate clean SRT downloads behind paid plans. YouTube Studio auto-captions are free but inconsistent for file export."
+    },
+    {
+      "question": "Why do subtitle tools charge so much?",
+      "answer": "Speech-to-text, GPU processing, storage, and browser-based editing are expensive at scale. Pricing reflects transcription minutes, export features, collaboration seats, and styled caption libraries — not just a text file."
+    },
+    {
+      "question": "Can I create subtitles without watermarks?",
+      "answer": "Some free plans add watermarks on exports or burned-in captions. Paid tiers usually remove them. Always check export settings on the free plan before batching content."
+    },
+    {
+      "question": "Which subtitle tools work best on mobile?",
+      "answer": "CapCut is strongest for mobile burn-in. Lightweight SRT tools like Cutup work well on mobile browsers for link-to-file workflows. Heavy browser editors (VEED, Kapwing) are often unreliable on phones."
+    },
+    {
+      "question": "Is it worth paying for AI subtitle software?",
+      "answer": "Worth it when subtitle work is a weekly bottleneck — daily Shorts, client work, or multilingual tracks. Not worth it if you publish rarely and can tolerate manual cleanup on a free draft."
+    },
+    {
+      "question": "What is the hidden cost of free subtitle tools?",
+      "answer": "Time lost to queues, failed exports, tool-switching, re-uploading after refresh, and fixing bad auto-captions manually — plus quota anxiety that slows your publishing rhythm."
+    },
+    {
+      "question": "How do I choose between free subtitle generators?",
+      "answer": "Match the tool to your output: SRT file for an NLE, burned-in captions for Shorts, or transcript editing for podcasts. Test free export on a real video before committing your workflow."
+    }
+  ],
+  "related": [
+    {
+      "href": "/blog/best-ai-subtitle-generators-2026",
+      "eyebrow": "Comparison",
+      "title": "Best AI subtitle generators in 2026",
+      "description": "VEED, Kapwing, Descript, Cutup — tested on workflow friction, not feature lists."
+    },
+    {
+      "href": "/blog/how-to-generate-srt-subtitles",
+      "eyebrow": "Tutorial",
+      "title": "How to generate SRT subtitles",
+      "description": "A clean SRT path when free auto-captions aren’t enough."
+    },
+    {
+      "href": "/#pricing",
+      "eyebrow": "Product",
+      "title": "Cutup plans & pricing",
+      "description": "See what the free tier includes — and when to upgrade."
+    }
+  ]
+}

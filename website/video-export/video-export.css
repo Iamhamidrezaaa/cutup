@@ -1,0 +1,517 @@
+/* Subtitle version selector + export options */
+
+.cutup-subtitle-version-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0.85rem 0 0.65rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+  border: 1px solid #c7d2fe;
+}
+
+.cutup-subtitle-version-bar__label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #475569;
+}
+
+.cutup-subtitle-version-bar__select {
+  flex: 1;
+  min-width: 12rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 0.45rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid #a5b4fc;
+  background: #fff;
+  color: #0f172a;
+}
+
+/* Export options + viral MP4 */
+
+.cutup-export-options {
+  margin: 1rem 0 0.5rem;
+}
+
+.cutup-export-options__heading {
+  margin: 0 0 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.cutup-export-options__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  align-items: stretch;
+}
+
+@media (max-width: 768px) {
+  .cutup-export-options__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cutup-export-options__card {
+  padding: 1rem 1.05rem;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.05);
+}
+
+.cutup-export-options__card--srt {
+  border-color: #a7f3d0;
+  background: linear-gradient(180deg, #f0fdf4 0%, #fff 100%);
+}
+
+.cutup-export-options__card--viral {
+  border-color: #c7d2fe;
+  background: linear-gradient(180deg, #eef2ff 0%, #fff 100%);
+  padding: 0;
+  overflow: hidden;
+}
+
+.cutup-export-options__title {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.cutup-export-options__desc {
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: #475569;
+}
+
+.cutup-export-options__btn {
+  width: 100%;
+  padding: 0.55rem 1rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  color: #fff;
+  background: linear-gradient(135deg, #059669, #047857);
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
+}
+
+.cutup-export-options__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.cutup-export-options__btn-secondary {
+  margin-top: 0.35rem;
+  width: 100%;
+}
+
+.cutup-viral-export-mount .cutup-viral-export {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+/* 1-click viral MP4 export — light card (matches premium output panel) */
+
+.cutup-viral-export {
+  margin: 1rem 0 0.75rem;
+  padding: 1rem 1.1rem;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid #c7d2fe;
+  box-shadow: 0 8px 24px rgba(30, 41, 59, 0.06);
+}
+
+.cutup-viral-export__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.65rem;
+  margin-bottom: 0.75rem;
+}
+
+.cutup-viral-export__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+}
+
+.cutup-viral-export__sub {
+  margin: 0.25rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: #475569;
+  max-width: 28rem;
+}
+
+.cutup-viral-export__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.cutup-viral-export__quality {
+  font-size: 0.8rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.cutup-viral-export__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 0.5rem 1.05rem;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  color: #ffffff;
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35);
+  transition: transform 0.2s, opacity 0.2s, box-shadow 0.2s;
+}
+
+.cutup-viral-export__btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(79, 70, 229, 0.4);
+}
+
+.cutup-viral-export__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #94a3b8;
+  box-shadow: none;
+}
+
+.cutup-viral-export__progress {
+  display: none;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.cutup-viral-export__progress--active {
+  display: block;
+}
+
+.cutup-viral-export__progress--pulse .cutup-viral-export__fill {
+  animation: cutupExportPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes cutupExportPulse {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.12);
+  }
+}
+
+.cutup-viral-export__stage {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 0.4rem;
+}
+
+.cutup-viral-export__stage span:last-child {
+  color: #4f46e5;
+  font-variant-numeric: tabular-nums;
+}
+
+.cutup-viral-export__bar {
+  height: 8px;
+  border-radius: 8px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.cutup-viral-export__fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #6366f1, #0ea5e9);
+  transition: width 0.35s ease;
+}
+
+.cutup-viral-export__eta {
+  margin: 0.4rem 0 0;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.cutup-viral-export__error {
+  margin-top: 0.55rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 0.45rem 0.6rem;
+}
+
+.cutup-viral-export__error[hidden] {
+  display: none !important;
+}
+
+.cutup-viral-export__ready {
+  margin-top: 0.75rem;
+  padding: 1rem 1.05rem;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #ecfdf5, #f0fdf4);
+  border: 1px solid #6ee7b7;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    'icon copy'
+    'btn btn'
+    'hint hint'
+    'toggle toggle'
+    'preview preview';
+  gap: 0.55rem 0.75rem;
+  align-items: center;
+}
+
+.cutup-viral-export__ready--animate {
+  animation: cutupSuccessIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes cutupSuccessIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.cutup-viral-export__success-icon {
+  grid-area: icon;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #10b981;
+  color: #fff;
+  font-weight: 800;
+  font-size: 1.15rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.45);
+  animation: cutupCheckPop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) 0.12s both;
+}
+
+@keyframes cutupCheckPop {
+  from {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.cutup-viral-export__ready-copy {
+  grid-area: copy;
+}
+
+.cutup-viral-export__ready-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+  color: #065f46;
+}
+
+.cutup-viral-export__ready-msg {
+  margin: 0.2rem 0 0.45rem;
+  font-size: 0.78rem;
+  color: #047857;
+}
+
+.cutup-viral-export__meta {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem 0.75rem;
+}
+
+.cutup-viral-export__meta-row {
+  display: contents;
+}
+
+.cutup-viral-export__meta dt {
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #059669;
+}
+
+.cutup-viral-export__meta dd {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #064e3b;
+  font-variant-numeric: tabular-nums;
+}
+
+.cutup-viral-export__btn--download {
+  grid-area: btn;
+  width: 100%;
+  padding: 0.72rem 1.2rem;
+  font-size: 0.95rem;
+  background: linear-gradient(135deg, #059669, #10b981);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+}
+
+.cutup-viral-export__btn--download:hover {
+  box-shadow: 0 8px 24px rgba(16, 185, 129, 0.48);
+}
+
+.cutup-viral-export__download-hint {
+  grid-area: hint;
+  margin: 0;
+  font-size: 0.72rem;
+  text-align: center;
+  color: #047857;
+}
+
+.cutup-viral-export__preview-toggle {
+  grid-area: toggle;
+  justify-self: center;
+  margin: 0;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #047857;
+  background: transparent;
+  border: 1px dashed #6ee7b7;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.cutup-viral-export__preview-toggle:hover {
+  background: rgba(255, 255, 255, 0.55);
+  border-color: #10b981;
+}
+
+.cutup-viral-export__preview {
+  grid-area: preview;
+  width: 100%;
+  max-height: 220px;
+  border-radius: 10px;
+  background: #0f172a;
+  border: 1px solid #cbd5e1;
+}
+
+.cutup-viral-export__ready[hidden],
+.cutup-viral-export__preview[hidden] {
+  display: none !important;
+}
+
+.cutup-viral-export__optin {
+  grid-column: 1 / -1;
+  margin-top: 0.35rem;
+  padding: 0.75rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px dashed #6ee7b7;
+}
+
+.cutup-viral-export__optin-title {
+  margin: 0 0 0.45rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #065f46;
+}
+
+.cutup-viral-export__optin-check {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.78rem;
+  color: #047857;
+  cursor: pointer;
+}
+
+.cutup-viral-export__optin-fields {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.55rem;
+}
+
+.cutup-viral-export__optin-fields input,
+.cutup-viral-export__optin-fields textarea {
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid #a7f3d0;
+  resize: vertical;
+}
+
+.cutup-viral-export__btn--optin {
+  font-size: 0.78rem;
+  padding: 0.45rem 0.9rem;
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+}
+
+.cutup-viral-export__optin-note {
+  margin: 0;
+  font-size: 0.72rem;
+  color: #047857;
+}
+
+.cutup-viral-export__ready {
+  grid-template-areas:
+    'icon copy'
+    'btn btn'
+    'hint hint'
+    'toggle toggle'
+    'preview preview'
+    'optin optin';
+}
+
+@media (max-width: 520px) {
+  .cutup-viral-export__head {
+    flex-direction: column;
+  }
+
+  .cutup-viral-export__meta {
+    grid-template-columns: 1fr;
+  }
+}

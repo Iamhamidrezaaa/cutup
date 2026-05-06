@@ -1,5 +1,5 @@
 import { setAdminPanelCorsHeaders } from './cors.js';
-import { resolveAdminAuth } from './admin-panel-auth.js';
+import { resolveAdminAuth, touchAdminSession, ADMIN_SESSION_COOKIE, getCookie } from './admin-panel-auth.js';
 
 export default async function adminAuthMeHandler(req, res) {
   setAdminPanelCorsHeaders(req, res);
@@ -10,5 +10,7 @@ export default async function adminAuthMeHandler(req, res) {
   if (!auth) {
     return res.status(401).json({ ok: false });
   }
+  const token = getCookie(req, ADMIN_SESSION_COOKIE);
+  await touchAdminSession(token);
   return res.json({ ok: true, email: auth.email, role: auth.role, adminId: auth.adminId });
 }

@@ -1,0 +1,356 @@
+<div class="ba-tldr">
+  <p>
+  <strong>AI subtitle timing</strong> in 2026 is weirdly good at words and weirdly bad at <em>feel</em>. Cues show up late, vanish before you finish reading, or hug whole sentences while the speaker already moved on. Most people blame spelling; <strong>caption pacing</strong> is what makes a clip feel cheap. Fix it with shorter chunks, transcript-first edits, and <a href="/blog/how-to-generate-srt-subtitles">SRT export</a> before you butcher the timeline — not after. For Shorts-specific stacks, see our <a href="/blog/best-subtitle-workflow-youtube-shorts-2026">Shorts subtitle workflow</a>.
+  </p>
+</div>
+
+<p>
+  I re-watched a Shorts draft last week with the sound off — the way half your audience actually watches. Transcript was clean. Brand name right. No hilarious “their/there” disaster. And yet something felt… off. Like the captions were subtitling a slightly different video. The punchline line appeared a beat late. The hook word lingered while my face was already on the next sentence. I wasn’t mad at the AI. I was mad at myself for thinking “good enough” because the text was accurate.
+</p>
+
+<p>
+  That’s the 2026 trap. <strong>AI subtitles</strong> got fast enough that we stopped separating “did it hear the word?” from “does this <em>read</em> with the video?” Viewers notice the second one subconsciously. They scroll. They don’t leave a comment saying “cue 14 was 200ms early.” They just feel like the edit is amateur.
+</p>
+
+<p>
+  Everyone talks about <strong>subtitle timing problems</strong> like they’re sync bugs — the classic <strong>auto captions out of sync</strong> horror story. Sometimes it is a desync. More often it’s pacing: captions that are technically on the audio but emotionally wrong. This is what we saw testing browser tools, phone apps, and the chaotic <strong>TikTok subtitle timing</strong> / <strong>YouTube captions timing</strong> stacks real solo creators use — including the stuff that breaks after you trim silence and jump-cut the hook.
+</p>
+
+<h2 id="why-timing-matters">Why subtitle timing matters more than people think</h2>
+
+<p>
+  Retention isn’t only hooks and pattern interrupts. It’s whether the brain can process speech + text without friction. When pacing is wrong:
+</p>
+
+<ul>
+  <li><strong>People read ahead of the speaker</strong> — joke lands visually before audio, kills comedy.</li>
+  <li><strong>People read behind the speaker</strong> — energy dies; Shorts feed assumes you’re boring.</li>
+  <li><strong>Watch time drops on muted viewing</strong> — if text fights the face, they leave.</li>
+  <li><strong>The edit feels “cheap”</strong> — even with good color and sound.</li>
+</ul>
+
+<p>
+  TikTok and Shorts audiences are brutal. Not because they’re picky grammar nerds. Because they’ve trained on thousands of clips where captions <em>snap</em> to emphasis. Your slightly-late block reads as low effort next to a creator who manually nudged three cues on the hook.
+</p>
+
+<p>
+  Emotional timing matters too. A pause before “but” is the whole bit. A caption that slams in during the pause steps on the setup. You feel that in your chest before you can articulate it. That’s why <strong>subtitle readability</strong> is a timing problem dressed up as a design problem.
+</p>
+
+<div class="ba-quote">
+  "My retention graph didn’t care that the transcript was perfect. It cared that the first caption felt like subtitles on a laggy stream."
+  <span class="ba-quote-attr">— Podcast clip channel, ~40k subs</span>
+</div>
+
+<h2 id="common-timing-problems">The most common subtitle timing problems</h2>
+
+<p>
+  Think of these as things you’ll <em>see</em> on a timeline or player — not abstract “AI bad” complaints.
+</p>
+
+<h3 id="too-early">Captions appearing too early</h3>
+
+<p>
+  The model hears the start of a word and fires the cue. You’re still on the previous beat. Common after aggressive silence removal — the audio jumps but the caption clock still thinks there was breathing room.
+</p>
+
+<h3 id="lagging">Captions lagging behind speech</h3>
+
+<p>
+  Classic <strong>subtitle desync</strong>, but sometimes it’s only 200–400ms. Enough to feel wrong on a fast line, not enough to trigger your “fix sync” panic until you watch muted.
+</p>
+
+<h3 id="flashing">Captions flashing too fast</h3>
+
+<p>
+  Three lines in 1.2 seconds because the tool merged a sentence. Your eye can’t finish. Viewer blames themselves, then blames you.
+</p>
+
+<h3 id="sentence-blocks">Giant sentence blocks</h3>
+
+<p>
+  One cue holds eighteen words while the speaker did four micro-phrases. Looks fine in a transcript doc. Looks like a paragraph on a phone.
+</p>
+
+<h3 id="line-splitting">Broken line splitting</h3>
+
+<p>
+  “I didn’t” on line one, “know that” on line two — but the break hits mid-thought. Reading rhythm breaks even if timestamps are “correct.”
+</p>
+
+<h3 id="punctuation-timing">Punctuation timing</h3>
+
+<p>
+  Question marks change how fast people read. A caption without the question shape reads flat. Commas become false pauses when the speaker didn’t pause there.
+</p>
+
+<h3 id="silence">Silence handling</h3>
+
+<p>
+  Dead air trimmed in the edit, captions still scheduled for the old timeline. Or the opposite: long silence on screen, caption gone, viewer wonders if the video froze.
+</p>
+
+<div class="ba-image-placeholder" role="img" aria-label="Misaligned subtitle blocks on a timeline">
+  <span class="ba-image-placeholder-eyebrow">Diagram</span>
+  <span class="ba-image-placeholder-text">NLE timeline — waveform peaks aligned to video, subtitle blocks shifted right; hook cue ends after the face cut.</span>
+</div>
+
+<div class="ba-callout">
+  <p><strong>Quick check:</strong> Mute the video. If you can predict the next spoken word from the caption before you see the mouth move, you’re early. If you’re still reading when the face already changed expression, you’re late or too long.</p>
+</div>
+
+<h2 id="we-tested-tools">We tested multiple AI subtitle tools</h2>
+
+<p>
+  Not a vendor beauty contest — same three clips, different stacks:
+</p>
+
+<ul>
+  <li><strong>Browser timeline editors</strong> — full UI, waveform, style presets.</li>
+  <li><strong>Mobile apps</strong> — CapCut-style burn-in, native TikTok captions.</li>
+  <li><strong>Transcript-first tools</strong> — text panel, export file, minimal chrome.</li>
+  <li><strong>Platform auto tracks</strong> — YouTube, upload-and-pray.</li>
+</ul>
+
+<p>
+  Pattern: transcription accuracy clustered together on clear English. <strong>Subtitle pacing logic</strong> did not. Tools that chunk by ASR segments dump whatever the model heard into one cue. Tools tuned for social split on pauses — sometimes too aggressively, sometimes well.
+</p>
+
+<p>
+  The painful part is discovering accuracy on clip A doesn’t transfer to clip B after you remove “um” and tighten the hook. You didn’t break the words. You broke the clock the words were tied to. That’s the gap our <a href="/blog/why-youtube-auto-captions-fail-2026">YouTube auto captions guide</a> keeps running into — not just typos, timing after edits.
+</p>
+
+<h2 id="tiktok-shorts-worse">Why TikTok and Shorts make this worse</h2>
+
+<p>
+  Vertical feeds reward compression. Creators compress harder than subtitle systems expect:
+</p>
+
+<ul>
+  <li><strong>Fast cuts</strong> — new shot, same sentence, cue still on the old shot.</li>
+  <li><strong>Jump edits</strong> — audio stitched; caption timeline still linear.</li>
+  <li><strong>Silence trimming</strong> — 400ms gone, cue midpoint now lands on a breath that isn’t there.</li>
+  <li><strong>Meme pacing</strong> — one-word beat, tool gives you a four-word line.</li>
+  <li><strong>Attention span</strong> — if the first caption feels late, they never see the second.</li>
+</ul>
+
+<p>
+  You’re not just editing video. You’re editing <em>speech rhythm</em>. Most auto systems assume the rhythm they heard is the rhythm you shipped. Caption the landscape master, post a vertical Short — you get a new kind of wrong. The <a href="/blog/best-subtitle-workflow-youtube-shorts-2026">best Shorts subtitle workflow</a> we landed on: caption the file you actually upload, not the uncle in the timeline three generations back.
+</p>
+
+<p>
+  Mobile-only weeks make it worse — see our <a href="/blog/editing-shorts-entirely-on-mobile-2026">seven-day phone-only Shorts diary</a>. Tiny timeline, fat fingers, export at 99%, and captions that looked fine in preview until TikTok re-encoded them.
+</p>
+
+<h2 id="accurate-vs-readable">The difference between “accurate” and “readable”</h2>
+
+<p>
+  This is the section I wish someone shoved in my face two years ago.
+</p>
+
+<p>
+  <strong>Technically accurate</strong> means the words match audio and the timestamps overlap the phonemes. <strong>Readable</strong> means a human can absorb the line at the speed of the edit, on a 6-inch screen, while also watching a face.
+</p>
+
+<p>
+  Readable subtitles respect:
+</p>
+
+<ul>
+  <li><strong>Reading speed</strong> — ~15–20 characters per second is a decent mobile target for English; adjust down if you use fancy fonts.</li>
+  <li><strong>Visual rhythm</strong> — line breaks that match how you’d say it, not how Whisper chunked it.</li>
+  <li><strong>Word grouping</strong> — “not” stays with “today,” not orphaned on the next cue.</li>
+  <li><strong>Emphasis timing</strong> — the emphasized word appears when the mouth hits it, not when the clause started.</li>
+  <li><strong>Breathing room</strong> — 100–200ms after a punchline before the next cue can feel more premium than another word.</li>
+</ul>
+
+<p>
+  You can pass a QC spreadsheet and still fail the vibe check. That’s not philosophical. That’s watch time.
+</p>
+
+<aside class="ba-cta" aria-label="Promotional call to action">
+  <div class="ba-cta-text">
+    <span class="ba-cta-eyebrow">Text before timeline</span>
+    <p class="ba-cta-title">Generate cleaner subtitles before opening your editor.</p>
+  </div>
+  <a class="ba-cta-btn" href="https://cutup.shop/#tool">
+    Try Cutup
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <line x1="5" y1="12" x2="19" y2="12"></line>
+      <polyline points="12 5 19 12 12 19"></polyline>
+    </svg>
+  </a>
+</aside>
+
+<h2 id="what-helped">What actually helped fix timing</h2>
+
+<p>
+  No magic “auto pacing” button survived contact with a real Shorts hook. What moved the needle:
+</p>
+
+<ol>
+  <li><strong>Shorter subtitle chunks</strong> — one thought per cue, not one sentence per life event.</li>
+  <li><strong>Fewer words per line</strong> — two lines max; if you need three, split the cue.</li>
+  <li><strong>Manual punctuation cleanup</strong> — periods and question marks are timing instructions.</li>
+  <li><strong>Transcript-first editing</strong> — fix text and breaks before you fall in love with kinetic fonts.</li>
+  <li><strong>Export SRT before the heavy edit</strong> — or regenerate from the final export; pick one, not both randomly.</li>
+  <li><strong>Browser workflows for text, NLE for pixels</strong> — giant timelines are where pacing goes to die when you only needed words.</li>
+</ol>
+
+<p>
+  <strong>SRT subtitle timing</strong> is editable in plain text — nudge <code>00:00:01,200</code> instead of fighting a locked auto track. Our lightweight path: paste a link, skim the transcript, download SRT, import to CapCut or Premiere, <em>then</em> style. Cutup fits that “words first” step — not because it replaces your editor, but because cleaning timing in a bloated UI is slower than cleaning it in text when you’re solo.
+</p>
+
+<p>
+  Hook lines got manual love. Not every cue — the first three seconds and any joke with a pause. 150ms early on a single word beat fixed more “awkward AI” than re-transcribing the whole file.
+</p>
+
+<div class="ba-comparison">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Approach</th>
+        <th scope="col">Timing feel</th>
+        <th scope="col">Effort</th>
+        <th scope="col">Best for</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Platform auto captions only</td>
+        <td>OK on unedited talking head</td>
+        <td>Low</td>
+        <td>Casual uploads</td>
+      </tr>
+      <tr>
+        <td>Transcribe → edit video → hope</td>
+        <td>Poor after trims</td>
+        <td>Low until it isn’t</td>
+        <td>Learned the hard way</td>
+      </tr>
+      <tr>
+        <td>SRT → final vertical export</td>
+        <td>Strong</td>
+        <td>Medium</td>
+        <td>Shorts, TikTok, repurposed clips</td>
+      </tr>
+      <tr>
+        <td>Burn-in only in social app</td>
+        <td>Good for native rhythm</td>
+        <td>Medium</td>
+        <td>Feed-native creators</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<h2 id="robotic-auto">Why some “auto captions” feel robotic</h2>
+
+<p>
+  Robotic isn’t only monotone TTS. It’s machine pacing:
+</p>
+
+<ul>
+  <li><strong>Unnatural pauses</strong> — cues hold through silence you already cut.</li>
+  <li><strong>No emotional context</strong> — sarcasm, whisper, shout all get the same chunk size.</li>
+  <li><strong>Subtitle batching</strong> — ASR segment in, one ugly block out.</li>
+  <li><strong>Timing from transcription chunks</strong> — not from how viewers read or how you edited.</li>
+</ul>
+
+<p>
+  Styled captions hide it for a frame — neon bounce distracts you for one view. Mute it twice and the timing still feels like a PDF.
+</p>
+
+<h2 id="good-timing-feels">What good subtitle timing actually feels like</h2>
+
+<p>
+  Good timing is boring in the best way.
+</p>
+
+<ul>
+  <li>Captions match <strong>speech energy</strong> — punch words land with the mouth.</li>
+  <li><strong>Reading rhythm</strong> feels like someone whispered the line in your head.</li>
+  <li>Captions <strong>help pacing</strong> — you don’t notice them fighting the cut.</li>
+  <li>Viewers barely notice subtitles — they just understand the video faster muted.</li>
+</ul>
+
+<p>
+  When you nail it, people compliment the edit, not the captions. That’s the goal. Not “wow sick kinetic type.” Just no friction.
+</p>
+
+<div class="ba-verdict">
+  <span class="ba-verdict-label">Our take</span>
+  <p>
+    <strong>Subtitle timing problems</strong> in 2026 are less about whether AI can hear you and more about whether your <strong>subtitle workflow</strong> respects how you actually edit: jump cuts, trimmed silence, vertical exports, hook obsession. Spell-check the transcript, then obsess over the first five cues.
+  </p>
+  <p>
+    Start with <a href="/blog/how-to-generate-srt-subtitles">SRT generation</a>, pair with the <a href="/blog/best-subtitle-workflow-youtube-shorts-2026">Shorts workflow guide</a>, and when platform captions drift after a trim, read <a href="/blog/why-youtube-auto-captions-fail-2026">why YouTube auto captions fail</a> — same root cause, different symptom.
+  </p>
+</div>
+
+<aside class="ba-cta" aria-label="Promotional call to action">
+  <div class="ba-cta-text">
+    <span class="ba-cta-eyebrow">Easier cleanup</span>
+    <p class="ba-cta-title">Need subtitles that are easier to clean up?</p>
+  </div>
+  <a class="ba-cta-btn" href="https://cutup.shop/#tool">
+    Try Cutup
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <line x1="5" y1="12" x2="19" y2="12"></line>
+      <polyline points="12 5 19 12 12 19"></polyline>
+    </svg>
+  </a>
+</aside>
+
+<h2 id="faq">FAQ</h2>
+
+<div class="ba-faq" itemscope itemtype="https://schema.org/FAQPage">
+  <div class="ba-faq-item" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+    <h3 itemprop="name">Why are my subtitles out of sync?</h3>
+    <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+      <p itemprop="text">Usually the video was edited after captions were made, frame rates mismatched on export, or the tool timed a long master while you posted a trimmed Short. Regenerate from the final file or shift cues in your editor.</p>
+    </div>
+  </div>
+  <div class="ba-faq-item" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+    <h3 itemprop="name">Why do AI subtitles feel awkward?</h3>
+    <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+      <p itemprop="text">Words can be right while pacing is wrong — late hooks, fast flashes, emotional beats stepped on. AI optimizes for speech segments, not how humans read on a phone.</p>
+    </div>
+  </div>
+  <div class="ba-faq-item" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+    <h3 itemprop="name">How do I improve subtitle timing?</h3>
+    <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+      <p itemprop="text">Shorten cues, split on breaths, fix punctuation, nudge hook lines by 100–300ms, and align after every trim. Transcript-first beats style-first.</p>
+    </div>
+  </div>
+  <div class="ba-faq-item" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+    <h3 itemprop="name">What is the ideal subtitle speed?</h3>
+    <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+      <p itemprop="text">Roughly 15–20 characters per second in English on mobile, with most cues visible about 1.5–3 seconds unless it’s a single emphatic word.</p>
+    </div>
+  </div>
+  <div class="ba-faq-item" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+    <h3 itemprop="name">Why do TikTok captions look better sometimes?</h3>
+    <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+      <p itemprop="text">Native and CapCut captions are timed to the vertical file you post, with chunking tuned for the feed. SRT from another cut or aspect ratio often feels worse by comparison.</p>
+    </div>
+  </div>
+  <div class="ba-faq-item" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+    <h3 itemprop="name">Are SRT subtitles more accurate?</h3>
+    <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+      <p itemprop="text">SRT is a format — accuracy depends on the transcript and timestamps. The win is control: edit timing in text or your NLE without a locked platform track.</p>
+    </div>
+  </div>
+  <div class="ba-faq-item" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+    <h3 itemprop="name">Can AI fix subtitle pacing automatically?</h3>
+    <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+      <p itemprop="text">Only partly. Pause-based splitting helps a first pass; it won’t understand your meme cut or sarcasm beat. Short chunks plus manual hook nudges still win.</p>
+    </div>
+  </div>
+  <div class="ba-faq-item" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+    <h3 itemprop="name">What subtitle workflow works best for Shorts?</h3>
+    <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+      <p itemprop="text">Caption the final vertical export, keep hooks tight, stay in the safe zone, use text-first SRT then burn-in in CapCut or Shorts. See our dedicated Shorts workflow guide.</p>
+    </div>
+  </div>
+</div>

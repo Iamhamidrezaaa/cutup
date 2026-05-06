@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!--CUTUP_BLOG_HEAD-->
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta name="theme-color" content="#6366f1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/responsive-global.css?v=1">
+  <link rel="stylesheet" href="/blog-article.css?v=2">
+</head>
+<body class="ba-body" data-blog-slug="<!--CUTUP_BLOG_SLUG-->">
+  <script src="/site-chrome.js"></script>
+  <script type="module">
+    import { renderSimpleHeader, initSiteHeaderNav } from '/site-header.js';
+    import { renderFooter } from '/site-footer.js';
+    document.body.insertAdjacentHTML('afterbegin', renderSimpleHeader());
+    initSiteHeaderNav(document.querySelector('header.simple-header'));
+    document.body.insertAdjacentHTML('beforeend', renderFooter());
+  </script>
+
+  <main class="ba-main">
+    <div class="container">
+      <a class="ba-back" href="/blog.html" aria-label="Back to blog">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+        Back to blog
+      </a>
+
+      <!--CUTUP_BLOG_HERO-->
+
+      <div class="ba-layout">
+        <aside class="ba-toc-wrap" aria-label="Table of contents">
+          <!--CUTUP_BLOG_TOC-->
+        </aside>
+        <article class="ba-article" id="baArticle">
+          <!--CUTUP_BLOG_BODY-->
+        </article>
+      </div>
+
+      <!--CUTUP_BLOG_RELATED-->
+    </div>
+  </main>
+
+  <script src="/blog-post.js" defer></script>
+</body>
+</html>

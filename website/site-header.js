@@ -59,8 +59,8 @@ export function renderMarketingHeader() {
     '<a href="/#tool" class="nav-link cta">Generate subtitles</a>' +
     '<a href="/#features" class="nav-link">Features</a>' +
     '<a href="/#pricing" class="nav-link">Pricing</a>' +
+    '<a href="/faq.html" class="nav-link">FAQ</a>' +
     '<a href="/blog.html" class="nav-link">Blog</a>' +
-    '<a href="/#faq" class="nav-link">FAQ</a>' +
     homeAuthBlock() +
     '</nav>' +
     '</div>' +

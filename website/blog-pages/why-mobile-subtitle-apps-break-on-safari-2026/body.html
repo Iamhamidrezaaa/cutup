@@ -1,0 +1,266 @@
+<div class="ba-tldr">
+  <p>
+    <strong>Mobile subtitle apps</strong> on iPhone still break in 2026 because Safari and Chrome both run WebKit under tight memory rules — not because you’re bad at editing. Giant browser timelines, long uploads on LTE, and exports stuck at 99% are predictable. What worked: native finish (CapCut/TikTok), text-first SRT in a lightweight tab (<a href="/#tool">Cutup</a>), hook fixes on the final vertical file. Full stacks: <a href="/blog/best-subtitle-workflow-youtube-shorts-2026">Shorts workflow</a>, <a href="/blog/how-to-generate-srt-subtitles">SRT guide</a>.
+  </p>
+</div>
+
+<p>
+  I used to think “mobile-friendly” on a subtitle tool’s marketing page meant it would work on my iPhone. It usually means “you can open the URL.” Six weeks of posting from parking lots, hotel Wi-Fi, and one bar with allegedly full LTE later — I have opinions. Specifically about <strong>Safari subtitle issues</strong>, <strong>iPhone subtitle editor</strong> fatigue, and why your export bar loves sitting at 99% while your soul leaves your body.
+</p>
+
+<p>
+  If you’re a YouTuber, TikTok creator, or Reels person who captions on phone because that’s where the clip already lives — this is what broke, what didn’t, and the <strong>mobile video editing workflow</strong> that stopped wasting my Tuesday nights.
+</p>
+
+<p>
+  The failure modes repeat. You open a <strong>browser subtitle tool</strong> in Safari, upload a vertical clip, get halfway through cue fixes, switch to check a DM — and when you come back the tab has reloaded. Or the export bar crawls to 99% and sits there until you force-quit. Or the upload restarts from zero on LTE while the UI still says “processing.” None of that is you being careless; it’s what happens when desktop-class web apps meet iPhone memory rules.
+</p>
+
+<p>
+  We’re not saying “never caption on phone.” We’re saying: know which jobs belong in Safari at all, and which belong in CapCut, TikTok, or a text-only tab you can close the second the SRT downloads.
+</p>
+
+<h2 id="we-tested">We Tested Subtitle Workflows on Real iPhones</h2>
+
+<p>
+  Hardware: iPhone 14 and 15, iOS current at time of testing, mix of Wi-Fi and cellular. Browsers: Safari (default) and Chrome. Apps: native TikTok draft flow, CapCut, plus several browser-based <strong>subtitle tools</strong> creators actually name in Discord threads.
+</p>
+
+<p>
+  Scenarios we ran on purpose:
+</p>
+
+<ul>
+  <li><strong>YouTube Shorts</strong> — vertical export, upload to Shorts shelf, captions before vs after trim.</li>
+  <li><strong>TikTok</strong> — film in app, auto-caption, re-trim hook, export.</li>
+  <li><strong>Instagram Reels</strong> — import from camera roll, burn-in, post.</li>
+  <li><strong>Browser subtitle pass</strong> — paste link, generate text, try to export on Safari.</li>
+</ul>
+
+<p>
+  File sizes mattered more than we wanted. A 45-second talking-head at 1080×1920 was fine. A three-minute clip with B-roll — or worse, a screen recording of a tutorial — was where <strong>subtitle apps crashing</strong> stopped being rare and started being Tuesday.
+</p>
+
+<p>
+  Weak-internet tests were the rudest. Not “airplane mode” fake — real throttled LTE, the kind you get when a venue’s Wi-Fi is lying about being free. Uploads that cheerfully restarted. Exports that pretended to finish. Captions that looked synced in preview and drifted on device after export. This was surprisingly annoying because the same tools on the same account on desktop felt… fine.
+</p>
+
+<p>
+  We also logged <strong>subtitle export failed</strong> moments by platform. Shorts uploads from the YouTube app sometimes accepted burned-in captions from CapCut but rejected a re-upload after we trimmed the hook — timing drift again. TikTok’s in-app auto-caption was fastest for same-day posts but butchered product names. Reels wanted the file pre-captioned; trying to fix lines inside Instagram’s editor after upload felt like typing through molasses. The pattern: native apps win when the job is “get vertical video out”; browser tools win when the job is “get clean text or SRT without opening a timeline.”
+</p>
+
+<p>
+  File-size brackets we actually used: under 50MB (usually fine), 50–150MB (upload anxiety on cellular), 150MB+ (expect restarts or “use Wi-Fi” warnings). If your <strong>iPhone creator workflow</strong> starts with a screen recording or a 4K export from another app, compress before Safari sees it — boring advice that saved more sessions than any browser swap.
+</p>
+
+<h2 id="memory">The Biggest Problem Is Memory Management</h2>
+
+<p>
+  Non-technical version: your phone is not a small MacBook. It’s a device that will murder background tabs to keep the camera app alive. iOS gives each Safari tab a memory budget. Load video preview + waveform + effects UI + a fat JavaScript bundle and you’re asking for a reload.
+</p>
+
+<p>
+  What that looks like in creator language:
+</p>
+
+<ul>
+  <li><strong>Safari tab refreshes</strong> — you come back from Messages and the project is a blank page or a login screen.</li>
+  <li><strong>Large video processing</strong> — scrubbing stutters, audio preview desyncs, fanless phone gets warm.</li>
+  <li><strong>Browser crashes</strong> — not always a dramatic error; sometimes a polite reload.</li>
+  <li><strong>Background reloads</strong> — you switched to check analytics; Safari decided your caption pass was optional.</li>
+</ul>
+
+<p>
+  Chrome on iPhone didn’t get a magic exemption. Apple requires WebKit for browser engines on iOS. So “I’ll just use Chrome” is mostly a different bookmark bar, not a different physics engine. Memory limits still win.
+</p>
+
+<p>
+  Think of Safari like a strict bouncer: every open tab is drinking from the same RAM pool as your camera roll preview, your music app, and whatever podcast app you left playing. Load a video decoder, a waveform, and a React timeline at once and something has to leave — usually your half-finished <strong>subtitle workflow mobile</strong> session. Creators who batch five clips in five tabs and wonder why everything reloads are fighting the OS, not the tool’s logo.
+</p>
+
+<div class="ba-quote">
+  "Safari didn’t crash. It refreshed. Same outcome — forty minutes of cue fixes gone."
+  <span class="ba-quote-attr">— Interview channel, iPhone-only workflow</span>
+</div>
+
+<h2 id="why-tools-fail">Why Some Subtitle Tools Completely Fail on Mobile</h2>
+
+<p>
+  Desktop-first <strong>browser subtitle tool</strong> products assume: wide screen, stable RAM, you’ll wait ten minutes for upload, you have a mouse for micro-adjustments. On phone they become:
+</p>
+
+<ul>
+  <li><strong>Giant web apps</strong> — full NLE in a tab, timeline scrubbing with your thumb.</li>
+  <li><strong>Heavy JavaScript</strong> — effects panels, preview players, asset libraries.</li>
+  <li><strong>Export queues</strong> — server-side render while your tab still holds state.</li>
+  <li><strong>Desktop UI patterns</strong> — hover tooltips that don’t exist on touch; panels that cover the preview.</li>
+</ul>
+
+<p>
+  Many tools work fine on a laptop. On iPhone they’re a patience test. You’re not “bad at mobile editing.” You’re using a forklift in a hallway.
+</p>
+
+<p>
+  Platform auto-captions (<a href="/blog/why-youtube-auto-captions-fail-2026">YouTube auto captions</a> included) are a separate headache — fine for “something on the video,” painful when you need a master file or brand names. External generators help when the job is words, not pixels — our <a href="/blog/best-ai-subtitle-generators-2026">generator roundup</a> is blunt about who gates SRT on mobile.
+</p>
+
+<h2 id="workflow-that-worked">The Workflow That Actually Worked Best</h2>
+
+<p>
+  The stack that survived most often wasn’t the flashiest. It was boring on purpose:
+</p>
+
+<ol>
+  <li>Paste link (or upload short clip on Wi-Fi).</li>
+  <li>Generate transcript — fix names once.</li>
+  <li><strong>Export SRT</strong> — download file while the tab is still alive.</li>
+  <li>Import into CapCut (or finish native auto-caption there).</li>
+  <li>Rewrite hook line, check safe zone, export vertical MP4.</li>
+</ol>
+
+<p>
+  No giant timeline in Safari. No “scrub hour-long podcast in mobile Chrome” unless I hate myself.
+</p>
+
+<p>
+  <strong>Cutup</strong> fit the lightweight slot for us: link in, text out, SRT when quotas allow. It’s not trying to be Premiere in your pocket — which is exactly why it didn’t reload mid-pass as often as all-in-one browser studios. Not overselling: you still need a finisher app for burn-in and vertical export. But for <strong>add subtitles on iPhone</strong> without living inside a broken timeline, text-first beat effects-first.
+</p>
+
+<aside class="ba-cta" aria-label="Promotional call to action">
+  <div class="ba-cta-text">
+    <span class="ba-cta-eyebrow">Mobile workflow</span>
+    <p class="ba-cta-title">Need a lightweight subtitle workflow that actually works on mobile?</p>
+    <p class="ba-cta-sub">Paste a link, generate subtitles, export SRT, done.</p>
+  </div>
+  <a class="ba-cta-btn" href="/#tool">Try Cutup</a>
+</aside>
+
+<h2 id="safari-vs-chrome">Safari vs Chrome on iPhone</h2>
+
+<p>
+  Real observations from the same accounts, same clips, same week:
+</p>
+
+<ul>
+  <li><strong>Safari memory reloads</strong> — slightly more aggressive when switching apps during upload.</li>
+  <li><strong>Chrome on iPhone</strong> — still WebKit; occasional differences in download behavior and “Open in…” handoffs.</li>
+  <li><strong>Upload differences</strong> — neither loves 500MB on cellular; Wi-Fi pre-stage wins.</li>
+  <li><strong>Clipboard behavior</strong> — pasting SRT text into CapCut: both fine; long URLs into tools: verify paste didn’t truncate.</li>
+  <li><strong>Background tabs</strong> — iOS may suspend either; don’t trust unsaved browser state.</li>
+</ul>
+
+<p>
+  Verdict we kept repeating: pick the workflow that minimizes time inside any browser tab, not the browser icon on your dock.
+</p>
+
+<h2 id="what-broke">What Broke During Testing</h2>
+
+<p>
+  Authentic failure log — not cherry-picked wins:
+</p>
+
+<ul>
+  <li><strong>Uploads restarting</strong> at 60–80% on LTE — generic “network error,” file unchanged.</li>
+  <li><strong>Export freezing at 99%</strong> — progress bar theater; job dead on server.</li>
+  <li><strong>Subtitles desyncing</strong> after trim — preview lied; export told truth.</li>
+  <li><strong>Tabs refreshing</strong> — lost in-browser cue edits; SRT download saved us when we remembered.</li>
+  <li><strong>Audio extraction failing</strong> on link ingest — rights/geo/link format; not always Safari’s fault, still mobile friction.</li>
+  <li><strong>Keyboard covering edit fields</strong> — half the sentence invisible while typing brand names.</li>
+</ul>
+
+<p>
+  Most tools still fail here: they ask phone creators to do desktop minutes-per-clip work on a 6-inch panel with interruptible memory.
+</p>
+
+<h2 id="shorts-tiktok-notes">Shorts, TikTok, and “Just Use the App”</h2>
+
+<p>
+  Native isn’t perfect — it’s optimized. TikTok auto-caption is fast; brand names still need a human. CapCut templates save Sundays. For <strong>subtitle workflow mobile</strong> publishers posting 4–5× week, the win is template + hook discipline, not a new browser tab per clip.
+</p>
+
+<p>
+  When you need the same lines in YouTube Studio and Premiere, native-only burns you. That’s where <a href="/blog/how-to-generate-srt-subtitles">generating SRT</a> once and reusing beats retyping in every app.
+</p>
+
+<h2 id="real-lesson">The Real Lesson for Creators</h2>
+
+<p>
+  Most of us do <em>not</em> need a full desktop editing suite on mobile. We need:
+</p>
+
+<ul>
+  <li><strong>Speed</strong> — draft captions before the moment passes.</li>
+  <li><strong>Stability</strong> — fewer reloads, fewer 99% ghosts.</li>
+  <li><strong>Fast subtitles</strong> — readable two lines, hook fixed.</li>
+  <li><strong>Quick exports</strong> — vertical MP4 out the door.</li>
+  <li><strong>Lightweight workflows</strong> — text job separate from pixel job.</li>
+</ul>
+
+<p>
+  If your current stack has you fighting Safari more than fighting weak hooks, the tool is wrong — not your thumb. Split the work: browser for words, native app for finish, desktop when the episode is long.
+</p>
+
+<p>
+  For Shorts-specific safe zones and caption rhythm, our <a href="/blog/best-subtitle-workflow-youtube-shorts-2026">Shorts subtitle workflow</a> pairs well with this iPhone stack — same readability rules, less Safari time.
+</p>
+
+<div class="ba-callout">
+  <p><strong>Practical rule:</strong> If you can’t explain your mobile subtitle stack in one sentence (“link → SRT → CapCut → post”), it’s probably too heavy for Safari.</p>
+</div>
+
+<h2 id="final-verdict">Final Verdict</h2>
+
+<div class="ba-verdict">
+  <span class="ba-verdict-label">Our take</span>
+  <p>
+    <strong>Mobile subtitle apps</strong> break on iPhone Safari because iOS memory management and desktop-first web UIs collide. Chrome doesn’t fix WebKit limits. Native apps win burn-in; lightweight browser tools win SRT and transcript when they stay small.
+  </p>
+  <p>
+    Stop expecting your phone to run a forklift. Paste the link, export the file, finish where touch is native — and keep a Wi-Fi window for anything longer than a minute of 9:16.
+  </p>
+</div>
+
+<aside class="ba-cta" aria-label="Promotional call to action">
+  <div class="ba-cta-text">
+    <span class="ba-cta-eyebrow">Skip the Safari timeline</span>
+    <p class="ba-cta-title">Generate subtitles without loading a full editor in your browser.</p>
+  </div>
+  <a class="ba-cta-btn" href="https://cutup.shop/#tool">Try Cutup</a>
+</aside>
+
+<h2 id="faq">FAQ</h2>
+
+<div class="ba-faq">
+  <div class="ba-faq-item">
+    <h3>Why do subtitle apps crash on iPhone?</h3>
+    <p>Usually RAM limits plus heavy video preview in the browser. iOS suspends or reloads tabs. Large uploads and timeline scrubbing make crashes more likely than typing captions in a lightweight flow.</p>
+  </div>
+  <div class="ba-faq-item">
+    <h3>Why does Safari refresh during uploads?</h3>
+    <p>iOS reclaims memory from background tabs. Long uploads look idle to the system. Switch apps at your own risk — save downloads early.</p>
+  </div>
+  <div class="ba-faq-item">
+    <h3>Is Chrome better than Safari on iPhone?</h3>
+    <p>Marginally for some downloads; both use WebKit. Stability comes from lighter tools, not swapping browsers.</p>
+  </div>
+  <div class="ba-faq-item">
+    <h3>What is the fastest way to add subtitles on mobile?</h3>
+    <p>Native auto-caption in CapCut or TikTok for same-day posts. SRT-first: generate text in a small web tool, import, style once, export.</p>
+  </div>
+  <div class="ba-faq-item">
+    <h3>Why do exports fail on mobile subtitle tools?</h3>
+    <p>Cellular timeouts, server queues, tab reload mid-job, or encoding while preview still runs. 99% freeze often means the network job stalled.</p>
+  </div>
+  <div class="ba-faq-item">
+    <h3>Can I generate SRT subtitles on iPhone?</h3>
+    <p>Yes — use tools that offer SRT download without a full NLE in the tab. See our <a href="/blog/how-to-generate-srt-subtitles">SRT tutorial</a>.</p>
+  </div>
+  <div class="ba-faq-item">
+    <h3>Are browser subtitle tools better than apps?</h3>
+    <p>Browsers for text and files; native apps for vertical burn-in. Hybrid wins.</p>
+  </div>
+  <div class="ba-faq-item">
+    <h3>What subtitle workflow works best for Shorts?</h3>
+    <p>Caption the final vertical cut, two lines, hook rewritten. Details in our <a href="/blog/best-subtitle-workflow-youtube-shorts-2026">Shorts workflow guide</a>.</p>
+  </div>
+</div>

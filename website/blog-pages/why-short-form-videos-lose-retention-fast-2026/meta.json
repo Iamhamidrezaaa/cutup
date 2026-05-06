@@ -1,0 +1,93 @@
+{
+  "slug": "why-short-form-videos-lose-retention-fast-2026",
+  "title": "Why Short-Form Videos Lose Retention So Fast",
+  "titleSuffix": "in 2026",
+  "deck": "Most creators blame the algorithm when retention tanks. We re-watched dozens of Shorts that died in the first three seconds — and the same patterns kept showing up before the content was even “bad.”",
+  "excerpt": "We analyzed why TikTok videos, YouTube Shorts, and Reels still lose retention in 2026 — from subtitle pacing and dead air to editing rhythm and mobile viewing behavior.",
+  "category": "Guides",
+  "tags": [
+    "shorts-retention",
+    "youtube-shorts",
+    "tiktok-watch-time",
+    "subtitle-workflow",
+    "creator-tools",
+    "ai-subtitles",
+    "retention-editing"
+  ],
+  "eyebrow": "Guides · Watch time",
+  "author": "Cutup Editorial",
+  "authorInitials": "CT",
+  "authorRole": "Retention audits · Shorts + Reels clips",
+  "publishedAt": "2026-06-04",
+  "updatedAt": "2026-06-04",
+  "readingTimeMinutes": 12,
+  "coverImageUrl": "/cms-media/images/blog/why-short-form-videos-lose-retention-fast-2026-cover.jpg",
+  "heroImageAlt": "Mixed-race female creator analyzing dropping Shorts retention graphs on laptop and phone",
+  "heroImagePrompt": "Native 16:9 1920x1080 landscape only. LEFT: WHY SHORTS LOSE RETENTION (LOSE on red), all four lines fully inside frame with 10% bottom safe margin. RIGHT: mixed-race woman light brown skin curly bun, retention graph laptop, phones. Edge-to-edge, no letterboxing, no 3:2 crop.",
+  "metaTitle": "Why Short-Form Videos Lose Retention So Fast in 2026 — Cutup",
+  "metaDescription": "We analyzed why TikTok videos, YouTube Shorts, and Reels still lose retention in 2026 — from subtitle pacing and dead air to editing rhythm and mobile viewing behavior.",
+  "ogTitle": "Why Short-Form Videos Lose Retention So Fast in 2026",
+  "ogDescription": "Retention drops faster than you think — what we saw testing Shorts pacing, subtitles, hooks, and mobile viewing in 2026.",
+  "status": "published",
+  "source": "static",
+  "faqSchema": [
+    {
+      "question": "Why do viewers scroll away from Shorts?",
+      "answer": "Usually within the first 1–3 seconds: slow hook, unreadable captions, awkward pacing, or visual clutter. The feed does not wait for your payoff. Fix opening rhythm and subtitle readability before blaming the topic."
+    },
+    {
+      "question": "Do subtitles improve retention?",
+      "answer": "Yes for muted viewing — if they are readable and timed with speech. Bad subtitle pacing, giant blocks, or text over faces hurt retention as much as no captions help."
+    },
+    {
+      "question": "What subtitle style works best?",
+      "answer": "High contrast, two lines max, safe-zone placement, minimal motion. Match caption beats to emphasis, not ASR chunks. See our TikTok subtitle styles and Shorts workflow guides."
+    },
+    {
+      "question": "Why do TikTok videos lose watch time?",
+      "answer": "Fast-scroll behavior, re-encode after upload, weak hooks, and captions that fight the edit. TikTok viewers decide almost instantly whether the clip feels native to the feed."
+    },
+    {
+      "question": "How fast should captions appear?",
+      "answer": "With the spoken beat — often 100–300ms before the punch word on hooks, not a full sentence late. If viewers read ahead of your mouth on mute, you are early; if they are still reading after the cut, you are late."
+    },
+    {
+      "question": "Do AI captions hurt retention?",
+      "answer": "Only when you publish them unedited. AI gets words; humans still fix chunk length, timing, and emphasis. Robotic pacing reads as low effort even when spelling is perfect."
+    },
+    {
+      "question": "What editing mistakes reduce retention?",
+      "answer": "Zoom spam, meme overload, captions covering faces, jump cuts without rhythm, and intros that start before the hook. Clutter signals “skip me” on mobile."
+    },
+    {
+      "question": "How can I improve Shorts watch time?",
+      "answer": "Shorten the hook, caption the final vertical export, simplify cuts, and audit muted playback. Transcript-first subtitle workflow, then style — not the reverse."
+    }
+  ],
+  "related": [
+    {
+      "href": "/blog/best-subtitle-workflow-youtube-shorts-2026",
+      "eyebrow": "Guide",
+      "title": "Best subtitle workflow for YouTube Shorts",
+      "description": "Safe zones and pacing when you post daily."
+    },
+    {
+      "href": "/blog/why-subtitle-timing-always-looks-off-2026",
+      "eyebrow": "Guide",
+      "title": "Why subtitle timing still looks off",
+      "description": "When accurate words still feel awkward on mute."
+    },
+    {
+      "href": "/blog/best-free-caption-apps-for-creators-2026",
+      "eyebrow": "Guide",
+      "title": "Best free caption apps for creators",
+      "description": "What survives ten minutes of real free-tier use."
+    },
+    {
+      "href": "/blog/fastest-way-turn-podcasts-into-shorts-2026",
+      "eyebrow": "Guide",
+      "title": "Fastest way to turn podcasts into Shorts",
+      "description": "Clip selection and caption stacks for long-form repurposing."
+    }
+  ]
+}

@@ -157,7 +157,19 @@ function buildAuditFilters(filters, tableAlias = '') {
     dateTo,
     plan,
     countryCode,
-    activityMin
+    activityMin,
+    email,
+    ip,
+    sessionId,
+    severity,
+    category,
+    adminOnly,
+    customerOnly,
+    paymentEvents,
+    authEvents,
+    aiEvents,
+    provider,
+    requestId
   } = filters;
 
   if (userId && isUuid(userId)) {
@@ -198,6 +210,75 @@ function buildAuditFilters(filters, tableAlias = '') {
     i += 1;
   }
 
+  if (email && String(email).trim()) {
+    conditions.push(
+      `${prefix}user_id IN (SELECT id FROM users WHERE email ILIKE $${i})`
+    );
+    params.push(`%${String(email).trim().slice(0, 200)}%`);
+    i += 1;
+  }
+  if (ip && String(ip).trim()) {
+    conditions.push(`${prefix}ip = $${i}`);
+    params.push(String(ip).trim().slice(0, 128));
+    i += 1;
+  }
+  if (sessionId && String(sessionId).trim()) {
+    conditions.push(`(${prefix}session_id = $${i} OR ${prefix}analytics_session_id = $${i})`);
+    params.push(String(sessionId).trim().slice(0, 128));
+    i += 1;
+  }
+  if (severity === 'error' || severity === 'critical') {
+    conditions.push(`(${prefix}event_type = 'error' OR ${prefix}event_name LIKE '%failed%' OR ${prefix}event_name LIKE '%error%')`);
+  } else if (severity === 'warning') {
+    conditions.push(`(${prefix}event_name LIKE '%warning%' OR ${prefix}event_name LIKE '%retry%')`);
+  } else if (severity === 'success') {
+    conditions.push(`(${prefix}event_name LIKE '%success%' OR ${prefix}event_name LIKE '%completed%')`);
+  }
+  if (category === 'payment') {
+    conditions.push(`(${prefix}event_name LIKE '%payment%' OR ${prefix}event_name LIKE '%checkout%')`);
+  } else if (category === 'auth') {
+    conditions.push(
+      `(${prefix}event_name LIKE '%login%' OR ${prefix}event_name LIKE '%signup%' OR ${prefix}event_name LIKE '%password%' OR ${prefix}event_name LIKE '%oauth%')`
+    );
+  } else if (category === 'ai') {
+    conditions.push(
+      `(${prefix}event_name LIKE '%transcribe%' OR ${prefix}event_name LIKE '%summarize%' OR ${prefix}event_name LIKE '%translate%' OR ${prefix}event_name LIKE '%openai%')`
+    );
+  } else if (category === 'admin') {
+    conditions.push(`(${prefix}event_name LIKE 'admin_%' OR ${prefix}event_type = 'admin')`);
+  }
+  if (adminOnly === true || adminOnly === '1' || adminOnly === 'true') {
+    conditions.push(`(${prefix}event_name LIKE 'admin_%' OR ${prefix}event_type = 'admin')`);
+  }
+  if (customerOnly === true || customerOnly === '1' || customerOnly === 'true') {
+    conditions.push(`${prefix}user_id IS NOT NULL AND NOT (${prefix}event_name LIKE 'admin_%')`);
+  }
+  if (paymentEvents === true || paymentEvents === '1' || paymentEvents === 'true') {
+    conditions.push(`${prefix}event_name LIKE '%payment%'`);
+  }
+  if (authEvents === true || authEvents === '1' || authEvents === 'true') {
+    conditions.push(
+      `(${prefix}event_name LIKE '%login%' OR ${prefix}event_name LIKE '%signup%' OR ${prefix}event_name LIKE '%password%')`
+    );
+  }
+  if (aiEvents === true || aiEvents === '1' || aiEvents === 'true') {
+    conditions.push(
+      `(${prefix}event_name LIKE '%transcribe%' OR ${prefix}event_name LIKE '%summarize%' OR ${prefix}event_name LIKE '%translate%')`
+    );
+  }
+  if (provider && String(provider).trim()) {
+    conditions.push(`COALESCE(${prefix}metadata->>'provider', ${prefix}metadata->>'gateway', '') ILIKE $${i}`);
+    params.push(`%${String(provider).trim().slice(0, 64)}%`);
+    i += 1;
+  }
+  if (requestId && String(requestId).trim()) {
+    conditions.push(
+      `(COALESCE(${prefix}metadata->>'requestId', ${prefix}metadata->>'request_id', '') = $${i})`
+    );
+    params.push(String(requestId).trim().slice(0, 128));
+    i += 1;
+  }
+
   const act = Number(activityMin);
   if (Number.isFinite(act) && act > 0) {
     const rangeStart = d0 ? d0.toISOString() : new Date(Date.now() - 30 * 86400000).toISOString();
@@ -216,23 +297,21 @@ function buildAuditFilters(filters, tableAlias = '') {
   return { conditions, params, nextIndex: i };
 }
 
-export async function listAuditEventsDb({
-  userId = null,
-  eventName = null,
-  eventType = null,
-  dateFrom = null,
-  dateTo = null,
-  plan = null,
-  countryCode = null,
-  activityMin = null,
-  limit = 50,
-  offset = 0
-}) {
+export async function listAuditEventsDb(filters = {}) {
+  const {
+    userId = null,
+    eventName = null,
+    eventType = null,
+    dateFrom = null,
+    dateTo = null,
+    plan = null,
+    countryCode = null,
+    activityMin = null,
+    limit = 50,
+    offset = 0
+  } = filters;
   const pool = getPool();
-  const { conditions, params, nextIndex } = buildAuditFilters(
-    { userId, eventName, eventType, dateFrom, dateTo, plan, countryCode, activityMin },
-    'e'
-  );
+  const { conditions, params, nextIndex } = buildAuditFilters(filters, 'e');
   let i = nextIndex;
 
   const lim = Math.min(Math.max(Number(limit) || 50, 1), 200);

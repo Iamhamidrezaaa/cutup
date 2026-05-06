@@ -198,6 +198,11 @@ ALTER TABLE payments ADD COLUMN IF NOT EXISTS ref_id VARCHAR(255);
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS gateway VARCHAR(64) NOT NULL DEFAULT 'yekpay';
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS provider VARCHAR(64) NOT NULL DEFAULT 'yekpay';
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS plan VARCHAR(32);
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS provider_order_id VARCHAR(64);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_provider_order_id_unique
+  ON payments (provider_order_id)
+  WHERE provider_order_id IS NOT NULL;
 
 UPDATE payments
 SET amount_eur = COALESCE(amount_eur, amount),
@@ -389,3 +394,147 @@ CREATE TABLE IF NOT EXISTS audit_alerts (
 
 CREATE INDEX IF NOT EXISTS idx_audit_alerts_created_at ON audit_alerts (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_alerts_rule ON audit_alerts (rule);
+
+-- Offer / coupon engine
+CREATE TABLE IF NOT EXISTS offers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code VARCHAR(64) NOT NULL,
+  title VARCHAR(160) NOT NULL,
+  description TEXT,
+  discount_type VARCHAR(32) NOT NULL,
+  discount_value NUMERIC(14, 4) NOT NULL DEFAULT 0,
+  applicable_plans JSONB NOT NULL DEFAULT '[]'::jsonb,
+  max_uses INTEGER,
+  current_uses INTEGER NOT NULL DEFAULT 0,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  starts_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ,
+  created_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT offers_discount_type_check CHECK (discount_type IN ('percentage', 'fixed_eur')),
+  CONSTRAINT offers_discount_value_check CHECK (discount_value >= 0),
+  CONSTRAINT offers_uses_check CHECK (max_uses IS NULL OR max_uses >= 1),
+  CONSTRAINT offers_current_uses_check CHECK (current_uses >= 0)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS offers_code_unique_idx
+  ON offers (LOWER(code));
+CREATE INDEX IF NOT EXISTS idx_offers_active_expires ON offers (active, expires_at);
+CREATE INDEX IF NOT EXISTS idx_offers_created_at ON offers (created_at DESC);
+
+CREATE TABLE IF NOT EXISTS user_offers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  offer_id UUID NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
+  assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  used_at TIMESTAMPTZ,
+  status VARCHAR(16) NOT NULL DEFAULT 'active',
+  CONSTRAINT user_offers_status_check CHECK (status IN ('active', 'used', 'expired'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS user_offers_user_offer_unique_idx
+  ON user_offers (user_id, offer_id);
+CREATE INDEX IF NOT EXISTS idx_user_offers_user_status ON user_offers (user_id, status, assigned_at DESC);
+
+CREATE TABLE IF NOT EXISTS offer_redemptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  offer_id UUID NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
+  payment_id UUID REFERENCES payments(id) ON DELETE SET NULL,
+  original_amount_eur NUMERIC(14, 4) NOT NULL DEFAULT 0,
+  discount_amount_eur NUMERIC(14, 4) NOT NULL DEFAULT 0,
+  final_amount_eur NUMERIC(14, 4) NOT NULL DEFAULT 0,
+  redeemed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT offer_redemptions_amounts_check CHECK (
+    original_amount_eur >= 0 AND discount_amount_eur >= 0 AND final_amount_eur >= 0
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_offer_redemptions_user ON offer_redemptions (user_id, redeemed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_offer_redemptions_offer ON offer_redemptions (offer_id, redeemed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_offer_redemptions_payment ON offer_redemptions (payment_id);
+
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS original_amount_eur NUMERIC(14, 4);
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS discount_amount_eur NUMERIC(14, 4);
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS final_amount_eur NUMERIC(14, 4);
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS applied_offer_id UUID REFERENCES offers(id) ON DELETE SET NULL;
+ALTER TABLE offers ADD COLUMN IF NOT EXISTS campaign_type VARCHAR(32) NOT NULL DEFAULT 'global';
+ALTER TABLE offers ADD COLUMN IF NOT EXISTS source_plan VARCHAR(32);
+ALTER TABLE offers ADD COLUMN IF NOT EXISTS target_plan VARCHAR(32);
+
+-- Customer sessions (revoke "other devices" across app instances)
+CREATE TABLE IF NOT EXISTS customer_sessions (
+  session_id VARCHAR(128) PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_customer_sessions_user
+  ON customer_sessions (user_id, expires_at DESC);
+
+-- Account deletion email confirmation (hashed token, single-use, 24h)
+CREATE TABLE IF NOT EXISTS delete_account_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash VARCHAR(128) NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_delete_account_tokens_hash
+  ON delete_account_tokens (token_hash);
+
+CREATE INDEX IF NOT EXISTS idx_delete_account_tokens_user_active
+  ON delete_account_tokens (user_id, expires_at)
+  WHERE used_at IS NULL;
+
+-- Block re-registration for 30 days after account deletion (abuse prevention)
+CREATE TABLE IF NOT EXISTS deleted_account_cooldowns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email_normalized VARCHAR(320) NOT NULL,
+  deleted_user_id UUID,
+  deleted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  blocked_until TIMESTAMPTZ NOT NULL,
+  reason VARCHAR(64) NOT NULL DEFAULT 'account_deleted',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_deleted_account_cooldowns_email_active
+  ON deleted_account_cooldowns (email_normalized, blocked_until DESC);
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS account_status VARCHAR(32) NOT NULL DEFAULT 'active';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS deletion_reason VARCHAR(128);
+UPDATE users SET account_status = 'active' WHERE account_status IS NULL OR TRIM(account_status) = '';
+
+-- Creator Wall (social proof feed)
+CREATE TABLE IF NOT EXISTS creator_wall_posts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  thumbnail_url TEXT,
+  preview_video_url TEXT,
+  style_preset VARCHAR(64) NOT NULL,
+  platform VARCHAR(32),
+  language VARCHAR(16),
+  country_code VARCHAR(8),
+  feedback TEXT,
+  creator_name VARCHAR(120),
+  social_handle VARCHAR(120),
+  stats_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  user_email VARCHAR(320),
+  export_job_id VARCHAR(64),
+  approved BOOLEAN NOT NULL DEFAULT false,
+  featured BOOLEAN NOT NULL DEFAULT false,
+  hidden BOOLEAN NOT NULL DEFAULT false,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_creator_wall_posts_public
+  ON creator_wall_posts (approved, hidden, featured DESC, sort_order DESC, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_creator_wall_posts_pending
+  ON creator_wall_posts (approved, created_at DESC)
+  WHERE approved = false AND hidden = false;

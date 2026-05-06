@@ -1,0 +1,16 @@
+{
+  "name": "@instalogist/operational-parser",
+  "version": "0.1.0",
+  "description": "Read-only Instalogist workspace → JSON operational state",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "parse": "node src/cli.mjs --root ../workspace",
+    "test": "node --test test/parser.test.mjs"
+  },
+  "dependencies": {
+    "yaml": "^2.6.1"
+  }
+}

@@ -3,7 +3,7 @@ import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { createServer } from 'http';
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import sitemapHandler from './api/sitemap.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -67,6 +67,14 @@ try {
   }
 }
 
+void import('./api/transcription/init.js')
+  .then((m) => m.initTranscriptionProviders())
+  .catch((e) => console.warn('[transcription] provider init failed:', e?.message || e));
+
+void import('./api/yekpay.js')
+  .then((m) => m.logYekpayStartupOnce())
+  .catch((e) => console.warn('[yekpay] startup log unavailable:', e?.message || e));
+
 // CORS middleware - Allow all origins for Chrome Extension
 app.use(cors({
   origin: '*',
@@ -100,13 +108,19 @@ app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+app.get('/api/system-health', async (req, res) => {
+  if (!systemHealthHandler) {
+    return res.status(503).json({ ok: false, degraded: true, error: 'system_health_not_loaded' });
+  }
+  return systemHealthHandler(req, res);
+});
 
 // Dynamic sitemap route for self-hosted deployments.
 // Keep this before any potential static file middleware so /sitemap.xml is always generated dynamically.
 app.get('/sitemap.xml', async (req, res) => sitemapHandler(req, res));
 
 // Import and use API routes
-let uploadHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, paymentCallbackHandler, paymentRetryHandler, invoicesHandler, invoiceByIdHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler, userProfileHandler, auditEventHandler, adminAuditSummaryHandler, adminAuditListHandler, adminAuditUserTimelineHandler, adminAuditChartsHandler, adminAuditFunnelHandler, adminAuditAlertsHandler, adminAuditEvaluateAlertsHandler, adminAuditSeedHandler;
+let uploadHandler, adminCmsMediaHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, exportVideoHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, paymentCallbackHandler, paymentRetryHandler, invoicesHandler, invoiceByIdHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler, userProfileHandler, accountSecurityHandler, auditEventHandler, adminAuditSummaryHandler, adminAuditListHandler, adminAuditUserTimelineHandler, adminAuditChartsHandler, adminAuditFunnelHandler, adminAuditAlertsHandler, adminAuditEvaluateAlertsHandler, adminAuditSeedHandler, adminAuditDashboardHandler, adminAuditJourneyHandler, adminAuditNotesHandler, adminAuditExportHandler, offersHandler, adminOffersHandler, creatorWallHandler, adminCreatorWallHandler, systemHealthHandler, adminOpsStateHandler, adminProvidersHandler;
 
 async function loadRoutes() {
   try {
@@ -172,6 +186,15 @@ async function loadRoutes() {
       // Don't throw - make it optional
       generateDocxHandler = null;
     }
+
+    try {
+      const exportVideoModule = await import('./api/export-video.js');
+      exportVideoHandler = exportVideoModule.default;
+      console.log('✅ Export video (viral burn-in) handler loaded');
+    } catch (err) {
+      console.error('❌ Failed to load export-video handler:', err.message);
+      exportVideoHandler = null;
+    }
     
     try {
       const stripeWh = await import('./api/stripe-webhook.js');
@@ -204,6 +227,10 @@ async function loadRoutes() {
     adminHandler = adminModule.default;
     console.log('✅ Admin handler loaded');
 
+    const adminCmsMediaModule = await import('./api/admin-cms-media.js');
+    adminCmsMediaHandler = adminCmsMediaModule.default;
+    console.log('✅ Admin CMS media upload loaded');
+
     const adminUsersManageModule = await import('./api/admin-users-manage.js');
     adminUsersManageHandler = adminUsersManageModule.default;
     console.log('✅ Admin customer user manage handler loaded');
@@ -219,6 +246,14 @@ async function loadRoutes() {
     const adminResetModule = await import('./api/admin-reset-password.js');
     adminResetPasswordHandler = adminResetModule.default;
     console.log('✅ Admin panel auth handlers loaded');
+
+    const adminOpsStateModule = await import('./api/admin-ops-state.js');
+    adminOpsStateHandler = adminOpsStateModule.default;
+    console.log('✅ Admin ops state handler loaded');
+
+    const adminProvidersModule = await import('./api/admin/providers.js');
+    adminProvidersHandler = adminProvidersModule.default;
+    console.log('✅ Admin transcription providers handler loaded');
 
     const { ensureAdminsSchema, syncPrimaryAdminAccount } = await import('./api/admins-repository.js');
     await ensureAdminsSchema();
@@ -248,6 +283,20 @@ async function loadRoutes() {
 
     const leadsModule = await import('./api/leads.js');
     leadsHandler = leadsModule.default;
+
+    try {
+      const cwBootstrap = await import('./api/creator-wall-bootstrap.js');
+      await cwBootstrap.ensureCreatorWallSchema();
+      console.log('✅ Creator Wall schema ensured');
+    } catch (e) {
+      console.warn('⚠️ Creator Wall schema:', e?.message);
+    }
+    const creatorWallModule = await import('./api/creator-wall.js');
+    creatorWallHandler = creatorWallModule.default;
+    const adminCreatorWallModule = await import('./api/admin-creator-wall.js');
+    adminCreatorWallHandler = adminCreatorWallModule.default;
+    console.log('✅ Creator Wall handlers loaded');
+
     const contactModule = await import('./api/contact.js');
     contactHandler = contactModule.default;
     const cronConvModule = await import('./api/cron-conversion-emails.js');
@@ -257,6 +306,36 @@ async function loadRoutes() {
     const userProfileModule = await import('./api/user-profile.js');
     userProfileHandler = userProfileModule.default;
     console.log('✅ User profile handler loaded');
+
+    const accountSecurityModule = await import('./api/account-security.js');
+    accountSecurityHandler = accountSecurityModule.default;
+    try {
+      const { ensureAccountSecuritySchema } = await import('./api/account-security-repository.js');
+      await ensureAccountSecuritySchema();
+    } catch (e) {
+      console.warn('⚠️ Account security schema:', e?.message);
+    }
+    console.log('✅ Account security handler loaded');
+
+    try {
+      const offersBootstrapModule = await import('./api/offers-bootstrap.js');
+      const schemaInit = await offersBootstrapModule.ensureOffersSchema();
+      if (!schemaInit.ok) console.warn('⚠️ offers schema bootstrap degraded:', schemaInit.reason || schemaInit.error);
+      else console.log('✅ Offers schema bootstrap ensured');
+      await offersBootstrapModule.logOffersSchemaCheck();
+    } catch (e) {
+      console.warn('⚠️ Offers schema bootstrap failed (degraded mode):', e?.message || e);
+    }
+
+    const offersModule = await import('./api/offers.js');
+    offersHandler = offersModule.default;
+    const adminOffersModule = await import('./api/admin-offers.js');
+    adminOffersHandler = adminOffersModule.default;
+    console.log('✅ Offers handlers loaded');
+
+    const systemHealthModule = await import('./api/system-health.js');
+    systemHealthHandler = systemHealthModule.default;
+    console.log('✅ System health handler loaded');
 
     const auditEventModule = await import('./api/audit-event.js');
     auditEventHandler = auditEventModule.default;
@@ -269,6 +348,10 @@ async function loadRoutes() {
     adminAuditAlertsHandler = adminAuditModule.adminAuditAlertsHandler;
     adminAuditEvaluateAlertsHandler = adminAuditModule.adminAuditEvaluateAlertsHandler;
     adminAuditSeedHandler = adminAuditModule.adminAuditSeedHandler;
+    adminAuditDashboardHandler = adminAuditModule.adminAuditDashboardHandler;
+    adminAuditJourneyHandler = adminAuditModule.adminAuditJourneyHandler;
+    adminAuditNotesHandler = adminAuditModule.adminAuditNotesHandler;
+    adminAuditExportHandler = adminAuditModule.adminAuditExportHandler;
     console.log('✅ Audit log handlers loaded');
 
     console.log('All routes loaded successfully');
@@ -405,6 +488,16 @@ app.post('/api/generate-docx', async (req, res) => {
   }
 });
 
+app.all('/api/export-video', async (req, res) => {
+  if (!exportVideoHandler) {
+    return res.status(503).json({
+      error: 'Service unavailable',
+      message: 'Video export is not available on this server.'
+    });
+  }
+  return exportVideoHandler(req, res);
+});
+
 app.post('/api/subscription', async (req, res) => {
   if (!subscriptionHandler) {
     return res.status(500).json({ error: 'Subscription handler not loaded' });
@@ -486,6 +579,24 @@ app.post('/api/leads', async (req, res) => {
   return leadsHandler(req, res);
 });
 
+app.get('/api/creator-wall', async (req, res) => {
+  if (!creatorWallHandler) return res.status(503).json({ ok: false, error: 'not_loaded' });
+  return creatorWallHandler(req, res);
+});
+app.post('/api/creator-wall', async (req, res) => {
+  if (!creatorWallHandler) return res.status(503).json({ ok: false, error: 'not_loaded' });
+  return creatorWallHandler(req, res);
+});
+
+app.get('/api/admin/creator-wall', async (req, res) => {
+  if (!adminCreatorWallHandler) return res.status(503).json({ ok: false, error: 'not_loaded' });
+  return adminCreatorWallHandler(req, res);
+});
+app.post('/api/admin/creator-wall', async (req, res) => {
+  if (!adminCreatorWallHandler) return res.status(503).json({ ok: false, error: 'not_loaded' });
+  return adminCreatorWallHandler(req, res);
+});
+
 app.post('/api/contact', async (req, res) => {
   if (!contactHandler) {
     return res.status(503).json({ ok: false });
@@ -521,6 +632,57 @@ app.post('/api/user/profile', async (req, res) => {
   return userProfileHandler(req, res);
 });
 
+app.post('/api/account/logout-other-sessions', async (req, res) => {
+  if (!accountSecurityHandler) return res.status(503).json({ ok: false, error: 'not_loaded' });
+  return accountSecurityHandler(req, res);
+});
+
+app.post('/api/account/request-deletion', async (req, res) => {
+  if (!accountSecurityHandler) return res.status(503).json({ ok: false, error: 'not_loaded' });
+  return accountSecurityHandler(req, res);
+});
+
+app.get('/api/account/delete-confirm', async (req, res) => {
+  if (!accountSecurityHandler) return res.status(503).json({ ok: false, error: 'not_loaded' });
+  return accountSecurityHandler(req, res);
+});
+
+app.post('/api/account/delete-confirm', async (req, res) => {
+  if (!accountSecurityHandler) return res.status(503).json({ ok: false, error: 'not_loaded' });
+  return accountSecurityHandler(req, res);
+});
+
+app.get('/api/account/login-blocked', async (req, res) => {
+  if (!accountSecurityHandler) return res.status(503).json({ ok: false, error: 'not_loaded' });
+  req._accountAction = 'login-blocked';
+  return accountSecurityHandler(req, res);
+});
+
+app.get('/api/offers', async (req, res) => {
+  if (!offersHandler) return res.status(503).json({ ok: false, error: 'not_loaded' });
+  return offersHandler(req, res);
+});
+app.post('/api/offers/validate', async (req, res) => {
+  if (!offersHandler) return res.status(503).json({ ok: false, error: 'not_loaded' });
+  return offersHandler(req, res);
+});
+app.get('/api/admin/offers', async (req, res) => {
+  if (!adminOffersHandler) return res.status(503).json({ ok: false, error: 'not_loaded' });
+  return adminOffersHandler(req, res);
+});
+app.post('/api/admin/offers', async (req, res) => {
+  if (!adminOffersHandler) return res.status(503).json({ ok: false, error: 'not_loaded' });
+  return adminOffersHandler(req, res);
+});
+app.get('/api/admin-offers', async (req, res) => {
+  if (!adminOffersHandler) return res.status(503).json({ ok: false, error: 'not_loaded' });
+  return adminOffersHandler(req, res);
+});
+app.post('/api/admin-offers', async (req, res) => {
+  if (!adminOffersHandler) return res.status(503).json({ ok: false, error: 'not_loaded' });
+  return adminOffersHandler(req, res);
+});
+
 app.get('/api/admin', async (req, res) => {
   if (!adminHandler) {
     return res.status(503).json({ error: 'Admin handler not loaded' });
@@ -533,6 +695,13 @@ app.post('/api/admin', async (req, res) => {
     return res.status(503).json({ error: 'Admin handler not loaded' });
   }
   return adminHandler(req, res);
+});
+
+app.post('/api/admin/cms/media', async (req, res) => {
+  if (!adminCmsMediaHandler) {
+    return res.status(503).json({ error: 'CMS media handler not loaded' });
+  }
+  return adminCmsMediaHandler(req, res);
 });
 
 app.patch('/api/admin/users/:id', async (req, res) => {
@@ -568,6 +737,55 @@ app.get('/api/admin/auth/me', async (req, res) => {
     return res.status(503).json({ ok: false });
   }
   return adminAuthMeHandler(req, res);
+});
+
+app.get('/api/admin/ops/state', async (req, res) => {
+  if (!adminOpsStateHandler) {
+    return res.status(503).json({ error: 'not_loaded' });
+  }
+  return adminOpsStateHandler(req, res);
+});
+
+app.get('/api/admin/providers', async (req, res) => {
+  if (!adminProvidersHandler) {
+    return res.status(503).json({ error: 'not_loaded' });
+  }
+  return adminProvidersHandler(req, res);
+});
+
+app.get('/api/admin/audit/dashboard', async (req, res) => {
+  if (!adminAuditDashboardHandler) {
+    return res.status(503).json({ error: 'not_loaded' });
+  }
+  return adminAuditDashboardHandler(req, res);
+});
+
+app.get('/api/admin/audit/journey', async (req, res) => {
+  if (!adminAuditJourneyHandler) {
+    return res.status(503).json({ error: 'not_loaded' });
+  }
+  return adminAuditJourneyHandler(req, res);
+});
+
+app.get('/api/admin/audit/export', async (req, res) => {
+  if (!adminAuditExportHandler) {
+    return res.status(503).json({ error: 'not_loaded' });
+  }
+  return adminAuditExportHandler(req, res);
+});
+
+app.get('/api/admin/audit/events/:eventId/notes', async (req, res) => {
+  if (!adminAuditNotesHandler) {
+    return res.status(503).json({ error: 'not_loaded' });
+  }
+  return adminAuditNotesHandler(req, res);
+});
+
+app.post('/api/admin/audit/events/:eventId/notes', async (req, res) => {
+  if (!adminAuditNotesHandler) {
+    return res.status(503).json({ error: 'not_loaded' });
+  }
+  return adminAuditNotesHandler(req, res);
 });
 
 app.get('/api/admin/audit/summary', async (req, res) => {
@@ -673,6 +891,105 @@ app.post('/api/retention', async (req, res) => {
     return res.status(503).json({ error: 'Retention handler not loaded' });
   }
   return retentionHandler(req, res);
+});
+
+app.get(['/admin/ops', '/admin/command-center'], (_req, res) => {
+  res.redirect(302, '/adminha.html?section=ops');
+});
+
+// Dashboard/checkout: never serve stale copies from browser or reverse-proxy caches.
+app.use((req, res, next) => {
+  const p = req.path || '';
+  if (
+    /^\/dashboard\.(html|js|css)$/.test(p) ||
+    /^\/checkout\.(html|js|css)$/.test(p) ||
+    /^\/login\.html$/.test(p) ||
+    p === '/plan-checkout-router.js' ||
+    p === '/login.js'
+  ) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('X-Cutup-Asset-Policy', 'no-store');
+  }
+  next();
+});
+
+// --- Blog: /blog/{slug} → blog/{slug}.html (static files) + list API ---
+const BLOG_404 = join(__dirname, 'website', '404.html');
+/** Published posts: {repo}/blog/{slug}.html — same path on server as /var/www/cutup/blog/ */
+const BLOG_STATIC_DIR = join(__dirname, 'blog');
+
+function normalizeBlogSlug(raw) {
+  let slug = String(raw || '').trim();
+  if (!slug) return '';
+  if (slug.toLowerCase().endsWith('.html')) slug = slug.slice(0, -5);
+  if (!slug || slug.includes('/') || slug.includes('.')) return '';
+  return slug;
+}
+
+app.get('/blog.html', (req, res, next) => {
+  const slug = req.query?.slug;
+  if (slug && String(slug).trim()) {
+    return res.redirect(301, `/blog/${encodeURIComponent(String(slug).trim())}`);
+  }
+  return next();
+});
+
+app.get('/blog-ai-subtitle-generators-2026.html', (_req, res) => {
+  res.redirect(301, '/blog/best-ai-subtitle-generators-2026');
+});
+
+app.get('/api/blog/posts', async (req, res) => {
+  const { listBlogPostsHandler } = await import('./api/blog-public.js');
+  return listBlogPostsHandler(req, res);
+});
+
+app.get('/api/blog/posts/:slug', async (req, res) => {
+  const { getBlogPostHandler } = await import('./api/blog-public.js');
+  return getBlogPostHandler(req, res);
+});
+
+async function serveBlogPostBySlug(req, res) {
+  const slug = normalizeBlogSlug(req.params.slug);
+  if (!slug) return res.status(404).sendFile(BLOG_404);
+
+  const staticPath = join(BLOG_STATIC_DIR, `${slug}.html`);
+  if (existsSync(staticPath)) {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=300');
+    return res.sendFile(staticPath);
+  }
+
+  try {
+    const { getStaticBlogArticle } = await import('./api/blog-static-registry.js');
+    const { renderBlogPostPage } = await import('./api/blog-ssr.js');
+    const { writeBlogHtmlFile } = await import('./api/blog-files.js');
+    const article = getStaticBlogArticle(slug);
+    if (article && article.status === 'published') {
+      const html = renderBlogPostPage(article);
+      if (html) {
+        writeBlogHtmlFile(slug, html);
+        console.warn('[blog] recovery: materialized', slug, 'from blog-pages');
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=300');
+        return res.status(200).send(html);
+      }
+    }
+  } catch (err) {
+    console.error('[blog] recovery render failed:', slug, err?.message);
+  }
+
+  return res.status(404).sendFile(BLOG_404);
+}
+
+app.get('/blog/:slug', serveBlogPostBySlug);
+app.get('/blog/:slug.html', serveBlogPostBySlug);
+
+app.use((req, res, next) => {
+  if (req.path.startsWith('/blog-pages/') || req.path.startsWith('/_deprecated/')) {
+    return res.status(404).sendFile(BLOG_404);
+  }
+  return next();
 });
 
 // Static site (HTML, assets) — after API routes so /api/* is not shadowed.

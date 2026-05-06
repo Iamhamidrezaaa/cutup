@@ -6,6 +6,7 @@ import { handleCORS, setCORSHeaders } from './cors.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { requireSessionEmail } from './processing-enforcement.js';
+import { parseYouTubeVideoId, normalizeYouTubeWatchUrl, stripTrackingQueryParams } from './media-url.js';
 
 const execAsync = promisify(exec);
 
@@ -56,22 +57,10 @@ export default async function handler(req, res) {
       });
     }
 
-    // For YouTube, extract video ID and get formats
-    let finalVideoId = videoId;
-    if (url && !videoId) {
-      const patterns = [
-        /[?&]v=([^&]+)/,
-        /youtu\.be\/([^?]+)/,
-        /^([a-zA-Z0-9_-]{11})$/
-      ];
-      
-      for (const pattern of patterns) {
-        const match = url.match(pattern);
-        if (match) {
-          finalVideoId = match[1];
-          break;
-        }
-      }
+    const cleanedUrl = url ? stripTrackingQueryParams(url) : '';
+    let finalVideoId = videoId || (cleanedUrl ? parseYouTubeVideoId(cleanedUrl) : null);
+    if (cleanedUrl && /\/shorts\//i.test(cleanedUrl)) {
+      console.log('[yt-shorts]', { route: 'youtube-formats', videoId: finalVideoId, normalized: normalizeYouTubeWatchUrl(cleanedUrl) });
     }
 
     if (!finalVideoId) {

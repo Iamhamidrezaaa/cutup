@@ -1,0 +1,88 @@
+{
+  "slug": "real-problem-ai-video-editing-tools-2026",
+  "title": "The Real Problem With AI Video Editing Tools",
+  "titleSuffix": "in 2026",
+  "deck": "AI video editors promised one tab and done. Most creators still run five tools, fix captions by hand, and review more than they edit. Here’s where AI genuinely helps — and why bloated platforms keep losing to simple workflows.",
+  "excerpt": "Why AI video editing tools still create friction in 2026: automation fatigue, subtitle cleanup, clipping without context, mobile pain, and why lightweight stacks beat all-in-one AI studios.",
+  "category": "Guides",
+  "tags": [
+    "ai-video-editing-tools",
+    "ai-video-editor",
+    "automatic-video-editing",
+    "creator-workflow-tools",
+    "ai-editing-software",
+    "video-automation-tools",
+    "content-repurposing-workflow",
+    "creator-burnout"
+  ],
+  "eyebrow": "Guides · Creator tooling",
+  "author": "Cutup Editorial",
+  "authorInitials": "CT",
+  "authorRole": "Workflow audits · creator interviews 2026",
+  "publishedAt": "2026-05-24",
+  "updatedAt": "2026-05-24",
+  "readingTimeMinutes": 12,
+  "coverImageUrl": "/cms-media/images/blog/real-problem-ai-video-editing-tools-2026-cover.jpg",
+  "heroImageAlt": "Creator workspace with multiple AI video editing tool windows open",
+  "heroImagePrompt": "Cinematic editorial photograph, realistic creator desk at night, dual monitors showing overlapping AI video editor timelines, subtitle tracks, and clip suggestion panels, soft purple-blue accent lighting, shallow depth of field, premium SaaS blog aesthetic, clean modern UI glow, no brand logos, no readable trademark text, no cyberpunk, no animals, 16:9 hero composition.",
+  "metaTitle": "The Real Problem With AI Video Editing Tools (2026) — Cutup",
+  "metaDescription": "AI video editing tools in 2026: where they help, where workflows break, why review work grew, and why creators choose lightweight tools over bloated AI studios.",
+  "ogTitle": "The Real Problem With AI Video Editing Tools in 2026",
+  "ogDescription": "Not anti-AI — a creator field guide to automation fatigue, subtitle pain, and tools that actually ship.",
+  "status": "published",
+  "source": "static",
+  "faqSchema": [
+    {
+      "question": "Are AI video editors actually useful?",
+      "answer": "Yes, for specific jobs: transcription, rough cuts, clip suggestions, and styled captions. They are less useful when marketed as full replacements for judgment, pacing, and brand voice — those still require human review."
+    },
+    {
+      "question": "Why do creators still edit manually?",
+      "answer": "AI output needs context fixes, timing adjustments, and quality control. Emotional beats, comedy timing, and visual storytelling are poorly served by fully automated edits."
+    },
+    {
+      "question": "Which AI editing tools are best for Shorts?",
+      "answer": "Opus Clip for batch clipping, CapCut for mobile finish, Cutup for fast SRT/transcript, Descript for podcast repurposing. Most creators combine tools rather than using one platform."
+    },
+    {
+      "question": "Do AI video tools save time?",
+      "answer": "They save search and draft time but often add review time. Net savings appear when the tool does one job well — not when it adds features that each need checking."
+    },
+    {
+      "question": "Why are subtitles still difficult?",
+      "answer": "Speech-to-text is only the first step. Names, timing drift, safe zones on vertical video, and export limits still require human passes — see dedicated subtitle workflow guides."
+    },
+    {
+      "question": "Are lightweight creator tools better?",
+      "answer": "For many solo creators, yes. Tools that return a file or transcript without opening a full timeline reduce tab sprawl and failed browser exports compared to bloated all-in-one editors."
+    },
+    {
+      "question": "What is automation fatigue?",
+      "answer": "The exhaustion from reviewing AI suggestions, fixing generic edits, and managing quotas across multiple tools — feeling like you work for the automation instead of it working for you."
+    },
+    {
+      "question": "Will AI replace video editors?",
+      "answer": "Not for brand, narrative, or high-stakes content in 2026. It will keep absorbing repetitive tasks — transcription, first-pass clips, rough captions — while humans keep approval and taste."
+    }
+  ],
+  "related": [
+    {
+      "href": "/blog/turn-long-videos-into-shorts-2026",
+      "eyebrow": "Guide",
+      "title": "Turn long videos into Shorts",
+      "description": "Repurposing workflows when AI clipping isn’t enough."
+    },
+    {
+      "href": "/blog/free-vs-paid-ai-subtitle-tools-2026",
+      "eyebrow": "Guide",
+      "title": "Free vs paid subtitle tools",
+      "description": "What free tiers export — and hidden workflow costs."
+    },
+    {
+      "href": "/blog/best-ai-subtitle-generators-2026",
+      "eyebrow": "Comparison",
+      "title": "Best AI subtitle generators",
+      "description": "Honest comparison of VEED, Descript, Cutup, and more."
+    }
+  ]
+}

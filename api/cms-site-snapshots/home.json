@@ -1,0 +1,184 @@
+{
+  "metaTitle": "Cutup — AI subtitles & transcripts for creators, students & pros",
+  "metaDescription": "Paste a link. Get timed subtitles and a clean transcript in under a minute—no login for your first preview. Built for YouTube, TikTok, Instagram & files.",
+  "heroTitle": "Turn any video into subtitles in seconds — ready to publish",
+  "heroSubtitle": "Subtitles & transcripts · AI-powered · Used by creators, students, and teams · Supports YouTube, TikTok, Instagram & audio files",
+  "content": "<h2>See what you get in seconds</h2>\n<p>Timed lines you can drop into any editor—this is the kind of structure Cutup builds from your link or file.</p>\n<p><em>Product preview frame — visual demo cards on the live site.</em></p>",
+  "sections": [
+    {
+      "type": "hero",
+      "title": "Turn any video into subtitles in seconds — ready to publish",
+      "subtitle": "Subtitles & transcripts · AI-powered · Used by creators, students, and teams · Supports YouTube, TikTok, Instagram & audio files",
+      "body": "Creators stop retyping captions. Students turn lectures into notes. Professionals export clean transcripts—fast, simple, and powerful. Your first preview runs in seconds.",
+      "imageUrl": "",
+      "ctaLabel": "Try the tool",
+      "ctaUrl": "/#tool"
+    },
+    {
+      "type": "html",
+      "label": "Interactive tool (homepage)",
+      "html": "<!-- Live tool UI: YouTube / TikTok / Instagram tabs + upload. Managed in index.html script stack. -->",
+      "note": "The download / transcript tool is embedded in the static homepage. Edit labels and structure in the site template or replace with a custom HTML block."
+    },
+    {
+      "type": "richtext",
+      "body": "<h2>See what you get in seconds</h2>\n<p>Timed lines you can drop into any editor—this is the kind of structure Cutup builds from your link or file.</p>\n<p><em>Product preview frame — visual demo cards on the live site.</em></p>"
+    },
+    {
+      "type": "features",
+      "heading": "Built for how you actually work",
+      "items": [
+        {
+          "title": "Creators & YouTubers",
+          "text": "Batch shorts and long-form. Get a timed SRT you can tweak in your editor—less time in post, more time publishing."
+        },
+        {
+          "title": "Students & lifelong learners",
+          "text": "Turn lectures and explainers into searchable text. Skim, highlight, and study without scrubbing the timeline."
+        },
+        {
+          "title": "Professionals & teams",
+          "text": "Document calls, webinars, and interviews with transcripts you can share—consistent quality without a transcription agency."
+        }
+      ]
+    },
+    {
+      "type": "features",
+      "heading": "Export subtitles, transcripts, and summaries in seconds",
+      "items": [
+        {
+          "icon": "📝",
+          "title": "SRT in seconds",
+          "text": "Paste a link and get a timed subtitle preview instantly. Upgrade to download the full SRT."
+        },
+        {
+          "icon": "🧠",
+          "title": "Whisper-grade transcription",
+          "text": "High-quality speech-to-text for long videos and noisy audio when captions are missing."
+        },
+        {
+          "icon": "✨",
+          "title": "AI summaries",
+          "text": "Turn hours of talking heads into short paragraphs and bullet takeaways you can share."
+        },
+        {
+          "icon": "🌍",
+          "title": "Multilingual",
+          "text": "Translate transcripts, summaries, and subtitle tracks to the languages your audience speaks."
+        },
+        {
+          "icon": "📁",
+          "title": "Upload audio & video",
+          "text": "Drop a podcast episode, lecture recording, or screen capture—no hosting required."
+        },
+        {
+          "icon": "📄",
+          "title": "Export to TXT & DOCX",
+          "text": "Download polished documents for editors, legal workflows, or content repurposing."
+        },
+        {
+          "icon": "📊",
+          "title": "Usage dashboard",
+          "text": "Sign in to see how many videos you have left this month, track downloads, and revisit history in one calm control panel."
+        },
+        {
+          "icon": "⚡",
+          "title": "Preview without friction",
+          "text": "Try the workflow before you pay—see the hook, then unlock the full file when you are ready."
+        }
+      ]
+    },
+    {
+      "type": "stats",
+      "heading": "How it works",
+      "items": [
+        {
+          "value": "1",
+          "label": "Paste or upload",
+          "text": "Drop a YouTube, TikTok, or Instagram URL—or upload your own media file."
+        },
+        {
+          "value": "2",
+          "label": "Pick your output",
+          "text": "Generate subtitles, full transcript, or an AI summary with one click."
+        },
+        {
+          "value": "3",
+          "label": "Preview instantly",
+          "text": "See the first chunk of subtitles and text without creating an account."
+        },
+        {
+          "value": "4",
+          "label": "Unlock everything",
+          "text": "Log in, upgrade, and export the complete SRT, translations, and documents."
+        }
+      ]
+    },
+    {
+      "type": "pricing",
+      "heading": "Pricing that speaks your language",
+      "intro": "Clear monthly limits per plan. Pick a tier by how much you publish—creators, students, and teams all start with the same simple workflow.",
+      "footnote": "Plans renew monthly in EUR. You’ll always see the exact total on the checkout page before you confirm.",
+      "plans": [
+        {
+          "name": "Free · €0",
+          "priceLine": "3 videos per month",
+          "description": "Perfect for a quick proof-of-concept. Preview subtitles & text, feel the workflow, then upgrade when you are ready to ship.",
+          "bullets": [
+            "No full SRT download (locked)",
+            "Limited languages & tools",
+            "Watermark may appear"
+          ],
+          "ctaLabel": "Try free preview",
+          "ctaUrl": "/#tool"
+        }
+      ]
+    },
+    {
+      "type": "faq",
+      "heading": "FAQ",
+      "items": [
+        {
+          "q": "Do I need an account?",
+          "a": "No. Paste a link and preview timed subtitles right away. A free account adds history, saved outputs, and higher limits when you’re ready."
+        },
+        {
+          "q": "How fast is subtitle generation?",
+          "a": "Most short-to-medium videos finish in about a minute. Longer files take a bit more—you’ll see progress in the tool so you’re never guessing."
+        },
+        {
+          "q": "What video platforms are supported?",
+          "a": "YouTube, TikTok, and Instagram links work out of the box. You can also upload audio or video files when you want to run everything in one place."
+        },
+        {
+          "q": "Can I download subtitles?",
+          "a": "Yes. Paid plans unlock full SRT downloads and exports so you can drop captions straight into your editor or upload platform."
+        },
+        {
+          "q": "Is there a free trial?",
+          "a": "You get a real in-browser preview without a card. When you need full files, longer clips, or higher volume, upgrading takes one minute."
+        },
+        {
+          "q": "What languages are supported?",
+          "a": "Transcription and subtitles work across many languages—pick the output language you need in the tool. Paid plans add translation for SRT, transcript, and summaries."
+        },
+        {
+          "q": "Can I edit subtitles before exporting?",
+          "a": "Absolutely. Review timing and text in the preview, tweak what you need, then export when it matches your style."
+        },
+        {
+          "q": "What payment methods do you accept?",
+          "a": "Payments are handled securely via international card processors. You can pay with Visa, Mastercard, and other global payment methods. Pricing is in EUR."
+        },
+        {
+          "q": "Can I translate subtitles for other markets?",
+          "a": "Yes. On paid plans you can translate SRT, full transcript, and summaries so one video can ship in multiple languages."
+        },
+        {
+          "q": "Where do I manage my plan?",
+          "a": "After you sign in, your dashboard shows usage, saved work, and plan options in one place—no digging through emails."
+        }
+      ]
+    }
+  ]
+}

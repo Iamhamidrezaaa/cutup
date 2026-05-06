@@ -1,6 +1,11 @@
+const DASHBOARD_BUILD_ID = 'DASH_PROFILE_2026_01';
+if (typeof window !== 'undefined') {
+  window.__CUTUP_DASHBOARD_BUILD__ = DASHBOARD_BUILD_ID;
+  console.log('[dashboard-runtime] loaded', DASHBOARD_BUILD_ID, window.location?.href || '');
+}
+
 const API_BASE_URL =
   typeof window !== 'undefined' && typeof window.CUTUP_API_BASE !== 'undefined' ? window.CUTUP_API_BASE : '';
-const AVG_VIDEO_MINUTES = 7;
 const PAYMENT_RETRY_KEY = 'cutup_payment_retry';
 const PENDING_ACTION_LS_KEY = 'pending_action';
 const PENDING_ACTION_MAX_MS = 10 * 60 * 1000;
@@ -71,6 +76,8 @@ let currentUser = null;
 let subscriptionInfo = null;
 let plansCache = [];
 let historyCache = [];
+let offersCache = [];
+let offersResolvedState = null;
 
 /**
  * Legacy deploys sometimes served a static profile <form> inside #cutupDashboardShell.
@@ -139,8 +146,7 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-/** Strict tiers: advanced and business share top rank (no upgrade in public grid). */
-const DASHBOARD_PLAN_RANK = { free: 0, starter: 1, pro: 2, advanced: 3, business: 3 };
+const DASHBOARD_PLAN_RANK = { free: 0, starter: 1, pro: 2, business: 3 };
 
 function dashboardPlanRank(planId) {
   const id = String(planId || '').toLowerCase();
@@ -154,13 +160,44 @@ function displayPlanTitle(planId, nameFallback) {
   return safeText(nameFallback, id || 'Free');
 }
 
-function videosUsedEstimate(usedMinutes) {
-  return Math.max(0, Math.ceil((Number(usedMinutes) || 0) / AVG_VIDEO_MINUTES));
+/** API `usage.monthly.minutes` = successful generations this calendar month (aligned with plan caps). */
+function subscriptionMonthlyGenLimit(sub) {
+  const fromInfo = Number(sub?.monthlyGenerationLimit);
+  if (Number.isFinite(fromInfo) && fromInfo > 0) return fromInfo;
+  const lim = Number(sub?.usage?.monthlyLimit || 0);
+  if (Number.isFinite(lim) && lim > 0) return lim;
+  const pk = String(sub?.plan || 'free').toLowerCase();
+  if (window.CutupPlanDisplay?.monthlyVideosForPlan) {
+    return window.CutupPlanDisplay.monthlyVideosForPlan(pk);
+  }
+  return 3;
 }
 
-function videosRemainingEstimate(usedMinutes, limitMinutes) {
-  const remMin = Math.max(0, (Number(limitMinutes) || 0) - (Number(usedMinutes) || 0));
-  return Math.floor(remMin / AVG_VIDEO_MINUTES);
+function generationsUsedFromSubscription(sub) {
+  return Math.max(0, Math.floor(Number(sub?.usage?.monthly?.minutes || 0)));
+}
+
+function formatMonthlyVideosLineForPlanKey(planKey) {
+  const k = String(planKey || 'free').toLowerCase();
+  if (window.CutupPlanDisplay?.formatMonthlyVideosLine) {
+    return window.CutupPlanDisplay.formatMonthlyVideosLine(k);
+  }
+  return `${subscriptionMonthlyGenLimit({ plan: k })} videos per month`;
+}
+
+function nextCalendarResetLabelFromUsage(usage) {
+  const m = usage?.monthly;
+  if (!m || m.year == null || m.month == null) return null;
+  const y = Number(m.year);
+  const monthIdx = Number(m.month);
+  if (!Number.isFinite(y) || !Number.isFinite(monthIdx)) return null;
+  const next = new Date(y, monthIdx + 1, 1);
+  return next.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+function shouldShowDailyUsageMeter(usage) {
+  const d = Number(usage?.dailyLimit);
+  return Number.isFinite(d) && d > 0 && d < 50000;
 }
 
 function showDashboardBanner(message, variant = 'info', opts = {}) {
@@ -295,11 +332,6 @@ async function apiPost(url, payload, options = {}) {
   return { response, data };
 }
 
-function getPlanVideoEstimate(monthlyLimitMinutes) {
-  const videos = Math.max(1, Math.round((Number(monthlyLimitMinutes) || 0) / AVG_VIDEO_MINUTES));
-  return `~${videos} videos / month`;
-}
-
 function setupDashboardMobileNav() {
   const toggle = document.getElementById('dashboardNavToggle');
   const sidebar = document.getElementById('cutupDashboardSidebar');
@@ -353,12 +385,15 @@ function setupNavigation() {
       sections.forEach((s) => s.classList.remove('active'));
       item.classList.add('active');
       document.getElementById(`${target}-section`)?.classList.add('active');
+      if (target === 'profile') {
+        void renderProfileSection();
+      }
     });
   });
 
   document.getElementById('userProfileLink')?.addEventListener('click', (e) => {
     e.preventDefault();
-    document.querySelector('.nav-item[data-section="overview"]')?.click();
+    navigateDashboardSection('profile');
   });
 
   setupDashboardMobileNav();
@@ -388,7 +423,16 @@ function setupEventListeners() {
 let dashboardCountriesPromise = null;
 
 const ONBOARDING_OVERLAY_ID = 'onboardingOverlay';
-const VALID_CHECKOUT_PLAN_KEYS = new Set(['starter', 'pro', 'business', 'advanced']);
+const VALID_CHECKOUT_PLAN_KEYS = new Set(['starter', 'pro', 'business']);
+const ONBOARDING_SOURCE = {
+  CHECKOUT: 'checkout',
+  DASHBOARD: 'dashboard',
+  REQUIRED: 'required'
+};
+const PROFILE_PREFS_LS_KEY = 'cutup_profile_prefs_v1';
+const PROFILE_ONBOARDING_SESSION_KEY = 'cutup_profile_modal_shown_session';
+
+let dashboardProfileSnapshot = null;
 
 function readCheckoutPlanFromUrl() {
   const raw = (new URLSearchParams(window.location.search).get('checkoutPlan') || '').trim().toLowerCase();
@@ -418,6 +462,7 @@ function invalidateDashboardUserProfileCache() {
   dashboardUserProfileCache = null;
 }
 
+/** Gate forced onboarding modal only (not postal_code). */
 function isUserProfileIncomplete(profile) {
   if (!profile) return true;
   return (
@@ -425,9 +470,487 @@ function isUserProfileIncomplete(profile) {
     !String(profile.last_name || '').trim() ||
     !String(profile.phone || '').trim() ||
     !String(profile.country || '').trim() ||
-    !String(profile.address || '').trim() ||
-    !String(profile.postal_code || '').trim()
+    !String(profile.address || '').trim()
   );
+}
+
+function readOnboardingContextFromUrl() {
+  const sp = new URLSearchParams(window.location.search);
+  const sourceRaw = String(sp.get('source') || '').trim().toLowerCase();
+  const source =
+    sourceRaw === 'checkout'
+      ? ONBOARDING_SOURCE.CHECKOUT
+      : sourceRaw === 'dashboard'
+        ? ONBOARDING_SOURCE.DASHBOARD
+        : null;
+  const returnUrl = String(sp.get('returnUrl') || '').trim();
+  return {
+    source,
+    returnUrl: returnUrl.startsWith('/') ? returnUrl : '',
+    checkoutPlan: readCheckoutPlanFromUrl()
+  };
+}
+
+/** Ensures Profile nav + section exist even if stale dashboard.html is served from CDN/nginx. */
+function ensureDashboardRuntimeMarkup() {
+  const nav = document.querySelector('#cutupDashboardSidebar .sidebar-nav');
+  if (nav) {
+    if (nav.querySelector('[data-section="profile"]')) {
+      console.log('[profile-sidebar] mounted', 'html');
+    } else {
+      const billing = nav.querySelector('[data-section="financial"]');
+      const link = document.createElement('a');
+      link.href = '#profile';
+      link.className = 'nav-item';
+      link.dataset.section = 'profile';
+      link.innerHTML = '<span class="nav-icon">👤</span><span class="nav-text">Profile</span>';
+      if (billing) nav.insertBefore(link, billing);
+      else nav.appendChild(link);
+      console.log('[profile-sidebar] mounted', 'injected');
+    }
+  } else {
+    console.warn('[profile-sidebar] nav missing');
+  }
+
+  if (!document.getElementById('profile-section')) {
+    const billingSec = document.getElementById('financial-section');
+    const content = document.querySelector('.dashboard-content');
+    if (content) {
+      const sec = document.createElement('section');
+      sec.className = 'dashboard-section';
+      sec.id = 'profile-section';
+      sec.innerHTML =
+        '<h1 class="section-title">Profile &amp; settings</h1>' +
+        '<p class="dashboard-section-lead">Manage your account details and preferences.</p>' +
+        '<div id="profileSettingsRoot" class="profile-settings-root"></div>';
+      if (billingSec) content.insertBefore(sec, billingSec);
+      else content.appendChild(sec);
+      console.log('[profile-section] mounted', 'injected');
+    }
+  }
+}
+
+function cleanDashboardProfileQueryParams() {
+  const u = new URL(window.location.href);
+  let dirty = false;
+  for (const key of ['editProfile', 'returnUrl', 'source', 'v']) {
+    if (u.searchParams.has(key)) {
+      u.searchParams.delete(key);
+      dirty = true;
+    }
+  }
+  if (dirty) {
+    window.history.replaceState({}, document.title, `${u.pathname}${u.search}${u.hash}`);
+  }
+}
+
+function readProfilePrefs() {
+  try {
+    const raw = localStorage.getItem(PROFILE_PREFS_LS_KEY);
+    const o = raw ? JSON.parse(raw) : {};
+    return {
+      newsletter: Boolean(o.newsletter),
+      productUpdates: Boolean(o.productUpdates)
+    };
+  } catch {
+    return { newsletter: false, productUpdates: false };
+  }
+}
+
+function writeProfilePrefs(prefs) {
+  try {
+    localStorage.setItem(
+      PROFILE_PREFS_LS_KEY,
+      JSON.stringify({
+        newsletter: Boolean(prefs?.newsletter),
+        productUpdates: Boolean(prefs?.productUpdates)
+      })
+    );
+  } catch {
+    /* noop */
+  }
+}
+
+function navigateDashboardSection(sectionId) {
+  const item = document.querySelector(`.nav-item[data-section="${sectionId}"]`);
+  if (item) {
+    item.click();
+    return;
+  }
+  window.location.hash = sectionId;
+}
+
+async function refreshDashboardProfileUi({ profile: profileIn } = {}) {
+  let profile = profileIn;
+  if (!profile) {
+    invalidateDashboardUserProfileCache();
+    const bundle = await fetchDashboardUserProfileOnce();
+    if (!bundle.response.ok || !bundle.profile) return null;
+    profile = bundle.profile;
+  }
+  dashboardProfileSnapshot = profile;
+  applyProfileToDashboardUi(profile);
+  renderProfileSection();
+  return profile;
+}
+
+function applyProfileToDashboardUi(profile) {
+  if (!profile) return;
+  if (currentUser) {
+    currentUser.first_name = profile.first_name || currentUser.first_name;
+    currentUser.last_name = profile.last_name || currentUser.last_name;
+    currentUser.phone = profile.phone || currentUser.phone;
+    currentUser.country = profile.country || currentUser.country;
+    currentUser.address = profile.address || currentUser.address;
+    currentUser.postal_code = profile.postal_code || currentUser.postal_code;
+  }
+  const disp = dashboardDisplayName({ ...currentUser, ...profile, email: profile.email || currentUser?.email });
+  const greet = dashboardGreetingName({ ...currentUser, ...profile });
+  const avatar = document.getElementById('userAvatarHeader');
+  if (avatar) {
+    avatar.src = currentUser?.picture || generateAvatar(disp);
+  }
+  const nameEl = document.getElementById('userNameHeader');
+  const emailEl = document.getElementById('userEmailHeader');
+  if (nameEl) nameEl.textContent = disp;
+  if (emailEl) emailEl.textContent = safeText(profile.email || currentUser?.email, '');
+  const wm = document.getElementById('welcomeMessage');
+  if (wm && !window.__ONBOARDING_ACTIVE__) {
+    wm.textContent = `Welcome back, ${greet}.`;
+  }
+  const identityStrip = document.getElementById('identityStrip');
+  if (identityStrip) {
+    identityStrip.innerHTML = `
+      <div><strong>Name:</strong> ${escapeHtml(disp)}</div>
+      <div><strong>Email:</strong> ${escapeHtml(safeText(profile.email || currentUser?.email))}</div>
+      <div><strong>Phone:</strong> ${escapeHtml(safeText(profile.phone))}</div>
+      <div><strong>Country:</strong> ${escapeHtml(safeText(profile.country))}</div>
+    `;
+  }
+  renderSidebarProfileCard(profile, disp);
+}
+
+function renderSidebarProfileCard(profile, displayName) {
+  const host = document.getElementById('dashboardSidebarProfile');
+  if (!host) return;
+  const incomplete = isUserProfileIncomplete(profile);
+  host.hidden = false;
+  host.innerHTML = `
+    <div class="dashboard-sidebar-profile-inner">
+      <img class="dashboard-sidebar-profile-avatar" src="${escapeHtml(
+        currentUser?.picture || generateAvatar(displayName)
+      )}" alt="" width="40" height="40" />
+      <div class="dashboard-sidebar-profile-meta">
+        <strong class="dashboard-sidebar-profile-name">${escapeHtml(displayName)}</strong>
+        <span class="dashboard-sidebar-profile-email">${escapeHtml(safeText(profile.email))}</span>
+        ${
+          incomplete
+            ? '<span class="dashboard-sidebar-profile-badge">Profile incomplete</span>'
+            : '<span class="dashboard-sidebar-profile-badge dashboard-sidebar-profile-badge--ok">Profile complete</span>'
+        }
+      </div>
+    </div>
+  `;
+  host.onclick = () => navigateDashboardSection('profile');
+  host.style.cursor = 'pointer';
+}
+
+let profileCountriesCache = null;
+
+async function ensureProfileCountries() {
+  if (!profileCountriesCache) {
+    profileCountriesCache = await loadDashboardCountries().catch(() => []);
+  }
+  return profileCountriesCache;
+}
+
+function collectProfileFormPayload(root) {
+  const q = (sel) => root.querySelector(sel);
+  return {
+    first_name: String(q('[data-prof-first]')?.value || '').trim(),
+    last_name: String(q('[data-prof-last]')?.value || '').trim(),
+    email: String(q('[data-prof-email]')?.value || '').trim(),
+    phone: String(q('[data-prof-phone]')?.value || '').trim(),
+    country: String(q('[data-prof-country]')?.value || '').trim().toUpperCase().slice(0, 2),
+    address: String(q('[data-prof-address]')?.value || '').trim(),
+    postal_code: String(q('[data-prof-postal]')?.value || '').trim()
+  };
+}
+
+function validateProfileGateFields(payload) {
+  return (
+    !!payload.first_name &&
+    !!payload.last_name &&
+    !!payload.phone &&
+    !!payload.country &&
+    !!payload.address
+  );
+}
+
+async function saveProfilePayload(payload, { showToast = true } = {}) {
+  const { response, data } = await apiPost(`${API_BASE_URL}/api/user/profile`, payload);
+  if (!response.ok) {
+    const msg =
+      data.error === 'email_mismatch'
+        ? 'Email must match your signed-in account.'
+        : data.error === 'profile_error'
+          ? 'Could not save profile right now.'
+          : data.message || data.error || 'Could not save profile.';
+    if (showToast) showDashboardBanner(msg, 'error');
+    return { ok: false, error: msg };
+  }
+  invalidateDashboardUserProfileCache();
+  const profile = data.profile || payload;
+  await refreshDashboardProfileUi({ profile });
+  if (showToast) showDashboardBanner('Profile updated.', 'success');
+  return { ok: true, profile };
+}
+
+function profileSectionFailedHtml(sectionLabel) {
+  return `<section class="profile-settings-card profile-settings-card--error" data-profile-section-failed="${escapeHtml(sectionLabel)}">
+    <p class="profile-settings-error">Could not load this section. Other settings are still available below.</p>
+  </section>`;
+}
+
+function renderProfileSectionSafe(sectionName, renderFn) {
+  try {
+    const html = renderFn();
+    console.log('[profile-section-ok]', sectionName);
+    return html;
+  } catch (err) {
+    console.error('[profile-section-failed]', sectionName, err);
+    return profileSectionFailedHtml(sectionName);
+  }
+}
+
+function renderPersonalSectionHtml(ctx) {
+  const { profile, disp, incomplete, avatarSrc } = ctx;
+  return `
+        <section class="profile-settings-card profile-settings-card--span-full" data-profile-section="personal">
+          <header class="profile-settings-card-head">
+            <h2 class="profile-settings-card-title">Personal information</h2>
+            <p class="profile-settings-card-desc">Your name and contact details for billing and support.</p>
+          </header>
+          <motion class="profile-settings-avatar-row">
+            <img class="profile-settings-avatar" src="${escapeHtml(avatarSrc)}" alt="" width="80" height="80" />
+            <div class="profile-settings-avatar-copy">
+              <p class="profile-settings-avatar-name">${escapeHtml(disp)}</p>
+              <p class="profile-settings-avatar-hint">Profile photo from your sign-in provider</p>
+              ${incomplete ? '<span class="profile-settings-pill profile-settings-pill--warn">Incomplete</span>' : '<span class="profile-settings-pill profile-settings-pill--ok">Complete</span>'}
+            </div>
+          </motion>
+          <div class="profile-settings-fields">
+            <label class="profile-settings-field"><span>First name</span><input data-prof-first type="text" maxlength="255" autocomplete="given-name" value="${escapeHtml(profile.first_name || '')}" /></label>
+            <label class="profile-settings-field"><span>Last name</span><input data-prof-last type="text" maxlength="255" autocomplete="family-name" value="${escapeHtml(profile.last_name || '')}" /></label>
+            <label class="profile-settings-field profile-settings-field--wide"><span>Email</span><input data-prof-email type="email" readonly value="${escapeHtml(profile.email || currentUser?.email || '')}" /></label>
+            <label class="profile-settings-field"><span>Phone</span><input data-prof-phone type="tel" maxlength="64" autocomplete="tel" value="${escapeHtml(profile.phone || '')}" /></label>
+          </div>
+        </section>`;
+}
+
+function renderLocationSectionHtml(ctx) {
+  const { profile, countryOpts } = ctx;
+  return `
+        <section class="profile-settings-card" data-profile-section="location">
+          <header class="profile-settings-card-head">
+            <h2 class="profile-settings-card-title">Location</h2>
+            <p class="profile-settings-card-desc">Used for invoices and regional compliance.</p>
+          </header>
+          <div class="profile-settings-fields profile-settings-fields--stack">
+            <label class="profile-settings-field profile-settings-field--wide"><span>Country</span><select data-prof-country autocomplete="country"><option value="">Select country</option>${countryOpts}</select></label>
+            <label class="profile-settings-field profile-settings-field--wide"><span>Address</span><textarea data-prof-address rows="3" maxlength="2000" autocomplete="street-address">${escapeHtml(profile.address || '')}</textarea></label>
+            <label class="profile-settings-field"><span>Postal code</span><input data-prof-postal type="text" maxlength="32" autocomplete="postal-code" value="${escapeHtml(profile.postal_code || '')}" /></label>
+          </div>
+        </section>`;
+}
+
+function renderPreferencesSectionHtml(ctx) {
+  const { prefs } = ctx;
+  return `
+        <section class="profile-settings-card" data-profile-section="preferences">
+          <header class="profile-settings-card-head">
+            <h2 class="profile-settings-card-title">Preferences</h2>
+            <p class="profile-settings-card-desc">Choose what we send to your inbox.</p>
+          </header>
+          <div class="profile-settings-toggles">
+            <label class="profile-settings-toggle">
+              <input type="checkbox" data-prof-newsletter ${prefs.newsletter ? 'checked' : ''} />
+              <span class="profile-settings-toggle-ui" aria-hidden="true"></span>
+              <span class="profile-settings-toggle-copy"><strong>Newsletter</strong><small>Tips, guides, and product news</small></span>
+            </label>
+            <label class="profile-settings-toggle">
+              <input type="checkbox" data-prof-product ${prefs.productUpdates ? 'checked' : ''} />
+              <span class="profile-settings-toggle-ui" aria-hidden="true"></span>
+              <span class="profile-settings-toggle-copy"><strong>Product updates</strong><small>Release notes and feature announcements</small></span>
+            </label>
+          </div>
+        </section>`;
+}
+
+function renderSecuritySectionHtml() {
+  return `
+        <section class="profile-settings-card" data-profile-section="security">
+          <header class="profile-settings-card-head">
+            <h2 class="profile-settings-card-title">Security</h2>
+            <p class="profile-settings-card-desc">You sign in with Google — no password to manage here.</p>
+          </header>
+          <div class="profile-settings-actions-row">
+            <button type="button" class="profile-settings-btn profile-settings-btn--ghost" data-prof-logout-all>Log out all sessions</button>
+          </div>
+        </section>`;
+}
+
+function renderDangerZoneSectionHtml() {
+  return `
+        <section class="profile-settings-card profile-settings-card--danger profile-settings-card--span-full" data-profile-section="danger">
+          <header class="profile-settings-card-head">
+            <h2 class="profile-settings-card-title">Danger zone</h2>
+            <p class="profile-settings-card-desc">Permanently remove your account and data.</p>
+          </header>
+          <div class="profile-settings-danger-row">
+            <p class="profile-settings-muted">We’ll email you a secure confirmation link. Nothing is deleted until you confirm from that email.</p>
+            <button type="button" class="profile-settings-btn profile-settings-btn--danger" data-prof-delete-account>Delete account</button>
+          </div>
+        </section>`;
+}
+
+function renderProfileSaveBarHtml(incomplete) {
+  return `
+      <div class="profile-settings-save-bar" role="region" aria-label="Save profile">
+        ${incomplete ? '<p class="profile-settings-alert">Complete name, phone, country, and address for checkout and billing.</p>' : ''}
+        <p class="profile-settings-status" data-prof-status hidden role="status"></p>
+        <div class="profile-settings-save-row">
+          <button type="button" class="profile-settings-btn profile-settings-btn--primary" data-prof-save>Save changes</button>
+        </div>
+      </div>`;
+}
+
+function fixProfileSectionMotionTags(html) {
+  return String(html || '')
+    .replace(/<motion(\s|>)/g, '<div$1')
+    .replace(/<\/motion>/g, '</div>');
+}
+
+function bindProfileSecurityActionsSafe(root) {
+  try {
+    const ui = globalThis.CutupAccountSecurityUi;
+    if (ui?.bindProfileSecurityActions) {
+      ui.bindProfileSecurityActions(root);
+      console.log('[profile-section-ok]', 'security-bind');
+    }
+  } catch (err) {
+    console.error('[profile-section-failed]', 'security-bind', err);
+  }
+}
+
+async function renderProfileSection() {
+  console.log('[profile-render-start]');
+  console.log('[profile-view-init]', {
+    onboarding: window.__ONBOARDING_ACTIVE__ === true,
+    hasRoot: Boolean(document.getElementById('profileSettingsRoot'))
+  });
+  if (window.__ONBOARDING_ACTIVE__) {
+    console.log('[profile-view-init] skipped — onboarding modal active');
+    return;
+  }
+  const root = document.getElementById('profileSettingsRoot');
+  if (!root) {
+    console.warn('[profile-view-init] #profileSettingsRoot not found');
+    return;
+  }
+
+  root.setAttribute('aria-busy', 'true');
+  root.innerHTML = '<p class="profile-settings-loading">Loading profile settings…</p>';
+
+  try {
+    const profile = dashboardProfileSnapshot || {};
+    const prefs = readProfilePrefs();
+    console.log('[profile-data-loaded]', {
+      email: Boolean(profile.email || currentUser?.email),
+      incomplete: isUserProfileIncomplete(profile)
+    });
+
+    const countries = await ensureProfileCountries();
+    const countryOpts = Array.isArray(countries)
+      ? countries
+          .map(
+            ({ code, name }) =>
+              `<option value="${escapeHtml(code)}"${String(profile.country || '').toUpperCase() === code ? ' selected' : ''}>${escapeHtml(name)} (${escapeHtml(code)})</option>`
+          )
+          .join('')
+      : '';
+    const disp = dashboardDisplayName({ ...currentUser, ...profile });
+    const incomplete = isUserProfileIncomplete(profile);
+    const avatarSrc = currentUser?.picture || generateAvatar(disp);
+
+    const ctx = { profile, prefs, countryOpts, disp, incomplete, avatarSrc };
+    const sectionHtml = [
+      renderProfileSectionSafe('personal', () => renderPersonalSectionHtml(ctx)),
+      renderProfileSectionSafe('location', () => renderLocationSectionHtml(ctx)),
+      renderProfileSectionSafe('preferences', () => renderPreferencesSectionHtml(ctx)),
+      renderProfileSectionSafe('security', () => renderSecuritySectionHtml()),
+      renderProfileSectionSafe('danger', () => renderDangerZoneSectionHtml())
+    ].join('');
+    const saveBarHtml = renderProfileSectionSafe('save-bar', () => renderProfileSaveBarHtml(incomplete));
+
+    root.innerHTML = fixProfileSectionMotionTags(`
+    <div class="profile-settings-layout">
+      <div class="profile-settings-grid">
+        ${sectionHtml}
+      </div>
+      ${saveBarHtml}
+    </div>
+    `);
+
+    const saveBtn = root.querySelector('[data-prof-save]');
+    saveBtn?.addEventListener('click', async () => {
+      const status = root.querySelector('[data-prof-status]');
+      const btn = root.querySelector('[data-prof-save]');
+      const payload = collectProfileFormPayload(root);
+      if (!validateProfileGateFields(payload)) {
+        if (status) {
+          status.hidden = false;
+          status.textContent = 'Please fill in first name, last name, phone, country, and address.';
+          status.className = 'profile-settings-status profile-settings-status--error';
+        }
+        return;
+      }
+      if (status) status.hidden = true;
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+      writeProfilePrefs({
+        newsletter: root.querySelector('[data-prof-newsletter]')?.checked,
+        productUpdates: root.querySelector('[data-prof-product]')?.checked
+      });
+      const out = await saveProfilePayload(payload, { showToast: true });
+      btn.disabled = false;
+      btn.textContent = 'Save changes';
+      if (out.ok) {
+        if (status) {
+          status.hidden = false;
+          status.textContent = 'Saved successfully.';
+          status.className = 'profile-settings-status profile-settings-status--ok';
+        }
+      } else if (status) {
+        status.hidden = false;
+        status.textContent = out.error || 'Save failed';
+        status.className = 'profile-settings-status profile-settings-status--error';
+      }
+    });
+
+    bindProfileSecurityActionsSafe(root);
+
+    console.log('[profile-render-complete]', {
+      sections: root.querySelectorAll('.profile-settings-card').length,
+      htmlLength: root.innerHTML.length
+    });
+  } catch (err) {
+    console.error('[profile-render-complete] failed', err);
+    root.innerHTML =
+      '<p class="profile-settings-error">Could not load profile settings. Please refresh the page.</p>';
+  } finally {
+    root.removeAttribute('aria-busy');
+  }
 }
 
 function hideInitialLoader() {
@@ -445,6 +968,7 @@ function flushPendingDashboardRenders() {
   renderUsageSection();
   renderSavedOutputs();
   renderPlansSection();
+  renderProfileSection();
   renderBillingSection();
 }
 
@@ -491,8 +1015,9 @@ function teardownOnboardingModal(overlayNode) {
 /**
  * Single source: build overlay + modal, append to document.body only.
  * @param {object} profile - prefill fields
+ * @param {{ source?: string, returnUrl?: string, checkoutPlan?: string }} [options]
  */
-async function renderOnboardingModalIntoBody(profile) {
+async function renderOnboardingModalIntoBody(profile, options = {}) {
   if (document.getElementById(ONBOARDING_OVERLAY_ID)) {
     console.log('[onboarding] skip mount — overlay already present');
     return;
@@ -514,8 +1039,18 @@ async function renderOnboardingModalIntoBody(profile) {
   };
   window.addEventListener('keydown', escBlock, true);
 
+  const onboardingSource =
+    options.source === ONBOARDING_SOURCE.CHECKOUT
+      ? ONBOARDING_SOURCE.CHECKOUT
+      : options.source === ONBOARDING_SOURCE.DASHBOARD
+        ? ONBOARDING_SOURCE.DASHBOARD
+        : ONBOARDING_SOURCE.REQUIRED;
+
   const overlay = document.createElement('div');
   overlay.id = ONBOARDING_OVERLAY_ID;
+  overlay.dataset.onboardingSource = onboardingSource;
+  overlay.dataset.checkoutReturnUrl = options.returnUrl || '';
+  overlay.dataset.checkoutPlan = options.checkoutPlan || '';
   overlay.setAttribute('role', 'presentation');
   overlay._cutupOnboardingEscBlocker = escBlock;
 
@@ -523,10 +1058,10 @@ async function renderOnboardingModalIntoBody(profile) {
   overlay.style.top = '0';
   overlay.style.left = '0';
   overlay.style.width = '100%';
-  overlay.style.height = '100vh';
+  overlay.style.minHeight = '100dvh';
   overlay.style.zIndex = '999999999';
   overlay.style.display = 'flex';
-  overlay.style.alignItems = 'center';
+  overlay.style.alignItems = 'flex-start';
   overlay.style.justifyContent = 'center';
   overlay.style.padding = '20px';
   overlay.style.boxSizing = 'border-box';
@@ -565,35 +1100,44 @@ async function renderOnboardingModalIntoBody(profile) {
       <span>Profile saved</span>
     </div>
     <form class="onboardingForm" data-onb-form novalidate>
-      <div class="onboardingFormGrid">
-        <label class="onboardingField">
-          <span>First name</span>
-          <input data-onb-first name="first_name" type="text" autocomplete="given-name" maxlength="255">
-        </label>
-        <label class="onboardingField">
-          <span>Last name</span>
-          <input data-onb-last name="last_name" type="text" autocomplete="family-name" maxlength="255">
-        </label>
-        <label class="onboardingField onboardingField--wide">
-          <span>Email</span>
-          <input data-onb-email name="email" type="email" autocomplete="email" maxlength="255">
-        </label>
-        <label class="onboardingField">
-          <span>Phone</span>
-          <input data-onb-phone name="phone" type="tel" autocomplete="tel" maxlength="64">
-        </label>
-        <label class="onboardingField">
-          <span>Country</span>
-          <select data-onb-country name="country"></select>
-        </label>
-        <label class="onboardingField onboardingField--wide">
-          <span>Address</span>
-          <textarea data-onb-address name="address" autocomplete="street-address" maxlength="2000" rows="3"></textarea>
-        </label>
-        <label class="onboardingField onboardingField--postal">
-          <span>Postal code</span>
-          <input data-onb-postal name="postal_code" type="text" autocomplete="postal-code" maxlength="32">
-        </label>
+      <div class="onboardingFormScroll">
+        <div class="onboardingFormGrid">
+          <label class="onboardingField">
+            <span class="onboardingFieldLabel">First name <abbr class="onboardingFieldReq" title="Required">*</abbr></span>
+            <input data-onb-first name="first_name" type="text" autocomplete="given-name" maxlength="255">
+            <span class="onboardingFieldError" hidden>Required</span>
+          </label>
+          <label class="onboardingField">
+            <span class="onboardingFieldLabel">Last name <abbr class="onboardingFieldReq" title="Required">*</abbr></span>
+            <input data-onb-last name="last_name" type="text" autocomplete="family-name" maxlength="255">
+            <span class="onboardingFieldError" hidden>Required</span>
+          </label>
+          <label class="onboardingField onboardingField--wide">
+            <span class="onboardingFieldLabel">Email <abbr class="onboardingFieldReq" title="Required">*</abbr></span>
+            <input data-onb-email name="email" type="email" autocomplete="email" maxlength="255">
+            <span class="onboardingFieldError" hidden>Required</span>
+          </label>
+          <label class="onboardingField">
+            <span class="onboardingFieldLabel">Phone <abbr class="onboardingFieldReq" title="Required">*</abbr></span>
+            <input data-onb-phone name="phone" type="tel" autocomplete="tel" maxlength="64">
+            <span class="onboardingFieldError" hidden>Required</span>
+          </label>
+          <label class="onboardingField">
+            <span class="onboardingFieldLabel">Country <abbr class="onboardingFieldReq" title="Required">*</abbr></span>
+            <select data-onb-country name="country"></select>
+            <span class="onboardingFieldError" hidden>Required</span>
+          </label>
+          <label class="onboardingField onboardingField--wide">
+            <span class="onboardingFieldLabel">Address <abbr class="onboardingFieldReq" title="Required">*</abbr></span>
+            <textarea data-onb-address name="address" autocomplete="street-address" maxlength="2000" rows="3"></textarea>
+            <span class="onboardingFieldError" hidden>Required</span>
+          </label>
+          <label class="onboardingField onboardingField--postal">
+            <span class="onboardingFieldLabel">Postal code</span>
+            <input data-onb-postal name="postal_code" type="text" autocomplete="postal-code" maxlength="32">
+            <span class="onboardingFieldError" hidden>Required</span>
+          </label>
+        </div>
       </div>
       <button type="submit" class="onboardingSubmit" data-onb-submit>Save and continue</button>
     </form>
@@ -614,7 +1158,8 @@ async function renderOnboardingModalIntoBody(profile) {
   const successEl = modal.querySelector('[data-onb-success]');
   const form = modal.querySelector('[data-onb-form]');
   const submitBtn = modal.querySelector('[data-onb-submit]');
-  const submitDefaultLabel = 'Save and continue';
+  const submitDefaultLabel =
+    onboardingSource === ONBOARDING_SOURCE.CHECKOUT ? 'Save and continue to checkout' : 'Save profile';
   const sel = modal.querySelector('[data-onb-country]');
   const fnEl = modal.querySelector('[data-onb-first]');
   const lnEl = modal.querySelector('[data-onb-last]');
@@ -658,8 +1203,36 @@ async function renderOnboardingModalIntoBody(profile) {
   errEl.hidden = true;
   errEl.textContent = '';
 
+  function clearOnboardingFieldErrors() {
+    modal.querySelectorAll('.onboardingFieldError').forEach((node) => {
+      node.hidden = true;
+    });
+    modal.querySelectorAll('.onboardingField--invalid').forEach((node) => node.classList.remove('onboardingField--invalid'));
+  }
+
+  function showOnboardingFieldError(labelEl) {
+    if (!labelEl) return;
+    labelEl.classList.add('onboardingField--invalid');
+    const line = labelEl.querySelector('.onboardingFieldError');
+    if (line) line.hidden = false;
+  }
+
+  form.querySelectorAll('input, select, textarea').forEach((el) => {
+    const clear = () => {
+      const label = el.closest('.onboardingField');
+      if (label) {
+        label.classList.remove('onboardingField--invalid');
+        const line = label.querySelector('.onboardingFieldError');
+        if (line) line.hidden = true;
+      }
+    };
+    el.addEventListener('input', clear);
+    el.addEventListener('change', clear);
+  });
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    clearOnboardingFieldErrors();
     errEl.hidden = true;
     errEl.textContent = '';
     const payload = {
@@ -671,39 +1244,31 @@ async function renderOnboardingModalIntoBody(profile) {
       address: String(modal.querySelector('[data-onb-address]')?.value || '').trim(),
       postal_code: String(modal.querySelector('[data-onb-postal]')?.value || '').trim()
     };
-    if (!payload.first_name) {
-      errEl.textContent = 'First name is required.';
-      errEl.hidden = false;
-      return;
+    const checks = [
+      { ok: !!payload.first_name, input: fnEl },
+      { ok: !!payload.last_name, input: lnEl },
+      { ok: !!payload.email, input: modal.querySelector('[data-onb-email]') },
+      { ok: !!payload.phone, input: modal.querySelector('[data-onb-phone]') },
+      { ok: !!payload.country, input: sel },
+      { ok: !!payload.address, input: modal.querySelector('[data-onb-address]') }
+    ];
+    let firstBad = null;
+    for (const c of checks) {
+      if (c.ok) continue;
+      showOnboardingFieldError(c.input?.closest('.onboardingField'));
+      if (c.input && !firstBad) firstBad = c.input;
     }
-    if (!payload.last_name) {
-      errEl.textContent = 'Last name is required.';
+    if (firstBad) {
+      errEl.textContent = 'Please fix the highlighted fields.';
       errEl.hidden = false;
-      return;
-    }
-    if (!payload.email) {
-      errEl.textContent = 'Email is required.';
-      errEl.hidden = false;
-      return;
-    }
-    if (!payload.phone) {
-      errEl.textContent = 'Phone is required.';
-      errEl.hidden = false;
-      return;
-    }
-    if (!payload.country) {
-      errEl.textContent = 'Please select a country.';
-      errEl.hidden = false;
-      return;
-    }
-    if (!payload.address) {
-      errEl.textContent = 'Address is required.';
-      errEl.hidden = false;
-      return;
-    }
-    if (!payload.postal_code) {
-      errEl.textContent = 'Postal code is required.';
-      errEl.hidden = false;
+      requestAnimationFrame(() => {
+        try {
+          firstBad.focus({ preventScroll: false });
+          firstBad.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        } catch (_e) {
+          /* noop */
+        }
+      });
       return;
     }
     submitBtn.disabled = true;
@@ -730,22 +1295,23 @@ async function renderOnboardingModalIntoBody(profile) {
       form.classList.add('is-hidden');
       successEl.hidden = false;
       await new Promise((resolve) => setTimeout(resolve, 720));
-      const sp = new URLSearchParams(window.location.search);
-      const returnUrl = sp.get('returnUrl');
-      const checkoutPlan = sp.get('checkoutPlan');
-      if (returnUrl && returnUrl.startsWith('/')) {
+      const source = overlay.dataset.onboardingSource || ONBOARDING_SOURCE.REQUIRED;
+      const returnUrl = overlay.dataset.checkoutReturnUrl || '';
+      const checkoutPlan = overlay.dataset.checkoutPlan || '';
+      cleanDashboardProfileQueryParams();
+      if (source === ONBOARDING_SOURCE.CHECKOUT) {
         teardownOnboardingModal(overlay);
-        window.location.href = returnUrl;
-        return;
-      }
-      if (checkoutPlan && VALID_CHECKOUT_PLAN_KEYS.has(String(checkoutPlan).trim().toLowerCase())) {
-        teardownOnboardingModal(overlay);
-        window.location.href = `/checkout.html?plan=${encodeURIComponent(checkoutPlan.trim().toLowerCase())}`;
+        await refreshDashboardProfileUi({ profile: data.profile || payload });
+        navigateDashboardSection('profile');
         return;
       }
       teardownOnboardingModal(overlay);
-      await loadUserProfile();
-      renderOverview();
+      await refreshDashboardProfileUi({ profile: data.profile || payload });
+      if (source === ONBOARDING_SOURCE.DASHBOARD) {
+        navigateDashboardSection('profile');
+      } else {
+        renderOverview();
+      }
     } catch (ex) {
       console.error('[onboarding] submit', ex);
       errEl.textContent = 'Network error. Please try again.';
@@ -764,7 +1330,7 @@ async function renderOnboardingModalIntoBody(profile) {
 /**
  * @param {object} [prefillProfile] - if provided, skip API and open with this data (e.g. testOnboarding).
  */
-async function showOnboardingModal(prefillProfile) {
+async function showOnboardingModal(prefillProfile, options = {}) {
   console.log('[onboarding] showOnboardingModal()');
   let profile;
   if (prefillProfile != null && typeof prefillProfile === 'object') {
@@ -796,7 +1362,11 @@ async function showOnboardingModal(prefillProfile) {
       return;
     }
   }
-  await renderOnboardingModalIntoBody(profile);
+  await renderOnboardingModalIntoBody(profile, {
+    source: options.source || ONBOARDING_SOURCE.DASHBOARD,
+    returnUrl: options.returnUrl || '',
+    checkoutPlan: options.checkoutPlan || ''
+  });
 }
 
 if (typeof window !== 'undefined') {
@@ -844,8 +1414,8 @@ function getSessionFromLocation() {
     if (activeSession) qp.set('session', activeSession);
     const cp = params.get('checkoutPlan');
     if (cp) qp.set('checkoutPlan', cp);
-    const ep = params.get('editProfile');
-    if (ep) qp.set('editProfile', ep);
+    const src = params.get('source');
+    if (src === 'checkout' || src === 'dashboard') qp.set('source', src);
     const ru = params.get('returnUrl');
     if (ru) qp.set('returnUrl', ru);
     const qs = qp.toString();
@@ -859,24 +1429,11 @@ async function loadUserProfile() {
   if (!response.ok || !data.user) {
     throw new Error('auth_failed');
   }
+  if (window.CutupRoleGuard?.handleAuthMePayload?.(data)) {
+    window.CutupRoleGuard.renderDashboardAdminNotice?.();
+    throw new Error('admin_workspace_only');
+  }
   currentUser = data.user;
-  const disp = dashboardDisplayName(currentUser);
-  const greet = dashboardGreetingName(currentUser);
-  const avatar = document.getElementById('userAvatarHeader');
-  if (avatar) {
-    avatar.src = currentUser.picture || generateAvatar(disp);
-  }
-  document.getElementById('userNameHeader').textContent = disp;
-  document.getElementById('userEmailHeader').textContent = safeText(currentUser.email, '');
-  document.getElementById('welcomeMessage').textContent = `Welcome back, ${greet}.`;
-  const identityStrip = document.getElementById('identityStrip');
-  if (identityStrip) {
-    identityStrip.innerHTML = `
-      <div><strong>Name:</strong> ${escapeHtml(disp)}</div>
-      <div><strong>Email:</strong> ${escapeHtml(safeText(currentUser.email))}</div>
-      <div><strong>Session:</strong> Active</div>
-    `;
-  }
 }
 
 async function loadSubscriptionInfo() {
@@ -908,6 +1465,26 @@ async function loadSavedOutputs() {
   savedOutputsCache = response.ok ? (data.outputs || []) : [];
 }
 
+async function loadOffers() {
+  try {
+    if (window.CutupOffersResolver && typeof window.CutupOffersResolver.resolveActiveUserOffers === 'function') {
+      offersResolvedState = await window.CutupOffersResolver.resolveActiveUserOffers({
+        sessionId: currentSession,
+        userPlan: String(subscriptionInfo?.plan || '').toLowerCase()
+      });
+      offersCache = Array.isArray(offersResolvedState?.offers) ? offersResolvedState.offers : [];
+      return;
+    }
+  } catch (_e) {
+    /* fallback to direct API */
+  }
+  const { response, data } = await apiGet(`${API_BASE_URL}/api/offers`, {
+    headers: { 'X-Session-Id': currentSession }
+  });
+  offersCache = response.ok ? (data.offers || []) : [];
+  offersResolvedState = null;
+}
+
 async function loadDashboardHeavy({ silent = false, skipUserProfile = false } = {}) {
   if (!silent) {
     const wm = document.getElementById('welcomeMessage');
@@ -915,7 +1492,7 @@ async function loadDashboardHeavy({ silent = false, skipUserProfile = false } = 
   }
   const tasks = [];
   if (!skipUserProfile) tasks.push(loadUserProfile());
-  tasks.push(loadSubscriptionInfo(), loadUsageHistory(), loadPlans(), loadSavedOutputs());
+  tasks.push(loadSubscriptionInfo(), loadUsageHistory(), loadPlans(), loadSavedOutputs(), loadOffers());
   await Promise.all(tasks);
   if (window.__ONBOARDING_ACTIVE__) {
     pendingDashboardSectionRender = true;
@@ -930,6 +1507,7 @@ async function loadDashboardHeavy({ silent = false, skipUserProfile = false } = 
   renderUsageSection();
   renderSavedOutputs();
   renderPlansSection();
+  await renderProfileSection();
   renderBillingSection();
   if (!silent) {
     const wm = document.getElementById('welcomeMessage');
@@ -942,22 +1520,15 @@ async function loadDashboardHeavy({ silent = false, skipUserProfile = false } = 
  * @returns {{ ok: true, paymentReturn: object } | { ok: false }}
  */
 async function initDashboard() {
-  try {
-    const pend = sessionStorage.getItem('cutup_pending_plan_after_auth');
-    if (pend) {
-      const pk = String(pend).trim().toLowerCase();
-      sessionStorage.removeItem('cutup_pending_plan_after_auth');
-      if (VALID_CHECKOUT_PLAN_KEYS.has(pk)) {
-        const u = new URL(window.location.href);
-        u.searchParams.set('checkoutPlan', pk);
-        window.history.replaceState({}, '', u);
-      }
-    }
-  } catch (_e) {
-    /* noop */
+  const legacyCheckoutPlan = readCheckoutPlanFromUrl();
+  if (legacyCheckoutPlan) {
+    const legacyUrl =
+      window.CutupPlanCheckout?.buildCheckoutUrl(legacyCheckoutPlan, { source: 'dashboard' }) ||
+      `/checkout.html?plan=${encodeURIComponent(legacyCheckoutPlan)}`;
+    console.log('[checkout-route]', { legacyUrl, reason: 'legacy_checkoutPlan_param' });
+    window.location.replace(legacyUrl);
+    return { ok: false };
   }
-
-  const pendingCheckoutPlan = readCheckoutPlanFromUrl();
 
   const { activeSession, paymentReturn, bouncingHome } = getSessionFromLocation();
   if (bouncingHome) {
@@ -970,6 +1541,7 @@ async function initDashboard() {
     return { ok: false };
   }
   localStorage.setItem('cutup_session', currentSession);
+  ensureDashboardRuntimeMarkup();
   setupNavigation();
   setupEventListeners();
 
@@ -979,6 +1551,9 @@ async function initDashboard() {
     profileBundle = results[0];
   } catch (e) {
     hideInitialLoader();
+    if (e.message === 'admin_workspace_only') {
+      return { ok: false };
+    }
     if (e.message === 'auth_failed') {
       localStorage.removeItem('cutup_session');
       window.location.href = '/';
@@ -1023,28 +1598,77 @@ async function initDashboard() {
   }
 
   const profile = profileBundle.profile;
+  dashboardProfileSnapshot = profile;
+  applyProfileToDashboardUi(profile);
   const isIncomplete = isUserProfileIncomplete(profile);
-  console.log('[onboarding] shouldShow:', isIncomplete);
+  const urlCtx = readOnboardingContextFromUrl();
   const forceOnb = window.__FORCE_ONBOARDING__ === true;
-
-  if (pendingCheckoutPlan && !isIncomplete) {
-    window.location.replace(`/checkout.html?plan=${encodeURIComponent(pendingCheckoutPlan)}`);
-    return { ok: false };
+  const checkoutFlow = urlCtx.source === ONBOARDING_SOURCE.CHECKOUT;
+  let alreadyPrompted = false;
+  try {
+    alreadyPrompted = sessionStorage.getItem(PROFILE_ONBOARDING_SESSION_KEY) === '1';
+  } catch (_e) {
+    /* noop */
   }
+  const shouldOpenModal =
+    forceOnb || (isIncomplete && (checkoutFlow || !alreadyPrompted));
 
-  if (forceOnb || isIncomplete) {
+  console.log('[profile-modal-check]', {
+    build: DASHBOARD_BUILD_ID,
+    isIncomplete,
+    forceOnb,
+    checkoutFlow,
+    alreadyPrompted,
+    shouldOpenModal,
+    urlSource: urlCtx.source,
+    returnUrl: urlCtx.returnUrl,
+    hasProfileNav: Boolean(document.querySelector('[data-section="profile"]')),
+    profile: {
+      first_name: Boolean(String(profile.first_name || '').trim()),
+      last_name: Boolean(String(profile.last_name || '').trim()),
+      phone: Boolean(String(profile.phone || '').trim()),
+      country: Boolean(String(profile.country || '').trim()),
+      address: Boolean(String(profile.address || '').trim())
+    }
+  });
+
+  if (shouldOpenModal) {
     window.__ONBOARDING_ACTIVE__ = true;
     void runHeavySafe();
-    if (typeof window.trackEvent === 'function') {
-      window.trackEvent('onboarding_started', { forced: forceOnb }, 'product');
+    if (isIncomplete) {
+      try {
+        sessionStorage.setItem(PROFILE_ONBOARDING_SESSION_KEY, '1');
+      } catch (_e) {
+        /* noop */
+      }
     }
-    await renderOnboardingModalIntoBody(profile);
+    if (typeof window.trackEvent === 'function') {
+      window.trackEvent('onboarding_started', { forced: forceOnb, source: urlCtx.source }, 'product');
+    }
+    const onboardingSource =
+      forceOnb && urlCtx.source === ONBOARDING_SOURCE.DASHBOARD
+        ? ONBOARDING_SOURCE.DASHBOARD
+        : urlCtx.source === ONBOARDING_SOURCE.CHECKOUT
+          ? ONBOARDING_SOURCE.CHECKOUT
+          : ONBOARDING_SOURCE.REQUIRED;
+    await renderOnboardingModalIntoBody(profile, {
+      source: onboardingSource,
+      returnUrl: urlCtx.returnUrl,
+      checkoutPlan: urlCtx.checkoutPlan
+    });
+  } else if (isIncomplete) {
+    window.__ONBOARDING_ACTIVE__ = false;
+    cleanDashboardProfileQueryParams();
+    void runHeavySafe();
+    showDashboardBanner('Complete your profile in Profile settings (sidebar).', 'info', { persistent: true });
+    navigateDashboardSection('profile');
   } else {
     window.__ONBOARDING_ACTIVE__ = false;
+    cleanDashboardProfileQueryParams();
     await runHeavySafe();
-    const sp = new URLSearchParams(window.location.search);
-    if (sp.get('editProfile') === '1') {
-      await showOnboardingModal();
+    const hashSec = window.location.hash.replace(/^#/, '');
+    if (hashSec && document.querySelector(`.nav-item[data-section="${hashSec}"]`)) {
+      navigateDashboardSection(hashSec);
     }
   }
 
@@ -1055,11 +1679,11 @@ function renderOverview() {
   if (window.__ONBOARDING_ACTIVE__) return;
   if (!subscriptionInfo) return;
   const usage = subscriptionInfo.usage || {};
-  const monthlyMinutes = usage.monthly?.minutes || 0;
-  const monthlyLimit = usage.monthlyLimit || 0;
+  const genLimit = subscriptionMonthlyGenLimit(subscriptionInfo);
+  const genUsed = generationsUsedFromSubscription(subscriptionInfo);
   const remainingVideos = isTopTierPlanKey(subscriptionInfo.plan)
-    ? 'Fair use'
-    : `~${videosRemainingEstimate(monthlyMinutes, monthlyLimit)}`;
+    ? 'Included'
+    : String(Math.max(0, genLimit - genUsed));
   const audioCount = usage.downloads?.audio?.count || 0;
   const audioLimit = usage.downloads?.audio?.limit;
   const videoCount = usage.downloads?.video?.count || 0;
@@ -1070,32 +1694,133 @@ function renderOverview() {
   const dailyMinutes = usage.daily?.minutes || 0;
   const dailyLimit = usage.dailyLimit;
 
-  renderUpgradeWarning();
-  renderQuickActionCard();
   renderInsights();
+  renderOffersUi();
+  renderUpgradeWarning();
 
   document.getElementById('remainingVideos').textContent = remainingVideos;
+  const statLbl = document.getElementById('statRemainingLabel');
+  if (statLbl) statLbl.textContent = 'Videos left this month';
   document.getElementById('audioDownloadUsage').textContent = `${audioCount}${audioLimit != null ? `/${audioLimit}` : ''}`;
   document.getElementById('videoDownloadUsage').textContent = `${videoCount}${videoLimit != null ? `/${videoLimit}` : ''}`;
 
   const currentPlanCard = document.getElementById('currentPlanCard');
   if (currentPlanCard) {
     const showUpgrade = ['free', 'starter'].includes((subscriptionInfo.plan || '').toLowerCase());
+    const dailyMeter =
+      shouldShowDailyUsageMeter(usage) && dailyLimit != null
+        ? `<p>Daily usage meter: <strong>${dailyMinutes}/${dailyLimit}</strong> (anti-abuse)</p>`
+        : '';
     currentPlanCard.innerHTML = `
       <h2>Current plan</h2>
       <p><strong>${displayPlanTitle(subscriptionInfo.plan, subscriptionInfo.planName)}</strong> · ${subscriptionInfo.subscription?.billingPeriod || 'monthly'}</p>
       <p>Status: <strong>Active</strong></p>
-      <p>Included usage: <strong>${getPlanVideoEstimate(monthlyLimit)}</strong> (based on ~7 mins/video)</p>
+      <p>Included: <strong>${formatMonthlyVideosLineForPlanKey(subscriptionInfo.plan)}</strong> (each successful run counts as one)</p>
+      <p>This month: <strong>${genUsed}</strong> of <strong>${genLimit}</strong> used</p>
       <p>Audio downloads: <strong>${audioCount}${audioLimit != null ? `/${audioLimit}` : ' (unlimited)'}</strong></p>
       <p>Video downloads: <strong>${videoCount}${videoLimit != null ? `/${videoLimit}` : ' (unlimited)'}</strong></p>
       <p>Renewal/expiry: <strong>${renewal}</strong></p>
-      ${dailyLimit != null ? `<p>Daily free limit: <strong>${dailyMinutes}/${dailyLimit} mins</strong></p>` : ''}
+      ${dailyMeter}
       ${showUpgrade ? `<button class="plan-btn" id="overviewUpgradeBtn">Upgrade plan</button>` : ''}
     `;
     document.getElementById('overviewUpgradeBtn')?.addEventListener('click', () => {
       document.querySelector('.nav-item[data-section="subscription"]')?.click();
     });
   }
+}
+
+function renderOffersUi() {
+  const activeOffers = (offersCache || []).filter((o) => o.userOfferStatus === 'active' && (!o.expiresAt || new Date(o.expiresAt) > new Date()));
+  const prioritized = offersResolvedState?.selectedOffer || activeOffers[0] || null;
+  const bannerHost = document.getElementById('dashboardOfferBannerHost');
+  const offersCard = document.getElementById('myOffersCard');
+  const nowTs = Date.now();
+  const planEur = { starter: 9, pro: 19, business: 49 };
+  const fmtCountdown = (expiresAt) => {
+    if (!expiresAt) return 'No expiry';
+    const diff = new Date(expiresAt).getTime() - Date.now();
+    if (diff <= 0) return 'Expired';
+    const d = Math.floor(diff / (24 * 3600 * 1000));
+    const h = Math.floor((diff % (24 * 3600 * 1000)) / (3600 * 1000));
+    return d > 0 ? `${d}d ${h}h left` : `${h}h left`;
+  };
+  if (bannerHost) {
+    const firstOffer = prioritized;
+    const dismissKey = firstOffer ? `cutup_offer_banner_hide_until_${String(firstOffer.code || '').toUpperCase()}` : '';
+    const hiddenUntil = dismissKey ? Number(localStorage.getItem(dismissKey) || 0) : 0;
+    if (!prioritized || hiddenUntil > nowTs) {
+      bannerHost.innerHTML = '';
+    } else {
+      const o = firstOffer;
+      const discountLabel = o.discountType === 'percentage' ? `${Number(o.discountValue)}%` : `€${Number(o.discountValue).toFixed(2)}`;
+      const expiresText = fmtCountdown(o.expiresAt);
+      const targetPlan = o.targetPlan || (Array.isArray(o.applicablePlans) && o.applicablePlans.length ? o.applicablePlans[0] : 'pro');
+      const base = Number(planEur[targetPlan] || 0);
+      const final = o.discountType === 'percentage'
+        ? Math.max(0, base - ((base * Number(o.discountValue || 0)) / 100))
+        : Math.max(0, base - Number(o.discountValue || 0));
+      bannerHost.innerHTML = `
+        <div class="dashboard-offer-banner">
+          <p>🎉 ${escapeHtml(o.title || 'Offer available')} · ${escapeHtml(discountLabel)} off · ${escapeHtml(expiresText)} · ${base > 0 ? `Now €${final.toFixed(2)}/mo` : ''}</p>
+          <div class="dashboard-offer-banner-actions">
+            <button type="button" class="plan-btn" id="useOfferTopBtn">Apply offer</button>
+            <button type="button" class="plan-btn plan-btn--ghost" id="dismissOfferTopBtn">Dismiss</button>
+          </div>
+        </div>
+      `;
+      document.getElementById('useOfferTopBtn')?.addEventListener('click', () => {
+        window.location.href = `/checkout.html?plan=${encodeURIComponent(targetPlan)}&coupon=${encodeURIComponent(o.code)}`;
+      });
+      document.getElementById('dismissOfferTopBtn')?.addEventListener('click', () => {
+        if (dismissKey) localStorage.setItem(dismissKey, String(Date.now() + (24 * 3600 * 1000)));
+        bannerHost.innerHTML = '';
+      });
+      try {
+        console.log('[offers]', { dashboardCardRendered: true, selectedOffer: o.code });
+      } catch (_e) {}
+    }
+  }
+  if (offersCard) {
+    const offersForCards = activeOffers.length ? activeOffers : (prioritized ? [prioritized] : []);
+    offersCard.innerHTML = `
+      <h2>My offers</h2>
+      ${offersForCards.length
+        ? offersForCards.map((o) => `
+          ${(() => {
+            const targetPlan = o.targetPlan || (o.applicablePlans || [])[0] || 'pro';
+            const base = Number(({ starter: 9, pro: 19, business: 49 })[targetPlan] || 0);
+            const final = o.discountType === 'percentage'
+              ? Math.max(0, base - ((base * Number(o.discountValue || 0)) / 100))
+              : Math.max(0, base - Number(o.discountValue || 0));
+            return `
+          <article class="dashboard-offer-card">
+            <div class="dashboard-offer-card-head">
+              <strong>${escapeHtml(o.title || o.code)}</strong>
+              <span class="dashboard-offer-badge">${o.discountType === 'percentage' ? `${Number(o.discountValue)}% OFF` : `€${Number(o.discountValue).toFixed(2)} OFF`}</span>
+            </div>
+            <p class="dashboard-offer-meta">Plan: ${escapeHtml(targetPlan)} · ${escapeHtml(fmtCountdown(o.expiresAt))} · Code: <code>${escapeHtml(o.code)}</code> ${base > 0 ? `· Now €${final.toFixed(2)}/mo` : ''}</p>
+            <button type="button" class="plan-btn plan-btn--ghost" data-use-offer="${escapeHtml(o.code)}">Apply offer</button>
+          </article>
+        `; })()}
+        `).join('')
+        : '<p>No active offers.</p>'}
+    `;
+    offersCard.querySelectorAll('[data-use-offer]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const code = btn.getAttribute('data-use-offer') || '';
+        const targetPlan = offersForCards.find((o) => o.code === code)?.applicablePlans?.[0] || 'pro';
+        window.location.href = `/checkout.html?plan=${encodeURIComponent(targetPlan)}&coupon=${encodeURIComponent(code)}`;
+      });
+    });
+  }
+  try {
+    console.log('[offers-resolver]', {
+      dashboardRendered: true,
+      activeOffersCount: activeOffers.length,
+      prioritizedOffer: prioritized?.code || null,
+      bannerHasContent: !!(bannerHost && bannerHost.innerHTML && bannerHost.innerHTML.trim().length > 0)
+    });
+  } catch (_e) {}
 }
 
 function formatHistoryType(type) {
@@ -1186,61 +1911,82 @@ function getLastActivityLabel() {
   return `${diffDays} days ago`;
 }
 
-function renderQuickActionCard() {
-  const target = document.getElementById('quickActionCard');
-  if (!target) return;
-  target.innerHTML = `
-    <h2>Create a new output</h2>
-    <p class="dashboard-muted-loading">Paste a video URL and jump straight into transcript generation.</p>
-    <div class="quick-action-row">
-      <input id="quickActionUrl" class="quick-action-input" type="url" placeholder="https://www.youtube.com/watch?v=..." />
-      <button id="quickActionGenerate" class="plan-btn">Generate transcript</button>
-      <button id="quickActionOpenTool" class="plan-btn plan-btn--ghost">Open full tool</button>
-    </div>
-  `;
-  document.getElementById('quickActionGenerate')?.addEventListener('click', () => {
-    const value = document.getElementById('quickActionUrl')?.value || '';
-    openToolWithUrl(value);
-  });
-  document.getElementById('quickActionOpenTool')?.addEventListener('click', () => openToolWithUrl(''));
-}
-
 function renderInsights() {
   const target = document.getElementById('insightsGrid');
   if (!target || !subscriptionInfo) return;
   const usage = subscriptionInfo.usage || {};
-  const monthVideos = videosUsedEstimate(usage.monthly?.minutes || 0);
+  const monthVideos = generationsUsedFromSubscription(subscriptionInfo);
   const savedCount = savedOutputsCache.length;
   const monthActivities = getThisMonthActivityCount();
   const mostUsed = getMostUsedFeatureLabel();
   target.innerHTML = `
-    <article class="insight-card"><h3>You processed ${monthVideos} videos this month</h3><p>Based on your billed minutes (~7 min/video).</p></article>
+    <article class="insight-card"><h3>You completed ${monthVideos} videos this month</h3><p>Only successful runs count toward your monthly limit.</p></article>
     <article class="insight-card"><h3>Most used feature</h3><p>${mostUsed}</p></article>
     <article class="insight-card"><h3>You saved ${savedCount} outputs</h3><p>${savedCount ? 'Reuse and export them anytime.' : 'Start with your first transcript.'}</p></article>
     <article class="insight-card"><h3>Last activity</h3><p>${historyCache.length ? `${getLastActivityLabel()} · ${monthActivities} this month` : 'Start with your first transcript.'}</p></article>
   `;
 }
 
+function getUpgradeBannerState() {
+  if (!currentSession || !subscriptionInfo) return { kind: 'none' };
+  if (offersResolvedState?.selectedOffer) return { kind: 'offer_priority' };
+
+  const plan = String(subscriptionInfo.plan || 'free').toLowerCase();
+  const usage = subscriptionInfo.usage || {};
+  const monthlyLimit = subscriptionMonthlyGenLimit(subscriptionInfo);
+  const monthlyMinutes = generationsUsedFromSubscription(subscriptionInfo);
+  if (!monthlyLimit || monthlyLimit <= 0) return { kind: 'none' };
+
+  if (monthlyMinutes >= monthlyLimit && !isTopTierPlanKey(plan)) {
+    return {
+      kind: 'quota_exhausted',
+      plan,
+      limit: monthlyLimit,
+      used: monthlyMinutes,
+      nextResetLabel: nextCalendarResetLabelFromUsage(usage) || 'the first day of next month'
+    };
+  }
+
+  const ratio = monthlyMinutes / monthlyLimit;
+  const pct = Math.min(999, Math.max(0, Math.round(ratio * 100)));
+
+  if (ratio < 0.75) {
+    return { kind: 'none' };
+  }
+
+  const severity = ratio >= 0.9 ? 'strong' : 'soft';
+  const nextPlanLabel = plan === 'free' ? 'Starter' : plan === 'starter' ? 'Pro' : plan === 'pro' ? 'Business' : null;
+  if (!nextPlanLabel) return { kind: 'none' };
+
+  const messageBySeverity = {
+    soft: `You’ve used about ${pct}% of your included videos for this month.`,
+    strong: `You’re almost at your monthly video limit (${pct}% used).`
+  };
+  const ctaByPlan = {
+    free: 'View plans',
+    starter: 'View plans',
+    pro: 'View plans'
+  };
+  return {
+    kind: 'upgrade',
+    severity,
+    message: `${messageBySeverity[severity]} When you need more, ${ctaByPlan[plan].toLowerCase()} for the next tier.`,
+    cta: ctaByPlan[plan]
+  };
+}
+
 function renderUpgradeWarning() {
   const target = document.getElementById('upgradeWarning');
-  if (!target || !subscriptionInfo) return;
-  if (isUnlimitedPlan()) {
-    target.innerHTML = `<div class="upgrade-warning upgrade-warning--neutral">You’re on an unlimited Business plan.</div>`;
-    return;
-  }
-  const usage = subscriptionInfo.usage || {};
-  const monthlyMinutes = Number(usage.monthly?.minutes || 0);
-  const monthlyLimit = Number(usage.monthlyLimit || 0);
-  const dailyMinutes = Number(usage.daily?.minutes || 0);
-  const dailyLimit = Number(usage.dailyLimit || 0);
-  const monthlyRatio = monthlyLimit > 0 ? monthlyMinutes / monthlyLimit : 0;
-  const dailyRatio = dailyLimit > 0 ? dailyMinutes / dailyLimit : 0;
-  const isFree = String(subscriptionInfo.plan || '').toLowerCase() === 'free';
-  if (monthlyRatio >= 0.8 || (isFree && (monthlyRatio >= 0.7 || dailyRatio >= 0.7))) {
+  if (!target) return;
+  const state = getUpgradeBannerState();
+  if (state.kind === 'quota_exhausted') {
+    const freeWord = state.plan === 'free' ? 'free ' : '';
     target.innerHTML = `
-      <div class="upgrade-warning">
-        <div>You’ve used ${Math.max(1, Math.round(monthlyRatio * 100))}% of your monthly capacity. Upgrade to keep processing without interruptions.</div>
-        <button class="plan-btn" id="upgradeWarningBtn">Upgrade plan</button>
+      <div class="cutup-quota-upgrade-hint" role="region" aria-label="Monthly video limit">
+        <p class="cutup-quota-upgrade-hint__title">You’ve used all ${state.limit} ${freeWord}videos this month.</p>
+        <p class="cutup-quota-upgrade-hint__reset">Your included videos reset on <strong>${escapeHtml(state.nextResetLabel)}</strong>.</p>
+        <p class="cutup-quota-upgrade-hint__benefits">Upgrade when you need a higher monthly limit, full exports, and faster turnaround—your workflow stays the same.</p>
+        <button type="button" class="plan-btn" id="upgradeWarningBtn">${state.plan === 'free' ? 'See upgrade options' : 'View plans'}</button>
       </div>
     `;
     document.getElementById('upgradeWarningBtn')?.addEventListener('click', () => {
@@ -1248,7 +1994,21 @@ function renderUpgradeWarning() {
     });
     return;
   }
-  target.innerHTML = '';
+  if (state.kind !== 'upgrade') {
+    target.innerHTML = '';
+    return;
+  }
+  const cls =
+    state.severity === 'soft' ? 'upgrade-warning upgrade-warning--neutral' : 'upgrade-warning upgrade-warning--strong';
+  target.innerHTML = `
+    <div class="${cls}">
+      <div>${escapeHtml(state.message)}</div>
+      <button type="button" class="plan-btn" id="upgradeWarningBtn">${escapeHtml(state.cta)}</button>
+    </div>
+  `;
+  document.getElementById('upgradeWarningBtn')?.addEventListener('click', () => {
+    document.querySelector('.nav-item[data-section="subscription"]')?.click();
+  });
 }
 
 function renderUsageSection() {
@@ -1256,12 +2016,12 @@ function renderUsageSection() {
   const target = document.getElementById('usageDetails');
   if (!target || !subscriptionInfo) return;
   const usage = subscriptionInfo.usage || {};
-  const monthlyMinutes = usage.monthly?.minutes || 0;
-  const monthlyLimit = usage.monthlyLimit || 0;
+  const monthlyMinutes = generationsUsedFromSubscription(subscriptionInfo);
+  const monthlyLimit = subscriptionMonthlyGenLimit(subscriptionInfo);
   const daily = usage.daily || {};
-  const dailyLabel = usage.dailyLimit != null
-    ? `${daily.minutes || 0}/${usage.dailyLimit} minutes today`
-    : `${daily.minutes || 0} minutes today`;
+  const dailyLabel = shouldShowDailyUsageMeter(usage)
+    ? `${daily.minutes || 0}/${usage.dailyLimit} (daily meter)`
+    : '—';
 
   const items = historyCache.slice(0, 20).map((item) => {
     const normalizedType = item.type === 'download'
@@ -1319,9 +2079,9 @@ function renderUsageSection() {
     <div class="usage-summary">
       <h3>Usage overview</h3>
       <div class="usage-stats">
-        <div class="usage-stat-item"><span class="usage-stat-label">Videos processed</span><span class="usage-stat-value">~${videosUsedEstimate(monthlyMinutes)}</span></div>
-        <div class="usage-stat-item"><span class="usage-stat-label">Videos remaining</span><span class="usage-stat-value">${isTopTierPlanKey(subscriptionInfo.plan) ? 'Fair use' : `~${videosRemainingEstimate(monthlyMinutes, monthlyLimit)}`}</span></div>
-        <div class="usage-stat-item"><span class="usage-stat-label">Daily usage</span><span class="usage-stat-value">${dailyLabel}</span></div>
+        <div class="usage-stat-item"><span class="usage-stat-label">Videos completed (this month)</span><span class="usage-stat-value">${monthlyMinutes}</span></div>
+        <div class="usage-stat-item"><span class="usage-stat-label">Videos remaining</span><span class="usage-stat-value">${isTopTierPlanKey(subscriptionInfo.plan) ? 'Included' : Math.max(0, monthlyLimit - monthlyMinutes)}</span></div>
+        <div class="usage-stat-item"><span class="usage-stat-label">Daily meter</span><span class="usage-stat-value">${dailyLabel}</span></div>
         <div class="usage-stat-item"><span class="usage-stat-label">Audio downloads</span><span class="usage-stat-value">${usage.downloads?.audio?.count || 0}${usage.downloads?.audio?.limit != null ? `/${usage.downloads.audio.limit}` : ''}</span></div>
         <div class="usage-stat-item"><span class="usage-stat-label">Video downloads</span><span class="usage-stat-value">${usage.downloads?.video?.count || 0}${usage.downloads?.video?.limit != null ? `/${usage.downloads.video.limit}` : ''}</span></div>
       </div>
@@ -1559,6 +2319,9 @@ function renderPlansSection() {
 
   const order = ['free', 'starter', 'pro', 'business'];
   const sortedPlans = [...plansCache].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+  const selectedOffer = offersResolvedState?.selectedOffer || null;
+  const selectedTargetPlan = String(window.CutupOffersResolver?.inferTargetPlan?.(selectedOffer) || '').toLowerCase();
+  const selectedDiscountLabel = selectedOffer ? window.CutupOffersResolver?.discountLabel?.(selectedOffer) : '';
   plansGrid.innerHTML = sortedPlans.map((plan) => {
     const pid = plan.id;
     const planRank = dashboardPlanRank(pid);
@@ -1595,7 +2358,16 @@ function renderPlansSection() {
     const isCurrentCard =
       String(pid).toLowerCase() === currentUserPlanKey ||
       (isTopTierPlanKey(pid) && isTopTierPlanKey(currentUserPlanKey));
+    const hasOfferForThisPlan = !!(selectedOffer && selectedTargetPlan === String(pid).toLowerCase());
+    const discountedMonthly = hasOfferForThisPlan
+      ? String(selectedOffer.discountType) === 'percentage'
+        ? Math.max(0, eur - ((eur * Number(selectedOffer.discountValue || 0)) / 100))
+        : Math.max(0, eur - Number(selectedOffer.discountValue || 0))
+      : 0;
     const priceLabel = eur > 0 ? `€${eur.toFixed(2)} / month` : 'Price unavailable';
+    const offerPriceLabel = hasOfferForThisPlan && eur > 0
+      ? `<p class="plan-price-offer"><span class="plan-price-old">€${eur.toFixed(2)}</span> <strong>€${discountedMonthly.toFixed(2)} / month</strong></p>`
+      : '';
     return `
       <article class="paid-plan-card ${pid === 'pro' ? 'featured' : ''} ${isCurrentCard ? 'current-plan' : ''} ${cardExtraClass}">
         <div class="paid-plan-header">
@@ -1603,8 +2375,10 @@ function renderPlansSection() {
           ${isCurrentCard ? '<span class="current-badge">Current</span>' : ''}
         </div>
         <p class="plan-price">${priceLabel}</p>
+        ${hasOfferForThisPlan ? `<p class="plan-offer-badge">${escapeHtml(selectedDiscountLabel)} OFF FOR YOU</p>` : ''}
+        ${offerPriceLabel}
         <ul class="plan-features">
-          <li class="plan-feature-row"><span>Monthly videos</span><strong>${getPlanVideoEstimate(plan.monthlyLimit).replace(' / month', '')}</strong></li>
+          <li class="plan-feature-row"><span>Monthly videos</span><strong>${formatMonthlyVideosLineForPlanKey(plan.id)}</strong></li>
           <li class="plan-feature-row"><span>Audio downloads</span><strong>${plan.downloadAudioLimit != null ? plan.downloadAudioLimit : 'Unlimited'}</strong></li>
           <li class="plan-feature-row"><span>Video downloads</span><strong>${plan.downloadVideoLimit != null ? plan.downloadVideoLimit : 'Unlimited'}</strong></li>
         </ul>
@@ -1612,6 +2386,15 @@ function renderPlansSection() {
       </article>
     `;
   }).join('');
+
+  try {
+    if (window.CutupOffersResolver) {
+      window.CutupOffersResolver.applyPlanHighlight(plansGrid, offersResolvedState || { selectedOffer: null });
+      window.CutupOffersResolver.renderGlobalRibbon(offersResolvedState || { selectedOffer: null });
+    }
+  } catch (_e) {
+    /* noop */
+  }
 
   plansGrid.querySelectorAll('button[data-upgrade-plan]').forEach((btn) => {
     btn.addEventListener('click', async () => {
@@ -1631,18 +2414,13 @@ function renderPlansSection() {
       } catch (_e) {
         /* noop */
       }
-      try {
-        invalidateDashboardUserProfileCache();
-        const bundle = await fetchDashboardUserProfileOnce();
-        if (!bundle.response.ok || isUserProfileIncomplete(bundle.profile)) {
-          window.location.href = `/dashboard.html?checkoutPlan=${encodeURIComponent(planId)}`;
-          return;
-        }
-      } catch (_e) {
-        showDashboardBanner('Could not verify your profile. Please try again.', 'error');
-        return;
-      }
-      window.location.href = `/checkout.html?plan=${encodeURIComponent(planId)}`;
+      const targetPlan = String(planId || '').toLowerCase();
+      const selected = offersResolvedState?.selectedOffer || null;
+      const selectedTarget = String(window.CutupOffersResolver?.inferTargetPlan?.(selected) || '').toLowerCase();
+      const coupon = selected && selectedTarget === targetPlan ? String(selected.code || '').toUpperCase() : '';
+      window.location.href = coupon
+        ? `/checkout.html?plan=${encodeURIComponent(planId)}&coupon=${encodeURIComponent(coupon)}`
+        : `/checkout.html?plan=${encodeURIComponent(planId)}`;
     });
   });
 
@@ -1698,7 +2476,8 @@ async function startPaymentCheckout(planKey, provider = 'yekpay') {
       headers: { 'X-Session-Id': currentSession },
     });
     if (data?.error === 'profile_incomplete') {
-      showDashboardBanner('Please complete your profile before upgrading.', 'error');
+      showDashboardBanner('Complete your profile before upgrading.', 'error');
+      navigateDashboardSection('profile');
       return;
     }
     if (data?.error === 'Payment provider not configured') {
@@ -1749,6 +2528,7 @@ async function refreshDashboardData({ silent = false } = {}) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  ensureDashboardRuntimeMarkup();
   const init = await initDashboard();
   if (!init.ok) return;
   const { paymentReturn } = init;
@@ -1829,13 +2609,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     showDashboardBanner('Processing payment', 'neutral');
   }
 
-  try {
-    if (typeof window.cutupInitConversionBanners === 'function') {
-      window.cutupInitConversionBanners({ mode: 'dashboard' });
-    }
-  } catch (_e) {
-    /* noop */
-  }
+  // Stabilization: dashboard offer messaging is now driven by real offer data.
 
   setInterval(() => {
     refreshDashboardData({ silent: true });

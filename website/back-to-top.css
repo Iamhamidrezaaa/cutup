@@ -1,0 +1,86 @@
+/* Global floating back-to-top — loaded via site-chrome.js */
+.cutup-back-to-top {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 900;
+  width: 46px;
+  height: 46px;
+  margin: 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 999px;
+  cursor: pointer;
+  color: #312e81;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow:
+    0 10px 28px rgba(15, 23, 42, 0.12),
+    0 0 0 1px rgba(99, 102, 241, 0.08),
+    0 0 24px rgba(99, 102, 241, 0.12);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(10px) scale(0.94);
+  transition:
+    opacity 0.28s ease,
+    visibility 0.28s ease,
+    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.cutup-back-to-top.is-visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+
+.cutup-back-to-top:hover {
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow:
+    0 14px 32px rgba(15, 23, 42, 0.16),
+    0 0 28px rgba(99, 102, 241, 0.2);
+  transform: translateY(-2px) scale(1.02);
+}
+
+.cutup-back-to-top.is-visible:hover {
+  transform: translateY(-2px) scale(1.02);
+}
+
+.cutup-back-to-top:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 3px;
+}
+
+.cutup-back-to-top svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+@media (max-width: 768px) {
+  .cutup-back-to-top {
+    right: 16px;
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+    width: 44px;
+    height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cutup-back-to-top {
+    transition: opacity 0.15s ease, visibility 0.15s ease;
+  }
+  .cutup-back-to-top:hover {
+    transform: none;
+  }
+  .cutup-back-to-top.is-visible:hover {
+    transform: none;
+  }
+}

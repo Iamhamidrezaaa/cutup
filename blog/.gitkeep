@@ -1,0 +1,2 @@
+# Optional pre-rendered blog HTML: {slug}.html
+# Canonical URLs remain /blog/{slug} (Node SSR from website/blog-pages/ by default).

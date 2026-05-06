@@ -1,0 +1,93 @@
+{
+  "slug": "why-subtitle-timing-always-looks-off-2026",
+  "title": "Why AI Subtitle Timing Still Looks Wrong",
+  "titleSuffix": "in 2026",
+  "deck": "Words are right. The captions still feel late, rushed, or emotionally dead. We ran the same clips through browser tools, mobile apps, and Shorts cuts — timing was the thing that made viewers bounce, not typos.",
+  "excerpt": "AI subtitles are faster than ever in 2026 — but timing still feels off. We tested modern subtitle workflows, auto-captions, TikTok pacing, and why subtitles still look awkward on real videos.",
+  "category": "Guides",
+  "tags": [
+    "subtitle-timing",
+    "ai-subtitles",
+    "subtitle-workflow",
+    "tiktok-captions",
+    "youtube-captions",
+    "srt-subtitles",
+    "creator-tools"
+  ],
+  "eyebrow": "Guides · Caption pacing",
+  "author": "Cutup Editorial",
+  "authorInitials": "CT",
+  "authorRole": "Subtitle timing tests · Shorts + TikTok clips",
+  "publishedAt": "2026-06-02",
+  "updatedAt": "2026-06-02",
+  "readingTimeMinutes": 11,
+  "coverImageUrl": "/cms-media/images/blog/why-subtitle-timing-always-looks-off-2026-cover.jpg",
+  "heroImageAlt": "Teenage computer genius creator frustrated at out-of-sync subtitles on dual monitors and phone",
+  "heroImagePrompt": "Photorealistic 16:9 1920x1080, LEFT bold headline WHY SUBTITLE TIMING LOOKS WRONG, RIGHT brilliant teenage computer genius (16-17, hoodie, sharp focused eyes) at dual monitors with misaligned SRT blocks and TikTok preview, floating off-beat caption chips, dark blue-purple creator-tech, coral accent, no logos, 16:9 full bleed.",
+  "metaTitle": "Why AI Subtitle Timing Still Looks Wrong in 2026 — Cutup",
+  "metaDescription": "AI subtitles are faster than ever in 2026 — but timing still feels off. We tested modern subtitle workflows, auto-captions, TikTok pacing, and why subtitles still look awkward on real videos.",
+  "ogTitle": "Why AI Subtitle Timing Still Looks Wrong in 2026",
+  "ogDescription": "Accurate words, awkward pacing — what we saw testing subtitle timing on Shorts, TikTok cuts, and SRT workflows in 2026.",
+  "status": "published",
+  "source": "static",
+  "faqSchema": [
+    {
+      "question": "Why are my subtitles out of sync?",
+      "answer": "Usually because the video was trimmed after captions were generated, the tool grouped speech into chunks that do not match your edit rhythm, or export used a different frame rate than the master. Re-time cues to the final cut or regenerate from the finished file."
+    },
+    {
+      "question": "Why do AI subtitles feel awkward?",
+      "answer": "Transcription can be word-accurate while pacing is wrong — cues appear late, vanish too fast, or span whole sentences. Machines optimize for speech segments, not how humans read emotion and pauses on screen."
+    },
+    {
+      "question": "How do I improve subtitle timing?",
+      "answer": "Shorten cues (fewer words per line), split on natural breaths, fix punctuation, export SRT before heavy editing, and re-align after any trim. Manual nudges of 100–300ms on hook lines often matter more than fixing a typo."
+    },
+    {
+      "question": "What is the ideal subtitle speed?",
+      "answer": "Most viewers comfortably read about 15–20 characters per second in English on mobile. Two short lines per cue, roughly 1.5–3 seconds on screen for a normal phrase, faster only for single emphatic words."
+    },
+    {
+      "question": "Why do TikTok captions look better sometimes?",
+      "answer": "Native TikTok and CapCut captions are timed to the vertical export you post, often with aggressive chunking and styling tuned for the feed. SRT from a landscape master or a tool that never saw your jump cuts will look worse by comparison."
+    },
+    {
+      "question": "Are SRT subtitles more accurate?",
+      "answer": "SRT is a format, not a quality guarantee. An SRT file is only as good as the transcript and timestamps behind it. The advantage is control — you can edit timing in text or your NLE without fighting a locked auto track."
+    },
+    {
+      "question": "Can AI fix subtitle pacing automatically?",
+      "answer": "Partially. AI can split on pauses and improve a first pass, but it cannot read your meme cut, silence removal, or sarcastic beat. Creators still win by shortening chunks and nudging emotional lines by hand."
+    },
+    {
+      "question": "What subtitle workflow works best for Shorts?",
+      "answer": "Caption the final vertical export, keep hooks to one or two words per beat, stay in the safe zone, and use a text-first tool for SRT before CapCut or Shorts burn-in. See our Shorts workflow guide for the full stack."
+    }
+  ],
+  "related": [
+    {
+      "href": "/blog/best-subtitle-workflow-youtube-shorts-2026",
+      "eyebrow": "Guide",
+      "title": "Best subtitle workflow for YouTube Shorts",
+      "description": "Vertical safe zones and pacing when you post daily."
+    },
+    {
+      "href": "/blog/how-to-generate-srt-subtitles",
+      "eyebrow": "Tutorial",
+      "title": "How to generate SRT subtitles",
+      "description": "Own the file before timing fights your timeline."
+    },
+    {
+      "href": "/blog/why-youtube-auto-captions-fail-2026",
+      "eyebrow": "Guide",
+      "title": "Why YouTube auto captions fail",
+      "description": "When Studio timing drifts after you trim the hook."
+    },
+    {
+      "href": "/blog/editing-shorts-entirely-on-mobile-2026",
+      "eyebrow": "Guide",
+      "title": "Editing Shorts entirely on mobile",
+      "description": "Phone-only stacks where caption timing breaks on export."
+    }
+  ]
+}

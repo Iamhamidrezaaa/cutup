@@ -6,6 +6,10 @@
   <title>Admin Login | Cutup</title>
   <meta name="robots" content="noindex, nofollow">
   <link rel="stylesheet" href="admin.css">
+  <link rel="stylesheet" href="admin-overview.css">
+  <link rel="stylesheet" href="admin-usage.css">
+  <link rel="stylesheet" href="admin-outputs.css">
+  <link rel="stylesheet" href="admin-payments.css">
   <link rel="stylesheet" href="responsive-global.css?v=1">
   <style>
     .login-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
@@ -57,9 +61,54 @@
       font-weight: 700;
       letter-spacing: -0.02em;
     }
+    .admin-auth-boot {
+      position: fixed;
+      inset: 0;
+      z-index: 20000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(165deg, #f8fafc 0%, #eef2ff 100%);
+      transition: opacity 0.28s ease;
+    }
+    .admin-auth-boot[hidden] { display: none !important; }
+    body.admin-auth-booting #loginPageWrap,
+    body.admin-auth-booting #adminDashboardShell {
+      visibility: hidden !important;
+      pointer-events: none !important;
+    }
+    .admin-auth-boot-card {
+      text-align: center;
+      padding: 32px;
+      animation: admin-auth-fade 0.4s ease;
+    }
+    .admin-auth-boot-card img { width: 72px; height: auto; margin-bottom: 16px; }
+    .admin-auth-boot-card p { margin: 0; color: var(--muted); font-size: 15px; }
+    .admin-auth-boot-spinner {
+      width: 28px; height: 28px; margin: 0 auto 14px;
+      border: 3px solid rgba(99, 102, 241, 0.2);
+      border-top-color: var(--primary, #6366f1);
+      border-radius: 50%;
+      animation: admin-auth-spin 0.8s linear infinite;
+    }
+    @keyframes admin-auth-spin { to { transform: rotate(360deg); } }
+    @keyframes admin-auth-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   </style>
+  <link rel="stylesheet" href="admin-health.css">
+  <link rel="stylesheet" href="admin-ai-state.css">
+  <link rel="stylesheet" href="admin-audit-log.css">
+  <link rel="stylesheet" href="admin-content-studio.css">
+  <link rel="stylesheet" href="media-modal.css">
+  <link rel="stylesheet" href="content-studio-polish.css">
 </head>
-<body>
+<body class="admin-auth-booting">
+  <div id="adminAuthBootOverlay" class="admin-auth-boot" aria-live="polite" aria-busy="true">
+    <div class="admin-auth-boot-card">
+      <div class="admin-auth-boot-spinner" aria-hidden="true"></div>
+      <img src="logo.svg" alt="" width="72" height="72" decoding="async">
+      <p>Verifying your session…</p>
+    </div>
+  </div>
   <div id="loginPageWrap" class="login-page">
     <div class="login-card">
       <header class="admin-login-brand" aria-label="Cutup Admin">
@@ -86,7 +135,7 @@
       </p>
     </div>
   </div>
-  <div id="adminDashboardShell" class="admin-dashboard-shell" hidden style="display:none">
+  <div id="adminDashboardShell" class="admin-dashboard-shell" hidden style="display:none" data-ops-embed="">
     <script src="site-chrome.js"></script>
     <a href="#adminMainContent" class="skip-link">Skip to main content</a>
     <div class="admin-shell">
@@ -102,14 +151,14 @@
         <span class="admin-nav-toggle-bars" aria-hidden="true"></span>
       </button>
       <div class="admin-header-brand">
-        <div class="admin-logo-dot"></div>
-        <div>
+        <img src="logo.svg" alt="" class="admin-header-logo" width="48" height="48" decoding="async" />
+        <div class="admin-header-brand-text">
           <h1>Cutup Admin</h1>
           <p id="adminIdentity">Loading admin identity...</p>
         </div>
       </div>
       <div class="admin-header-actions">
-        <a href="/dashboard.html" class="btn ghost" aria-label="Back to user dashboard">Back to app</a>
+        <a href="https://cutup.shop/" class="btn ghost" aria-label="Back to Cutup homepage">Back to app</a>
         <button id="adminLogoutBtn" class="btn" aria-label="Log out from admin dashboard">Logout</button>
       </div>
     </header>
@@ -119,20 +168,15 @@
     <div class="admin-main">
       <aside class="admin-sidebar" id="cutupAdminSidebar">
         <button class="nav-btn active" data-section="overview" aria-label="Open Overview section"><span aria-hidden="true">📊</span><span>Overview</span></button>
-        <div class="users-menu nav-group" id="navUsersGroup">
-          <button type="button" class="nav-btn nav-group-head users-menu-trigger" id="navUsersTrigger" aria-haspopup="true" aria-controls="navUsersSub" aria-label="Users menu">
-            <span aria-hidden="true">👥</span><span class="nav-group-head-label">Users</span><span class="nav-flyout-chevron" aria-hidden="true"></span>
-          </button>
-          <div id="navUsersSub" class="users-submenu" role="menu" aria-label="Users submenu">
-            <button type="button" class="nav-btn nav-submenu-item" data-section="administrators" role="menuitem" aria-label="Open Administrators">Administrators</button>
-            <button type="button" class="nav-btn nav-submenu-item" data-section="users" role="menuitem" aria-label="Open Customers">Customers</button>
-          </div>
-        </div>
+        <div id="navUsersHubMount" class="cms-hub-mount users-hub-mount" aria-label="Users navigation"></div>
         <button class="nav-btn" data-section="usage" aria-label="Open Usage section"><span aria-hidden="true">📈</span><span>Usage</span></button>
         <button class="nav-btn" data-section="outputs" aria-label="Open Saved outputs section"><span aria-hidden="true">🗂️</span><span>Saved outputs</span></button>
         <button class="nav-btn" data-section="payments" aria-label="Open Payments section"><span aria-hidden="true">💳</span><span>Payments</span></button>
+        <button class="nav-btn" data-section="offers" aria-label="Open Offers section"><span aria-hidden="true">🏷️</span><span>Offers</span></button>
+        <button class="nav-btn" data-section="creator-wall" aria-label="Open Creator Wall section"><span aria-hidden="true">🎬</span><span>Creator Wall</span></button>
         <button class="nav-btn" data-section="health" aria-label="Open System health section"><span aria-hidden="true">🩺</span><span>System health</span></button>
-        <button class="nav-btn" data-section="blog" aria-label="Open Blog CMS section"><span aria-hidden="true">📝</span><span>Blog CMS</span></button>
+        <button class="nav-btn" data-section="ops" aria-label="Open Operations command center"><span aria-hidden="true">🧭</span><span>Ops / AI state</span></button>
+        <div id="navContentHubMount" class="cms-hub-mount content-studio-menu" aria-label="Content Studio navigation"></div>
         <button type="button" class="nav-btn" data-section="audit" id="navAuditBtn" hidden aria-label="Open Audit log section"><span aria-hidden="true">📡</span><span>Audit Log</span></button>
       </aside>
 
@@ -140,8 +184,21 @@
         <div id="adminBanner" class="admin-banner" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
         <section id="section-overview" class="panel active">
-          <h2>Overview</h2>
-          <div id="overviewCards" class="cards-grid"></div>
+          <div class="dash-header">
+            <div>
+              <h2>Overview</h2>
+              <p class="dash-subtitle">Business health, growth, revenue, and operations at a glance.</p>
+            </div>
+            <div class="dash-timeframe" role="group" aria-label="Time range">
+              <button type="button" class="dash-tf-btn" data-period="today">Today</button>
+              <button type="button" class="dash-tf-btn" data-period="7d">7 days</button>
+              <button type="button" class="dash-tf-btn active" data-period="30d">30 days</button>
+              <button type="button" class="dash-tf-btn" data-period="90d">90 days</button>
+              <button type="button" class="dash-tf-btn" data-period="all">All time</button>
+            </div>
+          </div>
+          <div id="overviewDashboard" class="dash-root" aria-live="polite"></div>
+          <div id="overviewCards" class="cards-grid" hidden aria-hidden="true"></div>
         </section>
 
         <section id="section-users" class="panel">
@@ -155,7 +212,6 @@
               <option value="starter">Starter</option>
               <option value="pro">Pro</option>
               <option value="business">Business</option>
-              <option value="advanced">Advanced</option>
             </select>
             <button id="usersReloadBtn" class="btn">Refresh</button>
           </div>
@@ -163,66 +219,257 @@
         </section>
 
         <section id="section-usage" class="panel">
-          <h2>Usage</h2>
-          <p id="usageTableHint" class="sr-only">Usage activity table with operation type, user, source, and date.</p>
-          <div class="toolbar">
-            <select id="usageTypeFilter">
-              <option value="all">All types</option>
-              <option value="transcription">Transcription</option>
-              <option value="summarization">Summarization</option>
-              <option value="srt">SRT</option>
-              <option value="download">Download</option>
-            </select>
-            <select id="usagePlatformFilter">
-              <option value="all">All platforms</option>
-              <option value="youtube">YouTube</option>
-              <option value="instagram">Instagram</option>
-              <option value="tiktok">TikTok</option>
-              <option value="upload">Upload</option>
-            </select>
-            <input id="usageStartDate" type="date">
-            <input id="usageEndDate" type="date">
-            <button id="usageReloadBtn" class="btn">Apply</button>
+          <div class="usage-header">
+            <div>
+              <h2>Usage analytics</h2>
+              <p class="usage-subtitle">AI processing, exports, and platform activity across your customer base.</p>
+            </div>
+            <div class="usage-header-actions">
+              <p id="usageLiveStatus" class="usage-live-status" role="status" aria-live="polite">
+                <span class="usage-live-dot" aria-hidden="true"></span>
+                <span class="usage-live-label">Live updates enabled</span>
+                <span class="usage-live-updated" id="usageLiveUpdated">Loading…</span>
+              </p>
+              <button type="button" class="btn ghost" id="usageExportCsvBtn">Export CSV</button>
+            </div>
           </div>
-          <div class="table-wrap"><table id="usageTable" aria-label="Usage activity table" aria-describedby="usageTableHint"></table></div>
+          <div id="usageWorkspace" class="usage-root" aria-live="polite"></div>
+          <div id="usageLegacyWrap" hidden>
+            <p id="usageTableHint" class="sr-only">Usage activity table</p>
+            <div class="table-wrap"><table id="usageTable"></table></div>
+          </div>
+          <aside id="usageDetailDrawer" class="usage-drawer" hidden aria-hidden="true">
+            <div class="usage-drawer-backdrop" id="usageDrawerBackdrop"></div>
+            <div class="usage-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="usageDrawerTitle">
+              <header class="usage-drawer-head">
+                <h3 id="usageDrawerTitle">Event details</h3>
+                <button type="button" class="btn ghost" id="usageDrawerClose" aria-label="Close">×</button>
+              </header>
+              <div id="usageDrawerBody" class="usage-drawer-body"></div>
+            </div>
+          </aside>
         </section>
 
         <section id="section-outputs" class="panel">
-          <h2>Saved outputs</h2>
-          <p id="outputsTableHint" class="sr-only">Saved outputs table with user, content type, and timestamps.</p>
-          <div class="table-wrap"><table id="outputsTable" aria-label="Saved outputs table" aria-describedby="outputsTableHint"></table></div>
+          <div class="out-header">
+            <div>
+              <h2>Saved outputs</h2>
+              <p class="out-subtitle">AI content archive — transcripts, summaries, and exports across your user base.</p>
+            </div>
+            <div class="out-header-actions">
+              <button type="button" class="btn ghost" id="outputsExportCsvBtn">Export CSV</button>
+            </div>
+          </div>
+          <div id="outputsWorkspace" class="out-root" aria-live="polite"></div>
+          <div id="outputsLegacyWrap" hidden>
+            <p id="outputsTableHint" class="sr-only">Saved outputs table</p>
+            <div class="table-wrap"><table id="outputsTable" aria-describedby="outputsTableHint"></table></div>
+          </div>
+          <aside id="outputsDetailDrawer" class="out-drawer" hidden aria-hidden="true">
+            <div class="out-drawer-backdrop" id="outputsDrawerBackdrop"></div>
+            <div class="out-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="outputsDrawerTitle">
+              <header class="out-drawer-head">
+                <h3 id="outputsDrawerTitle">Output details</h3>
+                <button type="button" class="btn ghost" id="outputsDrawerClose" aria-label="Close">×</button>
+              </header>
+              <div id="outputsDrawerBody" class="out-drawer-body"></div>
+            </div>
+          </aside>
         </section>
 
+
         <section id="section-payments" class="panel">
-          <h2>Payments</h2>
-          <div class="filters-row">
-            <label>From <input type="date" id="paymentsStartDate"></label>
-            <label>To <input type="date" id="paymentsEndDate"></label>
-            <label>Plan
-              <select id="paymentsPlanFilter">
-                <option value="all">All</option>
-                <option value="starter">Starter</option>
-                <option value="pro">Pro</option>
-                <option value="advanced">Advanced</option>
-                <option value="business">Business</option>
-              </select>
-            </label>
-            <label>Status
-              <select id="paymentsStatusFilter">
-                <option value="all">All</option>
-                <option value="success">Success</option>
-                <option value="failed">Failed</option>
-                <option value="pending">Pending</option>
-              </select>
-            </label>
-            <button type="button" class="btn" id="paymentsApplyFiltersBtn">Apply</button>
+          <div class="pay-header">
+            <div>
+              <h2>Payments</h2>
+              <p class="pay-subtitle">Financial operations — YekPay-first, provider-agnostic revenue intelligence.</p>
+            </div>
+            <div class="pay-header-actions">
+              <button type="button" class="btn ghost" id="paymentsExportCsvBtn">Export CSV</button>
+            </div>
           </div>
-          <div id="paymentsPanel"></div>
+          <div id="paymentsWorkspace" class="pay-root" aria-live="polite"></div>
+          <div id="paymentsLegacyWrap" hidden><div id="paymentsPanel"></div></div>
+          <aside id="paymentsDetailDrawer" class="pay-drawer" hidden aria-hidden="true">
+            <div class="pay-drawer-backdrop" id="paymentsDrawerBackdrop"></div>
+            <div class="pay-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="paymentsDrawerTitle">
+              <header class="pay-drawer-head">
+                <h3 id="paymentsDrawerTitle">Payment details</h3>
+                <button type="button" class="btn ghost" id="paymentsDrawerClose" aria-label="Close">×</button>
+              </header>
+              <div id="paymentsDrawerBody" class="pay-drawer-body"></div>
+            </div>
+          </aside>
+        </section>
+
+
+        <section id="section-offers" class="panel">
+          <h2>Offers</h2>
+          <p class="admin-muted">Campaign manager for lifecycle offers. Coupons are generated automatically.</p>
+
+          <div id="offersActionStatusHost" class="offers-status-host"></div>
+
+          <div class="offers-two-col">
+            <div class="offers-col offers-col-left">
+              <article class="offers-card">
+              <h3>Create Campaign</h3>
+              <p class="admin-muted">Define discount, audience eligibility, and redemption limits.</p>
+              <div class="offers-form-grid">
+                <label>Campaign name<input id="offerTitle" type="text" placeholder="Spring Upgrade Push"></label>
+                <label>Discount type
+                  <select id="offerDiscountType">
+                    <option value="percentage">Percentage</option>
+                    <option value="fixed_eur">Fixed EUR</option>
+                  </select>
+                </label>
+                <label>Discount amount<input id="offerDiscountValue" type="number" min="0" step="0.01" placeholder="40"></label>
+                <label>Max redemptions<input id="offerMaxUses" type="number" min="1" step="1" placeholder="optional"></label>
+                <label>Expiration<input id="offerExpiresAt" type="datetime-local"></label>
+                <label>Target plans
+                  <select id="offerTargetPlans" multiple size="4">
+                    <option value="starter">Starter</option>
+                    <option value="pro">Pro</option>
+                    <option value="business">Business</option>
+                  </select>
+                </label>
+              </div>
+              <div class="offers-sticky-actions">
+                <button type="button" class="btn" id="offerCreateBtn">Create Campaign</button>
+              </div>
+              <div id="offerCreateSuccessHost"></div>
+              </article>
+
+              <article class="offers-card">
+              <h3>Distribution</h3>
+              <p class="admin-muted">Select campaign, then choose how to distribute it.</p>
+              <div class="offers-form-grid">
+                <label>Campaign
+                  <select id="offerCampaignSelect">
+                    <option value="">Select campaign</option>
+                  </select>
+                </label>
+              </div>
+              <div class="offers-tab-head">
+                <button type="button" class="btn ghost offers-tab-btn active" data-offer-tab="assign-user">Assign to user</button>
+                <button type="button" class="btn ghost offers-tab-btn" data-offer-tab="assign-plan">Assign to plan</button>
+                <button type="button" class="btn ghost offers-tab-btn" data-offer-tab="assign-all">Broadcast to all</button>
+              </div>
+              <div class="offers-tab-body">
+                <div class="offers-tab-panel active" data-offer-panel="assign-user">
+                  <div class="offers-form-grid">
+                    <label>User email<input id="offerAssignEmail" type="email" placeholder="user@example.com"></label>
+                  </div>
+                  <button type="button" class="btn" id="offerAssignEmailBtn">Send Promotion</button>
+                </div>
+                <div class="offers-tab-panel" data-offer-panel="assign-plan">
+                  <div class="offers-form-grid">
+                    <label>Plan
+                      <select id="offerAssignPlan">
+                        <option value="">Select plan</option>
+                        <option value="starter">Starter</option>
+                        <option value="pro">Pro</option>
+                        <option value="business">Business</option>
+                      </select>
+                    </label>
+                  </div>
+                  <button type="button" class="btn" id="offerAssignPlanBtn">Send Promotion</button>
+                </div>
+                <div class="offers-tab-panel" data-offer-panel="assign-all">
+                  <p class="admin-muted">This will assign the selected campaign to every eligible user.</p>
+                  <button type="button" class="btn" id="offerAssignAllBtn">Broadcast Campaign</button>
+                </div>
+              </div>
+              </article>
+            </div>
+
+            <div class="offers-col offers-col-right">
+              <article class="offers-card">
+                <h3>Campaign Analytics</h3>
+                <div id="offersAnalyticsCards" class="cards-grid"></div>
+              </article>
+
+              <article class="offers-card">
+              <h3>Plan Promotion Funnel</h3>
+              <p class="admin-muted">Generate unique coupons for upgrade campaigns.</p>
+              <div class="offers-funnel-row">
+                <label>From
+                  <select id="promoSourcePlan">
+                    <option value="">Source plan</option>
+                    <option value="starter">Starter</option>
+                    <option value="pro">Pro</option>
+                    <option value="business">Business</option>
+                  </select>
+                </label>
+                <label>To
+                  <select id="promoTargetPlan">
+                    <option value="">Target plan</option>
+                    <option value="starter">Starter</option>
+                    <option value="pro">Pro</option>
+                    <option value="business">Business</option>
+                  </select>
+                </label>
+              </div>
+              <button type="button" class="btn" id="offerCreatePromotionBtn">Generate upgrade campaign</button>
+              <div id="offersJobStatusHost"></div>
+              </article>
+
+              <article class="offers-card">
+                <h3>Active Campaigns</h3>
+                <div class="table-wrap"><table id="offersTable" aria-label="Offers table"></table></div>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section id="section-creator-wall" class="panel">
+          <div style="display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px">
+            <div>
+              <h2 style="margin:0 0 6px">Creator Wall</h2>
+              <p class="admin-muted" style="margin:0">Approve, pin, or hide creator exports for the public feed.</p>
+              <p id="creatorWallPendingBadge" class="admin-muted" style="margin:0.35rem 0 0;font-weight:600"></p>
+            </div>
+            <div class="toolbar">
+              <button type="button" class="btn ghost" id="creatorWallAdminRefresh">Refresh</button>
+              <button type="button" class="btn" id="creatorWallAdminCreateSample">Add sample post</button>
+            </div>
+          </div>
+          <div id="creatorWallAdminTable" aria-live="polite"></div>
         </section>
 
         <section id="section-health" class="panel">
-          <h2>System health</h2>
-          <div id="healthPanel"></div>
+          <div class="health-section-head" style="display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px">
+            <div>
+              <h2 style="margin:0 0 6px">System health</h2>
+              <p class="admin-muted" style="margin:0">Infrastructure monitoring — YekPay-first ops command center.</p>
+            </div>
+            <button type="button" class="btn ghost" id="healthRefreshBtn">Refresh</button>
+          </div>
+          <div id="healthWorkspace" class="health-root" aria-live="polite"></div>
+          <div id="healthPanel" hidden aria-hidden="true"></div>
+        </section>
+
+        <section id="section-ops" class="panel">
+          <div id="aiStateWorkspace" class="aist-root" aria-live="polite"></div>
+          <div id="opsLegacyWrap" hidden aria-hidden="true">
+            <h2>Operations command center (legacy)</h2>
+            <p class="admin-muted">Instalogist snapshot fallback.</p>
+            <div id="opsObservabilityHost" class="admin-ops-obs" role="region" aria-label="Snapshot observability"></div>
+            <div class="toolbar">
+              <button type="button" class="btn" id="opsRefreshBtn">Refresh snapshot</button>
+            </div>
+            <div id="opsErrorHost" class="admin-ops-error" hidden role="alert"></div>
+            <div id="opsWidgetsHost" class="cards-grid admin-ops-cards"></div>
+            <div class="admin-ops-two-col">
+              <div class="admin-ops-col">
+                <h3>Escalation feed</h3>
+                <ul id="opsEscalationFeed" class="admin-ops-feed"></ul>
+              </div>
+              <div class="admin-ops-col">
+                <h3>Stale items</h3>
+                <ul id="opsStaleFeed" class="admin-ops-feed"></ul>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section id="section-administrators" class="panel">
@@ -237,96 +484,22 @@
           <div class="table-wrap"><table id="adminsTable" aria-label="Administrators table" aria-describedby="adminsTableHint"></table></div>
         </section>
 
-        <section id="section-audit" class="panel">
-          <h2>Product analytics</h2>
-          <p class="admin-muted">Usage, conversion, and reliability — same access as Customers (admin &amp; super admin).</p>
-          <div id="auditEmptyState" class="audit-empty-state" hidden>
-            <p class="audit-empty-title">No data yet</p>
-            <p class="admin-muted">Send traffic or seed sample events for this workspace.</p>
-            <button type="button" id="auditSeedBtn" class="btn">Generate test events</button>
-          </div>
-          <div class="toolbar audit-quick-filters" role="toolbar" aria-label="Quick date range">
-            <span class="audit-quick-label">Quick range</span>
-            <button type="button" class="btn ghost audit-quick-filter" data-range="today">Today</button>
-            <button type="button" class="btn ghost audit-quick-filter" data-range="1h">Last 1h</button>
-            <button type="button" class="btn ghost audit-quick-filter" data-range="24h">Last 24h</button>
-            <button type="button" class="btn ghost audit-quick-filter" data-range="7d">Last 7d</button>
-          </div>
-          <div id="auditSummaryCards" class="cards-grid"></div>
-          <div class="audit-charts-grid">
-            <div class="audit-chart-card">
-              <h3>Events over time</h3>
-              <canvas id="auditChartEvents" height="120" aria-label="Events time series"></canvas>
-            </div>
-            <div class="audit-chart-card">
-              <h3>Active users</h3>
-              <canvas id="auditChartDau" height="120" aria-label="Active users by day"></canvas>
-            </div>
-            <div class="audit-chart-card">
-              <h3>Errors</h3>
-              <canvas id="auditChartErrors" height="120" aria-label="Errors time series"></canvas>
-            </div>
-          </div>
-          <div class="audit-alerts-bar" id="auditAlertsBar">
-            <h3>Alerts</h3>
-            <ul id="auditAlertsList" class="audit-alerts-list"></ul>
-            <button type="button" id="auditRunRulesBtn" class="btn ghost">Run alert rules now</button>
-          </div>
-          <h3>Funnel snapshot</h3>
-          <p class="admin-muted">Preset steps in the selected range — share of the first step shown.</p>
-          <div id="auditFunnelVisual" class="audit-funnel-visual" aria-label="Funnel snapshot steps"></div>
-          <div class="table-wrap sr-only"><table id="auditFunnelTable" aria-label="Funnel snapshot data"></table></div>
-          <h3>Dynamic funnel</h3>
-          <p class="admin-muted">Comma or newline-separated <code>event_name</code> steps; conversion is ordered (prior step before next).</p>
-          <div class="toolbar audit-funnel-builder">
-            <textarea id="auditFunnelStepsInput" rows="2" placeholder="signup, onboarding_completed, payment_success" aria-label="Funnel steps"></textarea>
-            <button type="button" id="auditFunnelRunBtn" class="btn">Calculate funnel</button>
-          </div>
-          <div class="table-wrap"><table id="auditDynamicFunnelTable" aria-label="Dynamic funnel results"></table></div>
-          <div class="audit-split">
-            <div>
-              <h3>Live feed</h3>
-              <p id="auditLiveFeedStatus" class="audit-live-feed-status audit-live-feed-status--connecting" role="status">Connecting…</p>
-              <div id="auditLiveFeed" class="audit-live-feed" aria-live="polite"></div>
-            </div>
-            <div>
-              <h3>Segmentation &amp; journey</h3>
-              <div class="toolbar audit-toolbar">
-                <input id="auditFilterUserId" type="text" placeholder="User UUID" autocomplete="off" aria-label="Filter by user id">
-                <input id="auditFilterEvent" type="text" placeholder="event_name" autocomplete="off" aria-label="Filter by event name">
-                <input id="auditFilterType" type="text" placeholder="event_type" autocomplete="off" aria-label="Filter by event type">
-                <select id="auditFilterPlan" aria-label="Filter by plan">
-                  <option value="all">All plans</option>
-                  <option value="free">free</option>
-                  <option value="starter">starter</option>
-                  <option value="pro">pro</option>
-                  <option value="business">business</option>
-                  <option value="advanced">advanced</option>
-                </select>
-                <input id="auditFilterCountry" type="text" placeholder="Country (ISO)" maxlength="2" autocomplete="off" aria-label="Filter by country code">
-                <input id="auditFilterActivityMin" type="number" min="1" placeholder="Min events/user" aria-label="Activity level min events">
-                <input id="auditDateFrom" type="date" aria-label="From date">
-                <input id="auditDateTo" type="date" aria-label="To date">
-                <button type="button" id="auditApplyBtn" class="btn">Apply filters</button>
-              </div>
-              <div class="toolbar">
-                <input id="auditJourneyUserId" type="text" placeholder="User UUID for timeline" autocomplete="off" aria-label="Journey user id">
-                <button type="button" id="auditJourneyBtn" class="btn">Load user journey</button>
-              </div>
-              <div id="auditJourneyPanel" class="audit-journey-panel audit-timeline"></div>
-            </div>
-          </div>
-          <h3>Search results</h3>
-          <div class="table-wrap"><table id="auditEventsTable" aria-label="Audit events"></table></div>
-          <div class="toolbar audit-pagination">
-            <button type="button" id="auditPrevPage" class="btn ghost">Previous</button>
-            <span id="auditPageLabel" class="audit-page-label"></span>
-            <button type="button" id="auditNextPage" class="btn ghost">Next</button>
-          </div>
+        <section id="section-audit" class="panel panel--audit">
+          <div id="auditLogWorkspace" class="audit-log-workspace" aria-live="polite"></div>
         </section>
 
+        <section id="section-pages" class="panel">
+          <div id="contentPagesWorkspace" class="content-studio-workspace" aria-live="polite"></div>
+        </section>
         <section id="section-blog" class="panel">
-          <h2>Blog CMS</h2>
+          <div id="contentBlogWorkspace" class="content-studio-workspace" aria-live="polite"></div>
+        </section>
+        <section id="section-content-library" class="panel" hidden aria-hidden="true">
+          <div id="contentLibraryWorkspace" class="content-studio-workspace" aria-live="polite"></div>
+        </section>
+
+        <section id="section-blog-legacy" class="panel" hidden aria-hidden="true">
+          <h2>Blog CMS (legacy)</h2>
           <div class="blog-layout">
             <div>
               <div class="toolbar">
@@ -446,7 +619,41 @@
     </script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
     <script src="api-config.js"></script>
+    <script src="admin-filter-state.js"></script>
+    <script src="admin-auth.js"></script>
+    <script src="admin-creator-wall.js"></script>
     <script src="admin.js"></script>
+    <script src="admin-overview-utils.js"></script>
+    <script src="admin-overview-charts.js"></script>
+    <script src="admin-overview.js"></script>
+    <script src="admin-usage-charts.js"></script>
+    <script src="admin-usage.js"></script>
+    <script src="admin-outputs-charts.js"></script>
+    <script src="admin-outputs.js"></script>
+    <script src="admin-payments-charts.js"></script>
+    <script src="admin-payments.js"></script>
+    <script src="admin-health.js"></script>
+    <script src="admin-ai-state-charts.js"></script>
+    <script src="admin-ai-state.js"></script>
+    <script src="admin-audit-log-charts.js"></script>
+    <script src="admin-audit-log.js"></script>
+    <script src="admin-content-studio.js"></script>
+    <script src="media-modal.js"></script>
+    <script src="media-field.js"></script>
+    <script src="content-config.js"></script>
+    <script src="content-table.js"></script>
+    <script src="cms-editor-state.js"></script>
+    <script src="cms-hydration-client.js"></script>
+    <script src="cms-debug.js"></script>
+    <script src="content-editor.js"></script>
+    <script src="taxonomy-manager.js"></script>
+    <script src="admin-sidebar-state.js"></script>
+    <script src="admin-users-nav.js"></script>
+    <script src="admin-cms-nav.js"></script>
+    <script src="admin-unified-cms.js"></script>
+    <script src="admin-content-pages.js"></script>
+    <script src="admin-content-blog.js"></script>
+    <script src="admin-content-media.js"></script>
   </div>
   <script src="api-config.js"></script>
   <script>
@@ -454,7 +661,7 @@
       var LS_REMEMBER = 'cutup_adminha_remember';
       var LS_EMAIL = 'cutup_adminha_email';
       var LS_PASSWORD = 'cutup_adminha_password';
-      var SESSION_FLAG = 'cutup_adminha_signed_in';
+      var SESSION_TAB_KEY = 'cutup_adminha_tab_active';
       function apiBase() {
         var b = window.CUTUP_API_BASE;
         if (typeof b !== 'string') return '';
@@ -467,8 +674,14 @@
         return base ? base + p : p;
       }
 
+      function setAuthBootVisible(visible) {
+        var overlay = document.getElementById('adminAuthBootOverlay');
+        if (overlay) overlay.hidden = !visible;
+        document.body.classList.toggle('admin-auth-booting', visible);
+      }
+
       function showAdminDashboard() {
-        console.log('[adminha] showAdminDashboard');
+        setAuthBootVisible(false);
         var wrap = document.getElementById('loginPageWrap');
         var shell = document.getElementById('adminDashboardShell');
         if (wrap) {
@@ -486,6 +699,7 @@
       }
 
       function showLoginView() {
+        setAuthBootVisible(false);
         var wrap = document.getElementById('loginPageWrap');
         var shell = document.getElementById('adminDashboardShell');
         if (wrap) {
@@ -497,7 +711,20 @@
           shell.style.display = 'none';
           shell.classList.remove('adminha-dashboard-visible');
         }
+        if (typeof window.cutupAdminResetBoot === 'function') window.cutupAdminResetBoot();
       }
+
+      window.cutupAdminSessionClear = function () {
+        try {
+          sessionStorage.removeItem(SESSION_TAB_KEY);
+          localStorage.removeItem('cutup_adminha_signed_in');
+        } catch (e) {}
+        if (window.CutupAdminAuth) {
+          window.CutupAdminAuth.stop();
+          window.CutupAdminAuth.clearSensitiveAdminState();
+        }
+        showLoginView();
+      };
 
       function loadSavedCredentials() {
         try {
@@ -525,33 +752,32 @@
       }
 
       async function bootstrapSession() {
-        var hadFlag = false;
-        try {
-          hadFlag = localStorage.getItem(SESSION_FLAG) === '1';
-        } catch (e) {}
-        if (hadFlag) {
-          console.log('[adminha] bootstrap: SESSION_FLAG present, showing dashboard until /auth/me verifies');
-          showAdminDashboard();
-        }
-        try {
-          console.log('[adminha] bootstrap: GET', apiUrl('/api/admin/auth/me'));
-          var r = await fetch(apiUrl('/api/admin/auth/me'), { credentials: 'include' });
-          var data = await r.json().catch(function () { return {}; });
-          console.log('[adminha] bootstrap: auth/me response', r.status, data);
-          if (r.ok && data.ok) {
-            showAdminDashboard();
-            try {
-              localStorage.setItem(SESSION_FLAG, '1');
-            } catch (e) {}
-            return;
+        setAuthBootVisible(true);
+        var result = { ok: false };
+        if (window.CutupAdminAuth && window.CutupAdminAuth.bootstrapFromCookie) {
+          result = await window.CutupAdminAuth.bootstrapFromCookie();
+        } else {
+          try {
+            var r = await fetch(apiUrl('/api/admin/auth/me'), { credentials: 'include' });
+            var data = await r.json().catch(function () { return {}; });
+            if (r.ok && data.ok) {
+              try { sessionStorage.setItem(SESSION_TAB_KEY, String(Date.now())); } catch (e) {}
+              window.__CUTUP_ADMIN_ME__ = data;
+              result = { ok: true };
+            }
+          } catch (err) {
+            console.warn('[adminha] bootstrap: auth/me error', err);
           }
-        } catch (err) {
-          console.warn('[adminha] bootstrap: auth/me error', err);
+        }
+        if (result.ok) {
+          showAdminDashboard();
+          return;
         }
         try {
-          localStorage.removeItem(SESSION_FLAG);
+          sessionStorage.removeItem(SESSION_TAB_KEY);
+          localStorage.removeItem('cutup_adminha_signed_in');
         } catch (e) {}
-        if (hadFlag) showLoginView();
+        showLoginView();
       }
 
       async function handleLogin() {
@@ -583,8 +809,13 @@
           if (r.ok && (data.success || data.ok)) {
             persistCredentials(email, password, rememberMe);
             try {
-              localStorage.setItem(SESSION_FLAG, '1');
+              localStorage.removeItem('cutup_adminha_signed_in');
             } catch (e) {}
+            if (window.CutupAdminAuth && window.CutupAdminAuth.acceptAuthenticatedSession) {
+              await window.CutupAdminAuth.acceptAuthenticatedSession(null);
+            } else {
+              try { sessionStorage.setItem(SESSION_TAB_KEY, String(Date.now())); } catch (e) {}
+            }
             showAdminDashboard();
             return;
           }
@@ -606,12 +837,30 @@
       loadSavedCredentials();
 
       try {
-        if (localStorage.getItem(SESSION_FLAG) === '1') {
-          console.log('[adminha] SESSION_FLAG on load');
+        var bootParams = new URLSearchParams(window.location.search);
+        if (bootParams.get('signed_out') === '1' || bootParams.get('session_expired') === '1') {
+          try {
+            sessionStorage.removeItem(SESSION_TAB_KEY);
+            localStorage.removeItem('cutup_adminha_signed_in');
+          } catch (e) {}
+          if (bootParams.get('session_expired') === '1') {
+            var errEl = document.getElementById('adminLoginError');
+            if (errEl) {
+              errEl.textContent = 'Your admin session expired due to inactivity.';
+              errEl.hidden = false;
+            }
+          }
+          bootParams.delete('signed_out');
+          bootParams.delete('session_expired');
+          var q = bootParams.toString();
+          window.history.replaceState({}, document.title, window.location.pathname + (q ? '?' + q : ''));
+          showLoginView();
+        } else {
+          bootstrapSession();
         }
-      } catch (e) {}
-
-      bootstrapSession();
+      } catch (e) {
+        bootstrapSession();
+      }
 
       var form = document.getElementById('adminLoginForm');
       if (!form) {

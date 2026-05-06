@@ -19,6 +19,11 @@ function canAccessAuditLogUi() {
   return panelRole === 'super_admin' || panelRole === 'admin';
 }
 
+/** Instalogist ops / command center: super_admin (owner) and admin (ops). Editors excluded. */
+function canAccessOpsCommandCenter() {
+  return panelRole === 'super_admin' || panelRole === 'admin';
+}
+
 let panelRole = '';
 let panelAdminId = null;
 let panelAdminEmail = '';
@@ -45,29 +50,95 @@ const CUSTOMER_PLAN_SELECT_OPTIONS = [
 /** Admin row ids removed in UI until reload; delete API not wired yet. */
 const adminsDeletedIds = new Set();
 let adminsCache = [];
-let usersFlyoutDismissTimer = null;
-let usersSubmenuHoverCloseTimer = null;
+const navFlyoutTimers = new Map();
+const offersUiState = {
+  campaigns: [],
+  selectedCampaignId: '',
+  selectedTab: 'assign-user',
+  job: null,
+  degraded: false
+};
+const offersDangerArmed = new Map();
 
-function clearUsersSubmenuHoverClose() {
-  if (usersSubmenuHoverCloseTimer) {
-    clearTimeout(usersSubmenuHoverCloseTimer);
-    usersSubmenuHoverCloseTimer = null;
+function armDangerAction(key, seconds = 4) {
+  const until = Date.now() + (seconds * 1000);
+  offersDangerArmed.set(key, until);
+  return until;
+}
+
+function isDangerArmed(key) {
+  const until = Number(offersDangerArmed.get(key) || 0);
+  return until > Date.now();
+}
+
+function navFlyoutState(groupId) {
+  if (!navFlyoutTimers.has(groupId)) navFlyoutTimers.set(groupId, { hoverClose: null, dismiss: null });
+  return navFlyoutTimers.get(groupId);
+}
+
+function clearNavSubmenuHoverClose(groupId) {
+  const s = navFlyoutState(groupId);
+  if (s.hoverClose) {
+    clearTimeout(s.hoverClose);
+    s.hoverClose = null;
   }
 }
 
-function scheduleUsersSubmenuHoverClose() {
+function scheduleNavSubmenuHoverClose(groupId) {
   if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
-  clearUsersSubmenuHoverClose();
-  usersSubmenuHoverCloseTimer = setTimeout(() => {
-    document.getElementById('navUsersGroup')?.classList.remove('users-menu--submenu-open');
-    usersSubmenuHoverCloseTimer = null;
+  clearNavSubmenuHoverClose(groupId);
+  const s = navFlyoutState(groupId);
+  s.hoverClose = setTimeout(() => {
+    document.getElementById(groupId)?.classList.remove('users-menu--submenu-open');
+    s.hoverClose = null;
   }, 200);
 }
 
-function openUsersSubmenuHover() {
+function openNavSubmenuHover(groupId) {
   if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
-  clearUsersSubmenuHoverClose();
-  document.getElementById('navUsersGroup')?.classList.add('users-menu--submenu-open');
+  clearNavSubmenuHoverClose(groupId);
+  document.getElementById(groupId)?.classList.add('users-menu--submenu-open');
+}
+
+function closeNavFlyout(groupId) {
+  const g = document.getElementById(groupId);
+  if (!g) return;
+  clearNavSubmenuHoverClose(groupId);
+  g.classList.remove('users-menu--submenu-open');
+  g.classList.remove('users-menu--tap-open');
+  const ae = document.activeElement;
+  if (ae && typeof ae.blur === 'function' && g.contains(ae)) ae.blur();
+  g.classList.add('users-menu--flyout-dismissed');
+  const s = navFlyoutState(groupId);
+  if (s.dismiss) clearTimeout(s.dismiss);
+  s.dismiss = setTimeout(() => {
+    g.classList.remove('users-menu--flyout-dismissed');
+    s.dismiss = null;
+  }, 280);
+}
+
+function closeContentFlyout() {
+  closeNavFlyout('navContentGroup');
+}
+
+function setupNavFlyoutGroup(groupId, triggerId) {
+  const flyout = document.getElementById(groupId);
+  const trigger = document.getElementById(triggerId);
+  if (!flyout || !trigger) return;
+  const isCoarseOrNoHover = () => window.matchMedia('(hover: none), (pointer: coarse)').matches;
+  trigger.addEventListener('click', (ev) => {
+    if (!isCoarseOrNoHover()) return;
+    ev.preventDefault();
+    flyout.classList.toggle('users-menu--tap-open');
+  });
+  document.addEventListener('click', (ev) => {
+    if (!isCoarseOrNoHover() || !flyout.classList.contains('users-menu--tap-open')) return;
+    if (!flyout.contains(ev.target)) flyout.classList.remove('users-menu--tap-open');
+  });
+  if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+    flyout.addEventListener('mouseenter', () => openNavSubmenuHover(groupId));
+    flyout.addEventListener('mouseleave', () => scheduleNavSubmenuHoverClose(groupId));
+  }
 }
 
 /** UI + future backend: granular admin roles (permissions are not enforced server-side yet). */
@@ -137,7 +208,8 @@ function adminAbsoluteUrl(pathname) {
 }
 
 function redirectToAdminLogin() {
-  const url = adminAbsoluteUrl('/adminha.html');
+  clearAdminClientSession();
+  const url = adminAbsoluteUrl('/adminha.html?signed_out=1');
   if (typeof window !== 'undefined' && window.self !== window.top) {
     window.top.location.replace(url);
   } else {
@@ -145,12 +217,27 @@ function redirectToAdminLogin() {
   }
 }
 
+function clearAdminClientSession() {
+  window.CutupAdminAuth?.stop?.();
+  window.CutupAdminAuth?.clearSensitiveAdminState?.();
+  try {
+    localStorage.removeItem('cutup_adminha_signed_in');
+  } catch (_e) {}
+  if (typeof window.cutupAdminSessionClear === 'function') {
+    window.cutupAdminSessionClear();
+  }
+  cutupAdminBootStarted = false;
+}
+
 function goToAdminLoginPage() {
-  const url = adminAbsoluteUrl('/adminha.html');
+  clearAdminClientSession();
+  const onAdminPage = /adminha\.html/i.test(window.location.pathname || '');
+  if (onAdminPage) return;
+  const url = adminAbsoluteUrl('/adminha.html?signed_out=1');
   if (typeof window !== 'undefined' && window.self !== window.top) {
-    window.top.location.href = url;
+    window.top.location.replace(url);
   } else {
-    window.location.href = url;
+    window.location.replace(url);
   }
 }
 
@@ -182,39 +269,41 @@ function updateAdministratorsToolbarState() {
   });
 }
 
-function closeUsersFlyout() {
-  const g = document.getElementById('navUsersGroup');
-  if (!g) return;
-  clearUsersSubmenuHoverClose();
-  g.classList.remove('users-menu--submenu-open');
-  g.classList.remove('users-menu--tap-open');
-  const ae = document.activeElement;
-  if (ae && typeof ae.blur === 'function' && g.contains(ae)) ae.blur();
-  g.classList.add('users-menu--flyout-dismissed');
-  if (usersFlyoutDismissTimer) clearTimeout(usersFlyoutDismissTimer);
-  usersFlyoutDismissTimer = setTimeout(() => {
-    g.classList.remove('users-menu--flyout-dismissed');
-  }, 280);
-}
-
-function syncUsersNavParentState() {
-  const group = document.getElementById('navUsersGroup');
-  if (!group) return;
-  const activeSub = group.querySelector('.nav-submenu-item[data-section].active');
-  group.classList.toggle('nav-group--child-active', Boolean(activeSub));
+function clearCmsUrlParams() {
+  try {
+    const url = new URL(window.location.href);
+    const s = (url.searchParams.get('section') || '').toLowerCase();
+    if (s !== 'pages' && s !== 'blog' && s !== 'users') return;
+    url.searchParams.delete('section');
+    url.searchParams.delete('view');
+    history.replaceState({}, '', url);
+  } catch {
+    /* ignore */
+  }
 }
 
 let cutupAdminMobileNavClose = null;
 
 function activateAdminSection(section) {
+  window.CutupAdminAuditLog?.destroy?.();
+  const isCms = window.CutupCmsNav?.isCmsSection?.(section);
+  const isUsersPanel = section === 'users' || section === 'administrators';
+  if (!isCms && !isUsersPanel) {
+    window.CutupAdminSidebar?.collapseAllRoots?.();
+    window.CutupContentStudio?.destroyAll?.();
+  }
   stopAuditAutoRefresh();
   stopAuditLiveWs();
-  document.querySelectorAll('.nav-btn[data-section]').forEach((n) => n.classList.remove('active'));
+  if (section !== 'usage') window.CutupAdminUsage?.stopAutoRefresh?.();
+  document.querySelectorAll('.nav-btn[data-section]').forEach((n) => {
+    if (!n.closest('#navContentHub') && !n.closest('#navUsersHub')) n.classList.remove('active');
+  });
   document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
-  const trigger = document.querySelector(`.nav-btn[data-section="${section}"]`);
-  trigger?.classList.add('active');
-  document.getElementById(`section-${section}`)?.classList.add('active');
-  syncUsersNavParentState();
+  if (!isCms && !isUsersPanel) {
+    const trigger = document.querySelector(`.nav-btn[data-section="${section}"]`);
+    trigger?.classList.add('active');
+    document.getElementById(`section-${section}`)?.classList.add('active');
+  }
   if (typeof cutupAdminMobileNavClose === 'function') cutupAdminMobileNavClose();
 }
 let slugManuallyEdited = false;
@@ -257,12 +346,13 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-function statusBadge(text, kind = 'neutral') {
+function statusBadge(text, kind = 'neutral', title = '') {
   const cls = kind === 'ok' ? 'badge-ok'
     : kind === 'warn' ? 'badge-warn'
       : kind === 'err' ? 'badge-err'
         : 'badge-neutral';
-  return `<span class="badge ${cls}">${escapeHtml(text)}</span>`;
+  const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
+  return `<span class="badge ${cls}"${titleAttr}>${escapeHtml(text)}</span>`;
 }
 
 function emptyRow(colspan, message) {
@@ -630,7 +720,7 @@ function formatMarkdownInternalBlogLink(phrase, slug) {
   const lb = String(phrase || 'Post').replace(/\]/g, '\\]');
   const s = String(slug || '').trim();
   if (!s) return '';
-  return `[${lb}](/blog.html?slug=${encodeURIComponent(s)})`;
+  return `[${lb}](/blog/${encodeURIComponent(s)})`;
 }
 
 function markdownSafeLink(label, url) {
@@ -711,8 +801,8 @@ function updateContentChecklist() {
       ok: internalOk || /blog\.html\?slug=/i.test(content),
       label: 'At least 1 internal link (cutup.shop)',
       detail: internalOk || /blog\.html\?slug=/i.test(content)
-        ? 'Found (site or /blog.html?slug=…)'
-        : 'Add [label](https://cutup.shop/…) or [/blog.html?slug=…]'
+        ? 'Found (site or /blog/{slug})'
+        : 'Add [label](https://cutup.shop/…) or [/blog/{slug}]'
     },
     {
       ok: externalOk,
@@ -874,6 +964,37 @@ async function apiPost(action, payload = {}) {
   return data;
 }
 
+async function apiOffers(method = 'GET', payload = null, query = '') {
+  const qs = query ? `?${query}` : '';
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/admin/offers${qs}`, {
+      method,
+      credentials: 'include',
+      headers: payload ? { 'Content-Type': 'application/json' } : undefined,
+      body: payload ? JSON.stringify(payload) : undefined
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `Offers request failed (${response.status})`);
+    return data;
+  } catch (e) {
+    if (method === 'GET') return { ok: true, offers: [], degraded: true };
+    throw e;
+  }
+}
+
+async function waitForOfferJob(jobId, maxMs = 120000, onProgress = null) {
+  const start = Date.now();
+  while (Date.now() - start < maxMs) {
+    const data = await apiOffers('GET', null, `action=job&jobId=${encodeURIComponent(jobId)}`);
+    const st = data?.job?.status;
+    if (typeof onProgress === 'function') onProgress(st || 'queued', data?.job || null);
+    if (st === 'completed') return data.job;
+    if (st === 'failed') throw new Error(data?.job?.error || 'Background job failed.');
+    await new Promise((r) => setTimeout(r, 1200));
+  }
+  throw new Error('Background job timeout. Check again in a moment.');
+}
+
 async function loadAdminCountries() {
   if (adminCountriesCache) return adminCountriesCache;
   try {
@@ -924,9 +1045,15 @@ async function apiDeleteCustomer(userId) {
 }
 
 async function loadMe() {
-  const response = await fetch(`${API_BASE_URL}/api/admin/auth/me`, { credentials: 'include' });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data.ok) throw new Error('Please sign in.');
+  let data = null;
+  if (typeof window !== 'undefined' && window.__CUTUP_ADMIN_ME__?.ok) {
+    data = window.__CUTUP_ADMIN_ME__;
+    delete window.__CUTUP_ADMIN_ME__;
+  } else {
+    const response = await fetch(`${API_BASE_URL}/api/admin/auth/me`, { credentials: 'include' });
+    data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) throw new Error('Please sign in.');
+  }
   const rawRole = data.role || '';
   panelRole = normalizeAdminPanelRole(rawRole);
   panelAdminId = data.adminId != null ? Number(data.adminId) : null;
@@ -941,30 +1068,23 @@ async function loadMe() {
 }
 
 function applyRoleToNav() {
-  const usersGroup = document.getElementById('navUsersGroup');
+  const usersMount = document.getElementById('navUsersHubMount');
   const allNav = document.querySelectorAll('.nav-btn[data-section]');
   if (panelRole === 'editor') {
-    if (usersGroup) usersGroup.hidden = true;
-    allNav.forEach((btn) => {
-      const s = btn.getAttribute('data-section');
-      btn.hidden = s !== 'blog';
-    });
-    document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
-    document.querySelectorAll('.nav-btn').forEach((n) => n.classList.remove('active'));
-    document.getElementById('section-blog')?.classList.add('active');
-    const blogBtn = document.querySelector('.nav-btn[data-section="blog"]');
-    blogBtn?.classList.add('active');
-    syncUsersNavParentState();
+    if (usersMount) usersMount.hidden = true;
+    allNav.forEach((btn) => btn.hidden = true);
+    const hub = document.getElementById('navContentHubMount');
+    if (hub) hub.hidden = false;
+    window.CutupCmsNav?.navigate?.('pages', 'all', { replace: true });
     return;
   }
 
-  if (usersGroup) usersGroup.hidden = false;
+  if (usersMount) usersMount.hidden = false;
   allNav.forEach((btn) => {
     btn.hidden = false;
   });
   const auditNav = document.querySelector('.nav-btn[data-section="audit"]');
   if (auditNav) auditNav.hidden = !canAccessAuditLogUi();
-  syncUsersNavParentState();
 }
 
 function renderOverview(data) {
@@ -1000,13 +1120,37 @@ function fmtPaymentAmount(p) {
 function customerPlanOptionsHtml(selectedPlan) {
   const sel = String(selectedPlan || 'free').toLowerCase();
   const opts = [...CUSTOMER_PLAN_SELECT_OPTIONS];
-  if (sel === 'advanced') opts.push(['advanced', 'Advanced']);
   return opts
     .map(
       ([value, label]) =>
         `<option value="${escapeHtml(value)}"${sel === value ? ' selected' : ''}>${escapeHtml(label)}</option>`
     )
     .join('');
+}
+
+function isCustomerAccountDeactivated(u) {
+  if (!u) return false;
+  const acct = String(u.accountStatus || 'active').toLowerCase();
+  if (acct === 'deactivated' || acct === 'banned') return true;
+  if (u.deletedAt) return true;
+  if (u.cooldownActive === true) return true;
+  if (u.cooldownUntil && new Date(u.cooldownUntil).getTime() > Date.now()) return true;
+  return false;
+}
+
+function customerAccountBadgeHtml(u) {
+  if (isCustomerAccountDeactivated(u)) {
+    let tip = '';
+    if (u.cooldownUntil) {
+      tip = `Account deleted — cooldown active until ${fmtDate(u.cooldownUntil)}`;
+    } else if (u.deletedAt) {
+      tip = `Account deleted — ${fmtDate(u.deletedAt)}`;
+    } else {
+      tip = 'Account deactivated';
+    }
+    return statusBadge('DEACTIVATED', 'err', tip);
+  }
+  return statusBadge('ACTIVE', 'ok');
 }
 
 function buildCustomerSubscriptionReadonlyHtml(u) {
@@ -1043,7 +1187,9 @@ function renderUsersTable(rows) {
       const planLabel =
         u.planLabel ||
         (u.plan ? u.plan.charAt(0).toUpperCase() + u.plan.slice(1) : '—');
-      const st = (u.status || 'active').toLowerCase() === 'active' ? 'ok' : 'warn';
+      const deactivated = isCustomerAccountDeactivated(u);
+      const accountBadge = customerAccountBadgeHtml(u);
+      const rowClass = deactivated ? ' class="customer-row-deactivated"' : '';
       const actions = isEditing
         ? `<div class="actions-wrapper">
           <button type="button" class="btn-edit customer-save-btn" data-customer-id="${escapeHtml(uid)}"${customerSaveInFlight ? ' disabled' : ''}>Save</button>
@@ -1053,11 +1199,11 @@ function renderUsersTable(rows) {
           <button type="button" class="btn-edit customer-edit-btn" data-customer-id="${escapeHtml(uid)}">Edit</button>
           <button type="button" class="btn-delete customer-delete-btn" data-customer-id="${escapeHtml(uid)}" title="Delete user" aria-label="Delete"><img src="${TRASH_ICON_SRC}" alt="delete" width="18" height="18" decoding="async"></button>
         </div>`;
-      const mainRow = `<tr data-customer-main="${escapeHtml(uid)}">
+      const mainRow = `<tr data-customer-main="${escapeHtml(uid)}"${rowClass}>
         <td>${escapeHtml(u.name || '—')}</td>
         <td>${escapeHtml(u.email)}</td>
         <td>${statusBadge(planLabel)}</td>
-        <td>${statusBadge((u.status || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active', st)}</td>
+        <td>${accountBadge}</td>
         <td>${fmtDate(u.createdAt)}</td>
         <td>${fmtDate(u.lastActivityAt)}</td>
         <td>${escapeHtml(u.usageMinutesThisMonth)}</td>
@@ -1104,7 +1250,7 @@ function renderUsersTable(rows) {
     .join('');
 
   el.innerHTML = `
-    <thead><tr><th>Name</th><th>Email</th><th>Plan</th><th>Status</th><th>Created</th><th>Last activity</th><th>Usage this month</th><th>Saved outputs</th><th>Actions</th></tr></thead>
+    <thead><tr><th>Name</th><th>Email</th><th>Plan</th><th>Account</th><th>Created</th><th>Last activity</th><th>Usage</th><th>Saved</th><th>Actions</th></tr></thead>
     <tbody>${body || emptyRow(colCount, 'No users found for this filter.')}</tbody>`;
 
   const bindDraft = (sel, key) => {
@@ -1373,9 +1519,9 @@ function renderPaymentsPanel(data, abData) {
       if (!email) return;
       try {
         const d = await apiGet('paymentUserHistory', { email });
-        alert(`User: ${email}\nPayments: ${d.payments?.length || 0}\nInvoices: ${d.invoices?.length || 0}`);
+        showBanner(`User ${email}: ${d.payments?.length || 0} payments, ${d.invoices?.length || 0} invoices.`);
       } catch (e) {
-        alert(e.message || 'Could not load user payment history.');
+        showBanner(e.message || 'Could not load user payment history.');
       }
     });
   });
@@ -1425,7 +1571,7 @@ function renderBlogTable(posts) {
         const actions = [
           `<button class="btn ghost blog-action-btn" data-edit-post="${p.id}">Edit</button>`,
           p.status === 'published'
-            ? `<a class="btn ghost blog-action-btn" href="blog.html?slug=${encodeURIComponent(p.slug)}" target="_blank" rel="noopener noreferrer">View public</a>`
+            ? `<a class="btn ghost blog-action-btn" href="/blog/${encodeURIComponent(p.slug)}" target="_blank" rel="noopener noreferrer">View public</a>`
             : '',
           p.status === 'published'
             ? `<button class="btn ghost blog-action-btn" data-unpublish-post="${p.id}">Unpublish</button>`
@@ -1523,7 +1669,12 @@ async function quickTogglePublish(id, publish) {
   }
 }
 
-async function loadOverview() { renderOverview(await apiGet('overview')); }
+async function loadOverview() {
+  if (window.CutupAdminOverview?.load) {
+    return window.CutupAdminOverview.load();
+  }
+  renderOverview(await apiGet('overview'));
+}
 async function loadUsers() {
   const search = document.getElementById('usersSearch')?.value || '';
   const plan = document.getElementById('usersPlanFilter')?.value || 'all';
@@ -1555,28 +1706,494 @@ async function loadUsers() {
   renderUsersTable(customersCache);
 }
 async function loadUsage() {
+  if (window.CutupAdminUsage?.load) {
+    window.CutupAdminUsage.readUrlState?.();
+    window.CutupAdminUsage.startAutoRefresh?.();
+    return window.CutupAdminUsage.load({ fullRender: true });
+  }
   const data = await apiGet('usage', {
     type: document.getElementById('usageTypeFilter')?.value || 'all',
     platform: document.getElementById('usagePlatformFilter')?.value || 'all',
     startDate: document.getElementById('usageStartDate')?.value || '',
-    endDate: document.getElementById('usageEndDate')?.value || ''
+    endDate: document.getElementById('usageEndDate')?.value || '',
+    legacy: '1'
   });
   renderUsageTable(data.activities || []);
 }
-async function loadOutputs() { renderOutputsTable((await apiGet('savedOutputs')).outputs || []); }
-async function loadPayments() {
-  const [pay, ab] = await Promise.all([
-    apiGet('payments', {
-      startDate: document.getElementById('paymentsStartDate')?.value || '',
-      endDate: document.getElementById('paymentsEndDate')?.value || '',
-      plan: document.getElementById('paymentsPlanFilter')?.value || 'all',
-      status: document.getElementById('paymentsStatusFilter')?.value || 'all'
-    }),
-    apiGet('pricingAb')
-  ]);
-  renderPaymentsPanel(pay, ab);
+
+async function loadOutputs() {
+  if (window.CutupAdminOutputs?.load) {
+    window.CutupAdminOutputs.readUrlState?.();
+    return window.CutupAdminOutputs.load({ fullRender: true });
+  }
+  const data = await apiGet('savedOutputs', { legacy: '1', limit: 300 });
+  renderOutputsTable(data.outputs || []);
 }
-async function loadHealth() { renderHealthPanel(await apiGet('health')); }
+function renderPaymentsUnavailable(message = 'Payments analytics temporarily unavailable.') {
+  const container = document.getElementById('paymentsPanel');
+  if (!container) return;
+  container.innerHTML = `
+    <div class="admin-widget-degraded">
+      <h3>Payments</h3>
+      <p>${escapeHtml(message)}</p>
+    </div>
+  `;
+}
+async function loadPayments() {
+  if (window.CutupAdminPayments?.load) {
+    window.CutupAdminPayments.readUrlState?.();
+    return window.CutupAdminPayments.load({ fullRender: true });
+  }
+  const pay = await apiGet('payments', { legacy: '1' });
+  renderPaymentsPanel(pay, {});
+}
+function renderOfferActionStatus(message, type = 'success', extra = '') {
+  const host = document.getElementById('offersActionStatusHost');
+  if (!host) return;
+  host.innerHTML = `
+    <div class="offers-success-card" data-type="${escapeHtml(type)}">
+      <strong>${escapeHtml(message)}</strong>
+      ${extra ? `<div>${extra}</div>` : ''}
+    </div>
+  `;
+}
+
+function renderOfferDeliveryDebug(result) {
+  const host = document.getElementById('offersJobStatusHost');
+  if (!host) return;
+  const matched = Number(result?.matchedUsers || 0);
+  const inserted = Number(result?.insertedAssignments || 0);
+  const skipped = Number(result?.skippedAssignments || 0);
+  const email = result?.email || {};
+  host.innerHTML = `
+    <div class="offers-job-status">
+      <strong>Campaign delivery result</strong>
+      <div>Matched users: ${escapeHtml(matched)}</div>
+      <div>Inserted assignments: ${escapeHtml(inserted)}</div>
+      <div>Skipped duplicates: ${escapeHtml(skipped)}</div>
+      <div>Email sent: ${escapeHtml(Number(email.sent || 0))}</div>
+      <div>Failed emails: ${escapeHtml(Number(email.failed || 0))}</div>
+      ${email?.skipped ? `<div>Email skipped: ${escapeHtml(Number(email.skipped || 0))}</div>` : ''}
+      ${result?.emailConfigured === false ? '<div style="color:#b45309">Email provider is not configured. Delivery skipped.</div>' : ''}
+    </div>
+  `;
+}
+
+function renderOffersLoading() {
+  const table = document.getElementById('offersTable');
+  if (!table) return;
+  table.innerHTML = `
+    <tbody>
+      <tr><td colspan="7"><div class="offers-skeleton-line"></div><div class="offers-skeleton-line"></div><div class="offers-skeleton-line"></div></td></tr>
+    </tbody>
+  `;
+}
+
+function syncCampaignSelectOptions() {
+  const select = document.getElementById('offerCampaignSelect');
+  if (!select) return;
+  const current = offersUiState.selectedCampaignId || select.value || '';
+  const list = offersUiState.campaigns || [];
+  select.innerHTML = `<option value="">Select campaign</option>${list.map((o) => `
+    <option value="${escapeHtml(o.id)}">${escapeHtml(o.title || o.code)} (${escapeHtml(o.code)})</option>
+  `).join('')}`;
+  if (current && list.some((o) => String(o.id) === String(current))) {
+    select.value = current;
+    offersUiState.selectedCampaignId = current;
+  } else {
+    const first = list[0]?.id ? String(list[0].id) : '';
+    offersUiState.selectedCampaignId = first;
+    select.value = first;
+  }
+}
+
+function getSelectedCampaign() {
+  const id = offersUiState.selectedCampaignId;
+  return (offersUiState.campaigns || []).find((o) => String(o.id) === String(id)) || null;
+}
+
+function bindOfferTabs() {
+  const buttons = document.querySelectorAll('.offers-tab-btn');
+  const panels = document.querySelectorAll('.offers-tab-panel');
+  buttons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const tab = btn.getAttribute('data-offer-tab') || 'assign-user';
+      offersUiState.selectedTab = tab;
+      buttons.forEach((b) => b.classList.toggle('active', b === btn));
+      panels.forEach((p) => p.classList.toggle('active', p.getAttribute('data-offer-panel') === tab));
+    });
+  });
+}
+
+function renderOffersPanel(offers) {
+  const table = document.getElementById('offersTable');
+  const cards = document.getElementById('offersAnalyticsCards');
+  if (!table || !cards) return;
+  const list = Array.isArray(offers) ? offers : [];
+  offersUiState.campaigns = list;
+  syncCampaignSelectOptions();
+  const totalRedemptions = list.reduce((sum, offer) => sum + Number(offer?.analytics?.redemptions || 0), 0);
+  const totalDiscount = list.reduce((sum, offer) => sum + Number(offer?.analytics?.discountTotalEur || 0), 0);
+  const totalAssignments = list.reduce((sum, offer) => sum + Number(offer?.analytics?.assignments || 0), 0);
+  const conversionRate = totalAssignments > 0 ? (totalRedemptions / totalAssignments) * 100 : 0;
+  cards.innerHTML = `
+    <article class="card"><h3>Total offers</h3><p class="kpi">${list.length}</p></article>
+    <article class="card"><h3>Active offers</h3><p class="kpi">${list.filter((o) => o.active).length}</p></article>
+    <article class="card"><h3>Expired offers</h3><p class="kpi">${list.filter((o) => o.expiresAt && new Date(o.expiresAt) < new Date()).length}</p></article>
+    <article class="card"><h3>Total redemptions</h3><p class="kpi">${totalRedemptions}</p></article>
+    <article class="card"><h3>Conversion rate</h3><p class="kpi">${conversionRate.toFixed(1)}%</p></article>
+    <article class="card"><h3>Revenue impact</h3><p class="kpi">€${totalDiscount.toFixed(2)}</p></article>
+  `;
+  table.innerHTML = `
+    <thead><tr><th>Campaign</th><th>Discount</th><th>Audience</th><th>Redemptions</th><th>Expiration</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>
+      ${list.map((offer) => `
+      <tr>
+        <td>
+          <strong>${escapeHtml(offer.title || offer.code)}</strong>
+          <div class="metric-subtle">${escapeHtml(offer.code)}</div>
+        </td>
+        <td>${offer.discountType === 'percentage' ? `${Number(offer.discountValue)}%` : `€${Number(offer.discountValue).toFixed(2)}`}</td>
+        <td>${escapeHtml((offer.applicablePlans || []).join(', ') || (offer.targetPlan || 'all'))}</td>
+        <td class="offer-usage-progress">
+          <div>${Number(offer.currentUses || 0)}${offer.maxUses != null ? `/${Number(offer.maxUses)}` : ''}</div>
+          <div class="offers-progress"><i style="width:${offer.maxUses ? Math.min(100, Math.round((Number(offer.currentUses || 0) / Number(offer.maxUses || 1)) * 100)) : 0}%"></i></div>
+        </td>
+        <td>${offer.expiresAt ? fmtDate(offer.expiresAt) : '—'}</td>
+        <td><span class="offer-status-pill" data-status="${offer.active ? (offer.expiresAt && new Date(offer.expiresAt) < new Date() ? 'expired' : 'active') : 'disabled'}">${offer.active ? (offer.expiresAt && new Date(offer.expiresAt) < new Date() ? 'expired' : 'active') : 'disabled'}</span></td>
+        <td>
+          <button class="btn ghost" title="${offer.active ? 'Disable campaign' : 'Enable campaign'}" aria-label="${offer.active ? 'Disable campaign' : 'Enable campaign'}" data-offer-toggle="${offer.id}" data-next="${offer.active ? 'disable' : 'enable'}">${offer.active ? '⏸' : '▶'}</button>
+          <button class="btn ghost" title="Copy code" aria-label="Copy code" data-offer-copy="${escapeHtml(offer.code)}">⧉</button>
+          <button class="btn ghost" title="Toggle details" aria-label="Toggle details" data-offer-details-toggle="${offer.id}">⋯</button>
+          <button class="btn ghost" title="Delete campaign" aria-label="Delete campaign" data-offer-delete="${offer.id}">🗑</button>
+        </td>
+      </tr>
+      <tr id="offer-details-${offer.id}" hidden>
+        <td colspan="7">
+          <div class="metric-subtle">Assignments: ${escapeHtml(offer?.analytics?.assignments || 0)} · Redemptions: ${escapeHtml(offer?.analytics?.redemptions || 0)} · Revenue impact: €${escapeHtml(Number(offer?.analytics?.discountTotalEur || 0).toFixed(2))} · Campaign type: ${escapeHtml(offer.campaignType || 'global')}</div>
+        </td>
+      </tr>`).join('') || emptyRow(7, 'No campaigns yet.')}
+    </tbody>`;
+  table.querySelectorAll('[data-offer-toggle]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        await apiOffers('POST', { action: btn.getAttribute('data-next'), offerId: btn.getAttribute('data-offer-toggle') });
+        await loadOffers();
+      } catch (e) {
+        showBanner(e.message || 'Could not update offer.');
+      }
+    });
+  });
+  table.querySelectorAll('[data-offer-delete]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const offerId = btn.getAttribute('data-offer-delete');
+      const key = `delete:${offerId}`;
+      if (!isDangerArmed(key)) {
+        armDangerAction(key, 4);
+        renderOfferActionStatus('Confirm delete', 'warn', 'Click delete again within 4 seconds to proceed.');
+        return;
+      }
+      try {
+        await apiOffers('POST', { action: 'delete', offerId });
+        offersDangerArmed.delete(key);
+        await loadOffers();
+      } catch (e) {
+        showBanner(e.message || 'Could not delete offer.');
+      }
+    });
+  });
+  table.querySelectorAll('[data-offer-copy]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const code = btn.getAttribute('data-offer-copy') || '';
+      try {
+        await navigator.clipboard.writeText(code);
+        renderOfferActionStatus('Campaign code copied.', 'success', `Code: ${escapeHtml(code)}`);
+      } catch (_e) {
+        showBanner('Could not copy code.');
+      }
+    });
+  });
+  table.querySelectorAll('[data-offer-details-toggle]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-offer-details-toggle');
+      const row = document.getElementById(`offer-details-${id}`);
+      if (!row) return;
+      row.hidden = !row.hidden;
+    });
+  });
+}
+async function loadOffers() {
+  renderOffersLoading();
+  const data = await apiOffers('GET');
+  offersUiState.degraded = Boolean(data?.degraded);
+  if (data?.degraded) {
+    renderOfferActionStatus('Offers subsystem is temporarily unavailable.', 'warn', 'Campaign operations may be limited until recovery.');
+  }
+  renderOffersPanel(data.offers || []);
+}
+
+async function adminOpsFetch() {
+  const r = await fetch(`${API_BASE_URL}/api/admin/ops/state`, { credentials: 'include' });
+  const text = await r.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error('Invalid JSON from ops state endpoint');
+  }
+  if (r.status === 403) throw new Error(data.message || 'Forbidden');
+  if (!r.ok) throw new Error(data.message || data.error || `HTTP ${r.status}`);
+  return data;
+}
+
+function fmtDurationSec(sec) {
+  if (sec == null || Number.isNaN(Number(sec))) return '—';
+  const s = Math.max(0, Number(sec));
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+  return `${Math.floor(s / 86400)}d`;
+}
+
+function deriveOpsMetrics(state) {
+  const items = Array.isArray(state?.items) ? state.items : [];
+  const incidents = items.filter((i) => (i.entity_type || '') === 'incident');
+  const tasks = items.filter((i) => {
+    const t = i.entity_type || '';
+    return t === 'task' || t === 'growth';
+  });
+  let staleDerived = 0;
+  let escN = 0;
+  const escalations = [];
+  let deployN = 0;
+  let payAnom = 0;
+  let parseBad = 0;
+  const staleRows = [];
+  for (const it of tasks) {
+    const d = it.derived || {};
+    if (d.stale || d.blocked_stale) {
+      staleDerived += 1;
+      const f = it.fields || {};
+      staleRows.push({
+        title: f.title || it.source_path || 'item',
+        path: it.source_path || ''
+      });
+    }
+    const f = it.fields || {};
+    const ps = typeof it.parse_status === 'string' ? it.parse_status : '';
+    const vErr = Array.isArray(it.validation?.errors) ? it.validation.errors.length : 0;
+    if (ps !== 'ok' || vErr > 0) parseBad += 1;
+    const esc = f.escalation;
+    if (esc && typeof esc === 'object' && !Array.isArray(esc)) {
+      escN += 1;
+      escalations.push({
+        title: f.title || it.source_path || 'item',
+        reason: esc.reason != null ? String(esc.reason) : '—',
+        from: esc.from_agent != null ? String(esc.from_agent) : '',
+        at: esc.escalated_at != null ? String(esc.escalated_at) : ''
+      });
+    }
+    const domains = Array.isArray(f.domains) ? f.domains : [];
+    const tags = Array.isArray(f.tags) ? f.tags : [];
+    const domS = domains.join(' ').toLowerCase();
+    const tagS = tags.join(' ').toLowerCase();
+    if (domS.includes('deployment') || tagS.includes('deploy') || tagS.includes('pm2') || tagS.includes('vps')) {
+      deployN += 1;
+    }
+    const pri = String(f.priority || '').toUpperCase();
+    if (
+      (domS.includes('auth') || domS.includes('stripe') || domS.includes('billing') || tagS.includes('oauth') || tagS.includes('payment')) &&
+      (pri === 'P0' || pri === 'P1')
+    ) {
+      payAnom += 1;
+    }
+  }
+  const summary = state?.summary || {};
+  const staleSummary = typeof summary.stale_count === 'number' ? summary.stale_count : staleDerived;
+  const byOwner = summary.counts_by_owner && typeof summary.counts_by_owner === 'object' ? summary.counts_by_owner : {};
+  let peakOwner = '—';
+  let peakN = 0;
+  for (const [k, v] of Object.entries(byOwner)) {
+    const n = Number(v);
+    if (n > peakN) {
+      peakN = n;
+      peakOwner = k;
+    }
+  }
+  const scanErrN = Array.isArray(state?.errors) ? state.errors.length : 0;
+  return {
+    incidentCount: incidents.length,
+    taskCount: tasks.length,
+    staleCount: staleSummary,
+    staleDerivedCount: staleDerived,
+    escalationCount: escN,
+    escalations: escalations.slice(0, 20),
+    deploymentSignals: deployN,
+    authPaymentSignals: payAnom,
+    ownershipPeak: peakOwner,
+    ownershipPeakN: peakN,
+    parseBad,
+    scanErrN,
+    staleRows: staleRows.slice(0, 25)
+  };
+}
+
+function renderOpsAccessDenied() {
+  const obs = document.getElementById('opsObservabilityHost');
+  const widgets = document.getElementById('opsWidgetsHost');
+  if (obs) obs.innerHTML = '';
+  if (widgets) {
+    widgets.innerHTML =
+      '<p class="admin-muted">Your role cannot access the operations dashboard (requires admin or super admin).</p>';
+  }
+}
+
+function renderOpsCommandCenter(envelope) {
+  const obs = document.getElementById('opsObservabilityHost');
+  const widgets = document.getElementById('opsWidgetsHost');
+  const escList = document.getElementById('opsEscalationFeed');
+  const staleList = document.getElementById('opsStaleFeed');
+  const errHost = document.getElementById('opsErrorHost');
+  if (errHost) {
+    errHost.hidden = true;
+    errHost.textContent = '';
+  }
+  const state = envelope.state || {};
+  const m = deriveOpsMetrics(state);
+  const contractOk = envelope.contract_valid !== false;
+  const snapSt = envelope.snapshot_status || state.snapshot_status || '—';
+  const degraded = snapSt === 'degraded' || !contractOk || m.scanErrN > 0 || m.parseBad > 0;
+
+  if (obs) {
+    obs.innerHTML = `
+      <div class="admin-ops-obs-grid">
+        <div class="admin-ops-obs-card ${degraded ? 'admin-ops-obs-card--warn' : ''}">
+          <div class="admin-ops-obs-label">Snapshot</div>
+          <div class="admin-ops-obs-value">${statusBadge(snapSt, degraded ? 'warn' : 'ok')}</div>
+          <div class="admin-ops-obs-meta">contract: ${contractOk ? statusBadge('valid', 'ok') : statusBadge('mismatch', 'err')}</div>
+        </div>
+        <div class="admin-ops-obs-card">
+          <div class="admin-ops-obs-label">generated_at</div>
+          <div class="admin-ops-obs-value">${escapeHtml(envelope.generated_at || '—')}</div>
+          <div class="admin-ops-obs-meta">Age: ${escapeHtml(fmtDurationSec(envelope.snapshot_age_sec))}</div>
+        </div>
+        <div class="admin-ops-obs-card">
+          <div class="admin-ops-obs-label">Parser / load</div>
+          <div class="admin-ops-obs-value">${escapeHtml(String(envelope.parser_version || state.parser_version || '—'))}</div>
+          <div class="admin-ops-obs-meta">source: ${escapeHtml(String(envelope.source || '—'))} · fetched ${escapeHtml(fmtDate(envelope.fetched_at))}</div>
+        </div>
+        <div class="admin-ops-obs-card ${m.parseBad || m.scanErrN ? 'admin-ops-obs-card--warn' : ''}">
+          <div class="admin-ops-obs-label">Parse health</div>
+          <div class="admin-ops-obs-value">${escapeHtml(String(m.parseBad))} items</div>
+          <div class="admin-ops-obs-meta">scan errors: ${escapeHtml(String(m.scanErrN))}</div>
+        </div>
+      </div>
+      ${degraded ? `<div class="admin-ops-banner-warn" role="status">Degraded snapshot or validation issues — verify parser output before trusting counts.</div>` : ''}
+    `;
+  }
+
+  if (widgets) {
+    const cards = [
+      ['Active incidents', String(m.incidentCount), 'incident entity_type in snapshot'],
+      ['Open tasks / growth', String(m.taskCount), 'task + growth items'],
+      ['Stale (summary)', String(m.staleCount), 'from summary.stale_count'],
+      ['Escalations', String(m.escalationCount), 'tasks with escalation.reason'],
+      ['Deployment signals', String(m.deploymentSignals), 'domains/tags heuristic'],
+      ['Auth / payment (P0–P1)', String(m.authPaymentSignals), 'billing/auth domain heuristic'],
+      ['Ownership load (peak)', `${m.ownershipPeak} (${m.ownershipPeakN})`, 'from summary.counts_by_owner']
+    ];
+    widgets.innerHTML = cards
+      .map(
+        ([k, v, hint]) => `
+      <article class="card">
+        <h3>${escapeHtml(k)}</h3>
+        <p>${escapeHtml(v)}</p>
+        <div class="metric-subtle">${escapeHtml(hint)}</div>
+      </article>`
+      )
+      .join('');
+  }
+
+  if (escList) {
+    escList.innerHTML = m.escalations.length
+      ? m.escalations
+          .map(
+            (e) =>
+              `<li><strong>${escapeHtml(e.title)}</strong> — ${escapeHtml(e.reason)}${
+                e.from ? ` <span class="admin-muted">← ${escapeHtml(e.from)}</span>` : ''
+              }${e.at ? `<br><span class="admin-muted">${escapeHtml(e.at)}</span>` : ''}</li>`
+          )
+          .join('')
+      : '<li class="admin-muted">None in snapshot.</li>';
+  }
+  if (staleList) {
+    staleList.innerHTML = m.staleRows.length
+      ? m.staleRows.map((r) => `<li><strong>${escapeHtml(r.title)}</strong><br><span class="admin-muted">${escapeHtml(r.path)}</span></li>`).join('')
+      : '<li class="admin-muted">None flagged stale on tasks/growth.</li>';
+  }
+
+  const shell = document.getElementById('adminDashboardShell');
+  const embedFromDom = shell?.dataset?.opsEmbed?.trim() || '';
+  const embedUrl =
+    (typeof window.CUTUP_OPS_IFRAME_URL === 'string' && window.CUTUP_OPS_IFRAME_URL.trim()) || embedFromDom;
+  const wrap = document.getElementById('opsEmbedWrap');
+  const frame = document.getElementById('opsEmbedFrame');
+  if (wrap && frame) {
+    if (embedUrl) {
+      wrap.hidden = false;
+      if (frame.getAttribute('src') !== embedUrl) frame.setAttribute('src', embedUrl);
+    } else {
+      wrap.hidden = true;
+      frame.removeAttribute('src');
+    }
+  }
+}
+
+async function loadOpsCommandCenter() {
+  if (!canAccessOpsCommandCenter()) {
+    renderOpsAccessDenied();
+    return;
+  }
+  if (window.CutupAdminAiState?.load) {
+    return window.CutupAdminAiState.load({ fullRender: true });
+  }
+  const obs = document.getElementById('opsObservabilityHost');
+  if (obs) obs.innerHTML = '<p class="admin-muted">Loading operational snapshot…</p>';
+  try {
+    const envelope = await adminOpsFetch();
+    renderOpsCommandCenter(envelope);
+  } catch (e) {
+    if (obs) obs.innerHTML = '';
+    const errHost = document.getElementById('opsErrorHost');
+    if (errHost) {
+      errHost.hidden = false;
+      errHost.textContent = e.message || String(e);
+    }
+    const widgets = document.getElementById('opsWidgetsHost');
+    if (widgets) widgets.innerHTML = '';
+    const escList = document.getElementById('opsEscalationFeed');
+    const staleList = document.getElementById('opsStaleFeed');
+    if (escList) escList.innerHTML = '';
+    if (staleList) staleList.innerHTML = '';
+  }
+}
+
+function getInitialAdminSection() {
+  try {
+    const q = new URLSearchParams(window.location.search);
+    const section = (q.get('section') || '').toLowerCase();
+    if (section === 'pages' || section === 'blog' || section === 'users') return null;
+    if (section === 'ops' || section === 'command-center') return 'ops';
+    const h = (window.location.hash || '').replace(/^#/, '');
+    if (h === 'ops' || h === 'command-center') return 'ops';
+  } catch (_e) {}
+  return null;
+}
+
+async function loadHealth() {
+  if (window.CutupAdminHealth?.load) return window.CutupAdminHealth.load();
+  renderHealthPanel(await apiGet('health', { legacy: '1' }));
+}
 async function loadBlogPosts() {
   const data = await apiGet('blogPosts');
   blogPostsCache = data.posts || [];
@@ -1713,10 +2330,25 @@ async function refreshSection(section) {
   if (section === 'usage') return loadUsage();
   if (section === 'outputs') return loadOutputs();
   if (section === 'payments') return loadPayments();
+  if (section === 'offers') return loadOffers();
+  if (section === 'creator-wall') {
+    if (typeof window.loadCreatorWallAdmin === 'function') return window.loadCreatorWallAdmin();
+    return Promise.resolve();
+  }
   if (section === 'health') return loadHealth();
+  if (section === 'ops') return loadOpsCommandCenter();
   if (section === 'blog') return loadBlogPosts();
+  if (section === 'pages' || section === 'blog') {
+    const cur = window.CutupCmsNav?.getCurrent?.() || {};
+    return window.CutupCmsNav?.navigate?.(section, cur.view || 'all', { replace: true });
+  }
+  if (section === 'content-pages') return window.CutupCmsNav?.navigate?.('pages', 'all', { replace: true });
+  if (section === 'content-blog') return window.CutupCmsNav?.navigate?.('blog', 'all', { replace: true });
   if (section === 'administrators') return loadAdmins();
-  if (section === 'audit') return loadAuditPanel();
+  if (section === 'audit') {
+    if (window.CutupAdminAuditLog?.load) return window.CutupAdminAuditLog.load();
+    return loadAuditPanel();
+  }
 }
 
 function setupAdminMobileNav() {
@@ -1752,7 +2384,7 @@ function setupAdminMobileNav() {
 
   backdrop.addEventListener('click', close);
 
-  sidebar.querySelectorAll('.nav-btn, .nav-submenu-item').forEach((el) => {
+  sidebar.querySelectorAll('.nav-btn, .nav-submenu-item, .cms-nav-item').forEach((el) => {
     el.addEventListener('click', () => {
       if (mq.matches) close();
     });
@@ -1765,11 +2397,37 @@ function setupAdminMobileNav() {
 
 function setupNavigation() {
   document.querySelectorAll('.nav-btn[data-section]').forEach((btn) => {
+    if (btn.closest('#navContentHub') || btn.closest('#navUsersHub')) return;
     btn.addEventListener('click', async () => {
-      if (btn.closest('.users-submenu')) closeUsersFlyout();
       const section = btn.getAttribute('data-section');
+
+      if (window.CutupContentEditor?.isActive?.()) {
+        const leave = await window.CutupContentEditor.requestLeave();
+        if (leave !== 'leave') return;
+        if (window.CutupContentEditor.destroyCurrentEditor) {
+          window.CutupContentEditor.destroyCurrentEditor();
+        } else {
+          window.CutupContentEditor.destroy();
+        }
+      }
+
+      if (!window.CutupCmsNav?.isCmsSection?.(section)) {
+        window.CutupAdminSidebar?.collapseContentStudio?.();
+      }
+      if (section !== 'users' && section !== 'administrators') {
+        window.CutupAdminSidebar?.closeUsersRoot?.();
+      }
+
+      clearCmsUrlParams();
+      if (
+        section &&
+        !window.CutupCmsNav?.isCmsSection?.(section) &&
+        section !== 'users' &&
+        section !== 'administrators'
+      ) {
+        window.CutupAdminFilterState?.setAdminNavUrl?.(section);
+      }
       activateAdminSection(section);
-      document.getElementById('navUsersGroup')?.classList.remove('users-menu--tap-open');
       try {
         await refreshSection(section);
       } catch (e) {
@@ -1778,27 +2436,20 @@ function setupNavigation() {
     });
   });
 
-  const usersFlyout = document.getElementById('navUsersGroup');
-  const usersTrigger = document.getElementById('navUsersTrigger');
-  if (usersFlyout && usersTrigger) {
-    const isCoarseOrNoHover = () => window.matchMedia('(hover: none), (pointer: coarse)').matches;
-    usersTrigger.addEventListener('click', (ev) => {
-      if (!isCoarseOrNoHover()) return;
-      ev.preventDefault();
-      usersFlyout.classList.toggle('users-menu--tap-open');
-    });
-    document.addEventListener('click', (ev) => {
-      if (!isCoarseOrNoHover() || !usersFlyout.classList.contains('users-menu--tap-open')) return;
-      if (!usersFlyout.contains(ev.target)) usersFlyout.classList.remove('users-menu--tap-open');
-    });
-    if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
-      usersFlyout.addEventListener('mouseenter', openUsersSubmenuHover);
-      usersFlyout.addEventListener('mouseleave', scheduleUsersSubmenuHoverClose);
-    }
-  }
+  window.CutupCmsNav?.init?.();
+  window.CutupUsersNav?.init?.({
+    refreshSection,
+    runEditorLeaveGuard: () => window.CutupCmsNav?.runEditorLeaveGuard?.() ?? Promise.resolve(true)
+  });
 }
 
 function setupActions() {
+  document.getElementById('opsRefreshBtn')?.addEventListener('click', () =>
+    loadOpsCommandCenter().catch((e) => showBanner(e.message || 'Could not refresh ops snapshot.'))
+  );
+  document.getElementById('healthRefreshBtn')?.addEventListener('click', () =>
+    loadHealth().catch((e) => showBanner(e.message || 'Could not refresh system health.'))
+  );
   document.getElementById('adminLogoutBtn')?.addEventListener('click', async () => {
     try {
       await fetch(`${API_BASE_URL}/api/admin/logout`, {
@@ -1806,6 +2457,8 @@ function setupActions() {
         credentials: 'include'
       });
     } catch {}
+    window.CutupAdminAuth?.stop?.();
+    window.CutupAdminAuth?.clearSensitiveAdminState?.();
     goToAdminLoginPage();
   });
   document.getElementById('createAdminBtn')?.addEventListener('click', async () => {
@@ -1830,6 +2483,173 @@ function setupActions() {
   document.getElementById('usersReloadBtn')?.addEventListener('click', () => loadUsers().catch((e) => showBanner(e.message)));
   document.getElementById('usageReloadBtn')?.addEventListener('click', () => loadUsage().catch((e) => showBanner(e.message)));
   document.getElementById('paymentsApplyFiltersBtn')?.addEventListener('click', () => loadPayments().catch((e) => showBanner(e.message)));
+  const campaignSelect = document.getElementById('offerCampaignSelect');
+  campaignSelect?.addEventListener('change', () => {
+    offersUiState.selectedCampaignId = campaignSelect.value || '';
+  });
+  bindOfferTabs();
+  const resolveSelectedOfferId = async () => {
+    const selected = String(campaignSelect?.value || offersUiState.selectedCampaignId || '').trim();
+    if (selected) return selected;
+    await loadOffers();
+    const retry = String(campaignSelect?.value || offersUiState.selectedCampaignId || '').trim();
+    if (retry) return retry;
+    throw new Error('Select a campaign first.');
+  };
+  document.getElementById('offerCreateBtn')?.addEventListener('click', async () => {
+    try {
+      const plansEl = document.getElementById('offerTargetPlans');
+      const selectedPlans = plansEl ? Array.from(plansEl.selectedOptions || []).map((o) => o.value).filter(Boolean) : [];
+      const applicablePlans = selectedPlans.length ? selectedPlans : ['starter', 'pro', 'business'];
+      const created = await apiOffers('POST', {
+        action: 'create',
+        title: document.getElementById('offerTitle')?.value || '',
+        description: '',
+        discountType: document.getElementById('offerDiscountType')?.value || 'percentage',
+        discountValue: Number(document.getElementById('offerDiscountValue')?.value || 0),
+        maxUses: document.getElementById('offerMaxUses')?.value || null,
+        expiresAt: document.getElementById('offerExpiresAt')?.value || null,
+        applicablePlans
+      });
+      const code = created?.offer?.code || 'auto-generated';
+      renderOfferActionStatus('Campaign created', 'success', `Code: ${escapeHtml(code)}`);
+      const successHost = document.getElementById('offerCreateSuccessHost');
+      if (successHost) {
+        successHost.innerHTML = `<div class="offers-success-card">Campaign created successfully.<br>Code: <strong>${escapeHtml(code)}</strong></div>`;
+      }
+      await loadOffers();
+    } catch (e) {
+      showBanner(e.message || 'Could not create offer.');
+    }
+  });
+  document.getElementById('offerCreatePromotionBtn')?.addEventListener('click', async () => {
+    try {
+      const sourcePlan = document.getElementById('promoSourcePlan')?.value || '';
+      const targetPlan = document.getElementById('promoTargetPlan')?.value || '';
+      if (!sourcePlan || !targetPlan) throw new Error('Select source and target plans.');
+      const data = await apiOffers('POST', {
+        action: 'create_plan_promotion',
+        title: document.getElementById('offerTitle')?.value || 'Plan promotion',
+        discountType: document.getElementById('offerDiscountType')?.value || 'percentage',
+        discountValue: Number(document.getElementById('offerDiscountValue')?.value || 0),
+        sourcePlan,
+        targetPlan,
+        expiresAt: document.getElementById('offerExpiresAt')?.value || null
+      });
+      const jobHost = document.getElementById('offersJobStatusHost');
+      if (jobHost) {
+        jobHost.innerHTML = `
+          <div class="offers-job-status">
+            <strong>Status:</strong> queued
+            <div class="offers-progress"><i style="width:20%"></i></div>
+          </div>
+        `;
+      }
+      if (data?.jobId) {
+        waitForOfferJob(data.jobId, 120000, (status) => {
+          if (!jobHost) return;
+          const pct = status === 'queued' ? 20 : status === 'running' ? 60 : status === 'completed' ? 100 : 100;
+          const emailState = status === 'queued' ? 'queued' : status === 'running' ? 'sending' : status === 'completed' ? 'sent' : 'failed';
+          jobHost.innerHTML = `
+            <div class="offers-job-status">
+              <strong>Status:</strong> ${escapeHtml(status)}
+              <div>Email delivery: ${escapeHtml(emailState)}</div>
+              <div class="offers-progress"><i style="width:${pct}%"></i></div>
+            </div>
+          `;
+        })
+          .then((job) => {
+            const inserted = Number(job?.result?.insertedAssignments || 0);
+            renderOfferDeliveryDebug(job?.result || {});
+            if (!inserted) {
+              renderOfferActionStatus('No users received this campaign', 'warn', '0 eligible users matched this campaign.');
+            } else {
+              renderOfferActionStatus('Campaign distributed', 'success', `${inserted} users received this campaign.`);
+            }
+          })
+          .catch((e) => {
+            if (jobHost) {
+              jobHost.innerHTML = `
+                <div class="offers-job-status">
+                  <strong>Status:</strong> failed
+                  <div>${escapeHtml(e.message || 'Job failed')}</div>
+                  <div class="offers-progress"><i style="width:100%"></i></div>
+                </div>
+              `;
+            }
+            showBanner(e.message || 'Plan promotion job failed.');
+          });
+      }
+      await loadOffers();
+    } catch (e) {
+      showBanner(e.message || 'Could not create plan promotion.');
+    }
+  });
+  document.getElementById('offerAssignEmailBtn')?.addEventListener('click', async () => {
+    try {
+      const data = await apiOffers('POST', {
+        action: 'assign_email',
+        offerId: await resolveSelectedOfferId(),
+        email: document.getElementById('offerAssignEmail')?.value || ''
+      });
+      const distribution = data?.distribution || {};
+      renderOfferDeliveryDebug(distribution);
+      if (Number(distribution.insertedAssignments || 0) > 0) {
+        renderOfferActionStatus('Campaign distributed', 'success', '1 user received this campaign.');
+      } else if (Number(distribution.matchedUsers || 0) === 0) {
+        renderOfferActionStatus('No users received this campaign', 'warn', 'No user matched this email.');
+      } else {
+        renderOfferActionStatus('No new assignments created', 'warn', 'User already had this campaign.');
+      }
+    } catch (e) {
+      showBanner(e.message || 'Could not assign offer.');
+    }
+  });
+  document.getElementById('offerAssignPlanBtn')?.addEventListener('click', async () => {
+    try {
+      const data = await apiOffers('POST', {
+        action: 'assign_plan',
+        offerId: await resolveSelectedOfferId(),
+        plan: document.getElementById('offerAssignPlan')?.value || ''
+      });
+      const distribution = data?.distribution || {};
+      renderOfferDeliveryDebug(distribution);
+      const inserted = Number(distribution.insertedAssignments || 0);
+      if (inserted > 0) {
+        renderOfferActionStatus('Campaign distributed', 'success', `${inserted} users received this campaign.`);
+      } else {
+        renderOfferActionStatus('No users received this campaign', 'warn', '0 eligible users matched this campaign.');
+      }
+    } catch (e) {
+      showBanner(e.message || 'Could not assign offer.');
+    }
+  });
+  document.getElementById('offerAssignAllBtn')?.addEventListener('click', async () => {
+    try {
+      const selectedId = await resolveSelectedOfferId();
+      const key = `broadcast:${selectedId}`;
+      if (!isDangerArmed(key)) {
+        armDangerAction(key, 4);
+        renderOfferActionStatus('Confirm broadcast', 'warn', 'Click Broadcast Campaign again within 4 seconds.');
+        return;
+      }
+      const data = await apiOffers('POST', {
+        action: 'assign_all',
+        offerId: selectedId
+      });
+      offersDangerArmed.delete(key);
+      const distribution = data?.distribution || {};
+      renderOfferDeliveryDebug(distribution);
+      const inserted = Number(distribution.insertedAssignments || 0);
+      if (inserted > 0) {
+        renderOfferActionStatus('Campaign distributed', 'success', `${inserted} users received this campaign.`);
+      } else {
+        renderOfferActionStatus('No users received this campaign', 'warn', 'No eligible users matched this broadcast.');
+      }
+    } catch (e) {
+      showBanner(e.message || 'Could not assign offer.');
+    }
+  });
   const titleEl = document.getElementById('postTitle');
   const slugEl = document.getElementById('postSlug');
   const contentEl = document.getElementById('postContent');
@@ -2754,6 +3574,10 @@ function setupAuditPanel() {
 
 let cutupAdminBootStarted = false;
 
+window.cutupAdminResetBoot = function cutupAdminResetBoot() {
+  cutupAdminBootStarted = false;
+};
+
 window.cutupAdminBootstrap = async function cutupAdminBootstrap() {
   if (cutupAdminBootStarted) return;
   cutupAdminBootStarted = true;
@@ -2769,23 +3593,64 @@ window.cutupAdminBootstrap = async function cutupAdminBootstrap() {
     return;
   }
   try {
+    window.CutupAdminFilterState?.migrateFiltersFromUrl?.();
+    window.CutupAdminFilterState?.stripFilterParamsFromUrl?.();
+    if (!window.CutupAdminAuth?.hasTabSession?.()) {
+      window.CutupAdminAuth?.markTabSession?.();
+    }
+    window.CutupAdminAuth?.start?.();
     applyRoleToNav();
     fillNewAdminRoleSelect();
     updateAdministratorsToolbarState();
     loadAdminCountries().catch(() => {});
-    const loads = [loadBlogPosts()];
+    const cmsRoute = window.CutupCmsNav?.parseRoute?.();
+    const usersRoute = window.CutupUsersNav?.parseRoute?.();
+    const loads = [];
+    if (cmsRoute?.section) {
+      loads.push({
+        name: `cms-${cmsRoute.section}`,
+        run: () => window.CutupCmsNav.navigate(cmsRoute.section, cmsRoute.view || 'all', { replace: true })
+      });
+    } else if (usersRoute?.section === 'users') {
+      loads.push({
+        name: 'users-nav',
+        run: () => window.CutupUsersNav.navigate(usersRoute.view, { replace: true, skipGuard: true })
+      });
+    }
     if (panelRole !== 'editor') {
       loads.push(
-        loadOverview(),
-        loadUsers(),
-        loadUsage(),
-        loadOutputs(),
-        loadPayments(),
-        loadHealth()
+        { name: 'overview', run: () => loadOverview() },
+        { name: 'users', run: () => loadUsers() },
+        { name: 'usage', run: () => loadUsage() },
+        { name: 'outputs', run: () => loadOutputs() },
+        { name: 'payments', run: () => loadPayments() },
+        { name: 'offers', run: () => loadOffers() },
+        { name: 'creator-wall', run: () => window.loadCreatorWallAdmin?.() },
+        { name: 'health', run: () => loadHealth() }
       );
     }
-    if (panelRole === 'super_admin') loads.push(loadAdmins());
-    await Promise.all(loads);
+    if (panelRole === 'super_admin') loads.push({ name: 'admins', run: () => loadAdmins() });
+    const results = await Promise.allSettled(loads.map((t) => t.run()));
+    const failed = results
+      .map((r, i) => ({ result: r, name: loads[i].name }))
+      .filter((x) => x.result.status === 'rejected');
+    if (failed.length) {
+      console.warn('[admin] partial widget failures:', failed.map((f) => ({ name: f.name, reason: f.result.reason?.message || String(f.result.reason) })));
+      showBanner('Some widgets are temporarily unavailable.');
+    }
+    const initialSection = getInitialAdminSection();
+    if (initialSection === 'ops') {
+      if (!canAccessOpsCommandCenter()) {
+        showBanner('Operations dashboard requires admin or super admin.');
+      } else {
+        activateAdminSection('ops');
+        try {
+          await refreshSection('ops');
+        } catch (e2) {
+          showBanner(e2.message || 'Could not load operations dashboard.');
+        }
+      }
+    }
   } catch (e) {
     showBanner(e.message || 'Admin access is unavailable.');
   }

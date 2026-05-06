@@ -1,5 +1,5 @@
 /**
- * Inline conversion reminders (no modal): email CTA tracking, idle nudge, payment-failed hint.
+ * Inline conversion reminders (no modal): email CTA tracking, payment-failed hint.
  */
 (function () {
   function stripEmailClickParams() {
@@ -58,84 +58,20 @@
     }
   }
 
-  function initIdleBanner(host, options) {
-    var idleMs = (options && options.idleMs) || 120000;
-    var ctaHref = (options && options.ctaHref) || '#tool';
-    var isEligible = options && options.isEligible;
-    var timer = null;
-    function clearT() {
-      if (timer) clearTimeout(timer);
-      timer = null;
-    }
-    function schedule() {
-      clearT();
-      timer = setTimeout(showIdle, idleMs);
-    }
-    function showIdle() {
-      timer = null;
-      try {
-        if (sessionStorage.getItem('cutup_idle_banner_ok') === '1') return;
-        if (hasRecentPaymentFailure() && sessionStorage.getItem('cutup_payfail_banner_ok') !== '1') return;
-        if (isEligible && !isEligible()) return;
-        if (host.classList.contains('cutup-inline-notify--warn') && !host.hidden) return;
-        host.hidden = false;
-        host.className = 'cutup-inline-notify cutup-inline-notify--idle';
-        host.setAttribute('role', 'region');
-        host.innerHTML =
-          '<div class="cutup-inline-notify__inner"><p class="cutup-inline-notify__text">Still there? Pick up where you left off in the tool.</p><a class="cutup-inline-notify__cta" href="' +
-          ctaHref +
-          '">Open tool</a><button type="button" class="cutup-inline-notify__close" aria-label="Dismiss">×</button></div>';
-        host.querySelector('.cutup-inline-notify__close').addEventListener('click', function () {
-          host.hidden = true;
-          try {
-            sessionStorage.setItem('cutup_idle_banner_ok', '1');
-          } catch (_e) {
-            /* noop */
-          }
-        });
-      } catch (_e2) {
-        /* noop */
-      }
-    }
-    function reset() {
-      schedule();
-    }
-    ['mousemove', 'keydown', 'scroll', 'touchstart', 'click'].forEach(function (ev) {
-      document.addEventListener(ev, reset, { passive: true });
-    });
-    schedule();
-  }
-
   var __cutupConversionBannersMounted = false;
 
-  function run(mode) {
+  function run() {
     stripEmailClickParams();
     var host = document.getElementById('cutupInlineNotify');
     if (!host) return;
     mountPaymentFailedBanner(host);
-    if (mode === 'dashboard') {
-      initIdleBanner(host, {
-        idleMs: 180000,
-        ctaHref: '/#tool',
-        isEligible: function () { return true; }
-      });
-    } else {
-      initIdleBanner(host, {
-        idleMs: 120000,
-        ctaHref: '#tool',
-        isEligible: function () {
-          var rs = document.getElementById('resultSection');
-          return !!(rs && rs.style.display !== 'none');
-        }
-      });
-    }
   }
 
   if (typeof window !== 'undefined') {
-    window.cutupInitConversionBanners = function (opts) {
+    window.cutupInitConversionBanners = function () {
       if (__cutupConversionBannersMounted) return;
       __cutupConversionBannersMounted = true;
-      run((opts && opts.mode) || 'landing');
+      run();
     };
   }
 
@@ -144,7 +80,7 @@
       if (!document.getElementById('cutupInlineNotify')) return;
       if (document.querySelector('.dashboard-container')) return;
       if (typeof window.cutupInitConversionBanners === 'function') {
-        window.cutupInitConversionBanners({ mode: 'landing' });
+        window.cutupInitConversionBanners();
       }
     }
     if (document.readyState === 'loading') {

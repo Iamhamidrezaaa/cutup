@@ -1,0 +1,93 @@
+{
+  "slug": "best-free-caption-apps-for-creators-2026",
+  "title": "Best Free Caption Apps for Creators in 2026",
+  "titleSuffix": "(Actually Worth Using)",
+  "deck": "Every app promises one-click captions until you hit the watermark, the export limit, or Safari eats your project. We tested free subtitle apps the way solo creators actually use them — on phones, on LTE, at 11pm.",
+  "excerpt": "We tested free subtitle and caption apps for TikTok, Shorts, and Reels in 2026. Here's what actually works on mobile, what breaks, and which free tools creators still trust.",
+  "category": "Guides",
+  "tags": [
+    "free-caption-apps",
+    "subtitle-tools",
+    "ai-subtitles",
+    "tiktok-captions",
+    "youtube-shorts",
+    "creator-tools",
+    "srt-generator"
+  ],
+  "eyebrow": "Guides · Free tools",
+  "author": "Cutup Editorial",
+  "authorInitials": "CT",
+  "authorRole": "Free-tier stress tests · TikTok + Shorts clips",
+  "publishedAt": "2026-06-03",
+  "updatedAt": "2026-06-03",
+  "readingTimeMinutes": 11,
+  "coverImageUrl": "/cms-media/images/blog/best-free-caption-apps-for-creators-2026-cover.jpg",
+  "heroImageAlt": "Creator comparing free caption apps on phone and laptop with BEST FREE CAPTION APPS 2026 headline",
+  "heroImagePrompt": "Photorealistic 16:9 1920x1080, LEFT bold BEST FREE CAPTION APPS 2026, RIGHT young creator comparing phones and laptop with CapCut/TikTok caption UIs, export buttons, watermark hints, dark navy creator-tech, teal accent, no logos.",
+  "metaTitle": "Best Free Caption Apps for Creators in 2026 (Actually Worth Using) — Cutup",
+  "metaDescription": "We tested free subtitle and caption apps for TikTok, Shorts, and Reels in 2026. Here's what actually works on mobile, what breaks, and which free tools creators still trust.",
+  "ogTitle": "Best Free Caption Apps for Creators in 2026 (Actually Worth Using)",
+  "ogDescription": "Honest 2026 tests of CapCut, Captions, VEED, Kapwing, Clipchamp, and lightweight browser tools — free tiers, mobile pain, and SRT exports.",
+  "status": "published",
+  "source": "static",
+  "faqSchema": [
+    {
+      "question": "What is the best free caption app in 2026?",
+      "answer": "It depends on your finish line. CapCut is best for native TikTok/Shorts burn-in on mobile. For a free SRT file without a heavy editor, lightweight browser tools like Cutup beat full timeline apps. VEED and Kapwing are strong on desktop free tiers but hit export walls fast."
+    },
+    {
+      "question": "Are automatic captions accurate now?",
+      "answer": "Word accuracy on clear English is solid in 2026. Usability is the gap — punctuation, chunk length, and timing still need cleanup. Automatic does not mean ready to publish without a skim."
+    },
+    {
+      "question": "Which subtitle app works best on iPhone?",
+      "answer": "Native CapCut or TikTok captioning inside the app you upload from usually beats mobile Safari editors. For text-only SRT work, use a lightweight browser tool on Wi-Fi rather than a full NLE in Safari."
+    },
+    {
+      "question": "Can I export SRT files for free?",
+      "answer": "Some tools gate SRT behind paid plans. Cutup, some open-source desktop apps, and manual YouTube Studio downloads (when available) can produce SRT without a subscription — always check export limits before you edit 40 cues."
+    },
+    {
+      "question": "Why do mobile subtitle apps crash?",
+      "answer": "RAM limits, background tab kills on iOS, large uploads on LTE, and preview engines that are heavier than the phone can sustain. Exporting on Wi-Fi and captioning the final vertical file reduces crashes."
+    },
+    {
+      "question": "Is CapCut still good for captions?",
+      "answer": "Yes for burn-in on Shorts and TikTok when you edit and post from the same app. Less ideal when you need a reusable SRT for YouTube Studio or a desktop NLE — export and timing can drift after aggressive trims."
+    },
+    {
+      "question": "What subtitle app works best for Shorts?",
+      "answer": "Caption the vertical export you actually upload. CapCut or YouTube Shorts native tools for burn-in; transcript-first SRT workflow (generate file, import to CapCut) when you need control. See our Shorts workflow guide for the full stack."
+    },
+    {
+      "question": "Are browser subtitle tools reliable?",
+      "answer": "Reliable for text-first jobs on stable Wi-Fi. Unreliable for long timeline sessions on mobile Safari. Treat browsers as SRT generators, not as phone NLEs."
+    }
+  ],
+  "related": [
+    {
+      "href": "/blog/best-subtitle-workflow-youtube-shorts-2026",
+      "eyebrow": "Guide",
+      "title": "Best subtitle workflow for YouTube Shorts",
+      "description": "Vertical safe zones and caption stacks that survive export."
+    },
+    {
+      "href": "/blog/how-to-generate-srt-subtitles",
+      "eyebrow": "Tutorial",
+      "title": "How to generate SRT subtitles",
+      "description": "Own the file before your editor fights you."
+    },
+    {
+      "href": "/blog/why-subtitle-timing-always-looks-off-2026",
+      "eyebrow": "Guide",
+      "title": "Why subtitle timing still looks off",
+      "description": "When words are right but pacing feels cheap."
+    },
+    {
+      "href": "/blog/why-youtube-auto-captions-fail-2026",
+      "eyebrow": "Guide",
+      "title": "Why YouTube auto captions fail",
+      "description": "Platform captions vs files you control."
+    }
+  ]
+}

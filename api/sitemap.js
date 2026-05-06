@@ -1,17 +1,13 @@
-import { getPool, isBillingDbConfigured } from './db/pool.js';
 import { SEO_GUIDE_TYPES } from './seo-guide-config.js';
+import { listAllBlogArticles } from './blog-resolve.js';
 
 const BASE_URL = 'https://cutup.shop';
 const STATIC_PATHS = [
   '/',
   '/blog.html',
-  '/subtitle-generator.html',
   '/video-to-text.html',
   '/translate-video.html',
-  '/tools.html',
-  '/tools.html?type=youtube-to-text',
-  '/tools.html?type=instagram-subtitles',
-  '/tools.html?type=tiktok-caption-generator',
+  '/faq.html',
   ...SEO_GUIDE_TYPES.map((t) => `/tools/${t}-guide.html`),
 ];
 
@@ -31,16 +27,16 @@ function escapeXml(text) {
     .replace(/'/g, '&apos;');
 }
 
-function buildSitemapXml(postRows = []) {
+function buildSitemapXml(blogArticles = []) {
   const staticLastmod = new Date().toISOString().slice(0, 10);
   const urls = [
     ...STATIC_PATHS.map((path) => ({
       loc: `${BASE_URL}${path}`,
       lastmod: staticLastmod,
     })),
-    ...postRows.map((row) => ({
-      loc: `${BASE_URL}/blog.html?slug=${encodeURIComponent(String(row.slug || ''))}`,
-      lastmod: toLastmod(row.published_at || row.updated_at) || staticLastmod,
+    ...blogArticles.map((article) => ({
+      loc: `${BASE_URL}/blog/${encodeURIComponent(String(article.slug || ''))}`,
+      lastmod: toLastmod(article.publishedAt || article.updatedAt) || staticLastmod,
     })),
   ];
   const body = urls
@@ -52,27 +48,14 @@ function buildSitemapXml(postRows = []) {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>\n`;
 }
 
-async function listPublishedPostsForSitemap() {
-  if (!isBillingDbConfigured()) return [];
-  const pool = getPool();
-  const result = await pool.query(
-    `SELECT slug, published_at, updated_at
-     FROM blog_posts
-     WHERE status = 'published'
-       AND COALESCE(slug, '') <> ''
-     ORDER BY COALESCE(published_at, updated_at) DESC NULLS LAST`
-  );
-  return result.rows;
-}
-
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
     return res.status(405).json({ error: 'Method not allowed' });
   }
   try {
-    const posts = await listPublishedPostsForSitemap();
-    const xml = buildSitemapXml(posts);
+    const blogArticles = await listAllBlogArticles();
+    const xml = buildSitemapXml(blogArticles);
     res.setHeader('Content-Type', 'application/xml; charset=utf-8');
     res.setHeader('Cache-Control', 'public, max-age=600, s-maxage=600');
     return res.status(200).send(xml);

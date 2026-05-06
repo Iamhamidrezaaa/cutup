@@ -109,27 +109,598 @@ const API_BASE_URL =
   typeof window !== 'undefined' && typeof window.CUTUP_API_BASE !== 'undefined' ? window.CUTUP_API_BASE : '';
 const DASHBOARD_HISTORY_KEY = 'cutup_dashboard_history'; // Shared key for localStorage
 let currentSession = null;
+window.CutupApp = window.CutupApp || {
+  activePlatform: 'youtube',
+  currentUrl: '',
+  pendingAction: null,
+  processingState: 'idle',
+  authState: 'anonymous',
+  /** idle | pending | ready | error — subscription fetch vs session */
+  subscriptionHydration: 'idle',
+  /** true only after /api/auth?action=me succeeds — not just localStorage */
+  sessionVerified: false
+};
 
-/** Backend still meters in minutes; users see video-sized chunks (~5–10 min typical). */
+/**
+ * Single source of truth for Cutup session id (localStorage + in-memory mirror).
+ * OAuth and some flows set localStorage; keep currentSession in sync to avoid guest UI drift.
+ */
+function getCutupSessionId() {
+  try {
+    const ls = localStorage.getItem('cutup_session');
+    if (ls && String(ls).trim()) return String(ls).trim();
+  } catch (_e) {
+    /* ignore */
+  }
+  return currentSession && String(currentSession).trim() ? String(currentSession).trim() : '';
+}
+
+function cutupSessionIsVerified() {
+  return window.CutupApp?.sessionVerified === true;
+}
+
+function cutupMarkSessionVerified(verified, source) {
+  try {
+    window.CutupApp.sessionVerified = Boolean(verified);
+    console.log('[session-sync] verified', { verified: Boolean(verified), source: source || '' });
+  } catch (_e) {
+    /* ignore */
+  }
+}
+
+function setCutupSession(sessionId, source) {
+  const sid = sessionId && String(sessionId).trim() ? String(sessionId).trim() : '';
+  if (!sid) return;
+  try {
+    localStorage.setItem('cutup_session', sid);
+  } catch (_e) {
+    /* ignore */
+  }
+  currentSession = sid;
+  cutupMarkSessionVerified(false, source ? `${source}_pending_verify` : 'pending_verify');
+  try {
+    window.CutupApp.authState = 'authenticated';
+  } catch (_e2) {
+    /* ignore */
+  }
+  try {
+    console.log('[session-sync]', source || 'set', { hasSession: true });
+  } catch (_e3) {
+    /* ignore */
+  }
+}
+
+function clearCutupSession(reason) {
+  try {
+    localStorage.removeItem('cutup_session');
+  } catch (_e) {
+    /* ignore */
+  }
+  currentSession = null;
+  cutupMarkSessionVerified(false, reason || 'cleared');
+  try {
+    window.CutupApp.authState = 'anonymous';
+    window.CutupApp.subscriptionHydration = 'idle';
+  } catch (_e2) {
+    /* ignore */
+  }
+  try {
+    console.log('[session-sync] cleared', reason || '');
+  } catch (_e3) {
+    /* ignore */
+  }
+}
+
+function cutupResumeModeActive() {
+  try {
+    return new URLSearchParams(window.location.search).get('resume') === '1';
+  } catch (_e) {
+    return false;
+  }
+}
+
+/** Default duration estimate for quota pre-checks when duration is unknown (not shown as “~N videos” to users). */
 const AVG_VIDEO_MINUTES = 7;
 
-function videosUsedEstimate(usedMinutes) {
-  return Math.max(0, Math.ceil((Number(usedMinutes) || 0) / AVG_VIDEO_MINUTES));
+/** Bump when deploying script.js — forces browsers/CDN to fetch fresh asset. */
+const CUTUP_SCRIPT_BUILD = '20260521-fix-youtube-after';
+if (typeof window !== 'undefined') {
+  window.CUTUP_SCRIPT_BUILD = CUTUP_SCRIPT_BUILD;
+  console.log('[cutup-script-build]', CUTUP_SCRIPT_BUILD);
 }
 
-function videosRemainingEstimate(usedMinutes, limitMinutes) {
-  const remMin = Math.max(0, (Number(limitMinutes) || 0) - (Number(usedMinutes) || 0));
-  return Math.floor(remMin / AVG_VIDEO_MINUTES);
+const YT_VIDEO_ID_RE = /^[a-zA-Z0-9_-]{11}$/;
+
+function safeParseUrlClient(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  try {
+    return new URL(s.startsWith('http://') || s.startsWith('https://') ? s : `https://${s}`);
+  } catch {
+    return null;
+  }
 }
 
-/** Consistent user-facing error when we cannot complete an action (no raw stack traces). */
-const USER_ERROR_GENERIC = 'We couldn\'t finish that. Wait a moment and try again.';
+/** Strip tracking params before parse/validate (YouTube, Instagram, TikTok). */
+function stripTrackingQueryParamsClient(url) {
+  const u = safeParseUrlClient(url);
+  if (!u) return String(url || '').trim();
+  const drop = new Set([
+    'si', 'feature', 'fbclid', 'igsh', 'igshid',
+    'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'
+  ]);
+  for (const key of [...u.searchParams.keys()]) {
+    if (drop.has(key.toLowerCase())) u.searchParams.delete(key);
+  }
+  u.hash = '';
+  return u.toString();
+}
+
+/** Canonical YouTube ID parser — keep in sync with api/media-url.js */
+function parseYouTubeVideoIdCanonical(urlOrId) {
+  const raw = stripTrackingQueryParamsClient(urlOrId);
+  if (!raw) return null;
+  if (YT_VIDEO_ID_RE.test(raw)) return raw;
+
+  const u = safeParseUrlClient(raw);
+  if (u) {
+    const host = u.hostname.replace(/^www\./i, '').toLowerCase();
+    if (host === 'youtu.be') {
+      const id = u.pathname.split('/').filter(Boolean)[0] || '';
+      return YT_VIDEO_ID_RE.test(id) ? id : null;
+    }
+    if (host === 'youtube.com' || host.endsWith('.youtube.com') || host === 'm.youtube.com') {
+      if (u.pathname === '/watch') {
+        const v = u.searchParams.get('v');
+        return v && YT_VIDEO_ID_RE.test(v) ? v : null;
+      }
+      const m = u.pathname.match(/^\/(shorts|live|embed|v)\/([^/?#]+)/i);
+      if (m && YT_VIDEO_ID_RE.test(m[2])) return m[2];
+    }
+  }
+
+  const patterns = [
+    /youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/i,
+    /youtube\.com\/live\/([a-zA-Z0-9_-]{11})/i,
+    /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/i,
+    /youtube\.com\/watch\?[^#]*v=([a-zA-Z0-9_-]{11})/i,
+    /youtu\.be\/([a-zA-Z0-9_-]{11})/i,
+    /[?&]v=([a-zA-Z0-9_-]{11})/i
+  ];
+  for (const re of patterns) {
+    const m = raw.match(re);
+    if (m && YT_VIDEO_ID_RE.test(m[1])) return m[1];
+  }
+  return null;
+}
+
+function normalizeYouTubeWatchUrlCanonical(url) {
+  const id = parseYouTubeVideoIdCanonical(url);
+  return id ? `https://www.youtube.com/watch?v=${id}` : null;
+}
+
+function isInstagramStoryUrl(url) {
+  const u = safeParseUrlClient(stripTrackingQueryParamsClient(url));
+  if (!u || !u.hostname.toLowerCase().includes('instagram.com')) return false;
+  return /^\/stories\/[^/]+\/\d+\/?$/i.test(u.pathname);
+}
+
+function normalizeInstagramUrlCanonical(url) {
+  const u = safeParseUrlClient(stripTrackingQueryParamsClient(url));
+  if (!u || !u.hostname.toLowerCase().includes('instagram.com')) return null;
+  let path = u.pathname.replace(/\/+$/, '') || '/';
+  path = path.replace(/^\/reels\//i, '/reel/');
+  if (/^\/(reel|p|tv)\/[A-Za-z0-9_-]+\/?$/i.test(path)) {
+    return `https://www.instagram.com${path}${path.endsWith('/') ? '' : '/'}`;
+  }
+  return null;
+}
+
+/** Normalize YouTube URL for API calls; returns { original, cleaned, normalizedUrl, videoId }. */
+function resolveYouTubeUrlForPipeline(inputUrl) {
+  const original = String(inputUrl || '').trim();
+  const cleaned = stripTrackingQueryParamsClient(original);
+  const videoId = parseYouTubeVideoIdCanonical(cleaned);
+  const normalizedUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : null;
+  console.log('[shorts-debug] original', original);
+  console.log('[shorts-debug] normalized', normalizedUrl || cleaned);
+  console.log('[shorts-debug] videoId', videoId);
+  return { original, cleaned, normalizedUrl, videoId };
+}
+
+/** Legacy generic — prefer categorized messages from mapErrorCodeToUserMessage. */
+const USER_ERROR_GENERIC = 'We hit a temporary processing issue. Please try again in a few seconds.';
+
+/** Pipeline step labels — progress bar + trust-preserving orchestration copy. */
+const CUTUP_PIPELINE = {
+  DOWNLOAD: '✓ Downloading video',
+  EXTRACT_AUDIO: '✓ Extracting audio',
+  CHECK_SUBTITLES: '✓ Checking subtitles',
+  SWITCH_ENGINE: '✓ Switching transcription engine',
+  GENERATE_TRANSCRIPT: '✓ Generating transcript',
+  READ_CAPTIONS: '✓ Reading captions',
+  WRITING_SUMMARY: '✓ Writing summary'
+};
+
+/** Shown while transcription runs long (server may be using backup providers). */
+const USER_TRANSCRIPTION_BACKUP_MSG = 'High demand detected. Switching AI engine…';
+const USER_TRANSCRIPTION_FALLBACK_MSG = 'Trying alternative transcription provider…';
+const USER_TRANSCRIPTION_STILL_WORKING_MSG = 'Still processing your video…';
+
+function cutupPulseTranscriptionOrchestration(stage = 0) {
+  const msgs = [
+    USER_TRANSCRIPTION_STILL_WORKING_MSG,
+    USER_TRANSCRIPTION_BACKUP_MSG,
+    USER_TRANSCRIPTION_FALLBACK_MSG
+  ];
+  const text = msgs[Math.min(Math.max(0, stage), msgs.length - 1)];
+  showMessage(text, 'info');
+  const bar = document.getElementById('downloadProgressContainer');
+  if (bar && bar.style.display !== 'none') {
+    const pct = Math.max(typeof progressCurrentPercent === 'number' ? progressCurrentPercent : 0, 32);
+    updateProgressBar(
+      0,
+      0,
+      pct,
+      stage >= 1 ? CUTUP_PIPELINE.SWITCH_ENGINE : CUTUP_PIPELINE.GENERATE_TRANSCRIPT
+    );
+  }
+}
+
+function makeRequestId() {
+  return `req_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function makeTraceId() {
+  const bytes = new Uint8Array(6);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  return `tr_${Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function isMobileBrowser() {
+  if (typeof navigator === 'undefined') return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
+function getPipelineFetchTimeoutMs(kind) {
+  const mobile = isMobileBrowser();
+  if (kind === 'extract') return mobile ? 420000 : 300000;
+  if (kind === 'transcribe') return mobile ? 1080000 : 900000;
+  return mobile ? 600000 : 480000;
+}
+
+let cutupPipelineInFlight = false;
+let cutupLastPipelineRetry = null;
+
+function mapErrorCodeToUserMessage(errorCode) {
+  switch (String(errorCode || '').toUpperCase()) {
+    case 'OPENAI_QUOTA_EXCEEDED':
+      return USER_TRANSCRIPTION_BACKUP_MSG;
+    case 'TRANSCRIPTION_FAILED':
+    case 'ALL_PROVIDERS_FAILED':
+      return `${USER_TRANSCRIPTION_STILL_WORKING_MSG} Our backup engines could not finish this run — please retry in a moment.`;
+    case 'INVALID_AUDIO':
+      return 'We could not read this audio. Try another format or a shorter clip.';
+    case 'QUOTA_EXCEEDED':
+      return "You've reached your monthly limit.";
+    case 'VIDEO_UNAVAILABLE':
+      return 'This video could not be processed.';
+    case 'FILE_TOO_LARGE':
+      return 'This clip is too large for one run. Try a shorter video.';
+    case 'DOWNLOAD_FAILED':
+      return 'The platform temporarily rejected the request.';
+    case 'TRANSCRIPTION_TIMEOUT':
+    case 'PROVIDER_ERROR':
+    case 'UNKNOWN_ERROR':
+      return 'We hit a temporary processing issue. Please try again in a few seconds.';
+    case 'NETWORK_ERROR':
+      return 'Connection issue detected. Please try again.';
+    case 'SESSION_EXPIRED':
+      return 'Your session expired. Please sign in again and retry.';
+    case 'INVALID_URL':
+      return 'This link format is not supported yet.';
+    case 'SHORTS_PARSE_ERROR':
+      return "We couldn't recognize this Shorts link.";
+    case 'PLATFORM_ERROR':
+      return "We couldn't access this video.";
+    case 'INSTAGRAM_STORY_UNSUPPORTED':
+      return 'Instagram Stories are not publicly downloadable. Please use a Reel or Post URL.';
+    case 'TRANSCRIPT_MISSING':
+      return 'No transcript available. Generate subtitles first, then translate.';
+    case 'TRANSLATION_UNAVAILABLE':
+      return 'Translation is temporarily unavailable. Please try again in a few minutes.';
+    case 'TRANSLATION_TIMEOUT':
+      return 'Translation timed out. Please try again.';
+    case 'TRANSLATION_PROVIDER_UNAVAILABLE':
+      return 'Translation service is not configured. Please contact support.';
+    case 'TRANSLATION_SAME_LANGUAGE':
+      return 'Source and target language are the same. Choose a different target language.';
+    case 'TRANSLATION_MALFORMED':
+    case 'TRANSLATION_TIMESTAMP_MISMATCH':
+      return 'Translated subtitles came back in an invalid format. Please try again.';
+    case 'TRANSLATION_UNCHANGED':
+      return 'Translation did not change the text — try again or pick another language.';
+    case 'TRANSLATION_EMPTY_RESPONSE':
+      return 'The translation service returned empty lines. Please retry.';
+    case 'FEATURE_NOT_AVAILABLE':
+      return 'This action is not available on your current plan.';
+    case 'INVALID_TRANSCRIPT_PAYLOAD':
+      return 'Invalid transcript payload. Please regenerate this output and try again.';
+    default:
+      return USER_ERROR_GENERIC;
+  }
+}
+
+function isRetryableErrorCode(errorCode) {
+  const c = String(errorCode || '').toUpperCase();
+  if (['DOWNLOAD_FAILED', 'PLATFORM_ERROR', 'NETWORK_ERROR', 'PROVIDER_ERROR', 'UNKNOWN_ERROR'].includes(c)) {
+    return true;
+  }
+  return ![
+    'OPENAI_QUOTA_EXCEEDED',
+    'INVALID_AUDIO',
+    'QUOTA_EXCEEDED',
+    'VIDEO_UNAVAILABLE',
+    'FILE_TOO_LARGE',
+    'INVALID_URL',
+    'SHORTS_PARSE_ERROR',
+    'SESSION_EXPIRED',
+    'TRANSCRIPT_MISSING',
+    'TRANSLATION_SAME_LANGUAGE',
+    'INSTAGRAM_STORY_UNSUPPORTED',
+    'FEATURE_NOT_AVAILABLE'
+  ].includes(c);
+}
+
+async function fetchWithRetry(url, options = {}, { maxAttempts = 2 } = {}) {
+  let lastErr;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const res = await fetch(url, options);
+      if (attempt < maxAttempts && res.status >= 502 && res.status <= 504) {
+        console.warn('[fetch-retry]', { attempt, status: res.status, url });
+        await new Promise((r) => setTimeout(r, 1200));
+        continue;
+      }
+      return res;
+    } catch (err) {
+      lastErr = err;
+      const retryableNet =
+        err?.name === 'TypeError' ||
+        (err?.name === 'AbortError' && attempt === 1);
+      if (attempt < maxAttempts && retryableNet) {
+        console.warn('[fetch-retry]', { attempt, message: err?.message });
+        await new Promise((r) => setTimeout(r, 1200));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
+
+function buildPipelineErrorFromApi(data, response, traceId) {
+  if (data && data.errorCode) {
+    const errorCode = String(data.errorCode).toUpperCase();
+    const e = new Error(data.message || mapErrorCodeToUserMessage(errorCode));
+    e.errorCode = errorCode;
+    e.pipelineCode = errorCode;
+    e.retryable = data.retryable === true || (data.retryable !== false && isRetryableErrorCode(errorCode));
+    e.traceId = data.traceId || traceId;
+    e.requestId = data.requestId || traceId;
+    e.pipelineStage = data.phase || data.stage || null;
+    if (data.debug && typeof data.debug === 'object') {
+      e.debug = data.debug;
+    }
+    return e;
+  }
+  const legacy = String(data?.error || data?.code || '').toUpperCase();
+  const e = new Error(data?.message || USER_ERROR_GENERIC);
+  e.pipelineCode = legacy || `HTTP_${response?.status || 500}`;
+  e.requestId = data?.requestId || traceId;
+  e.traceId = traceId;
+  if (response?.status === 401) e.errorCode = 'SESSION_EXPIRED';
+  else if (response?.status === 403 && legacy.includes('LIMIT')) e.errorCode = 'QUOTA_EXCEEDED';
+  else if (legacy.includes('TIMEOUT')) e.errorCode = 'TRANSCRIPTION_TIMEOUT';
+  else if (legacy.includes('UNAVAILABLE') || legacy.includes('PRIVATE')) e.errorCode = 'VIDEO_UNAVAILABLE';
+  else if (legacy.includes('SHORTS_PARSE')) e.errorCode = 'SHORTS_PARSE_ERROR';
+  else if (legacy.includes('UNSUPPORTED') || legacy.includes('MALFORMED') || legacy.includes('INVALID')) e.errorCode = 'INVALID_URL';
+  else if (legacy.includes('NETWORK') || legacy.includes('ECONNRESET')) e.errorCode = 'NETWORK_ERROR';
+  else if (legacy.includes('YOUTUBE') || legacy.includes('YTDLP') || legacy.includes('DOWNLOAD')) e.errorCode = 'DOWNLOAD_FAILED';
+  if (e.errorCode) {
+    e.retryable = isRetryableErrorCode(e.errorCode);
+    e.message = mapErrorCodeToUserMessage(e.errorCode);
+  }
+  return e;
+}
+
+function beginPipelineRun() {
+  if (cutupPipelineInFlight) {
+    showMessage('A transcript is already in progress. Please wait…', 'info');
+    return false;
+  }
+  cutupPipelineInFlight = true;
+  clearPipelineRetryUi();
+  return true;
+}
+
+function endPipelineRun() {
+  cutupPipelineInFlight = false;
+}
+
+function clearPipelineRetryUi() {
+  const btn = document.getElementById('pipelineRetryBtn');
+  if (btn) btn.style.display = 'none';
+}
+
+function showPipelineError(error, retryFn) {
+  const errorCode = error?.errorCode || error?.pipelineCode;
+  const retryable = error?.retryable === true || (error?.retryable !== false && isRetryableErrorCode(errorCode));
+  const traceId = error?.traceId || error?.requestId;
+  if (traceId) console.warn('[transcript-trace]', traceId, { errorCode, retryable, stage: error?.pipelineStage || error?.phase });
+  const text = formatPipelineErrorForUi(error);
+  showMessage(text, 'error');
+  const btn = document.getElementById('pipelineRetryBtn');
+  if (!btn) return;
+  if (retryable && typeof retryFn === 'function') {
+    cutupLastPipelineRetry = retryFn;
+    btn.style.display = 'inline-block';
+    btn.onclick = () => {
+      btn.style.display = 'none';
+      if (typeof cutupLastPipelineRetry === 'function') cutupLastPipelineRetry();
+    };
+  } else {
+    clearPipelineRetryUi();
+  }
+}
+
+function mapPipelineErrorToUserMessage(error, fallback = USER_ERROR_GENERIC) {
+  const canonical = String(error?.errorCode || '').toUpperCase();
+  const msg = String(error?.message || '').trim();
+
+  if (canonical === 'OPENAI_QUOTA_EXCEEDED') {
+    return mapErrorCodeToUserMessage(canonical);
+  }
+
+  // Prefer server detail for transcription failures (quota / missing backup provider).
+  if (canonical === 'TRANSCRIPTION_FAILED' || canonical === 'INVALID_AUDIO') {
+    const boilerplate = mapErrorCodeToUserMessage(canonical);
+    if (msg && msg !== USER_ERROR_GENERIC && msg !== boilerplate) {
+      return msg.length > 720 ? `${msg.slice(0, 717)}…` : msg;
+    }
+    return boilerplate;
+  }
+
+  // Show API-provided detail when it differs from boilerplate (otherwise Shorts/Whisper failures always looked "generic").
+  if (canonical && msg && msg !== USER_ERROR_GENERIC) {
+    const boilerplate = mapErrorCodeToUserMessage(canonical);
+    if (msg !== boilerplate) {
+      return msg.length > 720 ? `${msg.slice(0, 717)}…` : msg;
+    }
+  }
+
+  if (canonical) return mapErrorCodeToUserMessage(canonical);
+  const code = String(error?.pipelineCode || error?.code || '').toUpperCase();
+  if (code.includes('LIMIT_EXCEEDED') || /included generations this month/i.test(msg)) {
+    return humanizeLimitReason(msg) || 'You’ve reached your monthly limit.';
+  }
+  if (code.includes('FEATURE_NOT_AVAILABLE') || code.includes('SUBSCRIPTION_INACTIVE')) {
+    return msg || 'This feature isn’t available on your current plan.';
+  }
+  if (code.includes('AUTH_OR_PLAN') || code.includes('NO_SESSION') || code.includes('INVALID_SESSION')) {
+    return 'Your session expired or we couldn’t verify your plan. Sign in again and retry.';
+  }
+  if (code.includes('QUOTA_ERROR') && /openai/i.test(msg)) {
+    return 'Our transcription service is temporarily at capacity. Please try again in a few minutes.';
+  }
+  if (code.includes('CONNECTION_ERROR') || code.includes('ECONNRESET')) {
+    return 'Connection issue detected. Please try again.';
+  }
+  if (code.includes('OPENAI_ERROR') || code.includes('TRANSCRIBE_FAILED') || code.includes('TRANSCRIBE_ERROR')) {
+    if (/timeout|timed out/i.test(msg)) {
+      return 'Processing took longer than expected. Please retry.';
+    }
+    if (msg && !/^transcription failed$/i.test(msg)) {
+      return msg;
+    }
+    return 'Processing took longer than expected. Please retry.';
+  }
+  if (code.includes('FILE_TOO_LARGE')) {
+    return 'This file is too large for one run. Try a shorter clip.';
+  }
+  if (code.includes('DOWNLOAD_FAILED')) {
+    return 'The platform temporarily rejected the request.';
+  }
+  if (code.includes('PLATFORM_ERROR') || code.includes('SOCIAL_DOWNLOAD_EMPTY') || code.includes('AUDIO_EXTRACTION')) {
+    return "We couldn't access this video.";
+  }
+  if (code.includes('EMPTY') || /no transcript returned/i.test(msg)) {
+    return 'We couldn’t get usable text from this video. Try another link or file.';
+  }
+  if (code.includes('INSTAGRAM_STORY')) {
+    return 'Instagram Stories are not publicly downloadable. Please use a Reel or Post URL.';
+  }
+  if (code.includes('UNSUPPORTED_INSTAGRAM_URL')) {
+    return 'Please paste a direct Instagram Reel, Post, or Video link.';
+  }
+  if (code.includes('UNSUPPORTED_TIKTOK_URL')) {
+    return 'Please paste a direct TikTok video link.';
+  }
+  if (code.includes('UNSUPPORTED_YOUTUBE_URL')) {
+    return 'Please paste a direct YouTube video link.';
+  }
+  if (code.includes('MALFORMED_URL') || code.includes('UNSUPPORTED_URL')) {
+    return 'The link format is not supported. Please paste a direct video URL.';
+  }
+  if (code.includes('SOCIAL_LOGIN_REQUIRED')) {
+    return 'This social media link requires login/cookies and is not accessible right now.';
+  }
+  if (code.includes('YTDLP_TIMEOUT')) {
+    return 'Extraction timed out on the media provider. Please try again shortly.';
+  }
+  if (code.includes('YTDLP_SPAWN_FAILED') || code.includes('FFMPEG_MISSING')) {
+    return 'Server dependency error during extraction. Please retry and share the request ID.';
+  }
+  if (code.includes('INSTAGRAM') || code.includes('SOCIAL_DOWNLOAD')) {
+    return 'We couldn’t access this Instagram video. Please check the link and try again.';
+  }
+  if (code.includes('TIKTOK')) {
+    return 'We couldn’t access this TikTok video. Please check the link and try again.';
+  }
+  if (code.includes('TRANSCRIBE_TIMEOUT') || code.includes('OPENAI_TIMEOUT')) {
+    return 'Transcription is taking longer than expected. Please retry in a moment.';
+  }
+  if (code.includes('FFMPEG') || code.includes('MEDIA_PROCESS')) {
+    return 'We couldn’t process the media file. Please try another file or link.';
+  }
+  if (code.includes('NETWORK')) {
+    return 'Connection interrupted during processing. Please try again.';
+  }
+  return fallback;
+}
+
+function formatPipelineErrorForUi(error, fallback = USER_ERROR_GENERIC) {
+  const base = mapPipelineErrorToUserMessage(error, fallback);
+  const traceId = error?.traceId || error?.requestId;
+  let out = base;
+  if (traceId && typeof traceId === 'string' && traceId.startsWith('tr_')) {
+    out = `${base} (ref: ${traceId})`;
+  }
+  const prov = error?.debug?.provider;
+  if (prov != null && typeof prov === 'object') {
+    try {
+      out += `\n\n[Admin debug]\n${JSON.stringify(prov, null, 2)}`;
+    } catch {
+      out += `\n\n[Admin debug]\n${String(prov)}`;
+    }
+  }
+  return out;
+}
+
+async function parseApiErrorMessage(response, fallback = USER_ERROR_GENERIC) {
+  let data = null;
+  try {
+    data = await response.json();
+  } catch {
+    data = null;
+  }
+  const raw =
+    (data && (data.message || data.reason || data.details || data.error)) ||
+    `${response.status} ${response.statusText || ''}`.trim();
+  const normalized = humanizeLimitReason(String(raw || fallback));
+  return normalized || fallback;
+}
 
 /** Plan verification failed (subscription check unreachable). */
 const USER_PLAN_VERIFY_FAIL = 'We couldn\'t verify your plan. Check your connection, refresh the page, and try again.';
 
 /** When limit API returns no reason string (should be rare). */
-const LIMIT_UPGRADE_FALLBACK = 'You\'ve hit your plan limit. Upgrade to keep processing videos.';
+const LIMIT_UPGRADE_FALLBACK =
+  'You’ve used your included videos for this billing month. You can upgrade for more—or try again after your reset date in the dashboard.';
 
 /** Rewrite API limit strings — conversion-focused, no raw billing jargon. */
 function humanizeLimitReason(reason) {
@@ -140,7 +711,7 @@ function humanizeLimitReason(reason) {
     return 'You\'ve hit today\'s free preview cap. Upgrade now and finish this project today—or try again tomorrow.';
   }
   if (/Monthly limit reached/i.test(reason)) {
-    return 'You\'re out of free video allowance this month. Unlock a paid plan and get full SRTs + deeper limits before your next deadline.';
+    return 'You’ve used all included videos for this month. Your dashboard shows when your limit resets—and you can upgrade anytime for a higher monthly allowance.';
   }
   if (/download limit/i.test(reason)) {
     return 'You\'ve used this month\'s download allowance. Upgrade to grab more files without waiting for reset.';
@@ -160,11 +731,270 @@ function humanizeLimitReason(reason) {
   if (/Unable to verify your plan/i.test(reason)) {
     return USER_PLAN_VERIFY_FAIL;
   }
-  return 'We can\'t run that on your current plan. Upgrade to unlock the full workflow—or try again later.';
+  return 'That isn’t available on your current plan right now. Check your dashboard for limits and upgrade options when you need more.';
 }
 
 /** Lightweight viral line for SRT preview & exports (client-side only). */
 const CUTUP_SRT_ATTRIBUTION = '\n# Generated by Cutup — https://cutup.shop\n';
+
+/** Normalize API / pipeline transcription payloads (text vs transcript vs content). */
+function normalizeTranscriptionResult(result) {
+  if (!result) return { text: '', segments: [], language: null };
+  const text = result.text ?? result.transcript ?? result.content ?? '';
+  return {
+    text: String(text || '').trim(),
+    segments: Array.isArray(result.segments) ? result.segments : [],
+    language: result.language ?? null
+  };
+}
+
+function stripPreviewMarkersFromTranscript(text) {
+  return String(text || '')
+    .replace(/\n\n\[Preview only[\s\S]*$/i, '')
+    .replace(/\n\n\[You're seeing ~[\s\S]*$/i, '')
+    .replace(/\n\n\[Preview ends here[\s\S]*$/i, '')
+    .trim();
+}
+
+function getStoredTranscriptText() {
+  if (window.originalFullText && String(window.originalFullText).trim()) {
+    return stripPreviewMarkersFromTranscript(window.originalFullText);
+  }
+  const cached = window.cutupLastTranscription;
+  if (cached?.fullText && String(cached.fullText).trim()) {
+    return stripPreviewMarkersFromTranscript(cached.fullText);
+  }
+  if (cached?.transcription && String(cached.transcription).trim()) {
+    return stripPreviewMarkersFromTranscript(cached.transcription);
+  }
+  const el = document.getElementById('fulltext');
+  if (el?.textContent?.trim()) {
+    return stripPreviewMarkersFromTranscript(el.textContent);
+  }
+  return '';
+}
+
+function stripSrtForTranslation(srt) {
+  return String(srt || '')
+    .replace(CUTUP_SRT_ATTRIBUTION, '')
+    .replace(/\n# Generated by Cutup[^\n]*/gi, '')
+    .replace(/\[Preview only[\s\S]*?(?=\n\n\d+\n|$)/gi, '')
+    .replace(/\[Preview ends here[\s\S]*?(?=\n\n\d+\n|$)/gi, '')
+    .trim();
+}
+
+function getStoredSrtContent() {
+  const raw = window.originalSrtContent || window.currentSrtContent || '';
+  const cleaned = stripSrtForTranslation(raw);
+  if (cleaned) return cleaned;
+  const previewEl = document.getElementById('srtPreview');
+  if (previewEl?.textContent?.trim()) {
+    const fromDom = stripSrtForTranslation(previewEl.textContent);
+    if (fromDom) return fromDom;
+  }
+  const cached = window.cutupLastTranscription;
+  if (Array.isArray(cached?.segments) && cached.segments.length > 0) {
+    return generateSRTFromSubtitles(cached.segments);
+  }
+  const text = getStoredTranscriptText();
+  return text ? buildPseudoSrtFromPlainText(text) : '';
+}
+
+const TRANSLATE_FETCH_TIMEOUT_MS = 180000;
+
+function normalizeSourceLanguageForApi(code) {
+  const raw = String(code || '').toLowerCase().trim();
+  if (!raw || raw === 'auto' || raw === 'und' || raw === 'unknown') return undefined;
+  return normalizeLangCode(code) || undefined;
+}
+
+/** POST /api/translate-srt with timeout and session header. */
+async function fetchTranslateSrtApi(body, sessionId) {
+  const stableSid = sessionId || getCutupSessionId();
+  if (!stableSid) {
+    const e = new Error('Sign in to translate and use pro exports.');
+    e.errorCode = 'NO_SESSION';
+    throw e;
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TRANSLATE_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/translate-srt`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': stableSid
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+    const text = await response.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = null;
+    }
+    if (!response.ok) {
+      const errCode = String(data?.errorCode || data?.code || 'TRANSLATION_UNAVAILABLE').toUpperCase();
+      const detail =
+        (data && data.message) ||
+        parseApiErrorMessageFromBody(data, response.status) ||
+        'Translation temporarily unavailable.';
+      const err = new Error(
+        errCode === 'OPENAI_QUOTA_EXCEEDED' && !/translate/i.test(String(data?.phase || ''))
+          ? mapErrorCodeToUserMessage('OPENAI_QUOTA_EXCEEDED')
+          : errCode === 'TRANSLATION_UNAVAILABLE' ||
+              errCode === 'TRANSLATION_TIMEOUT' ||
+              errCode === 'TRANSLATION_PROVIDER_UNAVAILABLE'
+            ? mapErrorCodeToUserMessage(errCode)
+            : detail
+      );
+      err.errorCode = errCode;
+      err.phase = data?.phase || null;
+      err.traceId = data?.traceId || null;
+      err.retryable = data?.retryable !== false;
+      if (data?.debug && typeof data.debug === 'object') {
+        err.debug = data.debug;
+      }
+      console.warn('[translate-failed]', {
+        status: response.status,
+        errorCode: err.errorCode,
+        phase: err.phase,
+        traceId: err.traceId
+      });
+      throw err;
+    }
+    if (data && data.success === false) {
+      const ec = String(data.errorCode || 'TRANSLATION_UNAVAILABLE').toUpperCase();
+      const err = new Error(
+        ec === 'TRANSLATION_UNAVAILABLE' ||
+          ec === 'TRANSLATION_TIMEOUT' ||
+          ec === 'TRANSLATION_PROVIDER_UNAVAILABLE'
+          ? mapErrorCodeToUserMessage(ec)
+          : ec === 'OPENAI_QUOTA_EXCEEDED' && !/translate/i.test(String(data?.phase || ''))
+            ? mapErrorCodeToUserMessage('OPENAI_QUOTA_EXCEEDED')
+            : data.message || 'Translation failed.'
+      );
+      err.errorCode = ec;
+      err.phase = data.phase || null;
+      err.traceId = data.traceId || null;
+      err.retryable = data.retryable !== false;
+      if (data.debug && typeof data.debug === 'object') {
+        err.debug = data.debug;
+      }
+      throw err;
+    }
+    console.log('[translate-render]', {
+      traceId: data?.traceId || null,
+      segmentCount: data?.segmentCount,
+      targetLanguage: data?.targetLanguage
+    });
+    return data;
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      const err = new Error('Translation timed out. Please try again.');
+      err.errorCode = 'TRANSLATION_TIMEOUT';
+      throw err;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function parseApiErrorMessageFromBody(data, httpStatus) {
+  if (data?.message) return String(data.message);
+  if (data?.details) return String(data.details);
+  if (data?.error && typeof data.error === 'string') return data.error;
+  if (httpStatus) return `Translation request failed (HTTP ${httpStatus}).`;
+  return '';
+}
+
+/** Build valid SRT from plain text (multi-paragraph safe) for translate-srt API. */
+function buildPseudoSrtFromPlainText(text) {
+  const cleaned = String(text || '').replace(/\r\n/g, '\n').trim();
+  if (!cleaned) return '';
+  const parts = cleaned.split(/\n{2,}/).map((p) => p.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const chunks = [];
+  for (const part of parts) {
+    if (part.length <= 220) {
+      chunks.push(part);
+      continue;
+    }
+    const sentences = part.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [part];
+    let buf = '';
+    for (const s of sentences) {
+      const next = (buf + ' ' + s).trim();
+      if (next.length > 220 && buf) {
+        chunks.push(buf);
+        buf = s.trim();
+      } else {
+        buf = next;
+      }
+    }
+    if (buf) chunks.push(buf);
+  }
+  let t = 0;
+  let out = '';
+  chunks.forEach((chunk, i) => {
+    const dur = Math.min(12, Math.max(2, Math.ceil(chunk.length / 22)));
+    const start = formatSRTTime(t);
+    const end = formatSRTTime(t + dur);
+    out += `${i + 1}\n${start} --> ${end}\n${chunk}\n\n`;
+    t += dur;
+  });
+  return out;
+}
+
+function extractPlainTextFromTranslatedSrt(srtContent) {
+  const cleaned = stripSrtForTranslation(srtContent);
+  const segments = parseSRTToSegments(cleaned);
+  if (segments.length > 0) {
+    return segments.map((s) => s.text).join('\n\n').trim();
+  }
+  return String(cleaned || '').split('\n').slice(2).join('\n').trim();
+}
+
+function mapTranslateErrorMessage(error, fallback = 'Translation temporarily unavailable.') {
+  const code = String(error?.errorCode || error?.pipelineCode || error?.code || '').toUpperCase();
+  const msg = String(error?.message || '').trim();
+  const phase = String(error?.phase || error?.pipelineStage || '');
+  if (code === 'OPENAI_QUOTA_EXCEEDED') {
+    if (/translate/i.test(phase)) {
+      return 'Translation is temporarily unavailable. Please try again in a few minutes.';
+    }
+    return mapErrorCodeToUserMessage('OPENAI_QUOTA_EXCEEDED');
+  }
+  if (
+    code === 'TRANSLATION_UNAVAILABLE' ||
+    code === 'TRANSLATION_TIMEOUT' ||
+    code === 'TRANSLATION_PROVIDER_UNAVAILABLE'
+  ) {
+    return mapErrorCodeToUserMessage(code);
+  }
+  if (code.includes('TRANSCRIPT_MISSING') || /no text to translate|no subtitles/i.test(msg)) {
+    return 'No transcript available. Generate subtitles first, then translate.';
+  }
+  if (code.includes('INVALID') && /segment|payload|srt/i.test(msg)) {
+    return 'Invalid transcript payload. Please regenerate this output and try again.';
+  }
+  if (code.includes('TIMEOUT') || /timed out/i.test(msg)) {
+    return 'Translation timeout. Please try again.';
+  }
+  if (code.includes('FEATURE_NOT_AVAILABLE') || code.includes('TRANSLATION_PLAN')) {
+    return msg || 'Translation is not available on your current plan.';
+  }
+  if (code.startsWith('TRANSLATION_') && msg) {
+    const ref = error?.traceId && String(error.traceId).startsWith('tr_') ? ` (ref: ${error.traceId})` : '';
+    return `${msg}${ref}`;
+  }
+  if (phase && msg) {
+    return `${msg} (phase: ${phase})`;
+  }
+  if (msg && !/couldn't finish|temporary processing issue/i.test(msg)) return msg;
+  return fallback;
+}
 
 /** Enable: localStorage.setItem('cutup_debug_lang','1'). Logs only language codes and lengths (no transcript text). */
 function cutupLangDebug(payload) {
@@ -187,7 +1017,8 @@ function getResultCopyText() {
     return (document.getElementById('fulltext')?.textContent || '').trim();
   }
   if (tabId === 'srt-tab') {
-    return (document.getElementById('srtPreview')?.textContent || '').trim();
+    const raw = document.getElementById('srtPreviewRaw')?.textContent || document.getElementById('srtPreview')?.textContent || '';
+    return stripSrtForTranslation(raw).trim();
   }
   return '';
 }
@@ -223,11 +1054,12 @@ let cutupStickyPrimaryState = 'download';
 let cutupExitIntentTimer = null;
 
 function cutupIsLoggedIn() {
-  try {
-    return !!localStorage.getItem('cutup_session');
-  } catch {
-    return false;
-  }
+  return !!getCutupSessionId() && cutupSessionIsVerified();
+}
+
+/** Session id in storage (may be stale if API is down). */
+function cutupHasStoredSession() {
+  return !!getCutupSessionId();
 }
 
 /** Survives Google OAuth full-page redirect; mirrored on window for debugging */
@@ -376,9 +1208,68 @@ function cutupClearPendingAction() {
   } catch (_e) {
     /* ignore */
   }
+  window.CutupApp.pendingAction = null;
+}
+
+function ensureSingleHomepageTool() {
+  const tools = Array.from(document.querySelectorAll('#tool.download-section'));
+  if (tools.length <= 1) return;
+  tools.slice(1).forEach((el) => el.remove());
+}
+
+function detectPlatform(url) {
+  const v = String(url || '').trim();
+  if (!v) return null;
+  if (isYouTubeUrl(v)) return 'youtube';
+  if (isInstagramUrl(v)) return 'instagram';
+  if (isTikTokUrl(v)) return 'tiktok';
+  return null;
+}
+
+function showAuthTransition(opts = {}) {
+  const title = opts.title || 'Sign in to continue';
+  const text =
+    opts.text ||
+    'To keep going and save this work in your Cutup workspace, please sign in to your account.';
+  const sub = opts.sub || 'Taking you to login now…';
+
+  let overlay = document.getElementById('cutupAuthTransition');
+  if (overlay) {
+    const t = overlay.querySelector('.cutup-auth-transition__title');
+    const b = overlay.querySelector('.cutup-auth-transition__text');
+    const s = overlay.querySelector('.cutup-auth-transition__sub');
+    if (t) t.textContent = title;
+    if (b) b.textContent = text;
+    if (s) s.textContent = sub;
+    return overlay;
+  }
+  overlay = document.createElement('div');
+  overlay.id = 'cutupAuthTransition';
+  overlay.className = 'cutup-auth-transition';
+  overlay.innerHTML = `
+    <div class="cutup-auth-transition__panel" role="status" aria-live="polite">
+      <div class="cutup-auth-transition__spinner" aria-hidden="true"></div>
+      <p class="cutup-auth-transition__title"></p>
+      <p class="cutup-auth-transition__text"></p>
+      <p class="cutup-auth-transition__sub"></p>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector('.cutup-auth-transition__title').textContent = title;
+  overlay.querySelector('.cutup-auth-transition__text').textContent = text;
+  overlay.querySelector('.cutup-auth-transition__sub').textContent = sub;
+  document.body.style.overflow = 'hidden';
+  return overlay;
+}
+
+function hideAuthTransition() {
+  document.getElementById('cutupAuthTransition')?.remove();
+  document.body.style.overflow = '';
 }
 
 async function cutupTriggerLoginForPendingAction(type, payload) {
+  window.CutupApp.pendingAction = { type, payload: payload || {} };
+  window.CutupApp.authState = 'redirecting';
   cutupWriteLocalPendingActionForLogin(type, payload);
   try {
     const envelope = { type, payload: payload || {}, v: 1 };
@@ -395,6 +1286,13 @@ async function cutupTriggerLoginForPendingAction(type, payload) {
       (payload && payload.platform) || currentPlatform || 'youtube'
     );
   }
+  showAuthTransition({
+    title: 'Sign in to continue',
+    text:
+      'To keep going and save this project in your Cutup workspace, please sign in with Google. Your link and settings are saved.',
+    sub: 'Redirecting to Google sign-in…'
+  });
+  await new Promise((r) => setTimeout(r, 700));
   await cutupTriggerGoogleLogin();
 }
 
@@ -442,6 +1340,10 @@ async function resumeCutupPendingAction() {
   }
 }
 
+async function resumePendingWorkflow() {
+  await resumeCutupPendingAction();
+}
+
 const CUTUP_PENDING_PLAN_AFTER_AUTH_KEY = 'cutup_pending_plan_after_auth';
 const CUTUP_PAYMENT_RETRY_KEY = 'cutup_payment_retry';
 
@@ -459,11 +1361,12 @@ function inferCutupPaymentProvider() {
 }
 
 async function cutupTriggerGoogleLogin() {
-  if (cutupIsLoggedIn()) {
+  if (cutupSessionIsVerified()) {
     console.log('[script] Already authenticated; skipping Google OAuth redirect');
     resetGoogleButtonState();
     return;
   }
+  window.CutupApp.authState = 'redirecting';
   const btn = document.getElementById('loginBtn');
   if (btn) {
     btn.disabled = true;
@@ -479,7 +1382,9 @@ async function cutupTriggerGoogleLogin() {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('[script] Auth error response:', response.status, errorText);
-      throw new Error(`Server error: ${response.status}`);
+      const err = new Error(`Server error: ${response.status}`);
+      err.httpStatus = response.status;
+      throw err;
     }
     const data = await response.json();
     if (!data?.authUrl) {
@@ -490,33 +1395,37 @@ async function cutupTriggerGoogleLogin() {
   } catch (error) {
     console.error('[script] Google login failed:', error);
     resetGoogleButtonState();
-    alert('Google sign-in failed. Please try again.');
+    hideAuthTransition();
+    const st = Number(error?.httpStatus || 0);
+    if (st === 502 || st === 503 || st === 504) {
+      showMessage(
+        'Cutup API is temporarily unavailable (server error). Please try again in a minute or contact support if this persists.',
+        'error'
+      );
+    } else {
+      showMessage('Google sign-in failed. Please try again.', 'error');
+    }
     throw error;
   }
 }
 
-const CUTUP_LANDING_PAID_PLANS = ['starter', 'pro', 'business', 'advanced'];
+const CUTUP_LANDING_PAID_PLANS = ['starter', 'pro', 'business'];
 
-async function cutupRoutePricingToCheckout(planKey) {
-  const sessionId = localStorage.getItem('cutup_session');
-  if (!sessionId) return;
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/user/profile`, {
-      headers: { 'X-Session-Id': sessionId },
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || !data.profile) {
-      window.location.href = `/dashboard.html?checkoutPlan=${encodeURIComponent(planKey)}`;
-      return;
-    }
-    if (data.profile.incomplete) {
-      window.location.href = `/dashboard.html?checkoutPlan=${encodeURIComponent(planKey)}`;
-      return;
-    }
-    window.location.href = `/checkout.html?plan=${encodeURIComponent(planKey)}`;
-  } catch (_e) {
-    window.location.href = `/dashboard.html?checkoutPlan=${encodeURIComponent(planKey)}`;
+function cutupHandlePlanSelection(planKey, options = {}) {
+  if (window.CutupPlanCheckout?.handlePlanSelection) {
+    return window.CutupPlanCheckout.handlePlanSelection(planKey, options);
   }
+  const plan = String(planKey || '').trim().toLowerCase();
+  if (!localStorage.getItem('cutup_session')) {
+    try {
+      sessionStorage.setItem(CUTUP_PENDING_PLAN_AFTER_AUTH_KEY, plan);
+    } catch (_e) {
+      /* noop */
+    }
+    return cutupTriggerGoogleLogin();
+  }
+  window.location.href = `/checkout.html?plan=${encodeURIComponent(plan)}&source=pricing`;
+  return Promise.resolve({ ok: true, route: 'checkout' });
 }
 
 function setupLandingPricingCheckoutIntercept() {
@@ -538,28 +1447,10 @@ function setupLandingPricingCheckoutIntercept() {
       e.preventDefault();
       e.stopPropagation();
 
-      if (!cutupIsLoggedIn()) {
-        try {
-          sessionStorage.setItem(CUTUP_PENDING_PLAN_AFTER_AUTH_KEY, plan);
-        } catch (_e) {
-          /* noop */
-        }
-        try {
-          await cutupTriggerGoogleLogin();
-        } catch (_e) {
-          try {
-            sessionStorage.removeItem(CUTUP_PENDING_PLAN_AFTER_AUTH_KEY);
-          } catch (_e2) {
-            /* noop */
-          }
-        }
-        return;
-      }
-
       try {
-        await cutupRoutePricingToCheckout(plan);
+        await cutupHandlePlanSelection(plan, { source: 'pricing' });
       } catch (err) {
-        console.error('[script] checkout route from landing failed', err);
+        console.error('[script] plan selection failed', err);
         alert('Could not continue to checkout. Please try again.');
       }
     },
@@ -696,16 +1587,75 @@ function updateFulltextSoftLockVeil() {
     veil.hidden = true;
     veil.setAttribute('aria-hidden', 'true');
     wrap.classList.remove('fulltext-soft-lock-wrap--locked');
+    try {
+      console.log(
+        '[translate-auth-debug]',
+        JSON.stringify({
+          isAuthenticated: cutupIsLoggedIn(),
+          userPlan: window.userSubscription?.plan ?? null,
+          sessionLoaded: window.CutupApp.subscriptionHydration === 'ready',
+          resumeMode: cutupResumeModeActive(),
+          hasTranscript: ((document.getElementById('fulltext')?.textContent || '').trim().length || 0) > 0,
+          paywallTriggered: false,
+          renderBranch: 'soft_unlock_active'
+        })
+      );
+    } catch (_e) {
+      /* ignore */
+    }
     return;
   }
 
   const len = (document.getElementById('fulltext')?.textContent || '').trim().length;
+  const sessionId = getCutupSessionId();
+  const lastOpts = window.cutupLastTranscription && window.cutupLastTranscription.lastDisplayOptions;
+  const previewModeFromState = !!(lastOpts && lastOpts.previewMode === true);
   const previewBanner = document.getElementById('previewUpgradeBanner');
-  const previewOn = previewBanner && previewBanner.style.display === 'block';
+  let previewBannerVisible = false;
+  if (previewBanner) {
+    try {
+      const cs = window.getComputedStyle(previewBanner);
+      previewBannerVisible =
+        !previewBanner.hidden &&
+        previewBanner.style.display !== 'none' &&
+        cs.display !== 'none' &&
+        cs.visibility !== 'hidden';
+    } catch (_e) {
+      previewBannerVisible = previewBanner.style.display === 'block';
+    }
+  }
+  const previewOn = previewModeFromState || previewBannerVisible;
+  const planKey = normalizePlanKey(window.userSubscription && window.userSubscription.plan);
+  const paidPlanCached = planKey !== 'free';
+  const hydration = window.CutupApp.subscriptionHydration || 'idle';
   const shouldLock =
     !previewOn &&
-    !cutupIsLoggedIn() &&
+    !sessionId &&
+    !paidPlanCached &&
     len >= LONG_TRANSCRIPT_SOFT_LOCK_CHARS;
+
+  try {
+    let renderBranch = 'authenticated_or_short_no_lock';
+    if (shouldLock) renderBranch = 'guest_soft_lock';
+    else if (previewOn) renderBranch = 'preview_suppresses_lock';
+    else if (sessionId) renderBranch = 'session_suppresses_guest_lock';
+    else if (paidPlanCached) renderBranch = 'paid_plan_suppresses_guest_lock';
+    else if (hydration === 'pending' && sessionId) renderBranch = 'hydration_pending_session';
+    console.log(
+      '[translate-auth-debug]',
+      JSON.stringify({
+        isAuthenticated: !!sessionId,
+        userPlan: window.userSubscription?.plan ?? null,
+        sessionLoaded: hydration === 'ready',
+        resumeMode: cutupResumeModeActive(),
+        hasTranscript: len > 0,
+        paywallTriggered: shouldLock,
+        renderBranch
+      })
+    );
+  } catch (_e) {
+    /* ignore */
+  }
 
   if (!shouldLock) {
     veil.hidden = true;
@@ -1357,12 +2307,30 @@ function getTranscriptionCacheKey() {
       return `file:${file.name}:${file.size}:${file.lastModified}`;
     }
     if (url && typeof url === 'string' && url.trim()) {
-      return `url:${url.trim()}`;
+      const ytId = parseYouTubeVideoIdCanonical(url.trim());
+      if (ytId) return `url:https://www.youtube.com/watch?v=${ytId}`;
+      return `url:${stripTrackingQueryParamsClient(url.trim())}`;
     }
   } catch (e) {
     /* ignore */
   }
   return '';
+}
+
+function replayCachedResultIfMatch(activeTab = 'fulltext', outputMode = 'fulltext') {
+  const key = getTranscriptionCacheKey();
+  const cached = window.cutupLastTranscription;
+  if (!cached || !key || cached.cacheKey !== key) return false;
+  const hasText = typeof cached.fullText === 'string' && cached.fullText.trim().length > 0;
+  const hasSeg = Array.isArray(cached.segments) && cached.segments.length > 0;
+  if (!hasText && !hasSeg) return false;
+  displayResults(cached.summary, cached.fullText, cached.segments || [], {
+    ...cached.lastDisplayOptions,
+    outputMode,
+    activeTab,
+    cacheReplay: true
+  });
+  return true;
 }
 
 function applyResultOutputMode(resultSection, outputMode) {
@@ -1462,7 +2430,7 @@ const authError = urlParams.get('error');
 
 if (authSuccess === 'success' && sessionId) {
   window.__cutupAuthCallbackHandled = true;
-  localStorage.setItem('cutup_session', sessionId);
+  setCutupSession(sessionId, 'oauth_callback');
   try {
     if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
       chrome.runtime.sendMessage({
@@ -1480,7 +2448,13 @@ if (authSuccess === 'success' && sessionId) {
   const hasResumeIntent =
     pendingLsSnapshot.valid || !!(pendingUrl && String(pendingUrl).trim());
 
-  if (!hasResumeIntent) {
+  console.log('[oauth-return]', { auth: 'success', hasResumeIntent });
+  hideAuthTransition();
+  const checkoutAfterAuth = window.CutupPlanCheckout?.resolvePostLoginRedirect?.();
+  if (checkoutAfterAuth && !hasResumeIntent) {
+    console.log('[checkout-after-oauth]', { url: checkoutAfterAuth });
+    window.location.replace(checkoutAfterAuth);
+  } else if (!hasResumeIntent) {
     window.location.replace(`${window.location.origin}/dashboard.html`);
   } else {
     window.history.replaceState(
@@ -1506,9 +2480,21 @@ if (authSuccess === 'success' && sessionId) {
       }
     }, 500);
   }
+} else if (authError === 'admin_account') {
+  if (window.CutupRoleGuard?.handleUrlAdminLoginError) {
+    window.CutupRoleGuard.handleUrlAdminLoginError();
+  } else {
+    showMessage(
+      'This email belongs to a Cutup administrator. Please use the Operations Console or a separate customer account.',
+      'error'
+    );
+  }
+} else if (authError === 'account_deleted_cooldown' || authError === 'account_blocked') {
+  console.log('[login-blocked]', { surface: 'homepage', error: authError });
+  window.location.replace('/login.html?error=account_blocked');
 } else if (authError) {
   console.error('Auth error:', authError);
-  alert('Sign-in failed. Please try again.');
+  showMessage('Sign-in failed. Please try again.', 'error');
 }
 
 // Load user profile on page load
@@ -1516,7 +2502,9 @@ window.addEventListener('DOMContentLoaded', () => {
   console.log('[script] DOMContentLoaded event fired');
   const savedSession = localStorage.getItem('cutup_session');
   console.log('[script] Saved session from localStorage:', savedSession);
-  
+  window.CutupApp.authState = savedSession ? 'authenticated' : 'anonymous';
+  cutupMarkSessionVerified(false, 'dom_load_pending');
+
   const loginBtn = document.getElementById('loginBtn');
   const googleWrap = document.querySelector('.google-btn-wrapper');
   if (!savedSession) {
@@ -1527,6 +2515,16 @@ window.addEventListener('DOMContentLoaded', () => {
   if (savedSession) {
     currentSession = savedSession;
     if (!window.__cutupAuthCallbackHandled) {
+      const rpCheckout = new URLSearchParams(window.location.search);
+      if (rpCheckout.get('redirect') === 'checkout' && window.CutupPlanCheckout) {
+        const pk = window.CutupPlanCheckout.normalizePlanKey(rpCheckout.get('plan'));
+        if (pk) {
+          const target = window.CutupPlanCheckout.buildCheckoutUrl(pk, { source: 'checkout' });
+          console.log('[post-login-redirect]', { target, reason: 'homepage_query' });
+          window.location.replace(target);
+          return;
+        }
+      }
       setTimeout(() => {
         loadUserProfile().then(async () => {
           const rp = new URLSearchParams(window.location.search);
@@ -1634,7 +2632,7 @@ async function restorePendingUrl(url, platform) {
 }
 
 async function loadUserProfile() {
-  const sessionId = localStorage.getItem('cutup_session');
+  const sessionId = getCutupSessionId();
   console.log('[script] loadUserProfile called, sessionId:', sessionId);
   
   if (!sessionId) {
@@ -1644,6 +2642,7 @@ async function loadUserProfile() {
   }
 
   try {
+    window.CutupApp.subscriptionHydration = 'pending';
     console.log('[script] Fetching user profile from API...');
     const response = await fetch(`${API_BASE_URL}/api/auth?action=me&session=${sessionId}`);
     console.log('[script] Response status:', response.status);
@@ -1653,33 +2652,65 @@ async function loadUserProfile() {
       console.log('[script] User data received:', data);
       
       if (data.user) {
+        if (window.CutupRoleGuard?.handleAuthMePayload?.(data)) {
+          showLoginButton();
+          window.CutupRoleGuard.showAdminLoginBlockedModal?.();
+          return;
+        }
         console.log('[script] User found, showing profile');
+        setCutupSession(sessionId, 'loadUserProfile_ok');
+        cutupMarkSessionVerified(true, 'loadUserProfile_ok');
         showUserProfile(data.user);
-        currentSession = sessionId;
         // Load subscription info and update UI
         await updateButtonsBasedOnSubscription(sessionId);
         await retentionMergeGuestIfNeeded(sessionId);
         await monetizationRefreshPaywallPassive();
       } else {
-        console.warn('[script] No user in response, showing login button');
-        showLoginButton();
+        console.warn('[script] No user in response');
+        if (getCutupSessionId()) {
+          window.CutupApp.subscriptionHydration = 'error';
+        } else {
+          showLoginButton();
+        }
       }
     } else {
       // Session expired or invalid - but don't remove it immediately
       const errorText = await response.text().catch(() => '');
       console.error('[script] Failed to load user profile:', response.status, errorText);
       
-      // Only remove session if it's a 401 (unauthorized) or 403 (forbidden)
       if (response.status === 401 || response.status === 403) {
-        console.log('[script] Session expired, removing from localStorage');
-        localStorage.removeItem('cutup_session');
+        console.log('[script] Session expired, clearing session');
+        clearCutupSession('auth_me_' + response.status);
+        showLoginButton();
+      } else if (response.status === 502 || response.status === 503 || response.status === 504) {
+        cutupMarkSessionVerified(false, 'auth_me_' + response.status);
+        window.CutupApp.subscriptionHydration = 'error';
+        showLoginButton();
+        showMessage(
+          'Could not reach Cutup servers (temporary error). Click Sign in again when the site is back, or retry in a minute.',
+          'error'
+        );
+      } else if (!getCutupSessionId()) {
+        showLoginButton();
+      } else {
+        cutupMarkSessionVerified(false, 'auth_me_' + response.status);
+        window.CutupApp.subscriptionHydration = 'error';
+        showLoginButton();
       }
-      showLoginButton();
     }
   } catch (error) {
     console.error('[script] Error loading user profile:', error);
-    // Don't remove session on network errors
-    showLoginButton();
+    cutupMarkSessionVerified(false, 'auth_me_network');
+    if (getCutupSessionId()) {
+      window.CutupApp.subscriptionHydration = 'error';
+      showLoginButton();
+      showMessage(
+        'Connection to Cutup failed. Check your network, or try Sign in again in a moment.',
+        'error'
+      );
+    } else {
+      showLoginButton();
+    }
   }
 }
 
@@ -1740,20 +2771,58 @@ const CUTUP_PLAN_RANK = {
   free: 0,
   starter: 1,
   pro: 2,
-  advanced: 3,
   business: 3,
 };
 
 function normalizePlanKey(key) {
   if (!key) return 'free';
   key = String(key).toLowerCase();
-  if (key === 'business') return 'business';
+  if (key === 'advanced') return 'business';
   return key;
 }
 
 function cutupIsTopTierPlan(key) {
-  const k = normalizePlanKey(key);
-  return k === 'advanced' || k === 'business';
+  return normalizePlanKey(key) === 'business';
+}
+
+/** API `usage.monthly.minutes` = completed generations this calendar month (not wall-clock minutes). */
+function cutupGenerationCountFromUsage(usage) {
+  const raw = usage?.monthly?.minutes;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+function cutupMonthlyGenerationLimitFromSubscription(sub) {
+  const fromUsage = sub?.usage?.monthlyLimit;
+  if (fromUsage != null && Number(fromUsage) > 0) return Number(fromUsage);
+  const fromRoot = sub?.monthlyGenerationLimit;
+  if (fromRoot != null && Number(fromRoot) > 0) return Number(fromRoot);
+  const plan = normalizePlanKey(sub?.plan);
+  if (typeof window !== 'undefined' && window.CutupPlanDisplay?.monthlyVideosForPlan) {
+    return window.CutupPlanDisplay.monthlyVideosForPlan(plan);
+  }
+  return 3;
+}
+
+/**
+ * Client-side processing cap for disabling Run buttons.
+ * Business/Advanced: never pre-block in UI (dashboard shows "Included"; server still enforces on run).
+ */
+function cutupProcessingQuotaExceeded(sub) {
+  if (!sub) return false;
+  const plan = normalizePlanKey(sub.plan);
+  if (cutupIsTopTierPlan(plan)) return false;
+  const limit = cutupMonthlyGenerationLimitFromSubscription(sub);
+  if (!limit || limit <= 0) return false;
+  return cutupGenerationCountFromUsage(sub.usage) >= limit;
+}
+
+/** Wall-clock estimate for remote audio/media extraction (progress only — not quota). */
+function estimateMediaExtractionDurationSeconds(platform, durationSeconds = 0) {
+  const dur = Math.max(0, Number(durationSeconds) || 0);
+  const base = platform === 'youtube' ? 90 : 75;
+  const scaled = dur > 0 ? Math.ceil(dur * 0.12) + 45 : 0;
+  return Math.min(360, Math.max(base, scaled));
 }
 
 function cutupPricingPreventClick(e) {
@@ -1859,14 +2928,23 @@ async function updateButtonsBasedOnSubscription(sessionId) {
   try {
     const subResponse = await fetch(`${API_BASE_URL}/api/subscription?action=info&session=${sessionId}`);
     if (!subResponse.ok) {
-      // Default to free plan if can't fetch
+      if (getCutupSessionId()) {
+        window.CutupApp.subscriptionHydration = 'error';
+        console.warn(
+          '[subscription] info fetch failed; not applying free-tier UI while session exists',
+          subResponse.status
+        );
+        setButtonsForPaidPlan(false, false, false, null);
+        return;
+      }
       setButtonsForFreePlan();
       applyCutupPricingPlanLocks({ plan: 'free' });
+      window.CutupApp.subscriptionHydration = 'ready';
       return;
     }
     
     const subData = await subResponse.json();
-    const userPlan = subData.plan || 'free';
+    const userPlan = normalizePlanKey(subData.plan || 'free');
     const features = subData.features || {};
     
     // Use API usage data (not localStorage) for button state
@@ -1875,7 +2953,12 @@ async function updateButtonsBasedOnSubscription(sessionId) {
     const apiAudio = apiDownloads.audio || {};
     const apiVideo = apiDownloads.video || {};
     
-    const monthlyLimit = apiUsage.monthlyLimit != null ? apiUsage.monthlyLimit : 15;
+    const monthlyLimit =
+      apiUsage.monthlyLimit != null
+        ? apiUsage.monthlyLimit
+        : (typeof window !== 'undefined' && window.CutupPlanDisplay?.monthlyVideosForPlan
+            ? window.CutupPlanDisplay.monthlyVideosForPlan(userPlan)
+            : 3);
     const audioLimit = apiAudio.limit !== undefined ? apiAudio.limit : 3;
     const videoLimit = apiVideo.limit !== undefined ? apiVideo.limit : 3;
     const limits = { audio: audioLimit, video: videoLimit, minutes: monthlyLimit };
@@ -1890,15 +2973,24 @@ async function updateButtonsBasedOnSubscription(sessionId) {
       dailyLimit != null &&
       dailyLimit > 0 &&
       dailyUsed >= dailyLimit;
-    const monthlyCapExceeded =
-      monthlyLimit != null && monthlyLimit > 0 && minutesUsed >= monthlyLimit;
+    const monthlyCapExceeded = cutupProcessingQuotaExceeded({
+      plan: userPlan,
+      monthlyGenerationLimit: subData.monthlyGenerationLimit,
+      usage: {
+        ...apiUsage,
+        monthlyLimit,
+        monthly: { minutes: minutesUsed, limit: monthlyLimit }
+      }
+    });
     
     // Store subscription info globally
     window.userSubscription = {
       plan: userPlan,
       features: features,
+      monthlyGenerationLimit: subData.monthlyGenerationLimit ?? monthlyLimit,
       usage: {
         ...subData.usage,
+        monthlyLimit,
         downloads: {
           audio: { count: audioCount, limit: audioLimit },
           video: { count: videoCount, limit: videoLimit }
@@ -1911,6 +3003,10 @@ async function updateButtonsBasedOnSubscription(sessionId) {
     const videoExceeded = videoLimit !== null && videoCount >= videoLimit;
     
     console.log('[script] Button state update:', {
+      userPlan,
+      monthlyCapExceeded,
+      generationsUsed: minutesUsed,
+      monthlyGenerationLimit: window.userSubscription.monthlyGenerationLimit,
       audioCount,
       audioLimit,
       audioExceeded,
@@ -1925,11 +3021,18 @@ async function updateButtonsBasedOnSubscription(sessionId) {
       setButtonsForPaidPlan(audioExceeded, videoExceeded, monthlyCapExceeded, limits);
     }
     applyCutupPricingPlanLocks({ plan: userPlan });
+    window.CutupApp.subscriptionHydration = 'ready';
   } catch (error) {
     console.error('Error loading subscription info:', error);
-    // Default to free plan on error
+    if (getCutupSessionId()) {
+      window.CutupApp.subscriptionHydration = 'error';
+      console.warn('[subscription] exception during info fetch; not applying free-tier UI while session exists');
+      setButtonsForPaidPlan(false, false, false, null);
+      return;
+    }
     setButtonsForFreePlan();
     applyCutupPricingPlanLocks({ plan: 'free' });
+    window.CutupApp.subscriptionHydration = 'ready';
   }
 }
 
@@ -1976,8 +3079,8 @@ function setButtonsForFreePlan(audioExceeded = false, videoExceeded = false, mon
   const processingBlocked = monthlyCapExceeded || dailyCapExceeded;
   const processingTitle =
     dailyCapExceeded && !monthlyCapExceeded
-      ? 'You have hit today\'s Free-plan allowance. Try again tomorrow—or upgrade to keep going.'
-      : 'You have used your included videos for this month. Upgrade to process more without interruption.';
+      ? 'You’ve reached today’s usage meter on the Free plan. Try again tomorrow—or upgrade for more headroom.'
+      : 'You’ve used your included videos for this month. See your dashboard for your reset date—or upgrade when you need more volume.';
 
   if (summarizeBtnMain) {
     if (processingBlocked) {
@@ -2049,7 +3152,7 @@ function setButtonsForPaidPlan(audioExceeded = false, videoExceeded = false, mon
   }
   
   const processingTitle =
-    'You have used your included videos for this month. Upgrade to process more without interruption.';
+    'You’ve used your included videos for this month. Open your dashboard to see your reset timing—or pick a higher plan.';
 
   if (summarizeBtnMain) {
     if (monthlyCapExceeded) {
@@ -2088,16 +3191,31 @@ function showLoginButton() {
   }
   const lb = document.getElementById('loginBtn');
   const googleWrap = document.querySelector('.google-btn-wrapper');
-  if (lb) lb.style.display = '';
-  if (googleWrap) googleWrap.style.display = '';
-  document.getElementById('userProfile').style.display = 'none';
-  resetGoogleButtonState();
-  try {
-    if (window.userSubscription) window.userSubscription.plan = 'free';
-  } catch (_e) {
-    /* noop */
+  if (lb) {
+    lb.style.display = '';
+    lb.disabled = false;
+    const label = lb.querySelector('.google-btn-label');
+    if (label) {
+      label.textContent = getCutupSessionId() && !cutupSessionIsVerified() ? 'Sign in again' : 'Sign in with Google';
+    }
   }
-  applyCutupPricingPlanLocks({ plan: 'free' });
+  if (googleWrap) googleWrap.style.display = '';
+  const up = document.getElementById('userProfile');
+  if (up) up.style.display = 'none';
+  resetGoogleButtonState();
+  if (!getCutupSessionId()) {
+    try {
+      if (window.userSubscription) window.userSubscription.plan = 'free';
+    } catch (_e) {
+      /* noop */
+    }
+    applyCutupPricingPlanLocks({ plan: 'free' });
+    try {
+      window.CutupApp.subscriptionHydration = 'idle';
+    } catch (_e2) {
+      /* noop */
+    }
+  }
   updateCutupSocialAuthHints();
 }
 
@@ -2192,8 +3310,7 @@ function showUserProfile(user) {
           console.error('Error logging out:', error);
         }
       }
-      localStorage.removeItem('cutup_session');
-      currentSession = null;
+      clearCutupSession('logout');
       userProfile.classList.remove('active');
       showLoginButton();
       updateFulltextSoftLockVeil();
@@ -2242,6 +3359,15 @@ function resetGoogleButtonState() {
 
 window.addEventListener('pageshow', () => {
   resetGoogleButtonState();
+  try {
+    const ls = localStorage.getItem('cutup_session');
+    if (ls && String(ls).trim() && String(ls).trim() !== String(currentSession || '').trim()) {
+      currentSession = String(ls).trim();
+      window.CutupApp.authState = 'authenticated';
+    }
+  } catch (_e) {
+    /* ignore */
+  }
 });
 
 document.addEventListener('visibilitychange', () => {
@@ -2273,9 +3399,13 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
     e.stopPropagation();
 
-    if (cutupIsLoggedIn()) {
-      console.log('[script] Login click ignored — session already present');
+    if (cutupSessionIsVerified()) {
+      console.log('[script] Login click ignored — session verified');
       return;
+    }
+
+    if (getCutupSessionId() && !cutupSessionIsVerified()) {
+      console.log('[script] Re-auth: stored session could not be verified (API may be down)');
     }
 
     console.log('[script] Login button clicked, fetching auth URL from /api/oauth/google/start...');
@@ -2338,25 +3468,30 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// Check if YouTube URL is valid (accepts any subdomain)
+// Check if YouTube URL is valid — after normalization (Shorts, live, youtu.be, watch?v=)
 function isYouTubeUrl(url) {
   if (!url || !url.trim()) return false;
-  // Check if URL contains youtube.com or youtu.be (any subdomain)
-  return /youtube\.com|youtu\.be/.test(url);
+  return !!parseYouTubeVideoIdCanonical(url);
 }
 
 // Check if TikTok URL is valid (accepts any subdomain including short links)
 function isTikTokUrl(url) {
   if (!url || !url.trim()) return false;
-  // Check if URL contains tiktok.com (any subdomain like vt.tiktok.com, vm.tiktok.com, www.tiktok.com, etc.)
-  return /tiktok\.com/.test(url);
+  try {
+    const u = new URL(url.trim());
+    const h = u.hostname.toLowerCase();
+    if (!h.includes('tiktok.com')) return false;
+    return /^\/@[^/]+\/video\/\d+/i.test(u.pathname) || /^\/t\/[A-Za-z0-9]+/i.test(u.pathname);
+  } catch (_e) {
+    return false;
+  }
 }
 
-// Check if Instagram URL is valid (accepts any subdomain)
+// Check if Instagram URL is valid (reel/reels/p/tv only — not stories)
 function isInstagramUrl(url) {
   if (!url || !url.trim()) return false;
-  // Check if URL contains instagram.com (any subdomain)
-  return /instagram\.com/.test(url);
+  if (isInstagramStoryUrl(url)) return false;
+  return !!normalizeInstagramUrlCanonical(url);
 }
 
 // Check URL based on current platform - strict validation
@@ -2418,6 +3553,13 @@ function getExampleUrl(platform) {
 // Show message (toast-style; timings tuned so errors are readable on mobile)
 function showMessage(text, type = 'info') {
   if (!downloadMessage) return;
+  if (type === 'error') {
+    console.warn('[ui-error-trigger]', {
+      text,
+      isGeneric: text === USER_ERROR_GENERIC,
+      stack: new Error('[ui-error-trigger]').stack
+    });
+  }
   downloadMessage.textContent = text;
   downloadMessage.className = `download-message ${type}`;
   downloadMessage.style.display = 'block';
@@ -2441,32 +3583,24 @@ function trackEvent(eventName, properties = {}) {
   }
 }
 
-// Check if user is logged in
-function checkLogin() {
-  const sessionId = localStorage.getItem('cutup_session');
+// Check if user is logged in — redirect to login page when anonymous.
+function checkLogin(options = {}) {
+  const sessionId = getCutupSessionId();
   if (!sessionId) {
-    // Save current URL and platform before showing login message
     const url = getCurrentUrl();
     const platform = currentPlatform || 'youtube';
-    
+
     if (url && url.trim()) {
-      // Save URL and platform to localStorage
       localStorage.setItem('cutup_pending_url', url);
       localStorage.setItem('cutup_pending_platform', platform);
       console.log('[script] Saved pending URL:', url, 'Platform:', platform);
     }
-    
-    showMessage('Sign in to continue—we saved your link for right after you log in.', 'error');
-    // Scroll to login button
-    document.getElementById('loginBtn')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    // Highlight login button
-    const loginBtn = document.getElementById('loginBtn');
-    if (loginBtn) {
-      loginBtn.style.animation = 'pulse 1s ease-in-out 3';
-      setTimeout(() => {
-        loginBtn.style.animation = '';
-      }, 3000);
-    }
+
+    void cutupTriggerLoginForPendingAction(options.pendingType || 'summarize', {
+      url,
+      platform,
+      ...(options.payload || {})
+    });
     return false;
   }
   return sessionId;
@@ -2494,34 +3628,72 @@ async function handlePaste(inputElement) {
   }
 }
 
-// Setup paste buttons for all platforms
+function updateMainPasteRunState(platform, inputEl, btnEl) {
+  if (!inputEl || !btnEl) return;
+  const v = (inputEl.value || '').trim();
+  if (!v) {
+    btnEl.textContent = '📋 Paste';
+    btnEl.dataset.state = 'paste';
+    return;
+  }
+  const detected = detectPlatform(v);
+  if (!detected) {
+    btnEl.textContent = 'Paste';
+    btnEl.dataset.state = 'invalid';
+    return;
+  }
+  if (detected !== platform) {
+    switchPlatform(detected, { carriedUrl: v });
+    const nextInput = document.getElementById(detected === 'youtube' ? 'youtubeUrlInput' : `${detected}UrlInput`);
+    const nextBtnId =
+      detected === 'youtube' ? 'pasteBtnMain' :
+      detected === 'instagram' ? 'pasteInstagramBtn' :
+      detected === 'tiktok' ? 'pasteTiktokBtn' : '';
+    const nextBtn = nextBtnId ? document.getElementById(nextBtnId) : null;
+    if (nextInput && nextBtn) updateMainPasteRunState(detected, nextInput, nextBtn);
+    return;
+  }
+  btnEl.textContent = 'Run';
+  btnEl.dataset.state = 'run';
+}
+
+function initHomepageToolController() {
+  window.CutupHomepageTool = window.CutupHomepageTool || { initialized: false };
+  if (window.CutupHomepageTool.initialized) return;
+  window.CutupHomepageTool.initialized = true;
+  ensureSingleHomepageTool();
+
+  const bindings = [
+    { platform: 'youtube', inputId: 'youtubeUrlInput', btnId: 'pasteBtnMain' },
+    { platform: 'instagram', inputId: 'instagramUrlInput', btnId: 'pasteInstagramBtn' },
+    { platform: 'tiktok', inputId: 'tiktokUrlInput', btnId: 'pasteTiktokBtn' }
+  ];
+
+  bindings.forEach(({ platform, inputId, btnId }) => {
+    const input = document.getElementById(inputId);
+    const btn = document.getElementById(btnId);
+    if (!input || !btn) return;
+
+    const refresh = () => updateMainPasteRunState(platform, input, btn);
+    input.addEventListener('input', refresh);
+    input.addEventListener('paste', () => setTimeout(refresh, 0));
+    input.addEventListener('keyup', refresh);
+    input.addEventListener('change', refresh);
+
+    btn.addEventListener('click', async () => {
+      if (btn.dataset.state === 'run') {
+        await handleSubtitleWorkflow({ platform, url: input.value, mode: 'subtitle' });
+        return;
+      }
+      await handlePaste(input);
+      refresh();
+    });
+    refresh();
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-  // YouTube paste button
-  const pasteBtnMain = document.getElementById('pasteBtnMain');
-  if (pasteBtnMain) {
-    pasteBtnMain.addEventListener('click', async () => {
-      const input = getCurrentUrlInput();
-      await handlePaste(input);
-    });
-  }
-  
-  // Instagram paste button
-  const pasteInstagramBtn = document.getElementById('pasteInstagramBtn');
-  if (pasteInstagramBtn) {
-    pasteInstagramBtn.addEventListener('click', async () => {
-      const input = document.getElementById('instagramUrlInput');
-      await handlePaste(input);
-    });
-  }
-  
-  // TikTok paste button
-  const pasteTiktokBtn = document.getElementById('pasteTiktokBtn');
-  if (pasteTiktokBtn) {
-    pasteTiktokBtn.addEventListener('click', async () => {
-      const input = document.getElementById('tiktokUrlInput');
-      await handlePaste(input);
-    });
-  }
+  initHomepageToolController();
 });
 
 // Setup event listeners for all platform buttons
@@ -2641,16 +3813,24 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  initHeroPreviewTabs();
   wireHeroQuickStart();
 });
 
 function initHeroPreviewTabs() {
+  ensureSingleHomepageTool();
   const tabs = Array.from(document.querySelectorAll('.hero-platform-tab'));
   const title = document.getElementById('heroPreviewToolTitle');
   const input = document.getElementById('heroPreviewInput');
   const pasteBtn = document.getElementById('heroPreviewPasteBtn');
   if (!tabs.length || !title || !input || !pasteBtn) return;
+  let hint = document.getElementById('heroPreviewInlineHint');
+  if (!hint) {
+    hint = document.createElement('p');
+    hint.id = 'heroPreviewInlineHint';
+    hint.className = 'hero-preview-inline-hint';
+    input.closest('.hero-preview-input-group')?.insertAdjacentElement('afterend', hint);
+  }
+  let currentHeroPlatform = 'youtube';
 
   const copy = {
     youtube: {
@@ -2675,22 +3855,154 @@ function initHeroPreviewTabs() {
     }
   };
 
+  function setHint(text, tone = 'info') {
+    hint.textContent = text || '';
+    hint.dataset.tone = tone;
+    hint.hidden = !text;
+  }
+
   function apply(platform) {
+    currentHeroPlatform = platform;
     const payload = copy[platform] || copy.youtube;
     tabs.forEach((tab) => tab.classList.toggle('active', tab.dataset.heroPlatform === platform));
     title.textContent = payload.title;
     input.placeholder = payload.placeholder;
     input.disabled = platform === 'audiofile';
+    input.value = '';
     pasteBtn.textContent = payload.cta;
+  }
+
+  function updateActivePlatform(platform, keepValue = true) {
+    const saved = input.value;
+    apply(platform || 'youtube');
+    if (keepValue) input.value = saved;
+    updateCTAState();
+  }
+
+  function updateCTAState() {
+    if (currentHeroPlatform === 'audiofile') {
+      pasteBtn.textContent = '📁 Choose file';
+      pasteBtn.classList.add('is-ready');
+      pasteBtn.removeAttribute('aria-disabled');
+      setHint('');
+      return;
+    }
+    const v = (input.value || '').trim();
+    if (!v) {
+      pasteBtn.textContent = '📋 Paste';
+      pasteBtn.classList.remove('is-ready');
+      pasteBtn.setAttribute('aria-disabled', 'true');
+      setHint('');
+      return;
+    }
+    const detected = detectPlatform(v);
+    if (!detected) {
+      pasteBtn.textContent = 'Run';
+      pasteBtn.classList.remove('is-ready');
+      pasteBtn.setAttribute('aria-disabled', 'true');
+      setHint('Invalid link. Use YouTube, Instagram, or TikTok URL.', 'error');
+      return;
+    }
+    if (detected !== currentHeroPlatform) {
+      updateActivePlatform(detected, true);
+      return;
+    }
+    pasteBtn.textContent = 'Run';
+    pasteBtn.classList.add('is-ready');
+    pasteBtn.removeAttribute('aria-disabled');
+    setHint('');
   }
 
   tabs.forEach((tab) => {
     tab.addEventListener('click', () => {
-      apply(tab.dataset.heroPlatform || 'youtube');
+      updateActivePlatform(tab.dataset.heroPlatform || 'youtube', false);
     });
   });
 
+  pasteBtn.addEventListener('click', async () => {
+    if (currentHeroPlatform === 'audiofile') {
+      if (!cutupIsLoggedIn()) {
+        await cutupTriggerLoginForPendingAction('resume_upload_tab', { platform: 'audiofile', fileFlow: true });
+        return;
+      }
+      switchPlatform('audiofile');
+      const audioInput = document.getElementById('audioFileInput');
+      if (audioInput) audioInput.click();
+      document.getElementById('tool')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    if ((input.value || '').trim() === '') {
+      try {
+        if (navigator.clipboard?.readText) {
+          const v = await navigator.clipboard.readText();
+          if (v) input.value = v.trim();
+        }
+      } catch (_e) {
+        // ignore clipboard restrictions
+      }
+      updateCTAState();
+      if ((input.value || '').trim() === '') {
+        showMessage('Paste a link first.', 'info');
+      }
+      return;
+    }
+
+    const url = (input.value || '').trim();
+    const detected = detectPlatform(url);
+    if (!detected) {
+      updateCTAState();
+      return;
+    }
+    if (detected !== currentHeroPlatform) updateActivePlatform(detected, true);
+
+    await handleSubtitleWorkflow({
+      platform: detected,
+      url,
+      mode: 'subtitle'
+    });
+  });
+
+  input.addEventListener('input', updateCTAState);
+  input.addEventListener('paste', () => setTimeout(updateCTAState, 0));
+  input.addEventListener('keyup', updateCTAState);
+
   apply('youtube');
+  updateCTAState();
+}
+
+async function handleSubtitleWorkflow({ platform, url, mode = 'subtitle' }) {
+  const p = platform || 'youtube';
+  const cleanUrl = String(url || '').trim();
+  if (!cleanUrl) {
+    showMessage('Paste a valid URL to continue.', 'info');
+    return;
+  }
+
+  if (!cutupIsLoggedIn()) {
+    await cutupTriggerLoginForPendingAction('generate_subtitle', {
+      platform: p,
+      url: cleanUrl,
+      mode
+    });
+    return;
+  }
+
+  switchPlatform(p);
+  const inputId = p === 'youtube' ? 'youtubeUrlInput' : `${p}UrlInput`;
+  const input = document.getElementById(inputId);
+  if (input) input.value = cleanUrl;
+  checkInput();
+  document.getElementById('tool')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  if (mode === 'summary') {
+    await handleSummarize();
+    return;
+  }
+  if (mode === 'fulltext') {
+    await handleFullText('fulltext');
+    return;
+  }
+  await handleSrtSubtitles();
 }
 
 function wireHeroQuickStart() {
@@ -2869,13 +4181,15 @@ async function handleAudioDownload() {
 }
 
 async function handleSummarize() {
-  const sessionId = localStorage.getItem('cutup_session');
+  if (!beginPipelineRun()) return;
+  const sessionId = getCutupSessionId();
   
   const url = getCurrentUrl();
   const file = audioFileInput && audioFileInput.files[0];
   const requestedPlatform = resolveRequestedPlatform(url, file);
   
   if (!url && !file) {
+    endPipelineRun();
     if (currentPlatform === 'audiofile') {
       showMessage('Please select an audio/video file.', 'error');
     } else {
@@ -2890,6 +4204,7 @@ async function handleSummarize() {
       !url ||
       (typeof url === 'string' && url.startsWith('📁')));
   if (isFileFlow && !cutupIsLoggedIn()) {
+    endPipelineRun();
     try {
       await cutupTriggerLoginForPendingAction('resume_upload_tab', { platform: 'audiofile' });
     } catch (_e) {
@@ -2899,6 +4214,7 @@ async function handleSummarize() {
   }
 
   if (cutupSocialTranscribeNeedsGoogleAuth(url, file, requestedPlatform)) {
+    endPipelineRun();
     try {
       await cutupTriggerLoginForPendingAction('summarize', {
         url: getCurrentUrl(),
@@ -2914,32 +4230,46 @@ async function handleSummarize() {
   const estMin = file ? Math.max(1, Math.ceil((file.size / 1024 / 1024) * 1.2)) : AVG_VIDEO_MINUTES;
   const monGate = await monetizationPreflightBeforeProcess(sessionId, estMin);
   if (!monGate.allowed) {
+    endPipelineRun();
     showMessage(monGate.reason || LIMIT_UPGRADE_FALLBACK, 'error');
     return;
   }
-    
-  if (file && (currentPlatform === 'audiofile' || !url || url.startsWith('📁'))) {
-    trackEvent('link_submitted', { platform: 'file', mode: 'summary', auth: !!sessionId });
-    await processSummarizeFile(file, sessionId);
-  } else if (requestedPlatform === 'youtube' && isYouTubeUrl(url)) {
-    trackEvent('link_submitted', { platform: 'youtube', mode: 'summary', auth: !!sessionId });
-    await processSummarize(url, sessionId, 'youtube');
-  } else if ((requestedPlatform === 'instagram' && isInstagramUrl(url)) || (requestedPlatform === 'tiktok' && isTikTokUrl(url))) {
-    trackEvent('link_submitted', { platform: requestedPlatform, mode: 'summary', auth: !!sessionId });
-    await processSummarize(url, sessionId, requestedPlatform);
-  } else {
-    showMessage('Invalid URL for the selected platform.', 'error');
+
+  const runSummarize = async () => {
+    if (file && (currentPlatform === 'audiofile' || !url || url.startsWith('📁'))) {
+      trackEvent('link_submitted', { platform: 'file', mode: 'summary', auth: !!sessionId });
+      await processSummarizeFile(file, sessionId);
+    } else if (requestedPlatform === 'youtube' && isYouTubeUrl(url)) {
+      trackEvent('link_submitted', { platform: 'youtube', mode: 'summary', auth: !!sessionId });
+      await processSummarize(url, sessionId, 'youtube');
+    } else if ((requestedPlatform === 'instagram' && isInstagramUrl(url)) || (requestedPlatform === 'tiktok' && isTikTokUrl(url))) {
+      trackEvent('link_submitted', { platform: requestedPlatform, mode: 'summary', auth: !!sessionId });
+      await processSummarize(url, sessionId, requestedPlatform);
+    } else {
+      showMessage('Invalid URL for the selected platform.', 'error');
+    }
+  };
+  cutupLastPipelineRetry = () => {
+    if (!beginPipelineRun()) return;
+    runSummarize().finally(() => endPipelineRun());
+  };
+  try {
+    await runSummarize();
+  } finally {
+    endPipelineRun();
   }
 }
 
 async function handleFullText(activeTab = 'fulltext') {
-  const sessionId = localStorage.getItem('cutup_session');
+  if (!beginPipelineRun()) return;
+  const sessionId = getCutupSessionId();
     
   const url = getCurrentUrl();
   const file = audioFileInput && audioFileInput.files[0];
   const requestedPlatform = resolveRequestedPlatform(url, file);
     
   if (!url && !file) {
+    endPipelineRun();
     if (currentPlatform === 'audiofile') {
       showMessage('Please select an audio/video file.', 'error');
     } else {
@@ -2954,6 +4284,7 @@ async function handleFullText(activeTab = 'fulltext') {
       !url ||
       (typeof url === 'string' && url.startsWith('📁')));
   if (isFileFlowFt && !cutupIsLoggedIn()) {
+    endPipelineRun();
     try {
       await cutupTriggerLoginForPendingAction('resume_upload_tab', { platform: 'audiofile' });
     } catch (_e) {
@@ -2963,6 +4294,7 @@ async function handleFullText(activeTab = 'fulltext') {
   }
 
   if (cutupSocialTranscribeNeedsGoogleAuth(url, file, requestedPlatform)) {
+    endPipelineRun();
     const pendingType = activeTab === 'srt' ? 'generate_subtitle' : 'fulltext';
     try {
       await cutupTriggerLoginForPendingAction(pendingType, {
@@ -2979,21 +4311,33 @@ async function handleFullText(activeTab = 'fulltext') {
   const estMin = file ? Math.max(1, Math.ceil((file.size / 1024 / 1024) * 1.2)) : AVG_VIDEO_MINUTES;
   const monGate = await monetizationPreflightBeforeProcess(sessionId, estMin);
   if (!monGate.allowed) {
+    endPipelineRun();
     showMessage(monGate.reason || LIMIT_UPGRADE_FALLBACK, 'error');
     return;
   }
-    
-  if (file && (currentPlatform === 'audiofile' || !url || url.startsWith('📁'))) {
-    trackEvent('link_submitted', { platform: 'file', mode: 'fulltext', auth: !!sessionId });
-    await processFullTextFile(file, sessionId, activeTab);
-  } else if (requestedPlatform === 'youtube' && isYouTubeUrl(url)) {
-    trackEvent('link_submitted', { platform: 'youtube', mode: 'fulltext', auth: !!sessionId });
-    await processFullText(url, sessionId, 'youtube', activeTab);
-  } else if ((requestedPlatform === 'instagram' && isInstagramUrl(url)) || (requestedPlatform === 'tiktok' && isTikTokUrl(url))) {
-    trackEvent('link_submitted', { platform: requestedPlatform, mode: 'fulltext', auth: !!sessionId });
-    await processFullText(url, sessionId, requestedPlatform, activeTab);
-  } else {
-    showMessage('Invalid URL for the selected platform.', 'error');
+
+  const runFullText = async () => {
+    if (file && (currentPlatform === 'audiofile' || !url || url.startsWith('📁'))) {
+      trackEvent('link_submitted', { platform: 'file', mode: 'fulltext', auth: !!sessionId });
+      await processFullTextFile(file, sessionId, activeTab);
+    } else if (requestedPlatform === 'youtube' && isYouTubeUrl(url)) {
+      trackEvent('link_submitted', { platform: 'youtube', mode: 'fulltext', auth: !!sessionId });
+      await processFullText(url, sessionId, 'youtube', activeTab);
+    } else if ((requestedPlatform === 'instagram' && isInstagramUrl(url)) || (requestedPlatform === 'tiktok' && isTikTokUrl(url))) {
+      trackEvent('link_submitted', { platform: requestedPlatform, mode: 'fulltext', auth: !!sessionId });
+      await processFullText(url, sessionId, requestedPlatform, activeTab);
+    } else {
+      showMessage('Invalid URL for the selected platform.', 'error');
+    }
+  };
+  cutupLastPipelineRetry = () => {
+    if (!beginPipelineRun()) return;
+    runFullText().finally(() => endPipelineRun());
+  };
+  try {
+    await runFullText();
+  } finally {
+    endPipelineRun();
   }
 }
 
@@ -3050,37 +4394,75 @@ function blobToDataUrl(blob) {
 }
 
 async function extractSocialAudio(url, platform, sessionId) {
+  const requestId = makeRequestId();
+  const traceId = makeTraceId();
+  let finalUrl = String(url || '').trim();
+  if (platform === 'instagram') {
+    if (isInstagramStoryUrl(finalUrl)) {
+      const e = new Error(mapErrorCodeToUserMessage('INSTAGRAM_STORY_UNSUPPORTED'));
+      e.errorCode = 'INSTAGRAM_STORY_UNSUPPORTED';
+      e.pipelineCode = 'UNSUPPORTED_INSTAGRAM_URL';
+      e.retryable = false;
+      throw e;
+    }
+    const norm = normalizeInstagramUrlCanonical(finalUrl);
+    if (!norm) {
+      const e = new Error(mapErrorCodeToUserMessage('INVALID_URL'));
+      e.errorCode = 'INVALID_URL';
+      e.retryable = false;
+      throw e;
+    }
+    finalUrl = norm;
+  } else {
+    finalUrl = stripTrackingQueryParamsClient(finalUrl);
+  }
+  console.log('[link-parse]', { url: finalUrl.slice(0, 120), platform });
+  console.log('[platform-detected]', { platform });
+  console.log('[download-start]', { traceId, platform });
+  console.log('[transcript-trace]', traceId, { stage: 'social-extract', platform });
   if (!sessionId) {
-    throw new Error('Sign in required for Instagram/TikTok transcription. Uploading a file is available after login.');
+    const e = new Error('Sign in required for Instagram/TikTok transcription.');
+    e.errorCode = 'SESSION_EXPIRED';
+    e.retryable = false;
+    throw e;
   }
   if (platform !== 'instagram' && platform !== 'tiktok') {
-    throw new Error('Unsupported platform for social extraction');
+    const e = new Error('Unsupported platform for social extraction');
+    e.errorCode = 'INVALID_URL';
+    e.retryable = false;
+    throw e;
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/youtube-download`, {
+  const response = await fetchWithRetry(`${API_BASE_URL}/api/youtube-download`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Session-Id': sessionId
+      'X-Session-Id': sessionId,
+      'X-Request-Id': requestId,
+      'X-Trace-Id': traceId
     },
     body: JSON.stringify({
-      url,
+      url: finalUrl,
       type: 'audio',
       quality: 'best',
       platform
     }),
-    signal: AbortSignal.timeout(900000)
+    signal: AbortSignal.timeout(getPipelineFetchTimeoutMs('extract'))
   });
 
   if (!response.ok) {
-    const errBody = await response.text().catch(() => '');
-    console.error(`SOCIAL_EXTRACT_${platform.toUpperCase()}:`, response.status, errBody);
-    throw new Error('Instagram/TikTok transcription is not available yet. Download the audio/video and upload it here to transcribe.');
+    const errJson = await response.json().catch(() => null);
+    console.error('[download-failed]', { traceId, platform, status: response.status, body: errJson });
+    throw buildPipelineErrorFromApi(errJson, response, traceId);
   }
 
   const audioBlob = await response.blob();
   if (!audioBlob || !audioBlob.size) {
-    throw new Error('No audio was returned from downloader');
+    const e = new Error('No audio was returned from downloader');
+    e.pipelineCode = 'SOCIAL_DOWNLOAD_EMPTY';
+    e.requestId = requestId;
+    e.pipelineStage = 'social-extraction';
+    throw e;
   }
 
   const audioUrl = await blobToDataUrl(audioBlob);
@@ -3095,19 +4477,9 @@ async function extractSocialAudio(url, platform, sessionId) {
   };
 }
 
-// Extract video ID
+// Extract YouTube video ID (canonical parser)
 function extractVideoId(url) {
-  const patterns = [
-    /[?&]v=([^&]+)/,
-    /youtu\.be\/([^?]+)/,
-    /^([a-zA-Z0-9_-]{11})$/
-  ];
-  
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match) return match[1];
-  }
-  return null;
+  return parseYouTubeVideoIdCanonical(url);
 }
 
 // Generate SRT from subtitles
@@ -3144,8 +4516,12 @@ let monetizationNearLimitLogged = false;
 function setMonetizationUpgradeHref() {
   const a = document.getElementById('monetizationUpgradeBtn');
   if (!a) return;
-  const sid = localStorage.getItem('cutup_session');
-  a.href = sid ? `/dashboard.html?session=${encodeURIComponent(sid)}` : '/dashboard.html';
+  const plan = (a.getAttribute('data-cutup-plan') || 'pro').trim();
+  if (window.CutupPlanCheckout?.buildCheckoutUrl) {
+    a.href = window.CutupPlanCheckout.buildCheckoutUrl(plan, { source: 'pricing' });
+  } else {
+    a.href = `/checkout.html?plan=${encodeURIComponent(plan)}&source=pricing`;
+  }
 }
 
 function applyMonetizationPaywallFromServer(data) {
@@ -3210,13 +4586,18 @@ async function monetizationPreflightBeforeProcess(sessionId, estimatedMinutes) {
   const data = await monetizationFetchCheckGET(sessionId, est);
   if (!data) {
     applyMonetizationPaywallFromServer(null);
+    const cachedPlan = normalizePlanKey(window.userSubscription?.plan);
+    if (getCutupSessionId() && cutupIsTopTierPlan(cachedPlan)) {
+      console.warn('[monetization] preflight check unavailable; allowing top-tier cached plan');
+      return { allowed: true };
+    }
     return { allowed: false, reason: USER_PLAN_VERIFY_FAIL };
   }
 
   applyMonetizationPaywallFromServer(data);
 
   if (data.allowed === false) {
-    console.log('[monetization] limit reached');
+    console.log('[monetization] limit reached', { plan: data.plan, reason: data.reason });
     const reason = data.reason ? humanizeLimitReason(String(data.reason)) : LIMIT_UPGRADE_FALLBACK;
     return { allowed: false, reason };
   }
@@ -3231,7 +4612,7 @@ async function monetizationPreflightBeforeProcess(sessionId, estimatedMinutes) {
 
 /** Refresh paywall when plan usage changes (e.g. after login) — uses typical job size. */
 async function monetizationRefreshPaywallPassive() {
-  const sessionId = localStorage.getItem('cutup_session');
+  const sessionId = getCutupSessionId();
   if (!sessionId) {
     applyMonetizationPaywallFromServer(null);
     return;
@@ -3254,9 +4635,11 @@ function setupMonetizationPaywallUi() {
 async function checkSubscriptionLimit(sessionId, feature, videoDurationMinutes = 0) {
   try {
     if (!sessionId) {
+      console.log('[quota-check]', { feature, videoDurationMinutes, allowed: true, mode: 'preview' });
       return { allowed: true, reason: 'Preview mode: no auth' };
     }
 
+    console.log('[quota-check]', { feature, videoDurationMinutes, phase: 'request' });
     const response = await fetch(`${API_BASE_URL}/api/subscription?action=check`, {
       method: 'POST',
       headers: {
@@ -3276,9 +4659,18 @@ async function checkSubscriptionLimit(sessionId, feature, videoDurationMinutes =
     if (data && data.allowed === false && data.reason) {
       data.reason = humanizeLimitReason(data.reason);
     }
+    console.log('[quota-check]', {
+      feature,
+      videoDurationMinutes,
+      allowed: data?.allowed !== false,
+      plan: data?.plan,
+      monthlyUsed: data?.usage?.monthly?.minutes,
+      monthlyLimit: data?.usage?.monthlyLimit,
+      reason: data?.reason || null
+    });
     return data;
   } catch (error) {
-    console.error('Error checking subscription limit:', error);
+    console.error('[quota-check]', { feature, videoDurationMinutes, error });
     return { allowed: false, reason: 'Unable to verify your plan. Please try again.' };
   }
 }
@@ -3386,9 +4778,9 @@ async function processSummarizeFile(file, sessionId) {
     hideProgressBar();
     
   } catch (error) {
-    console.error('Error:', error);
+    console.error('[PIPELINE ERROR][processSummarizeFile]', error);
     reportClientError('process', error);
-    showMessage(USER_ERROR_GENERIC, 'error');
+    showPipelineError(error, cutupLastPipelineRetry);
     hideProgressBar();
   }
 }
@@ -3485,92 +4877,164 @@ async function processFullTextFile(file, sessionId, activeTab = 'fulltext') {
     hideProgressBar();
     
   } catch (error) {
-    console.error('Error:', error);
+    console.error('[PIPELINE ERROR][processFullTextFile]', error);
     reportClientError('process', error);
-    showMessage(USER_ERROR_GENERIC, 'error');
+    showPipelineError(error, cutupLastPipelineRetry);
     hideProgressBar();
   }
 }
 
 // Extract YouTube audio (like extension)
 async function extractYouTubeAudio(url, sessionId = null) {
-    const videoId = extractVideoId(url);
-  if (!videoId) {
-    throw new Error('Invalid YouTube URL');
+  const resolved = resolveYouTubeUrlForPipeline(url);
+  console.log('[link-parse]', { url: resolved.original.slice(0, 120) });
+  const { videoId, normalizedUrl } = resolved;
+  if (resolved.cleaned && /\/shorts\//i.test(resolved.cleaned)) {
+    console.log('[shorts-normalized]', { videoId, url: normalizedUrl });
   }
-  
-  console.log('YOUTUBE: Extracting audio for video ID:', videoId);
+  if (!videoId || !normalizedUrl) {
+    const errorCode = resolved.cleaned && /\/shorts\//i.test(resolved.cleaned)
+      ? 'SHORTS_PARSE_ERROR'
+      : 'INVALID_URL';
+    const e = new Error(mapErrorCodeToUserMessage(errorCode));
+    e.errorCode = errorCode;
+    e.pipelineCode = errorCode;
+    e.retryable = false;
+    throw e;
+  }
+
+  const traceId = makeTraceId();
+  console.log('[platform-detected]', { platform: 'youtube', videoId });
+  console.log('[download-start]', { traceId, platform: 'youtube', videoId });
+  console.log('[transcript-trace]', traceId, { stage: 'youtube-extract-start', videoId });
   
   try {
-    const response = await fetch(`${API_BASE_URL}/api/youtube`, {
+    const response = await fetchWithRetry(`${API_BASE_URL}/api/youtube`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'X-Trace-Id': traceId,
         ...(sessionId ? { 'X-Session-Id': sessionId } : {})
       },
-      body: JSON.stringify({ videoId, url }),
-      signal: AbortSignal.timeout(300000) // 5 minutes timeout
+      body: JSON.stringify({ videoId, url: normalizedUrl }),
+      signal: AbortSignal.timeout(getPipelineFetchTimeoutMs('extract'))
     });
 
-    console.log('YOUTUBE: Response status:', response.status);
+    console.log('[generate-response]', { traceId, stage: 'youtube-extract', status: response.status });
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      console.error('YOUTUBE: Error:', error);
-      
-      let errorMessage = USER_ERROR_GENERIC;
-      if (error.error === 'FILE_TOO_LARGE') {
-        errorMessage = 'Video is too large. Try a shorter clip.';
-      }
-      console.error('YOUTUBE: Server error body', error);
-      throw new Error(errorMessage);
+      console.error('[generate-error]', { traceId, stage: 'youtube-extract', status: response.status, error });
+      throw buildPipelineErrorFromApi(error, response, traceId);
     }
 
     const result = await response.json();
-    console.log('YOUTUBE: Success, audio URL received, language hint:', result.language);
-    console.log('YOUTUBE: Subtitles available:', !!result.subtitles, 'Language:', result.subtitleLanguage);
-    console.log('YOUTUBE: Available languages:', result.availableLanguages);
-    console.log('YOUTUBE: Video title:', result.title);
-    
-    // Return in same format as extension
-    if (typeof result === 'string') {
-      return { 
-        audioUrl: result, 
-        language: null, 
-        subtitles: null, 
-        subtitleLanguage: null, 
-        availableLanguages: [], 
-        title: null,
-        duration: null
-      };
+    if (result && result.success === false) {
+      console.error('[frontend-after-youtube]', { traceId, errorCode: result.errorCode, message: result.message });
+      throw buildPipelineErrorFromApi(result, response, traceId);
     }
-    return {
-      audioUrl: result.audioUrl,
-      language: result.language || null,
-      subtitles: result.subtitles || null,
-      subtitleLanguage: result.subtitleLanguage || null,
-      availableLanguages: result.availableLanguages || [],
-      title: result.title || null,
-      duration: result.duration || null
-    };
-    
+
+    const payload =
+      typeof result === 'string'
+        ? { audioUrl: result }
+        : {
+            audioUrl: result.audioUrl || result.audio_url || null,
+            language: result.language || null,
+            subtitles: result.subtitles || null,
+            subtitleLanguage: result.subtitleLanguage || result.subtitle_language || null,
+            availableLanguages: result.availableLanguages || result.available_languages || [],
+            title: result.title || null,
+            duration: result.duration ?? null
+          };
+
+    console.log('[frontend-after-youtube]', {
+      traceId,
+      hasAudioUrl: Boolean(payload.audioUrl),
+      audioUrlKind: payload.audioUrl ? (String(payload.audioUrl).startsWith('data:') ? 'data-url' : 'url') : 'none',
+      hasSubtitles: Boolean(payload.subtitles),
+      subtitleLanguage: payload.subtitleLanguage,
+      duration: payload.duration,
+      title: payload.title ? String(payload.title).slice(0, 80) : null
+    });
+
+    if (!payload.audioUrl) {
+      const e = new Error('Audio extraction returned no audioUrl');
+      e.errorCode = 'DOWNLOAD_FAILED';
+      e.traceId = traceId;
+      throw e;
+    }
+
+    return { ...payload, videoId };
   } catch (error) {
+    console.error('[frontend-runtime-error]', {
+      stage: 'extractYouTubeAudio',
+      traceId,
+      name: error?.name,
+      message: error?.message,
+      errorCode: error?.errorCode
+    });
+    if (error.errorCode || error.pipelineCode) throw error;
     if (error.name === 'AbortError' || error.name === 'TimeoutError') {
-      console.error('YOUTUBE: Request timeout');
-      throw new Error('Request timed out. Retry with a shorter video.');
-    } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
-      console.error('YOUTUBE: Network error', error);
-      throw new Error('Network error. Check your connection and retry.');
-    } else {
-      throw error;
+      const e = new Error(mapErrorCodeToUserMessage('TRANSCRIPTION_TIMEOUT'));
+      e.errorCode = 'TRANSCRIPTION_TIMEOUT';
+      e.pipelineCode = 'TRANSCRIPTION_TIMEOUT';
+      e.traceId = traceId;
+      e.retryable = true;
+      throw e;
     }
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      const e = new Error(mapErrorCodeToUserMessage('NETWORK_ERROR'));
+      e.errorCode = 'NETWORK_ERROR';
+      e.pipelineCode = 'NETWORK_ERROR';
+      e.traceId = traceId;
+      e.retryable = true;
+      throw e;
+    }
+    throw error;
   }
 }
 
 // Transcribe audio (like extension)
+function rememberSourceVideoFile(file) {
+  if (file instanceof File && String(file.type || '').toLowerCase().startsWith('video/')) {
+    window.cutupLastSourceVideoFile = file;
+  }
+}
+
 async function transcribeAudio(audioUrlOrFile, languageHint = null, sessionId = null, contextMeta = {}) {
+  if (audioUrlOrFile instanceof File) {
+    rememberSourceVideoFile(audioUrlOrFile);
+  }
+  const requestId = makeRequestId();
+  const traceId = makeTraceId();
+  console.log('[transcript-trace]', traceId);
+  console.log('[generate-start]', {
+    traceId,
+    requestId,
+    kind: audioUrlOrFile instanceof File ? 'file' : 'url',
+    hasSession: Boolean(sessionId),
+    platform: contextMeta?.platform || null
+  });
+  const orchestrationTimers = [
+    setTimeout(() => cutupPulseTranscriptionOrchestration(0), 22000),
+    setTimeout(() => cutupPulseTranscriptionOrchestration(1), 38000),
+    setTimeout(() => cutupPulseTranscriptionOrchestration(2), 52000)
+  ];
+  console.log('[frontend-before-transcribe]', {
+    traceId,
+    requestId,
+    kind: audioUrlOrFile instanceof File ? 'file' : 'url',
+    hasSession: Boolean(sessionId),
+    platform: contextMeta?.platform || null
+  });
   try {
     let response;
+    const timeoutMs = getPipelineFetchTimeoutMs('transcribe');
+    const commonHeaders = {
+      'X-Trace-Id': traceId,
+      'X-Request-Id': requestId,
+      ...(sessionId ? { 'X-Session-Id': sessionId } : {})
+    };
     
     // If it's a File object, send to upload endpoint
     if (audioUrlOrFile instanceof File) {
@@ -3582,52 +5046,52 @@ async function transcribeAudio(audioUrlOrFile, languageHint = null, sessionId = 
       
       console.log('TRANSCRIBE: Sending file to upload endpoint, size:', audioUrlOrFile.size, 'bytes');
       
-      response = await fetch(`${API_BASE_URL}/api/upload`, {
+      response = await fetchWithRetry(`${API_BASE_URL}/api/upload`, {
         method: 'POST',
-        headers: {
-          ...(sessionId ? { 'X-Session-Id': sessionId } : {})
-        },
+        headers: commonHeaders,
         body: formData,
-        signal: AbortSignal.timeout(900000) // 15 minutes timeout
+        signal: AbortSignal.timeout(timeoutMs)
       });
     } else {
-      // Handle JSON request (audioUrl)
       console.log('TRANSCRIBE: Sending request to', `${API_BASE_URL}/api/transcribe`);
       
       const body = { audioUrl: audioUrlOrFile, languageHint, metadata: contextMeta };
       
-      console.log('TRANSCRIBE: Body size:', JSON.stringify(body).length, 'bytes');
-      
-      response = await fetch(`${API_BASE_URL}/api/transcribe`, {
+      response = await fetchWithRetry(`${API_BASE_URL}/api/transcribe`, {
       method: 'POST',
       headers: {
           'Content-Type': 'application/json',
-          ...(sessionId ? { 'X-Session-Id': sessionId } : {})
+          ...commonHeaders
         },
         body: JSON.stringify(body),
-        signal: AbortSignal.timeout(900000) // 15 minutes timeout
+        signal: AbortSignal.timeout(timeoutMs)
       });
     }
 
-    console.log('TRANSCRIBE: Response status:', response.status);
+    console.log('[generate-response]', { traceId, requestId, status: response.status, ok: response.ok });
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
-      console.error('Transcribe error:', {
-        status: response.status,
-        statusText: response.statusText,
-        error: error
-      });
-      
-      let errorMessage = USER_ERROR_GENERIC;
-      if (response.status === 401 || response.status === 403) {
-        errorMessage = 'This action is not allowed. Check your plan or sign in again.';
-      }
-      console.error('TRANSCRIBE: Server error body', error);
-      throw new Error(errorMessage);
+      console.error('[generate-error]', { traceId, requestId, status: response.status, error });
+      throw buildPipelineErrorFromApi(error, response, traceId);
     }
     
     const result = await response.json();
+
+    console.log('[frontend-transcribe-response]', {
+      traceId,
+      requestId,
+      status: response.status,
+      success: result?.success,
+      errorCode: result?.errorCode,
+      hasText: !!result?.text,
+      textLength: result?.text?.length || 0,
+      segmentCount: Array.isArray(result?.segments) ? result.segments.length : 0
+    });
+    
+    if (result && result.success === false) {
+      throw buildPipelineErrorFromApi(result, response, traceId);
+    }
     
     console.log('TRANSCRIBE: Response parsed:', {
       hasText: !!result.text,
@@ -3642,8 +5106,12 @@ async function transcribeAudio(audioUrlOrFile, languageHint = null, sessionId = 
       throw new Error(`No transcript returned. ${result.error ? result.message : 'Please retry.'}`);
     }
     
-    console.log('TRANSCRIBE: Success, text length:', result.text.length);
-    console.log('TRANSCRIBE: Segments count:', result.segments?.length || 0);
+    console.log('[generate-response]', {
+      requestId,
+      ok: true,
+      textLength: result.text.length,
+      segments: result.segments?.length || 0
+    });
     
     cutupLangDebug({
       phase: 'transcribeAudio:response',
@@ -3652,21 +5120,37 @@ async function transcribeAudio(audioUrlOrFile, languageHint = null, sessionId = 
       segmentCount: Array.isArray(result.segments) ? result.segments.length : 0,
       hadLanguageHint: languageHint != null && languageHint !== ''
     });
-    return {
-      text: result.text,
-      language: result.language ?? null,
-      segments: (result.segments && Array.isArray(result.segments)) ? result.segments : []
-    };
+    return normalizeTranscriptionResult(result);
   } catch (error) {
+    console.error('[frontend-runtime-error]', {
+      stage: 'transcribeAudio',
+      traceId,
+      requestId,
+      name: error?.name,
+      message: error?.message,
+      errorCode: error?.errorCode
+    });
+    console.error('[generate-error]', { traceId, requestId, name: error?.name, errorCode: error?.errorCode });
+    if (error.errorCode || error.pipelineCode) throw error;
     if (error.name === 'AbortError' || error.name === 'TimeoutError') {
-      console.error('TRANSCRIBE: Request timeout');
-      throw new Error('Transcription timed out. Try a smaller file.');
-    } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
-      console.error('TRANSCRIBE: Network error', error);
-      throw new Error('Network error. Check your connection and retry.');
-    } else {
-      throw error;
+      const e = new Error(mapErrorCodeToUserMessage('TRANSCRIPTION_TIMEOUT'));
+      e.errorCode = 'TRANSCRIPTION_TIMEOUT';
+      e.pipelineCode = 'TRANSCRIPTION_TIMEOUT';
+      e.traceId = traceId;
+      e.retryable = true;
+      throw e;
     }
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      const e = new Error(mapErrorCodeToUserMessage('NETWORK_ERROR'));
+      e.errorCode = 'NETWORK_ERROR';
+      e.pipelineCode = 'NETWORK_ERROR';
+      e.traceId = traceId;
+      e.retryable = true;
+      throw e;
+    }
+    throw error;
+  } finally {
+    orchestrationTimers.forEach((t) => clearTimeout(t));
   }
 }
 
@@ -3730,11 +5214,11 @@ async function parseYouTubeSubtitles(vttContent, language) {
   // Extract full text
   const fullText = segments.map(s => s.text).join(' ');
   
-  return {
+  return normalizeTranscriptionResult({
     text: fullText,
     language: language ?? null,
-    segments: segments
-  };
+    segments
+  });
 }
 
 // Convert VTT to SRT format
@@ -3841,16 +5325,29 @@ function parseSRTTimeToSeconds(hours, minutes, seconds, milliseconds) {
 // Process summarize (using extension logic)
 async function processSummarize(url, sessionId, platform = 'youtube') {
   const isPreviewMode = !sessionId;
+  console.log('[generate-start]', { flow: 'processSummarize', platform, url: String(url || '').slice(0, 80), hasSession: Boolean(sessionId) });
+  if (replayCachedResultIfMatch('summary', 'fulltext')) return;
   try {
     // Show progress bar
     showProgressBar('Working on your video…', false);
-    updateProgressBar(0, 0, 0, platform === 'youtube' ? 'Preparing audio…' : 'Preparing media…');
-    
-    // Extract audio by platform
-    startProgressTracking(0, 20, 10, platform === 'youtube' ? 'Preparing audio…' : 'Extracting audio…');
+    const extractLabel =
+      platform === 'youtube' ? CUTUP_PIPELINE.DOWNLOAD : CUTUP_PIPELINE.EXTRACT_AUDIO;
+    updateProgressBar(0, 0, 0, extractLabel);
+
+    const extractEstSec = estimateMediaExtractionDurationSeconds(platform);
+    startProgressTracking(0, 22, extractEstSec, CUTUP_PIPELINE.EXTRACT_AUDIO);
     const youtubeResult = platform === 'youtube'
       ? await extractYouTubeAudio(url, sessionId)
       : await extractSocialAudio(url, platform, sessionId);
+
+    console.log('[frontend-after-youtube]', {
+      flow: 'processFullText',
+      platform,
+      hasAudioUrl: Boolean(youtubeResult?.audioUrl),
+      hasSubtitles: Boolean(youtubeResult?.subtitles),
+      duration: youtubeResult?.duration ?? null
+    });
+
     const audioUrl = youtubeResult.audioUrl;
     
     if (!audioUrl) {
@@ -3858,7 +5355,7 @@ async function processSummarize(url, sessionId, platform = 'youtube') {
       throw new Error('Audio extraction failed');
     }
     
-    stopProgressTracking(20, 'Audio extracted');
+    stopProgressTracking(22, 'Audio extracted');
     
     // Get actual duration and check limit
     const durationSeconds = youtubeResult.duration || 0;
@@ -3866,7 +5363,7 @@ async function processSummarize(url, sessionId, platform = 'youtube') {
     
     if (sessionId) {
       // Check subscription limit with actual duration
-      updateProgressBar(0, 0, 22, 'Checking your plan…');
+      updateProgressBar(0, 0, 24, 'Checking your plan…');
       const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', durationMinutes);
       if (!limitCheck.allowed) {
         showMessage(limitCheck.reason || LIMIT_UPGRADE_FALLBACK, 'error');
@@ -3874,18 +5371,17 @@ async function processSummarize(url, sessionId, platform = 'youtube') {
         hideProgressBar();
         return;
       }
-      updateProgressBar(0, 0, 25, 'Plan check complete');
+      updateProgressBar(0, 0, 26, 'Plan check complete');
     } else {
-      updateProgressBar(0, 0, 25, 'Running free preview…');
+      updateProgressBar(0, 0, 26, 'Running free preview…');
     }
     
     // Check if YouTube subtitles are available (like extension)
     let transcription = null;
     if (youtubeResult.subtitles) {
-      // Use YouTube subtitles if available
       console.log('YOUTUBE: Using YouTube subtitles');
-      // Subtitle parsing is usually fast (~5 seconds)
-      startProgressTracking(25, 70, 5, 'Reading captions…', 'Reading captions…');
+      updateProgressBar(0, 0, 28, CUTUP_PIPELINE.CHECK_SUBTITLES);
+      startProgressTracking(26, 70, 5, CUTUP_PIPELINE.READ_CAPTIONS, CUTUP_PIPELINE.READ_CAPTIONS);
       transcription = await parseYouTubeSubtitles(youtubeResult.subtitles, youtubeResult.subtitleLanguage);
       stopProgressTracking(70, 'Subtitles parsed');
     } else {
@@ -3893,7 +5389,13 @@ async function processSummarize(url, sessionId, platform = 'youtube') {
       console.log(`${platform.toUpperCase()}: No subtitles available, transcribing audio`);
       // Transcription takes longer: estimate based on video duration
       const estimatedTranscriptionTime = estimateTranscriptionDuration(null, durationSeconds);
-      startProgressTracking(25, 70, estimatedTranscriptionTime, platform === 'youtube' ? 'Preparing audio…' : 'Preparing media…', 'Transcribing…');
+      startProgressTracking(
+        26,
+        70,
+        estimatedTranscriptionTime,
+        CUTUP_PIPELINE.GENERATE_TRANSCRIPT,
+        CUTUP_PIPELINE.GENERATE_TRANSCRIPT
+      );
       transcription = await transcribeAudio(audioUrl, null, sessionId, {
         platform,
         title: youtubeResult.title || `${getPlatformName(platform)} video`,
@@ -3901,10 +5403,9 @@ async function processSummarize(url, sessionId, platform = 'youtube') {
       });
       stopProgressTracking(70, 'Transcription complete');
     }
-    
-    // Summarize (unlimited for all tiers)
+
     const estimatedSummaryTime = estimateSummarizationDuration(transcription.text.length);
-    startProgressTracking(70, 99, estimatedSummaryTime, 'Writing summary…', 'Writing summary…');
+    startProgressTracking(70, 99, estimatedSummaryTime, CUTUP_PIPELINE.WRITING_SUMMARY, CUTUP_PIPELINE.WRITING_SUMMARY);
     let summary = null;
     try {
       summary = await summarizeText(transcription.text, normalizeSummaryLanguage(transcription.language), sessionId, {
@@ -3939,7 +5440,8 @@ async function processSummarize(url, sessionId, platform = 'youtube') {
       videoDurationSeconds: youtubeResult.duration || 0,
       title: youtubeResult.title || `${getPlatformName(platform)} video`,
       platform,
-      sourceUrl: url
+      sourceUrl: url,
+      videoId: youtubeResult.videoId || null
     });
     trackEvent('transcript_generated', { mode: 'summary', source: 'url', auth: !!sessionId, preview: isPreviewMode });
     
@@ -3959,9 +5461,9 @@ async function processSummarize(url, sessionId, platform = 'youtube') {
     }
     
   } catch (error) {
-    console.error('Error:', error);
+    console.error('[PIPELINE ERROR][processSummarize]', error);
     reportClientError('process', error);
-    showMessage(USER_ERROR_GENERIC, 'error');
+    showPipelineError(error, cutupLastPipelineRetry);
   } finally {
     hideProgressBar();
   }
@@ -3970,16 +5472,29 @@ async function processSummarize(url, sessionId, platform = 'youtube') {
 // Process full text (using extension logic)
 async function processFullText(url, sessionId, platform = 'youtube', activeTab = 'fulltext') {
   const isPreviewMode = !sessionId;
+  console.log('[generate-start]', { flow: 'processFullText', platform, activeTab, url: String(url || '').slice(0, 80), hasSession: Boolean(sessionId) });
+  if (replayCachedResultIfMatch(activeTab, activeTab === 'srt' ? 'srt' : 'fulltext')) return;
   try {
     // Show progress bar
     showProgressBar('Working on your video…', false);
-    updateProgressBar(0, 0, 0, platform === 'youtube' ? 'Preparing audio…' : 'Preparing media…');
-    
-    // Extract audio by platform
-    startProgressTracking(0, 20, 10, platform === 'youtube' ? 'Preparing audio…' : 'Extracting audio…');
+    const extractLabel =
+      platform === 'youtube' ? CUTUP_PIPELINE.DOWNLOAD : CUTUP_PIPELINE.EXTRACT_AUDIO;
+    updateProgressBar(0, 0, 0, extractLabel);
+
+    const extractEstSec = estimateMediaExtractionDurationSeconds(platform);
+    startProgressTracking(0, 22, extractEstSec, CUTUP_PIPELINE.EXTRACT_AUDIO);
     const youtubeResult = platform === 'youtube'
       ? await extractYouTubeAudio(url, sessionId)
       : await extractSocialAudio(url, platform, sessionId);
+
+    console.log('[frontend-after-youtube]', {
+      flow: 'processFullText',
+      platform,
+      hasAudioUrl: Boolean(youtubeResult?.audioUrl),
+      hasSubtitles: Boolean(youtubeResult?.subtitles),
+      duration: youtubeResult?.duration ?? null
+    });
+
     const audioUrl = youtubeResult.audioUrl;
     
     if (!audioUrl) {
@@ -3987,7 +5502,7 @@ async function processFullText(url, sessionId, platform = 'youtube', activeTab =
       throw new Error('Audio extraction failed');
     }
     
-    stopProgressTracking(20, 'Audio extracted');
+    stopProgressTracking(22, 'Audio extracted');
     
     // Get actual duration and check limit
     const durationSeconds = youtubeResult.duration || 0;
@@ -3995,7 +5510,7 @@ async function processFullText(url, sessionId, platform = 'youtube', activeTab =
     
     if (sessionId) {
       // Check subscription limit with actual duration
-      updateProgressBar(0, 0, 22, 'Checking your plan…');
+      updateProgressBar(0, 0, 24, 'Checking your plan…');
       const limitCheck = await checkSubscriptionLimit(sessionId, 'transcription', durationMinutes);
       if (!limitCheck.allowed) {
         showMessage(limitCheck.reason || LIMIT_UPGRADE_FALLBACK, 'error');
@@ -4003,30 +5518,60 @@ async function processFullText(url, sessionId, platform = 'youtube', activeTab =
         hideProgressBar();
         return;
       }
-      updateProgressBar(0, 0, 25, 'Plan check complete');
+      updateProgressBar(0, 0, 26, 'Plan check complete');
     } else {
-      updateProgressBar(0, 0, 25, 'Running free preview…');
+      updateProgressBar(0, 0, 26, 'Running free preview…');
     }
     
     // Check if YouTube subtitles are available (like extension)
     let transcription = null;
     if (youtubeResult.subtitles) {
-      // Use YouTube subtitles if available
+      console.log('[frontend-before-transcribe]', {
+        flow: 'processFullText',
+        path: 'youtube_subtitles',
+        subtitleLanguage: youtubeResult.subtitleLanguage
+      });
       console.log('YOUTUBE: Using YouTube subtitles');
-      startProgressTracking(25, 99, 5, 'Reading captions…', 'Reading captions…');
+      updateProgressBar(0, 0, 28, CUTUP_PIPELINE.CHECK_SUBTITLES);
+      startProgressTracking(26, 99, 5, CUTUP_PIPELINE.READ_CAPTIONS, CUTUP_PIPELINE.READ_CAPTIONS);
       transcription = await parseYouTubeSubtitles(youtubeResult.subtitles, youtubeResult.subtitleLanguage);
       stopProgressTracking(99, 'Subtitles parsed');
+      console.log('[frontend-transcribe-response]', {
+        flow: 'processFullText',
+        path: 'youtube_subtitles',
+        textChars: transcription?.text?.length ?? 0,
+        segmentCount: transcription?.segments?.length ?? 0
+      });
     } else {
-      // Fallback to audio transcription
+      console.log('[frontend-before-transcribe]', {
+        flow: 'processFullText',
+        path: 'api_transcribe',
+        platform,
+        audioUrlKind: String(audioUrl).startsWith('data:') ? 'data-url' : 'url',
+        durationSeconds
+      });
       console.log(`${platform.toUpperCase()}: No subtitles available, transcribing audio`);
       const estimatedTranscriptionTime = estimateTranscriptionDuration(null, durationSeconds);
-      startProgressTracking(25, 99, estimatedTranscriptionTime, platform === 'youtube' ? 'Preparing audio…' : 'Preparing media…', 'Transcribing…');
+      startProgressTracking(
+        26,
+        99,
+        estimatedTranscriptionTime,
+        CUTUP_PIPELINE.GENERATE_TRANSCRIPT,
+        CUTUP_PIPELINE.GENERATE_TRANSCRIPT
+      );
       transcription = await transcribeAudio(audioUrl, null, sessionId, {
         platform,
         title: youtubeResult.title || `${getPlatformName(platform)} video`,
         sourceUrl: url
       });
       stopProgressTracking(99, 'Transcription complete');
+      console.log('[frontend-transcribe-response]', {
+        flow: 'processFullText',
+        path: 'api_transcribe',
+        textChars: transcription?.text?.length ?? 0,
+        segmentCount: transcription?.segments?.length ?? 0,
+        language: transcription?.language ?? null
+      });
     }
     
     // Summary is best-effort; transcript/SRT should still succeed if it fails
@@ -4058,7 +5603,8 @@ async function processFullText(url, sessionId, platform = 'youtube', activeTab =
       videoDurationSeconds: youtubeResult.duration || 0,
       title: youtubeResult.title || `${getPlatformName(platform)} video`,
       platform,
-      sourceUrl: url
+      sourceUrl: url,
+      videoId: youtubeResult.videoId || null
     });
     trackEvent('transcript_generated', { mode: 'fulltext', source: 'url', auth: !!sessionId, preview: isPreviewMode });
     
@@ -4077,11 +5623,110 @@ async function processFullText(url, sessionId, platform = 'youtube', activeTab =
     }
     
   } catch (error) {
-    console.error('Error:', error);
+    console.error('[frontend-runtime-error]', {
+      stage: 'processFullText',
+      name: error?.name,
+      message: error?.message,
+      errorCode: error?.errorCode,
+      pipelineCode: error?.pipelineCode
+    });
+    console.error('[PIPELINE ERROR][processFullText]', error);
     reportClientError('process', error);
-    showMessage(USER_ERROR_GENERIC, 'error');
+    showPipelineError(error, cutupLastPipelineRetry);
   } finally {
     hideProgressBar();
+  }
+}
+
+/** Normalize platform id for cinematic UI (all Cutup input sources). */
+function normalizeCinematicPlatform(platform) {
+  const p = String(platform || '').toLowerCase();
+  if (p === 'audiofile' || p === 'file' || p === 'local') return 'upload';
+  if (p === 'youtube' || p === 'tiktok' || p === 'instagram' || p === 'upload') return p;
+  return p || 'upload';
+}
+
+/** Duration from timed segments when API did not return video length (TikTok/Instagram/upload). */
+function deriveDurationSecFromSegments(segments, fallbackSec = 0) {
+  if (!Array.isArray(segments) || !segments.length) return Math.max(0, Number(fallbackSec) || 0);
+  let maxEnd = 0;
+  for (const s of segments) {
+    const end = Number(s?.end);
+    if (Number.isFinite(end) && end > maxEnd) maxEnd = end;
+  }
+  return maxEnd > 0 ? maxEnd : Math.max(0, Number(fallbackSec) || 0);
+}
+
+/** Metadata for cinematic preview card (heuristic UI only). */
+function buildCinematicPreviewMeta(options = {}, segments = null) {
+  const platform = normalizeCinematicPlatform(
+    options.platform || (typeof currentPlatform !== 'undefined' ? currentPlatform : null) || 'upload'
+  );
+  let videoId = options.videoId || null;
+  const sourceUrl = options.sourceUrl || (typeof getCurrentUrl === 'function' ? getCurrentUrl() : null);
+  if (!videoId && sourceUrl && platform === 'youtube') {
+    try {
+      videoId = resolveYouTubeUrlForPipeline(sourceUrl).videoId;
+    } catch {
+      videoId = null;
+    }
+  }
+  const fromApi = Number(options.videoDurationSeconds) || 0;
+  const durationSec = fromApi > 0 ? fromApi : deriveDurationSecFromSegments(segments, fromApi);
+
+  return {
+    title: options.title || null,
+    platform,
+    durationSec,
+    language: options.originalLanguage || window.cutupDetectedSourceLanguage || 'auto',
+    videoId,
+    thumbnailUrl: options.thumbnailUrl || null,
+    sourceUrl: sourceUrl || null
+  };
+}
+
+/** Refresh styled SRT preview + raw panel (style presets engine). */
+function refreshCutupSubtitleStyles() {
+  if (window.CutupSubtitleStyles && typeof window.CutupSubtitleStyles.refreshPreview === 'function') {
+    window.CutupSubtitleStyles.refreshPreview();
+  }
+}
+
+function syncSrtRawPanel() {
+  const rawEl = document.getElementById('srtPreviewRaw');
+  const content =
+    buildCleanSrtFromSource() ||
+    stripSrtForTranslation(window.originalSrtContent || window.currentSrtContent || '');
+  if (rawEl) rawEl.textContent = content;
+  const hidden = document.getElementById('srtPreview');
+  if (hidden) hidden.textContent = content;
+}
+
+/** Mount AI cinematic preview after transcription (additive; safe if modules missing). */
+function mountCutupCinematicPreview(fullText, segments, options = {}) {
+  const mount = document.getElementById('cutupCinematicPreviewMount');
+  if (!mount) return;
+  if (!window.CutupCinematicPreview || typeof window.CutupCinematicPreview.mount !== 'function') {
+    mount.hidden = true;
+    return;
+  }
+  const text = String(fullText || '').trim();
+  const segs = Array.isArray(segments) ? segments : [];
+  if (!text && segs.length === 0) {
+    window.CutupCinematicPreview.unmount(mount);
+    return;
+  }
+  try {
+    const meta = buildCinematicPreviewMeta(options, segs);
+    window.CutupCinematicPreview.mount(mount, {
+      fullText: text,
+      segments: segs,
+      meta
+    });
+    console.log('[cinematic-preview] mounted', { platform: meta.platform, durationSec: meta.durationSec });
+  } catch (err) {
+    console.warn('[cinematic-preview] mount failed', err?.message || err);
+    mount.hidden = true;
   }
 }
 
@@ -4239,7 +5884,8 @@ function displayResults(summary, fullText, segments = null, options = {}) {
   window.originalSummaryHtml = summaryTextEl ? summaryTextEl.innerHTML : '';
 
   // Store original texts for translation (transcript = Whisper output; no client-side translation)
-  window.originalFullText = fullText;
+  const transcriptRaw = typeof fullText === 'string' ? fullText : (fullText?.text || fullText?.transcript || '');
+  window.originalFullText = String(transcriptRaw || '').trim();
   window.originalSummary = typeof summary === 'string' ? summary : (summary?.summary || summaryTextContent);
   setDetectedSourceLanguage(options && options.originalLanguage);
   window.originalTextLanguage = window.cutupDetectedSourceLanguage;
@@ -4304,15 +5950,29 @@ function displayResults(summary, fullText, segments = null, options = {}) {
       window.currentSrtContent = simpleSrt;
     }
 
-    // Store original SRT for translation
-    window.originalSrtContent = window.currentSrtContent;
+    // Store original SRT for translation (without attribution line)
+    window.originalSrtContent = stripSrtForTranslation(window.currentSrtContent);
     window.originalSrtSegments = segments;
+    window.cutupSourceSegments = cloneSourceSegments(
+      previewSegments && previewSegments.length ? previewSegments : segments
+    );
+    if (window.CutupSubtitleVersions) {
+      window.CutupSubtitleVersions.reset();
+      window.CutupSubtitleVersions.registerOriginal({
+        segments: window.cutupSourceSegments,
+        srtContent: stripSrtForTranslation(window.originalSrtContent || window.currentSrtContent || ''),
+        language: window.cutupDetectedSourceLanguage || options.originalLanguage
+      });
+      window.CutupSubtitleVersions.bindSelector();
+    }
     window.availableLanguages = (options && options.availableLanguages) || [];
   } else {
     // Clear SRT-related state when user has no subtitle access
     window.currentSrtContent = null;
     window.originalSrtContent = null;
     window.originalSrtSegments = null;
+    window.cutupSourceSegments = null;
+    window.CutupSubtitleVersions?.reset?.();
   }
 
   if (outputMode === 'srt' && !window.currentSrtContent) {
@@ -4337,12 +5997,20 @@ function displayResults(summary, fullText, segments = null, options = {}) {
   if (previewUpgradeBanner) {
     previewUpgradeBanner.style.display = previewMode ? 'block' : 'none';
   }
+  const hasSrtExport = Boolean(
+    (window.cutupSourceSegments && window.cutupSourceSegments.length) || window.currentSrtContent
+  );
+  const downloadCleanSrtBtn = document.getElementById('downloadCleanSrtBtn');
+  if (downloadCleanSrtBtn) {
+    downloadCleanSrtBtn.disabled = !hasSrtExport;
+    downloadCleanSrtBtn.title = hasSrtExport
+      ? 'Plain, editing-ready SRT from the original transcript'
+      : 'SRT will appear after transcription is ready.';
+  }
   const downloadSrtBtn = document.getElementById('downloadSrtBtn');
   if (downloadSrtBtn) {
-    downloadSrtBtn.style.display = window.currentSrtContent ? '' : 'none';
-    downloadSrtBtn.disabled = !window.currentSrtContent;
-    downloadSrtBtn.textContent = 'Download SRT';
-    downloadSrtBtn.title = window.currentSrtContent ? '' : 'SRT will appear after transcription is ready.';
+    downloadSrtBtn.style.display = 'none';
+    downloadSrtBtn.disabled = !hasSrtExport;
   }
   if (previewMode && hasSubtitleFeature && outputMode === 'srt') {
     trackEvent('subtitle_preview_shown', {
@@ -4355,6 +6023,16 @@ function displayResults(summary, fullText, segments = null, options = {}) {
   // Show result section
   resultSection.style.display = 'block';
 
+  mountCutupCinematicPreview(previewFullText, previewSegments || segments, options);
+
+  syncSrtRawPanel();
+  if (window.currentSrtContent && window.CutupSubtitleStyles) {
+    requestAnimationFrame(() => window.CutupSubtitleStyles.initAfterResults());
+  }
+  if (window.CutupViralExport) {
+    requestAnimationFrame(() => window.CutupViralExport.initAfterResults());
+  }
+
   applyResultOutputMode(resultSection, outputMode);
 
   let targetTab = requestedTab;
@@ -4365,10 +6043,13 @@ function displayResults(summary, fullText, segments = null, options = {}) {
   }
   switchTab(targetTab);
 
+  setupTranslateButtons();
+
   window.cutupLastTranscription = {
     cacheKey: getTranscriptionCacheKey(),
     summary,
-    fullText,
+    fullText: window.originalFullText,
+    transcription: window.originalFullText,
     segments: segments || [],
     title: options.title || null,
     platform: options.platform || (typeof currentPlatform !== 'undefined' ? currentPlatform : null),
@@ -4378,7 +6059,14 @@ function displayResults(summary, fullText, segments = null, options = {}) {
       isYouTubeSubtitle: options.isYouTubeSubtitle,
       availableLanguages: options.availableLanguages || [],
       previewMode: options.previewMode,
-      videoDurationSeconds: options.videoDurationSeconds
+      videoDurationSeconds: options.videoDurationSeconds,
+      platform: normalizeCinematicPlatform(
+        options.platform || (typeof currentPlatform !== 'undefined' ? currentPlatform : null)
+      ),
+      title: options.title || null,
+      sourceUrl: options.sourceUrl || null,
+      videoId: options.videoId || null,
+      thumbnailUrl: options.thumbnailUrl || null
     }
   };
 
@@ -4505,6 +6193,7 @@ function getTranslationMetadata(outputType = 'srt') {
   const sourceUrl = last.sourceUrl || (typeof getCurrentUrl === 'function' ? getCurrentUrl() : '');
   const platform = last.platform || (typeof currentPlatform !== 'undefined' ? currentPlatform : 'unknown');
   return {
+    processingSessionId: last.cacheKey || null,
     outputType,
     platform,
     title: last.title || null,
@@ -4532,6 +6221,11 @@ function switchTab(tabName) {
   if (tabName === 'fulltext') {
     updateFulltextSoftLockVeil();
   }
+  if (tabName === 'srt') {
+    window.CutupSubtitleVersions?.refreshVersionSelector?.();
+    syncSrtRawPanel();
+    refreshCutupSubtitleStyles();
+  }
 }
 
 // Generate SRT from segments
@@ -4541,6 +6235,48 @@ function generateSRT(segments) {
     const end = formatSRTTime(segment.end);
     return `${index + 1}\n${start} --> ${end}\n${segment.text}\n\n`;
   }).join('');
+}
+
+/** Immutable Whisper/source segments — never pass through viral-only cleaning for SRT export. */
+function cloneSourceSegments(segments) {
+  return (segments || [])
+    .map((s) => ({
+      start: Number(s.start),
+      end: Number(s.end),
+      text: String(s.text || '').trim()
+    }))
+    .filter((s) => s.text && Number.isFinite(s.start) && Number.isFinite(s.end) && s.end > s.start);
+}
+
+function buildCleanSrtFromSource() {
+  const raw = cloneSourceSegments(
+    (window.CutupSubtitleVersions?.getActiveSegments?.() || []).length
+      ? window.CutupSubtitleVersions.getActiveSegments()
+      : window.cutupSourceSegments ||
+          window.originalSrtSegments ||
+          window.cutupLastTranscription?.segments
+  );
+  if (!raw.length) return '';
+  const prepared = window.CutupSubtitleClean?.prepareSegmentsForMode
+    ? window.CutupSubtitleClean.prepareSegmentsForMode(raw, 'accurate')
+    : raw;
+  if (!prepared.length) return '';
+  return generateSRT(prepared);
+}
+
+window.buildCleanSrtFromSource = buildCleanSrtFromSource;
+
+function downloadCleanSrtFile() {
+  const body = buildCleanSrtFromSource();
+  if (!body) {
+    showMessage('No subtitles available for clean SRT export yet.', 'info');
+    return;
+  }
+  const videoId =
+    window.cutupLastTranscription?.videoId ||
+    parseYouTubeVideoIdCanonical(getCurrentUrl?.() || '') ||
+    null;
+  downloadSRTFile(`${body}${CUTUP_SRT_ATTRIBUTION}`, videoId ? `${videoId}-clean` : 'clean');
 }
 
 // Setup tab switching
@@ -4604,54 +6340,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Setup translate buttons
 function setupTranslateButtons() {
-  // Translate fulltext button
-  const translateFulltextBtn = document.getElementById('translateFulltextBtn');
-  if (translateFulltextBtn) {
-    translateFulltextBtn.addEventListener('click', async () => {
-      const sessionId = checkLogin();
-      if (!sessionId) {
-        showMessage('Sign in to translate and use pro exports.', 'error');
-        return;
-      }
-      
+  const bindTranslate = (btnId, handler) => {
+    const btn = document.getElementById(btnId);
+    if (!btn || btn.dataset.cutupTranslateBound === '1') return;
+    btn.dataset.cutupTranslateBound = '1';
+    btn.addEventListener('click', async () => {
+      console.log('[translate-click]', { button: btnId });
+      const sessionId = checkLogin({ pendingType: 'fulltext', payload: { mode: 'translate' } });
+      if (!sessionId) return;
       const originalLanguage = window.cutupDetectedSourceLanguage || 'auto';
-      await translateFulltextContent(sessionId, originalLanguage);
+      await handler(sessionId, originalLanguage);
     });
-  }
-  
-  // Translate summary button
-  const translateSummaryBtn = document.getElementById('translateSummaryBtn');
-  if (translateSummaryBtn) {
-    translateSummaryBtn.addEventListener('click', async () => {
-      const sessionId = checkLogin();
-      if (!sessionId) {
-        showMessage('Sign in to translate and use pro exports.', 'error');
-        return;
-      }
-      
-      const originalLanguage = window.cutupDetectedSourceLanguage || 'auto';
-      await translateSummaryContent(sessionId, originalLanguage);
-    });
-  }
-  
-  // Translate SRT button
-  const translateSrtBtn = document.getElementById('translateSrtBtn');
-  if (translateSrtBtn) {
-    translateSrtBtn.addEventListener('click', async () => {
-      const sessionId = checkLogin();
-      if (!sessionId) {
-        showMessage('Sign in to translate and use pro exports.', 'error');
-        return;
-      }
-      
-      const originalLanguage = window.cutupDetectedSourceLanguage || 'auto';
-      await translateSrtContent(sessionId, originalLanguage);
-    });
-  }
+  };
+  bindTranslate('translateFulltextBtn', translateFulltextContent);
+  bindTranslate('translateSummaryBtn', translateSummaryContent);
+  bindTranslate('translateSrtBtn', translateSrtContent);
 }
 
 // Translate fulltext content
 async function translateFulltextContent(sessionId, originalLanguage) {
+  console.log('[translate-start]', { kind: 'fulltext' });
   const targetLanguage = document.getElementById('fulltextLanguage')?.value;
   if (!targetLanguage || targetLanguage === 'original') {
     const fulltextEl = document.getElementById('fulltext');
@@ -4668,43 +6376,62 @@ async function translateFulltextContent(sessionId, originalLanguage) {
   }
   
   try {
-    const fulltext = window.originalFullText || '';
-    if (!fulltext) {
-      throw new Error('No text to translate');
-    }
-    
-    // Use translate-srt API for translation
-    const response = await fetch(`${API_BASE_URL}/api/translate-srt`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Session-Id': sessionId
-      },
-      body: JSON.stringify({
-        srtContent: `1\n00:00:00,000 --> 00:00:10,000\n${fulltext}\n\n`,
-        targetLanguage: targetLanguage,
-        sourceLanguage: originalLanguage || 'auto',
-        metadata: getTranslationMetadata('transcript')
-      })
+    const stableSid = sessionId || getCutupSessionId();
+    const fulltext = getStoredTranscriptText();
+    console.log('[translate-payload]', {
+      kind: 'fulltext',
+      targetLanguage,
+      sourceLanguage: originalLanguage || 'auto',
+      textChars: fulltext.length
     });
-    
-    if (!response.ok) {
-      throw new Error('Translation failed');
+    if (!fulltext) {
+      const e = new Error('No transcript available. Generate subtitles first, then translate.');
+      e.errorCode = 'TRANSCRIPT_MISSING';
+      throw e;
     }
-    
-    const data = await response.json();
-    const translatedText = data.srtContent.split('\n').slice(2).join('\n').trim();
+
+    const srtPayload = buildPseudoSrtFromPlainText(fulltext);
+    if (!srtPayload) {
+      const e = new Error('Invalid transcript payload. Please regenerate this output and try again.');
+      e.errorCode = 'INVALID_TRANSCRIPT_PAYLOAD';
+      throw e;
+    }
+
+    console.log('[translate-api-request]', { route: 'translate-srt', kind: 'fulltext', srtChars: srtPayload.length });
+    const data = await fetchTranslateSrtApi({
+      srtContent: srtPayload,
+      targetLanguage,
+      sourceLanguage: normalizeSourceLanguageForApi(originalLanguage),
+      metadata: getTranslationMetadata('transcript')
+    }, stableSid);
+    console.log('[translate-api-response]', { kind: 'fulltext', segmentCount: data.segmentCount, targetLanguage: data.targetLanguage });
+    const translatedText = extractPlainTextFromTranslatedSrt(data.srtContent);
     
     const fulltextEl = document.getElementById('fulltext');
     if (fulltextEl) {
       fulltextEl.textContent = translatedText;
     }
+    console.log('[translate-render]', { kind: 'fulltext', chars: translatedText.length });
+    try {
+      console.log(
+        '[translation-flow]',
+        JSON.stringify({
+          reusedExistingTranscript: true,
+          reusedTranscriptId: window.cutupLastTranscription?.cacheKey || null,
+          reExtractionTriggered: false,
+          quotaIncremented: false
+        })
+      );
+    } catch (_e) {
+      /* ignore */
+    }
+    if (stableSid) setCutupSession(stableSid, 'translate_fulltext_success');
     updateFulltextSoftLockVeil();
     
   } catch (error) {
-    console.error('Error:', error);
+    console.error('[translate-error]', { kind: 'fulltext', message: error?.message, code: error?.errorCode });
     reportClientError('translate', error);
-    showMessage(USER_ERROR_GENERIC, 'error');
+    showMessage(mapTranslateErrorMessage(error), 'error');
   } finally {
     if (btn) {
       btn.disabled = false;
@@ -4715,6 +6442,7 @@ async function translateFulltextContent(sessionId, originalLanguage) {
 
 // Translate summary content
 async function translateSummaryContent(sessionId, originalLanguage) {
+  console.log('[translate-start]', { kind: 'summary' });
   const targetLanguage = document.getElementById('summaryLanguage')?.value;
   if (!targetLanguage || targetLanguage === 'original') {
     const summaryTextEl = document.getElementById('summaryText');
@@ -4738,32 +6466,25 @@ async function translateSummaryContent(sessionId, originalLanguage) {
   }
   
   try {
+    const stableSid = sessionId || getCutupSessionId();
     const summary = typeof window.originalSummary === 'string' ? window.originalSummary : (window.originalSummary?.summary || '');
+    console.log('[translate-payload]', { kind: 'summary', targetLanguage, summaryChars: summary.length });
     if (!summary) {
-      throw new Error('No summary to translate');
+      const e = new Error('No transcript available. Generate subtitles first, then translate.');
+      e.errorCode = 'TRANSCRIPT_MISSING';
+      throw e;
     }
-    
-    // Use translate-srt API for translation
-    const response = await fetch(`${API_BASE_URL}/api/translate-srt`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Session-Id': sessionId
-      },
-      body: JSON.stringify({
-        srtContent: `1\n00:00:00,000 --> 00:00:10,000\n${summary}\n\n`,
-        targetLanguage: targetLanguage,
-        sourceLanguage: originalLanguage || 'auto',
-        metadata: getTranslationMetadata('summary')
-      })
-    });
-    
-    if (!response.ok) {
-      throw new Error('Translation failed');
-    }
-    
-    const data = await response.json();
-    const translatedText = data.srtContent.split('\n').slice(2).join('\n').trim();
+
+    const srtPayload = buildPseudoSrtFromPlainText(summary);
+    console.log('[translate-api-request]', { route: 'translate-srt', kind: 'summary', srtChars: srtPayload.length });
+    const data = await fetchTranslateSrtApi({
+      srtContent: srtPayload,
+      targetLanguage,
+      sourceLanguage: normalizeSourceLanguageForApi(originalLanguage),
+      metadata: getTranslationMetadata('summary')
+    }, stableSid);
+    console.log('[translate-api-response]', { kind: 'summary', segmentCount: data.segmentCount });
+    const translatedText = extractPlainTextFromTranslatedSrt(data.srtContent);
     
     // Format translated summary
     const paragraphs = translatedText.split(/\n\s*\n/).filter(p => p.trim());
@@ -4773,11 +6494,12 @@ async function translateSummaryContent(sessionId, originalLanguage) {
     if (summaryTextEl) {
       summaryTextEl.innerHTML = formattedSummary || '<p class="summary-paragraph">No summary available</p>';
     }
-    
+    if (stableSid) setCutupSession(stableSid, 'translate_summary_success');
+    console.log('[translate-render]', { kind: 'summary', chars: translatedText.length });
   } catch (error) {
-    console.error('Error:', error);
+    console.error('[translate-error]', { kind: 'summary', message: error?.message, code: error?.errorCode });
     reportClientError('translate', error);
-    showMessage(USER_ERROR_GENERIC, 'error');
+    showMessage(mapTranslateErrorMessage(error), 'error');
   } finally {
     if (btn) {
       btn.disabled = false;
@@ -4788,6 +6510,7 @@ async function translateSummaryContent(sessionId, originalLanguage) {
 
 // Translate SRT content
 async function translateSrtContent(sessionId, originalLanguage) {
+  console.log('[translate-start]', { kind: 'srt' });
   const targetLanguage = document.getElementById('srtLanguage')?.value;
   if (!targetLanguage || targetLanguage === 'original') {
     const srtPreviewEl = document.getElementById('srtPreview');
@@ -4805,41 +6528,58 @@ async function translateSrtContent(sessionId, originalLanguage) {
   }
   
   try {
-    const srtContent = window.originalSrtContent || '';
+    const stableSid = sessionId || getCutupSessionId();
+    const srtContent =
+      window.CutupSubtitleVersions?.versions?.original?.srtContent ||
+      getStoredSrtContent();
+    console.log('[translate-payload]', { kind: 'srt', targetLanguage, srtChars: srtContent.length });
     if (!srtContent) {
-      throw new Error('No subtitles to translate');
+      const e = new Error('No transcript available. Generate subtitles first, then translate.');
+      e.errorCode = 'TRANSCRIPT_MISSING';
+      throw e;
     }
-    
-    const response = await fetch(`${API_BASE_URL}/api/translate-srt`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Session-Id': sessionId
-      },
-      body: JSON.stringify({
-        srtContent: srtContent,
-        targetLanguage: targetLanguage,
-        sourceLanguage: originalLanguage || 'auto',
-        metadata: getTranslationMetadata('srt')
-      })
-    });
-    
-    if (!response.ok) {
-      throw new Error('Translation failed');
+
+    console.log('[translate-api-request]', { route: 'translate-srt', kind: 'srt', srtChars: srtContent.length });
+    const data = await fetchTranslateSrtApi({
+      srtContent,
+      targetLanguage,
+      sourceLanguage: normalizeSourceLanguageForApi(originalLanguage),
+      metadata: getTranslationMetadata('srt')
+    }, stableSid);
+    console.log('[translate-api-response]', { kind: 'srt', segmentCount: data.segmentCount });
+    const translatedSrt = stripSrtForTranslation(data.srtContent);
+    const translatedSegments =
+      Array.isArray(data.segments) && data.segments.length
+        ? data.segments
+        : parseSRTToSegments(translatedSrt);
+
+    if (window.CutupSubtitleVersions) {
+      window.CutupSubtitleVersions.registerTranslation(targetLanguage, {
+        srtContent: translatedSrt,
+        segments: translatedSegments
+      });
+    } else {
+      window.currentSrtContent = translatedSrt;
+      window.cutupSourceSegments = cloneSourceSegments(translatedSegments);
     }
-    
-    const data = await response.json();
-    window.currentSrtContent = data.srtContent;
-    
+
     const srtPreviewEl = document.getElementById('srtPreview');
     if (srtPreviewEl) {
-      srtPreviewEl.textContent = data.srtContent;
+      srtPreviewEl.textContent = `${translatedSrt}${CUTUP_SRT_ATTRIBUTION}`;
     }
-    
+    syncSrtRawPanel();
+    refreshCutupSubtitleStyles();
+    if (window.CutupViralExport?.refreshExportButton) {
+      window.CutupViralExport.refreshExportButton();
+    }
+    const langName = getLanguageName(targetLanguage);
+    showMessage(`✓ ${langName} subtitles ready`, 'success');
+    console.log('[translate-render]', { kind: 'srt', chars: translatedSrt.length, targetLanguage });
+    if (stableSid) setCutupSession(stableSid, 'translate_srt_success');
   } catch (error) {
-    console.error('Error:', error);
+    console.error('[translate-error]', { kind: 'srt', message: error?.message, code: error?.errorCode });
     reportClientError('translate', error);
-    showMessage(USER_ERROR_GENERIC, 'error');
+    showMessage(mapTranslateErrorMessage(error), 'error');
   } finally {
     if (btn) {
       btn.disabled = false;
@@ -4861,8 +6601,11 @@ document.addEventListener('DOMContentLoaded', () => {
 // Platform tabs functionality
 let currentPlatform = 'youtube';
 
-function switchPlatform(platform) {
+function switchPlatform(platform, options = {}) {
+  const { preserveCurrentValue = false, carriedUrl = '' } = options || {};
+  const currentValue = preserveCurrentValue ? getCurrentUrl() : '';
   currentPlatform = platform;
+  window.CutupApp.activePlatform = platform;
   
   // Update tab buttons
   document.querySelectorAll('.platform-tab').forEach(tab => {
@@ -4893,7 +6636,13 @@ function switchPlatform(platform) {
   if (platform !== 'audiofile') {
     const urlInput = document.getElementById(`${platform}UrlInput`) || document.getElementById('youtubeUrlInput');
     if (urlInput) {
-      urlInput.value = '';
+      if (carriedUrl) {
+        urlInput.value = carriedUrl;
+      } else if (preserveCurrentValue && currentValue) {
+        urlInput.value = currentValue;
+      } else {
+        urlInput.value = '';
+      }
     }
   }
   
@@ -4946,15 +6695,15 @@ function setupDownloadButtons() {
     });
   }
   
-  // Download SRT
+  const downloadCleanSrtBtn = document.getElementById('downloadCleanSrtBtn');
+  if (downloadCleanSrtBtn && downloadCleanSrtBtn.dataset.cutupBound !== '1') {
+    downloadCleanSrtBtn.dataset.cutupBound = '1';
+    downloadCleanSrtBtn.addEventListener('click', () => downloadCleanSrtFile());
+  }
+
   const downloadSrtBtn = document.getElementById('downloadSrtBtn');
   if (downloadSrtBtn) {
-    downloadSrtBtn.addEventListener('click', () => {
-      const srtContent = (window.currentSrtContent || '').trimEnd();
-      if (srtContent) {
-        downloadAsTxt(`${srtContent}${CUTUP_SRT_ATTRIBUTION}`, 'subtitles', 'srt');
-      }
-    });
+    downloadSrtBtn.addEventListener('click', () => downloadCleanSrtFile());
   }
 }
 
@@ -5119,33 +6868,22 @@ async function translateSummary(sessionId, originalLanguage) {
   
   try {
     const summaryText = typeof window.originalSummary === 'string' ? window.originalSummary : (window.originalSummary.summary || '');
-    const response = await fetch(`${API_BASE_URL}/api/translate-srt`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Session-Id': sessionId
-      },
-      body: JSON.stringify({
-        srtContent: `1\n00:00:00,000 --> 00:00:10,000\n${summaryText}\n\n`,
-        targetLanguage: targetLanguage,
-        sourceLanguage: originalLanguage || window.cutupDetectedSourceLanguage || 'auto',
-        metadata: getTranslationMetadata('summary')
-      })
-    });
-    
-    if (!response.ok) {
-      throw new Error('Translation failed');
-    }
-    
-    const data = await response.json();
-    // Extract text from SRT
-    const translatedText = data.srtContent.split('\n').slice(2).join('\n').trim();
+    const srtPayload = buildPseudoSrtFromPlainText(summaryText);
+    const data = await fetchTranslateSrtApi({
+      srtContent: srtPayload,
+      targetLanguage,
+      sourceLanguage: normalizeSourceLanguageForApi(
+        originalLanguage || window.cutupDetectedSourceLanguage
+      ),
+      metadata: getTranslationMetadata('summary')
+    }, sessionId);
+    const translatedText = extractPlainTextFromTranslatedSrt(data.srtContent);
     document.getElementById('summaryTextMain').textContent = translatedText;
     
   } catch (error) {
     console.error('Error:', error);
     reportClientError('translate', error);
-    showMessage(USER_ERROR_GENERIC, 'error');
+    showMessage(mapTranslateErrorMessage(error), 'error');
   } finally {
     btn.disabled = false;
     btn.textContent = '🔄 Translate';
@@ -5229,43 +6967,22 @@ async function translateFullText(sessionId, originalLanguage) {
   btn.textContent = '⏳ Translating...';
   
   try {
-    // Split text into chunks for translation (SRT format)
-    const chunks = window.originalFullText.split(/\n\n+/);
-    let translatedChunks = [];
-    
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i].trim();
-      if (!chunk) continue;
-      
-      const response = await fetch(`${API_BASE_URL}/api/translate-srt`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Session-Id': sessionId
-        },
-        body: JSON.stringify({
-          srtContent: `1\n00:00:00,000 --> 00:00:10,000\n${chunk}\n\n`,
-          targetLanguage: targetLanguage,
-          sourceLanguage: originalLanguage || window.cutupDetectedSourceLanguage || 'auto',
-          metadata: getTranslationMetadata('transcript')
-        })
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        const translatedChunk = data.srtContent.split('\n').slice(2).join('\n').trim();
-        translatedChunks.push(translatedChunk);
-      } else {
-        translatedChunks.push(chunk); // Keep original if translation fails
-      }
-    }
-    
-    document.getElementById('fullTextMain').textContent = translatedChunks.join('\n\n');
+    const srtPayload = buildPseudoSrtFromPlainText(window.originalFullText || '');
+    const data = await fetchTranslateSrtApi({
+      srtContent: srtPayload,
+      targetLanguage,
+      sourceLanguage: normalizeSourceLanguageForApi(
+        originalLanguage || window.cutupDetectedSourceLanguage
+      ),
+      metadata: getTranslationMetadata('transcript')
+    }, sessionId);
+    const translatedText = extractPlainTextFromTranslatedSrt(data.srtContent);
+    document.getElementById('fullTextMain').textContent = translatedText;
     
   } catch (error) {
     console.error('Error:', error);
     reportClientError('translate', error);
-    showMessage(USER_ERROR_GENERIC, 'error');
+    showMessage(mapTranslateErrorMessage(error), 'error');
   } finally {
     btn.disabled = false;
     btn.textContent = '🔄 Translate';
@@ -5542,17 +7259,19 @@ function startProgressTracking(startPercent, endPercent, estimatedDurationSecond
       // Move forward smoothly (max 2% per update for smoothness)
       const increment = Math.min(2, (targetProgress - progressCurrentPercent) * 0.3);
       progressCurrentPercent = Math.min(targetProgress, progressCurrentPercent + increment);
-      
-      // Update status text at 50% if specified
-      if (progressStatusTextAt50 && progressTitle && progressCurrentPercent >= midPoint) {
-        if (progressTitle.textContent !== progressStatusTextAt50) {
-          progressTitle.textContent = progressStatusTextAt50;
-          progressStatusText = progressStatusTextAt50;
-        }
-      }
-      
-      updateProgressBar(0, 0, progressCurrentPercent, progressStatusText);
+    } else if (elapsed >= progressEstimatedDuration && progressCurrentPercent < progressTargetPercent - 1) {
+      // Extraction/transcription still running after estimate — creep instead of freezing
+      progressCurrentPercent = Math.min(progressTargetPercent - 1, progressCurrentPercent + 0.12);
     }
+
+    if (progressStatusTextAt50 && progressTitle && progressCurrentPercent >= midPoint) {
+      if (progressTitle.textContent !== progressStatusTextAt50) {
+        progressTitle.textContent = progressStatusTextAt50;
+        progressStatusText = progressStatusTextAt50;
+      }
+    }
+
+    updateProgressBar(0, 0, progressCurrentPercent, progressStatusText);
   }, 50); // Update every 50ms for very smooth progress
 }
 
@@ -6005,7 +7724,9 @@ function getCurrentUrlInput() {
 // Get current URL value
 function getCurrentUrl() {
   const input = getCurrentUrlInput();
-  return input ? input.value.trim() : '';
+  const value = input ? input.value.trim() : '';
+  window.CutupApp.currentUrl = value;
+  return value;
 }
 
 // Get download options container for current platform
@@ -6047,28 +7768,21 @@ function checkInput() {
   
   // Check if URL is for the correct platform
   if (url && url.trim()) {
-    // Check if URL matches current platform
-    const isYouTube = isYouTubeUrl(url);
-    const isTikTok = isTikTokUrl(url);
-    const isInstagram = isInstagramUrl(url);
-    
-    // If URL is for a different platform, show error
-    if (currentPlatform === 'youtube' && !isYouTube && (isTikTok || isInstagram)) {
-      const wrongPlatform = isTikTok ? 'TikTok' : 'Instagram';
-      showMessage(`This link is from ${wrongPlatform}. Please enter a YouTube URL. Example: ${getExampleUrl('youtube')}`, 'error');
+    const detected = detectPlatform(url);
+    if (detected && detected !== currentPlatform && detected !== 'audiofile') {
+      switchPlatform(detected, { carriedUrl: url });
       return;
-    } else if (currentPlatform === 'instagram' && !isInstagram && (isYouTube || isTikTok)) {
-      const wrongPlatform = isYouTube ? 'YouTube' : 'TikTok';
-      showMessage(`This link is from ${wrongPlatform}. Please enter an Instagram URL. Example: ${getExampleUrl('instagram')}`, 'error');
-      return;
-    } else if (currentPlatform === 'tiktok' && !isTikTok && (isYouTube || isInstagram)) {
-      const wrongPlatform = isYouTube ? 'YouTube' : 'Instagram';
-      showMessage(`This link is from ${wrongPlatform}. Please enter a TikTok URL. Example: ${getExampleUrl('tiktok')}`, 'error');
-      return;
-    } else if (!isYouTube && !isTikTok && !isInstagram) {
+    }
+    if (!detected) {
       // URL is not from any known platform
-      const platformName = getPlatformName(currentPlatform);
-      showMessage(`Invalid link. Please enter a ${platformName} URL. Example: ${getExampleUrl(currentPlatform)}`, 'error');
+      if (isInstagramStoryUrl(url)) {
+        showMessage(mapErrorCodeToUserMessage('INSTAGRAM_STORY_UNSUPPORTED'), 'error');
+      } else if (/instagram\.com/i.test(url)) {
+        showMessage('Please paste a direct Instagram Reel, Post, or Video link.', 'error');
+      } else {
+        const platformName = getPlatformName(currentPlatform);
+        showMessage(`Invalid link. Please enter a ${platformName} URL. Example: ${getExampleUrl(currentPlatform)}`, 'error');
+      }
       return;
     }
   }
@@ -6178,32 +7892,26 @@ async function translateSRT(sessionId) {
   btn.textContent = '⏳ Translating...';
   
   try {
-    const response = await fetch(`${API_BASE_URL}/api/translate-srt`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Session-Id': sessionId
-      },
-      body: JSON.stringify({
-        srtContent: window.originalSrtContent,
-        targetLanguage: targetLanguage,
-        sourceLanguage: window.originalSrtLanguage || window.cutupDetectedSourceLanguage || 'auto',
-        metadata: getTranslationMetadata('srt')
-      })
-    });
-    
-    if (!response.ok) {
-      throw new Error('Translation failed');
+    const srtPayload = getStoredSrtContent() || stripSrtForTranslation(window.originalSrtContent || '');
+    if (!srtPayload) {
+      throw new Error('No transcript available. Generate subtitles first, then translate.');
     }
-    
-    const data = await response.json();
-    window.currentSrtContent = data.srtContent;
-    document.getElementById('srtPreviewMain').textContent = data.srtContent;
+    const data = await fetchTranslateSrtApi({
+      srtContent: srtPayload,
+      targetLanguage,
+      sourceLanguage: normalizeSourceLanguageForApi(
+        window.originalSrtLanguage || window.cutupDetectedSourceLanguage
+      ),
+      metadata: getTranslationMetadata('srt')
+    }, sessionId);
+    const translatedSrt = stripSrtForTranslation(data.srtContent);
+    window.currentSrtContent = translatedSrt;
+    document.getElementById('srtPreviewMain').textContent = `${translatedSrt}${CUTUP_SRT_ATTRIBUTION}`;
     
   } catch (error) {
     console.error('Error:', error);
     reportClientError('translate', error);
-    showMessage(USER_ERROR_GENERIC, 'error');
+    showMessage(mapTranslateErrorMessage(error), 'error');
   } finally {
     btn.disabled = false;
     btn.textContent = '🔄 Translate';
@@ -6224,6 +7932,7 @@ function downloadSRTFile(srtContent, videoId) {
 
 // Features slider for mobile (native scroll-snap, no translateX math)
 let mobileFeaturesState = null;
+let featureAutoplayTimer = null;
 
 function initFeaturesSlider() {
   const featuresGrid = document.querySelector('#features .features-grid');
@@ -6263,29 +7972,6 @@ function initFeaturesSlider() {
   });
   featuresGrid.appendChild(dotsContainer);
 
-  const nav = document.createElement('div');
-  nav.className = 'features-nav';
-  const prevBtn = document.createElement('button');
-  prevBtn.type = 'button';
-  prevBtn.className = 'features-nav-btn features-nav-btn-prev';
-  prevBtn.setAttribute('aria-label', 'Previous feature');
-  prevBtn.textContent = '←';
-  const nextBtn = document.createElement('button');
-  nextBtn.type = 'button';
-  nextBtn.className = 'features-nav-btn features-nav-btn-next';
-  nextBtn.setAttribute('aria-label', 'Next feature');
-  nextBtn.textContent = '→';
-  nav.appendChild(prevBtn);
-  nav.appendChild(nextBtn);
-  featuresGrid.appendChild(nav);
-
-  prevBtn.addEventListener('click', () => {
-    track.scrollBy({ left: -track.clientWidth, behavior: 'smooth' });
-  });
-  nextBtn.addEventListener('click', () => {
-    track.scrollBy({ left: track.clientWidth, behavior: 'smooth' });
-  });
-
   let scrollRaf = 0;
   function syncDotsFromScroll() {
     scrollRaf = 0;
@@ -6297,6 +7983,37 @@ function initFeaturesSlider() {
     if (scrollRaf) return;
     scrollRaf = window.requestAnimationFrame(syncDotsFromScroll);
   }, { passive: true });
+
+  function getActiveIndex() {
+    const width = track.clientWidth || 1;
+    return Math.max(0, Math.min(dots.length - 1, Math.round(track.scrollLeft / width)));
+  }
+
+  function queueAutoplay(delayMs) {
+    if (featureAutoplayTimer) clearTimeout(featureAutoplayTimer);
+    featureAutoplayTimer = window.setTimeout(() => {
+      const idx = getActiveIndex();
+      const width = track.clientWidth || 1;
+      if (idx >= dots.length - 1) {
+        // Pause on last slide, then jump back to first.
+        track.scrollTo({ left: 0, behavior: 'smooth' });
+        queueAutoplay(2200);
+        return;
+      }
+      track.scrollTo({ left: width * (idx + 1), behavior: 'smooth' });
+      queueAutoplay(1800);
+    }, delayMs);
+  }
+
+  // Keep loop smooth after manual swipe/dot interactions.
+  track.addEventListener('scrollend', () => {
+    queueAutoplay(1800);
+  });
+  track.addEventListener('touchend', () => {
+    queueAutoplay(1800);
+  }, { passive: true });
+
+  queueAutoplay(1800);
 
   mobileFeaturesState = { track, dots };
   featuresGrid.dataset.sliderInitialized = '1';

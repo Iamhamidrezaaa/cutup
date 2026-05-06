@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="responsive-global.css?v=1">
   <link rel="stylesheet" href="blog.css">
+  <link rel="preload" as="image" href="/cms-media/images/blog/cutup-blog-hero.jpg" fetchpriority="high">
 </head>
 <body>
   <script src="site-chrome.js"></script>
@@ -31,10 +32,24 @@
 
   <main id="blogRoot" class="container">
     <section id="blogListView">
-      <div class="blog-hero">
-        <h1>Cutup Blog</h1>
-        <p>Guides, product updates, and growth content for creators.</p>
-      </div>
+      <section class="blog-hero" aria-label="Cutup Blog">
+        <div class="blog-hero-media">
+          <img
+            class="blog-hero-image"
+            src="/cms-media/images/blog/cutup-blog-hero.jpg"
+            alt=""
+            width="1024"
+            height="376"
+            decoding="async"
+            fetchpriority="high"
+          >
+          <div class="blog-hero-overlay" aria-hidden="true"></div>
+          <div class="blog-hero-caption">
+            <span class="blog-hero-badge">AI Creator Workflows</span>
+            <p class="blog-hero-badge-sub">Subtitles, Shorts, AI editing, creator systems</p>
+          </div>
+        </div>
+      </section>
       <section class="blog-filters" aria-label="Blog filters">
         <input id="searchInput" type="search" placeholder="Search articles">
         <select id="categoryFilter">

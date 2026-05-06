@@ -1,6 +1,7 @@
 const API_BASE_URL =
   typeof window !== 'undefined' && typeof window.CUTUP_API_BASE !== 'undefined' ? window.CUTUP_API_BASE : '';
-const BLOG_ENDPOINT = `${API_BASE_URL}/api/admin?action=blogPosts&public=1`;
+const BLOG_ENDPOINT = `${API_BASE_URL}/api/blog/posts`;
+const BLOG_INDEX_URL = '/blog-posts.json';
 /** Editor CTA: always root path + hash (never index.html). */
 const ARTICLE_CTA_URL = '/#tool';
 
@@ -111,6 +112,21 @@ function getFilteredPosts(posts) {
   });
 }
 
+function isBlogPostHref(href) {
+  const h = String(href || '').trim();
+  return h.startsWith('/blog/') || /^https?:\/\/[^/]*cutup\.shop\/blog\//i.test(h);
+}
+
+function blogPostLinkAttrs(href) {
+  return isBlogPostHref(href) ? ' target="_blank" rel="noopener noreferrer"' : '';
+}
+
+function stripTldrLabels(html) {
+  return String(html || '')
+    .replace(/<span[^>]*class="ba-tldr-label"[^>]*>[\s\S]*?<\/span>\s*/gi, '')
+    .replace(/<span[^>]*class="blog-tldr-label"[^>]*>[\s\S]*?<\/span>\s*/gi, '');
+}
+
 function postCardMarkup(post, { related = false } = {}) {
   const tags = normalizeTags(post.tags);
   const date = post.publishedAt || post.updatedAt;
@@ -118,7 +134,9 @@ function postCardMarkup(post, { related = false } = {}) {
   const cat = String(post.category || '').trim();
   const placeholderLabel = cat || 'Article';
   const title = post.title || 'Untitled';
-  const slugQ = encodeURIComponent(post.slug || '');
+  const href = post.url || `/blog/${encodeURIComponent(post.slug || '')}`;
+  const linkExtra = blogPostLinkAttrs(href);
+  const readMins = post.readingTimeMinutes ? `${post.readingTimeMinutes} min read` : '';
   const thumb = cover
     ? `<img class="post-card-thumb" src="${escapeHtml(cover)}" alt="${escapeHtml(title)}" loading="lazy" decoding="async">`
     : '';
@@ -134,17 +152,18 @@ function postCardMarkup(post, { related = false } = {}) {
     : `<div class="post-meta-line">
         ${cat ? `<span class="pill">${escapeHtml(cat)}</span>` : ''}
         <span>${escapeHtml(fmtDate(date))}</span>
+        ${readMins ? `<span>${escapeHtml(readMins)}</span>` : ''}
       </div>`;
   return `
     <article class="post-card${extraClasses}">
-      <a class="post-card-media" href="/blog.html?slug=${slugQ}" aria-label="${escapeHtml(title)}">
+      <a class="post-card-media" href="${escapeHtml(href)}"${linkExtra} aria-label="${escapeHtml(title)}">
         ${thumb}
         <div class="post-card-placeholder"><span>${escapeHtml(placeholderLabel)}</span></div>
       </a>
       ${metaLine}
-      <h2><a href="/blog.html?slug=${slugQ}">${escapeHtml(title)}</a></h2>
+      <h2><a href="${escapeHtml(href)}"${linkExtra}>${escapeHtml(title)}</a></h2>
       ${excerptBlock}
-      <a class="read-more" href="/blog.html?slug=${slugQ}">Read more</a>
+      <a class="read-more" href="${escapeHtml(href)}"${linkExtra}>Read more</a>
     </article>
   `;
 }
@@ -190,14 +209,150 @@ function buildCtaCard() {
   return wrap;
 }
 
+function sanitizeBlogHtml(html) {
+  const allowed = new Set([
+    'P',
+    'BR',
+    'STRONG',
+    'B',
+    'EM',
+    'I',
+    'U',
+    'S',
+    'H1',
+    'H2',
+    'H3',
+    'H4',
+    'H5',
+    'H6',
+    'UL',
+    'OL',
+    'LI',
+    'BLOCKQUOTE',
+    'PRE',
+    'CODE',
+    'A',
+    'IMG',
+    'TABLE',
+    'THEAD',
+    'TBODY',
+    'TR',
+    'TH',
+    'TD',
+    'HR',
+    'DIV',
+    'SPAN',
+    'FIGURE',
+    'FIGCAPTION',
+    'SUB',
+    'SUP',
+    'SMALL'
+  ]);
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(String(html || ''), 'text/html');
+
+  function cleanAttrs(el) {
+    const tag = el.tagName;
+    [...el.attributes].forEach((attr) => {
+      const n = attr.name.toLowerCase();
+      if (n.startsWith('on')) {
+        el.removeAttribute(attr.name);
+        return;
+      }
+      if (n === 'style') {
+        el.removeAttribute(attr.name);
+        return;
+      }
+      if (tag === 'A' && n === 'href') {
+        const v = attr.value.trim().toLowerCase();
+        if (v.startsWith('javascript:') || v.startsWith('vbscript:')) el.removeAttribute('href');
+        return;
+      }
+      if (tag === 'IMG' && n === 'src') {
+        const v = attr.value.trim().toLowerCase();
+        if (v.startsWith('javascript:')) el.removeAttribute('src');
+        return;
+      }
+      if (!['href', 'src', 'alt', 'title', 'class', 'id', 'colspan', 'rowspan', 'target', 'rel'].includes(n)) {
+        el.removeAttribute(attr.name);
+      }
+    });
+    if (tag === 'A') {
+      const href = el.getAttribute('href') || '';
+      if (isBlogPostHref(href)) {
+        el.setAttribute('target', '_blank');
+        el.setAttribute('rel', 'noopener noreferrer');
+      }
+      const t = el.getAttribute('target');
+      if (t === '_blank') {
+        const rel = (el.getAttribute('rel') || '').toLowerCase();
+        if (!rel.includes('noopener')) el.setAttribute('rel', rel ? `${rel} noopener noreferrer` : 'noopener noreferrer');
+      }
+    }
+  }
+
+  function walk(parent) {
+    let node = parent.firstChild;
+    while (node) {
+      const next = node.nextSibling;
+      if (node.nodeType === Node.TEXT_NODE) {
+        node = next;
+        continue;
+      }
+      if (node.nodeType === Node.COMMENT_NODE) {
+        node.remove();
+        node = next;
+        continue;
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) {
+        node.remove();
+        node = next;
+        continue;
+      }
+      if (!allowed.has(node.tagName)) {
+        while (node.firstChild) parent.insertBefore(node.firstChild, node);
+        parent.removeChild(node);
+        node = parent.firstChild;
+        continue;
+      }
+      cleanAttrs(node);
+      walk(node);
+      node = next;
+    }
+  }
+
+  walk(doc.body);
+  return doc.body.innerHTML;
+}
+
+function tocFromArticleRoot(rootEl) {
+  const toc = [];
+  if (!rootEl) return toc;
+  rootEl.querySelectorAll('h2, h3').forEach((h, i) => {
+    let id = (h.getAttribute('id') || '').trim();
+    if (!id) {
+      id = `post-section-${i}`;
+      h.setAttribute('id', id);
+    }
+    const label = h.textContent?.trim() || '';
+    if (label) toc.push({ id, label });
+  });
+  return toc;
+}
+
 function rawArticleHasCtaSignals(markdown) {
   const s = String(markdown || '');
   return s.includes('cutup.shop') || s.includes('#tool');
 }
 
-function injectArticleCtas(contentEl, rawMarkdown) {
+function articleHasCtaSignals(markdown, html) {
+  if (rawArticleHasCtaSignals(markdown)) return true;
+  return /cutup\.shop|#tool/i.test(String(html || ''));
+}
+
+function injectArticleCtas(contentEl, rawMarkdown, contentHtml) {
   if (!contentEl) return;
-  if (rawArticleHasCtaSignals(rawMarkdown)) return;
+  if (articleHasCtaSignals(rawMarkdown, contentHtml)) return;
 
   const paragraphs = [...contentEl.querySelectorAll(':scope > p')];
   const cta = buildCtaCard();
@@ -528,8 +683,10 @@ function renderArticleContent(raw) {
 }
 
 function setSeoForPost(post) {
-  const slug = encodeURIComponent(post.slug || '');
-  const pageUrl = `${window.location.origin}/blog.html?slug=${slug}`;
+  const slugRaw = String(post.slug || '').trim();
+  const pageUrl = slugRaw
+    ? `${window.location.origin}/blog/${encodeURIComponent(slugRaw)}`
+    : `${window.location.origin}/blog.html`;
   const title = post.metaTitle || post.title || 'Cutup Blog';
   const description = post.metaDescription || post.excerpt || `Read "${post.title || 'this article'}" on Cutup Blog.`;
   document.title = title;
@@ -631,23 +788,32 @@ function renderPost(post) {
   `;
 
   const rawPostBody = post.content || '';
-  const parsed = renderArticleContent(rawPostBody);
   const contentEl = q('#postContent');
-  contentEl.innerHTML = parsed.html || '<p>No content available.</p>';
-  injectArticleCtas(contentEl, rawPostBody);
+  const htmlFromCms = typeof post.contentHtml === 'string' && post.contentHtml.trim() !== '';
+  let tocItems = [];
+  if (htmlFromCms) {
+    contentEl.innerHTML = sanitizeBlogHtml(stripTldrLabels(post.contentHtml));
+    tocItems = tocFromArticleRoot(contentEl);
+    injectArticleCtas(contentEl, rawPostBody, post.contentHtml);
+  } else {
+    const parsed = renderArticleContent(rawPostBody);
+    contentEl.innerHTML = parsed.html || '<p>No content available.</p>';
+    injectArticleCtas(contentEl, rawPostBody, '');
+    tocItems = parsed.toc;
+  }
 
   const tocEl = q('#postToc');
-  if (parsed.toc.length) {
+  if (tocItems.length) {
     tocEl.innerHTML = `
       <p class="post-toc-title">On this page</p>
-      ${parsed.toc.map((item) => `<a class="post-toc-link" href="#${escapeHtml(item.id)}">${escapeHtml(item.label)}</a>`).join('')}
+      ${tocItems.map((item) => `<a class="post-toc-link" href="#${escapeHtml(item.id)}">${escapeHtml(item.label)}</a>`).join('')}
     `;
   } else {
     tocEl.innerHTML = `<p class="post-toc-title">On this page</p><span>No sections</span>`;
   }
 
   teardownTocScroll();
-  if (parsed.toc.length) bindTocScrollSpy(tocEl, contentEl);
+  if (tocItems.length) bindTocScrollSpy(tocEl, contentEl);
 
   renderRelatedPostsGrid(post, postsCache);
 
@@ -656,17 +822,44 @@ function renderPost(post) {
   setupStickyArticleCta();
 }
 
-async function loadPosts() {
-  const response = await fetch(BLOG_ENDPOINT);
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || 'Could not load blog posts.');
-  const posts = (data.posts || []).filter((p) => p.status === 'published');
-  posts.sort((a, b) => {
+async function loadStaticBlogIndex() {
+  try {
+    const response = await fetch(BLOG_INDEX_URL, { cache: 'no-cache' });
+    if (!response.ok) return [];
+    const data = await response.json().catch(() => ({}));
+    return Array.isArray(data.posts) ? data.posts : [];
+  } catch {
+    return [];
+  }
+}
+
+function mergeBlogPosts(apiPosts, staticPosts) {
+  const merged = [...(apiPosts || [])];
+  const slugs = new Set(merged.map((p) => p.slug).filter(Boolean));
+  for (const post of staticPosts || []) {
+    if (post?.slug && !slugs.has(post.slug)) {
+      merged.push(post);
+      slugs.add(post.slug);
+    }
+  }
+  merged.sort((a, b) => {
     const da = new Date(a.publishedAt || a.updatedAt || 0).getTime();
     const db = new Date(b.publishedAt || b.updatedAt || 0).getTime();
     return db - da;
   });
-  return posts;
+  return merged;
+}
+
+async function loadPosts() {
+  const [apiResult, staticPosts] = await Promise.all([
+    fetch(BLOG_ENDPOINT).then(async (response) => {
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Could not load blog posts.');
+      return data.posts || [];
+    }),
+    loadStaticBlogIndex()
+  ]);
+  return mergeBlogPosts(apiResult, staticPosts);
 }
 
 function setupListInteractions() {
@@ -698,22 +891,12 @@ async function bootstrap() {
   teardownStickyArticleCta();
   q('#blogGrid').innerHTML = '<div class="empty-state">Loading articles...</div>';
   try {
-    postsCache = await loadPosts();
-    const slug = new URLSearchParams(window.location.search).get('slug');
-    if (slug) {
-      const post = postsCache.find((p) => String(p.slug || '') === slug);
-      if (post) {
-        renderPost(post);
-      } else {
-        setSeoForList();
-        postView.hidden = true;
-        listView.hidden = false;
-        q('#relatedSection')?.setAttribute('hidden', '');
-        teardownStickyArticleCta();
-        renderEmptyState('Article not found. Check back on the blog list.');
-      }
+    const legacySlug = new URLSearchParams(window.location.search).get('slug');
+    if (legacySlug) {
+      window.location.replace(`/blog/${encodeURIComponent(legacySlug)}`);
       return;
     }
+    postsCache = await loadPosts();
     setSeoForList();
     q('#relatedSection')?.setAttribute('hidden', '');
     hydrateFilters(postsCache);

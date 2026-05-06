@@ -3,19 +3,27 @@
 // This avoids the 4.5MB limit by processing the file in the same endpoint
 
 import { handleCORS, setCORSHeaders } from './cors.js';
-import FormDataLib from 'form-data';
 import fetchModule from 'node-fetch';
-import OpenAI from 'openai';
 import Busboy from 'busboy';
 import { transcribeLargeFile } from './chunk-processor.js';
 import {
   requireSessionEmail,
-  enforceQuota,
   estimateTranscriptionMinutesFromBytes,
   billingMinutesFromWhisperSegments,
   consumeTranscriptionUsage,
   respondConsumeFailure
 } from './processing-enforcement.js';
+import {
+  resolveTraceId,
+  sendTranscriptSuccess,
+  sendTranscriptError,
+  sendTranscriptErrorFromLegacy,
+  mapToTranscriptErrorCode,
+  userMessageForCode,
+  retryableForCode
+} from './transcript-errors.js';
+import { transcribeAudioPayload, messageForAllProvidersFailed } from './transcription/transcription-router.js';
+import { ensureTranscriptionProvidersInit, getTranscriptionProviderRegistry } from './transcription/init.js';
 
 export default async function handler(req, res) {
   // Log immediately to verify this endpoint is being called
@@ -32,21 +40,34 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Check API Key
-    const apiKey = process.env.OPENAI_API_KEY;
-    console.log('UPLOAD: API Key check:', apiKey ? `Present (${apiKey.substring(0, 20)}...${apiKey.substring(apiKey.length - 10)})` : 'MISSING');
-    console.log('UPLOAD: API Key length:', apiKey ? apiKey.length : 0);
-    
-    if (!apiKey || apiKey.length < 20) {
-      console.error('UPLOAD_ERROR: OPENAI_API_KEY is not set or invalid');
-      return res.status(500).json({ 
-        error: 'OPENAI_ERROR', 
-        details: 'API Key is not configured or invalid. Please set OPENAI_API_KEY in server .env file.' 
-      });
-    }
-
     const userEmail = requireSessionEmail(req, res);
     if (!userEmail) return;
+
+    const requestId = req.headers['x-request-id'] || `req_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const traceId = resolveTraceId(req, requestId);
+    console.log('[transcript-start]', { traceId, email: userEmail, route: 'upload' });
+
+    const reg = ensureTranscriptionProvidersInit();
+    const configuredProviders = [...reg.activeProviders];
+    console.log('[provider-runtime]', {
+      route: 'upload',
+      traceId,
+      activeProviders: configuredProviders,
+      fallbackProviders: [...reg.fallbackProviders]
+    });
+
+    if (configuredProviders.length === 0) {
+      console.error('UPLOAD_ERROR: No transcription providers configured');
+      setCORSHeaders(res);
+      return sendTranscriptError(res, {
+        statusCode: 503,
+        errorCode: 'TRANSCRIPTION_FAILED',
+        message: userMessageForCode('TRANSCRIPTION_FAILED'),
+        retryable: false,
+        traceId,
+        phase: 'transcription'
+      });
+    }
 
     // Initialize fetch
     let fetch;
@@ -150,7 +171,7 @@ export default async function handler(req, res) {
     console.log(`UPLOAD: Processing audio file, size: ${audioBuffer.length} bytes, type: ${mimeType}`);
 
     const preMinutes = estimateTranscriptionMinutesFromBytes(audioBuffer.length);
-    if (!(await enforceQuota(res, userEmail, 'transcription', preMinutes))) return;
+    console.log('[transcript-download]', { traceId, bytes: audioBuffer.length, preMinutes });
 
     // Determine file extension from mime type
     let extension = 'mp3';
@@ -159,71 +180,79 @@ export default async function handler(req, res) {
     else if (mimeType.includes('ogg')) extension = 'ogg';
     else if (mimeType.includes('webm')) extension = 'webm';
 
-    // Transcribe using OpenAI Whisper API
-    // If file is larger than 25MB, use chunk processor
     let transcript;
-    
-    if (audioBuffer.length > 25 * 1024 * 1024) {
-      console.log('UPLOAD: File is larger than 25MB, using chunk processor...');
-      const chunkResult = await transcribeLargeFile(audioBuffer, mimeType, apiKey, extension);
-      transcript = {
-        text: chunkResult.text,
-        segments: chunkResult.segments,
-        language: chunkResult.language
-      };
-    } else {
-      console.log('UPLOAD: Sending to Whisper API (single request)...');
-      
-      const formData = new FormDataLib();
-      formData.append('file', audioBuffer, {
-        filename: `audio.${extension}`,
-        contentType: mimeType,
-        knownLength: audioBuffer.length
-      });
-      formData.append('model', 'whisper-1');
-      // Don't specify language - let Whisper auto-detect
-      // formData.append('language', 'fa');
-      formData.append('response_format', 'verbose_json');
-      
-      // Note: We'll add prompt only if language is detected as Persian
-      // For now, let Whisper detect the language first
-      
-      const formHeaders = formData.getHeaders();
-      
-      const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          ...formHeaders
-        },
-        body: formData,
-        timeout: 180000 // 3 minutes timeout (reduced for faster failure detection)
-      });
-      
-      if (!whisperResponse.ok) {
-        const errorText = await whisperResponse.text();
-        let errorData;
-        try {
-          errorData = JSON.parse(errorText);
-        } catch {
-          errorData = { message: errorText };
-        }
-        
-        const errorMessage = errorData.error?.message || errorText || `OpenAI API error: ${whisperResponse.status} ${whisperResponse.statusText}`;
-        console.error('UPLOAD: Whisper API Error:', errorMessage);
-        
-        setCORSHeaders(res);
-        return res.status(whisperResponse.status).json({ 
-          error: 'WHISPER_ERROR', 
-          details: errorMessage,
-          message: 'Transcription failed'
+
+    try {
+      const transcribeOne = async (buf, mt, ext) =>
+        transcribeAudioPayload({
+          fetch,
+          traceId,
+          audioBuffer: buf,
+          mimeType: mt,
+          extension: ext,
+          languageHint: null
+        });
+
+      if (audioBuffer.length > 25 * 1024 * 1024) {
+        console.log('UPLOAD: File is larger than 25MB, using chunk processor + router...');
+        const chunkResult = await transcribeLargeFile(audioBuffer, mimeType, extension, transcribeOne);
+        transcript = {
+          text: chunkResult.text,
+          segments: chunkResult.segments,
+          language: chunkResult.language
+        };
+      } else {
+        console.log('UPLOAD: Transcription router (single request)...');
+        transcript = await transcribeOne(audioBuffer, mimeType, extension);
+      }
+    } catch (routerErr) {
+      console.error('UPLOAD: Transcription router error:', routerErr);
+      setCORSHeaders(res);
+      if (routerErr?.name === 'TranscriptionProviderError') {
+        const pe = routerErr;
+        return sendTranscriptError(res, {
+          statusCode: pe.code === 'INVALID_AUDIO' ? 400 : 503,
+          errorCode: pe.code || 'TRANSCRIPTION_FAILED',
+          message: userMessageForCode(pe.code) || userMessageForCode('TRANSCRIPTION_FAILED'),
+          retryable: pe.code !== 'INVALID_AUDIO' && retryableForCode(pe.code || 'TRANSCRIPTION_FAILED'),
+          traceId,
+          phase: 'transcription',
+          providerDebug: {
+            providerId: pe.providerId,
+            httpStatus: pe.httpStatus,
+            details: pe.details
+          }
         });
       }
-      
-      transcript = await whisperResponse.json();
+      if (routerErr?.name === 'AllProvidersFailedError') {
+        const reg = getTranscriptionProviderRegistry();
+        return sendTranscriptError(res, {
+          statusCode: 503,
+          errorCode: 'TRANSCRIPTION_FAILED',
+          message: messageForAllProvidersFailed(routerErr, reg),
+          retryable: true,
+          traceId,
+          phase: 'transcription',
+          providerDebug: {
+            attemptedProviders: routerErr.attemptedProviders || [],
+            lastProvider: routerErr.lastProviderId || null,
+            lastError: String(routerErr.lastError?.message || '').slice(0, 500),
+            activeProviders: [...reg.activeProviders],
+            fallbackProviders: [...reg.fallbackProviders]
+          }
+        });
+      }
+      return sendTranscriptError(res, {
+        statusCode: 500,
+        errorCode: 'PROVIDER_ERROR',
+        message: userMessageForCode('PROVIDER_ERROR'),
+        retryable: true,
+        traceId,
+        phase: 'transcription'
+      });
     }
-    
-    // Get detected language from Whisper
+
+    // Get detected language from transcript
     const detectedLanguage = transcript.language || 'unknown';
     console.log('UPLOAD: Detected language:', detectedLanguage);
     console.log('UPLOAD: Transcript text preview:', transcript.text?.substring(0, 100));
@@ -318,6 +347,7 @@ export default async function handler(req, res) {
     console.log('UPLOAD: Response preview:', JSON.stringify(responseData).substring(0, 200));
 
     const billedMinutes = billingMinutesFromWhisperSegments(validSegments);
+    console.log('[transcript-provider]', { traceId, billedMinutes, phase: 'before_consume' });
     const consumed = await consumeTranscriptionUsage(userEmail, billedMinutes, {
       route: 'upload',
       filename: filename || 'audio',
@@ -328,18 +358,24 @@ export default async function handler(req, res) {
       sourceUrl: 'upload://local-file',
       durationSeconds: validSegments.length ? Math.ceil(validSegments[validSegments.length - 1].end || 0) : null
     });
-    if (respondConsumeFailure(res, consumed)) return;
-    
-    setCORSHeaders(res);
-    return res.status(200).json(responseData);
+    if (respondConsumeFailure(res, consumed, req)) {
+      console.log('[transcript-failed]', { traceId, reason: 'quota_consume_denied', consumed });
+      return;
+    }
+
+    return sendTranscriptSuccess(res, traceId, responseData);
 
   } catch (error) {
-    console.error('UPLOAD_ERROR:', error);
-    setCORSHeaders(res);
-    return res.status(500).json({ 
-      error: 'UPLOAD_ERROR', 
-      details: error.message,
-      message: 'Upload and transcription failed'
+    const traceId = resolveTraceId(req);
+    console.error('UPLOAD_ERROR:', { traceId, message: error?.message });
+    const errorCode = mapToTranscriptErrorCode('UPLOAD_ERROR', { message: error?.message });
+    return sendTranscriptErrorFromLegacy(res, {
+      statusCode: 500,
+      legacyCode: 'UPLOAD_ERROR',
+      message: userMessageForCode(errorCode),
+      traceId,
+      stage: 'upload',
+      retryable: retryableForCode(errorCode)
     });
   }
 }

@@ -7,6 +7,12 @@ import { sessions } from './auth.js';
 import { setCORSHeaders } from './cors.js';
 import { isBillingDbConfigured, applyUsageMinutesAtomic } from './billing-repository.js';
 import { canUseFeature } from './subscription.js';
+import {
+  resolveTraceId,
+  sendTranscriptError,
+  userMessageForCode,
+  retryableForCode
+} from './transcript-errors.js';
 
 export function getSessionIdFromRequest(req) {
   const raw = req.headers && (req.headers['x-session-id'] || req.headers['X-Session-Id']);
@@ -30,38 +36,54 @@ export function getEmailForSession(sessionId) {
   return session.user.email;
 }
 
-export function billingUnavailable(res) {
-  setCORSHeaders(res);
-  return res.status(503).json({
-    error: 'service_unavailable',
-    code: 'BILLING_UNAVAILABLE',
-    message: 'Billing is not configured. Set DATABASE_URL and run database migrations.'
+export function billingUnavailable(res, req) {
+  const traceId = resolveTraceId(req);
+  return sendTranscriptError(res, {
+    statusCode: 503,
+    errorCode: 'PROVIDER_ERROR',
+    message: 'Service temporarily unavailable. Please try again shortly.',
+    retryable: true,
+    traceId,
+    stage: 'billing'
   });
 }
 
-export function unauthorized(res, code, message) {
-  setCORSHeaders(res);
-  return res.status(401).json({
-    error: 'unauthorized',
-    code,
-    message
+export function unauthorized(res, code, message, req) {
+  const traceId = resolveTraceId(req);
+  return sendTranscriptError(res, {
+    statusCode: 401,
+    errorCode: 'SESSION_EXPIRED',
+    message: message || userMessageForCode('SESSION_EXPIRED'),
+    retryable: false,
+    traceId,
+    stage: 'auth'
   });
 }
 
-export function planDenied(res, code, message) {
-  setCORSHeaders(res);
-  return res.status(403).json({
-    error: 'forbidden',
-    code,
-    message
+export function planDenied(res, code, message, req) {
+  const traceId = resolveTraceId(req);
+  const c = String(code || '');
+  let errorCode = 'QUOTA_EXCEEDED';
+  if (c.includes('FEATURE_NOT_AVAILABLE') || c.includes('INVALID_PLAN')) {
+    errorCode = 'PROVIDER_ERROR';
+  } else if (c.includes('SUBSCRIPTION_INACTIVE')) {
+    errorCode = 'SESSION_EXPIRED';
+  }
+  return sendTranscriptError(res, {
+    statusCode: 403,
+    errorCode,
+    message: message || userMessageForCode(errorCode),
+    retryable: retryableForCode(errorCode),
+    traceId,
+    stage: 'quota'
   });
 }
 
 /** If consumeResult is { ok: false }, sends 403 and returns true. */
-export function respondConsumeFailure(res, consumeResult) {
+export function respondConsumeFailure(res, consumeResult, req) {
   if (!consumeResult || consumeResult.ok) return false;
   const reason = consumeResult.reason || 'Quota exceeded.';
-  planDenied(res, classifyDenial(reason), reason);
+  planDenied(res, classifyDenial(reason), reason, req);
   return true;
 }
 
@@ -79,17 +101,17 @@ function classifyDenial(reason) {
  */
 export function requireSessionEmail(req, res) {
   if (!isBillingDbConfigured()) {
-    billingUnavailable(res);
+    billingUnavailable(res, req);
     return null;
   }
   const sid = getSessionIdFromRequest(req);
   if (!sid) {
-    unauthorized(res, 'NO_SESSION', 'Sign in is required for this action.');
+    unauthorized(res, 'NO_SESSION', 'Sign in is required for this action.', req);
     return null;
   }
   const email = getEmailForSession(sid);
   if (!email) {
-    unauthorized(res, 'INVALID_SESSION', 'Your session is invalid or expired. Please sign in again.');
+    unauthorized(res, 'INVALID_SESSION', 'Your session is invalid or expired. Please sign in again.', req);
     return null;
   }
   return email;
@@ -98,20 +120,20 @@ export function requireSessionEmail(req, res) {
 /**
  * @returns {Promise<boolean>} true if allowed; false if response already sent
  */
-export async function enforceQuota(res, email, feature, minutes) {
+export async function enforceQuota(res, email, feature, minutes, req) {
   if (!isBillingDbConfigured()) {
-    billingUnavailable(res);
+    billingUnavailable(res, req);
     return false;
   }
   const check = await canUseFeature(email, feature, minutes);
   if (!check.allowed) {
     const reason = check.reason || 'Request denied.';
     if (reason.includes('Billing system unavailable') || reason.includes('DATABASE_URL')) {
-      billingUnavailable(res);
+      billingUnavailable(res, req);
       return false;
     }
     const code = classifyDenial(reason);
-    planDenied(res, code, reason);
+    planDenied(res, code, reason, req);
     return false;
   }
   return true;

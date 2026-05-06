@@ -5,7 +5,6 @@
   const USAGE_STATS_KEY = 'cutup_usage_stats';
   const OFFER_EXPIRY_KEY = 'cutup_offer_expiry';
   const PAYMENT_FAILED_KEY = 'cutup_payment_failed_at';
-  const AVG_VIDEO_MINUTES = 7;
   const OFFER_MIN_MS = 10 * 60 * 1000;
   const OFFER_SPAN_MS = 5 * 60 * 1000;
 
@@ -44,9 +43,8 @@
   function effectiveTotalUses(subscriptionInfo) {
     let n = readUsageStats().totalUses || 0;
     if (subscriptionInfo && subscriptionInfo.usage && subscriptionInfo.usage.monthly) {
-      const mm = Number(subscriptionInfo.usage.monthly.minutes) || 0;
-      const est = Math.ceil(mm / AVG_VIDEO_MINUTES);
-      n = Math.max(n, est);
+      const gens = Math.floor(Number(subscriptionInfo.usage.monthly.minutes) || 0);
+      n = Math.max(n, gens);
     }
     return n;
   }
@@ -54,11 +52,15 @@
   function isNearLimit(subscriptionInfo) {
     if (!subscriptionInfo || !subscriptionInfo.usage) return false;
     const mm = Number(subscriptionInfo.usage.monthly?.minutes) || 0;
-    const ml = Number(subscriptionInfo.monthlyLimit) || 0;
+    const ml =
+      Number(subscriptionInfo.usage.monthlyLimit) ||
+      Number(subscriptionInfo.monthlyGenerationLimit) ||
+      Number(subscriptionInfo.monthlyLimit) ||
+      0;
     if (ml > 0 && mm / ml >= 0.72) return true;
     const dm = Number(subscriptionInfo.usage.daily?.minutes) || 0;
-    const dl = subscriptionInfo.dailyLimit;
-    if (dl != null && Number(dl) > 0 && dm / Number(dl) >= 0.85) return true;
+    const dl = Number(subscriptionInfo.usage.dailyLimit);
+    if (Number.isFinite(dl) && dl > 0 && dl < 50000 && dm / dl >= 0.85) return true;
     return false;
   }
 
@@ -158,28 +160,13 @@
     const lines = [];
     if (segment === 'warm') {
       lines.push(
-        '<p class="cutup-paywall-line cutup-paywall-warm">Most users upgrade after 3 uses.</p>'
+        '<p class="cutup-paywall-line cutup-paywall-warm">Unlock higher capacity and faster workflows with paid plans.</p>'
       );
     } else if (segment === 'hot') {
       lines.push(
-        '<p class="cutup-paywall-line cutup-paywall-hot">You\'re close to your limit.</p>'
+        '<p class="cutup-paywall-line cutup-paywall-hot">Need more capacity for ongoing projects?</p>'
       );
-      ensureOfferExpiryIfHot('hot');
-      const exp = getOfferExpiresAt();
-      const discActive = exp && Date.now() <= exp;
-      if (discActive) {
-        lines.push(
-          '<p class="cutup-paywall-line cutup-paywall-offer"><strong>Limited offer: 20% off today</strong> <span class="cutup-paywall-sub">(shown at checkout — same list price on file)</span></p>'
-        );
-        lines.push(
-          '<p class="cutup-paywall-countdown" id="cutupPaywallCountdown" aria-live="polite">Offer expires in <span class="cutup-paywall-time"></span></p>'
-        );
-        maybeTrackOfferShown();
-      } else {
-        lines.push(
-          '<p class="cutup-paywall-urgency">Offer expires soon — upgrade to keep going.</p>'
-        );
-      }
+      lines.push('<p class="cutup-paywall-urgency">Choose a plan that matches your workload.</p>');
     }
     return lines.join('');
   }

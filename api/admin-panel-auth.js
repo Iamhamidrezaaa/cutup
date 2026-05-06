@@ -6,7 +6,8 @@ import crypto from 'crypto';
 import { getPool, isBillingDbConfigured } from './db/pool.js';
 
 export const ADMIN_SESSION_COOKIE = 'admin_session';
-const SESSION_MS = 24 * 60 * 60 * 1000; // 24h
+export const ADMIN_SESSION_MS = 15 * 60 * 1000; // 15 min inactivity window
+const SESSION_MS = ADMIN_SESSION_MS;
 
 export function getCookie(req, name) {
   const raw = req.headers.cookie;
@@ -22,14 +23,14 @@ export function getCookie(req, name) {
   return '';
 }
 
-export function setAdminSessionCookie(res, token, maxAgeSec = 86400) {
+/** Session cookie (no Max-Age) — cleared when browser session ends. */
+export function setAdminSessionCookie(res, token) {
   const isProd = process.env.NODE_ENV === 'production';
   const parts = [
     `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(token)}`,
     'Path=/',
     'HttpOnly',
     'SameSite=Lax',
-    `Max-Age=${maxAgeSec}`,
   ];
   if (isProd) parts.push('Secure');
   res.setHeader('Set-Cookie', parts.join('; '));
@@ -68,6 +69,19 @@ export async function destroyAdminSessionToken(token) {
   if (!t) return;
   const pool = getPool();
   await pool.query('DELETE FROM admin_sessions WHERE token = $1', [t]);
+}
+
+export async function touchAdminSession(token, maxAgeMs = SESSION_MS) {
+  if (!isBillingDbConfigured()) return;
+  const t = String(token || '').trim();
+  if (!t) return;
+  const ms = Number(maxAgeMs) > 0 ? Number(maxAgeMs) : SESSION_MS;
+  const pool = getPool();
+  const expiresAt = new Date(Date.now() + ms);
+  await pool.query(
+    `UPDATE admin_sessions SET expires_at = $2 WHERE token = $1`,
+    [t, expiresAt]
+  );
 }
 
 export async function resolveAdminAuth(req) {

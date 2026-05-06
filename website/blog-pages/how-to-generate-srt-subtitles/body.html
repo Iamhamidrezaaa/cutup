@@ -1,0 +1,360 @@
+<div class="ba-tldr">
+  <p>
+    To <strong>generate SRT subtitles</strong> for YouTube in 2026: get a timed transcript (AI or manual), export as <strong>.srt</strong>, fix names and drift, then upload in YouTube Studio. Skip relying on auto-captions alone — they’re fine for previews, bad as a production file. For speed, paste your link into a lightweight <a href="/#tool">AI SRT generator</a> like Cutup; for styled burned-in captions, use an editor like VEED or Kapwing.
+  </p>
+</div>
+
+<p>
+  Last month a creator DMed us a screenshot: YouTube Studio showed green checkmarks on captions, but the exported file was two minutes out of sync with the final cut. They had trimmed the cold open <em>after</em> generating subtitles. The video went live with captions that arrived a beat late on every joke. That’s the kind of thing that still happens in 2026 — not because AI transcription is useless, but because the <strong>subtitle workflow</strong> is easy to get almost right.
+</p>
+
+<p>
+  This guide is for anyone who needs a real <strong>SRT file</strong> — for YouTube uploads, for Premiere or DaVinci, for Shorts you’re finishing on a phone. We’re not rehashing “why captions matter.” You already know retention drops when people watch muted. We’re walking through how to <strong>create subtitle files</strong> that survive a real publish day.
+</p>
+
+<!-- ===== H2: Why SRT still matters ===== -->
+<h2 id="why-srt-still-matters">Why SRT files still matter in 2026</h2>
+
+<p>
+  Platforms love to keep you inside their walls. YouTube will happily auto-caption your upload and never hand you a clean file. TikTok wants captions baked in the app. That works until you need the same text in three places — long-form YouTube, a Shorts cut, and a podcast clip — or until your editor is Final Cut, not YouTube Studio.
+</p>
+
+<p>
+  An <strong>SRT subtitle file</strong> is still the interchange format that travels. Upload it to YouTube. Import it to your NLE. Archive it next to the project. Send it to a translator. No single vendor owns it.
+</p>
+
+<ul>
+  <li><strong>SEO and discoverability</strong> — accurate captions feed search and chapter tools.</li>
+  <li><strong>Accessibility</strong> — viewers who are deaf or hard of hearing get a real track, not a guess.</li>
+  <li><strong>Reuse</strong> — one SRT becomes blog quotes, newsletter copy, and Shorts hooks.</li>
+  <li><strong>Control</strong> — you fix brand names once, not on every platform separately.</li>
+</ul>
+
+<div class="ba-callout">
+  <p><strong>Creator reality check:</strong> Auto-captions on the published video are not the same as owning an SRT. If you can’t download and edit the file, you don’t control the workflow.</p>
+</div>
+
+<!-- ===== H2: What is SRT ===== -->
+<h2 id="what-is-srt">What an SRT file actually is</h2>
+
+<p>
+  SRT (SubRip) is plain text. Each cue looks like this:
+</p>
+
+<pre class="ba-code"><code>1
+00:00:01,200 --> 00:00:04,800
+This is the first line of dialogue.
+
+2
+00:00:05,000 --> 00:00:08,400
+And this is the second.</code></pre>
+
+<p>
+  A number, a time range, one or more lines of text, then a blank line. That’s it. Any <strong>subtitle file generator</strong> — AI or human — is really producing this structure with timestamps that match your audio.
+</p>
+
+<h3 id="srt-vs-vtt">SRT vs VTT (quick note)</h3>
+
+<p>
+  Web players often prefer VTT. YouTube accepts SRT for uploads. If your tool exports both, use SRT for YouTube and keep VTT for web embeds. Converting between them is trivial once you have clean timing.
+</p>
+
+<div class="ba-image-placeholder" role="img" aria-label="YouTube subtitles screenshot placeholder">
+  <span class="ba-image-placeholder-eyebrow">Screenshot</span>
+  <span class="ba-image-placeholder-text">YouTube Studio → Subtitles → uploaded SRT track on a long-form video (timing preview visible).</span>
+</div>
+
+<!-- ===== H2: Manual vs AI ===== -->
+<h2 id="manual-vs-ai">Manual vs AI subtitle workflows</h2>
+
+<p>
+  Manual captioning still wins on one thing: control. You type every word, you set every cue, nothing is guessed. It loses on everything that matters to a solo creator on a deadline — time, cost, and the will to live.
+</p>
+
+<h3 id="manual-workflow">When manual still makes sense</h3>
+
+<p>
+  Music videos with poetic lyrics. Brand spots where legal approves exact wording. Any clip where a misheard word is worse than a late upload. For most talking-head YouTube, manual is a luxury.
+</p>
+
+<h3 id="ai-workflow">When AI is the default</h3>
+
+<p>
+  Podcast interviews, explainers, reviews, vlogs — speech-to-text in 2026 is good enough that your job shifts from typing to <strong>subtitle cleanup</strong>: fixing names, splitting long lines, killing false starts.
+</p>
+
+<div class="ba-quote">
+  "I don't transcribe anymore. I audit. The machine gives me a draft; I punish it for getting my guest's name wrong."
+  <span class="ba-quote-attr">— Education channel, ~120k subs</span>
+</div>
+
+<!-- ===== H2: Best ways ===== -->
+<h2 id="best-ways">Best ways to generate SRT subtitles</h2>
+
+<p>
+  There are four paths creators actually use. Pick based on where your video lives and how much editing you still need to do.
+</p>
+
+<ol>
+  <li><strong>YouTube auto-captions</strong> — free, automatic, unreliable as a master file.</li>
+  <li><strong>Editor-built captioning</strong> — VEED, Kapwing, Descript: strong styling, heavier workflow.</li>
+  <li><strong>Dedicated AI SRT tools</strong> — link or upload in, file out (Cutup, standalone APIs).</li>
+  <li><strong>NLE transcription</strong> — Premiere, DaVinci: great if you already live in the timeline.</li>
+</ol>
+
+<p>
+  For a deeper tool-by-tool breakdown, see our <a href="/blog/best-ai-subtitle-generators-2026">comparison of the best AI subtitle generators in 2026</a>.
+</p>
+
+<!-- ===== H2: YouTube auto captions ===== -->
+<h2 id="youtube-auto-captions">Why YouTube auto captions are still unreliable</h2>
+
+<p>
+  YouTube’s auto-captions are a miracle and a trap. They’re fine for someone skimming your video muted on the feed. They’re painful when you download them and discover:
+</p>
+
+<ul>
+  <li>Proper nouns mangled (your product name becomes three random words).</li>
+  <li>No punctuation discipline — one long line per sentence.</li>
+  <li>Timing tied to the <em>uploaded</em> cut, not your re-edited cut.</li>
+  <li>Download options missing or disabled depending on channel settings.</li>
+</ul>
+
+<p>
+  Treat YouTube auto-captions as a draft preview, not your <strong>YouTube subtitle generator</strong> of record. Production workflows should end with an SRT you generated and reviewed yourself.
+</p>
+
+<!-- ===== H2: Mobile ===== -->
+<h2 id="mobile-workflows">Mobile subtitle workflows (where tools break)</h2>
+
+<p>
+  A lot of publishing happens on phones now — especially Shorts. The failure mode isn’t “AI can’t transcribe.” It’s “the browser editor crashed at 94%.”
+</p>
+
+<ul>
+  <li><strong>Heavy editors</strong> (full timeline in Chrome on LTE) → timeouts, blank exports.</li>
+  <li><strong>Long uploads on cellular</strong> → stalled progress bars, duplicate charges on quota.</li>
+  <li><strong>Vertical preview vs landscape project</strong> → captions that look right in-app, wrong on export.</li>
+</ul>
+
+<p>
+  Mobile-friendly means: small UI, fast processing, download a file — not “edit forty cues with your thumb.” That’s why lightweight <strong>AI SRT</strong> tools beat all-in-one editors when you’re away from your desk.
+</p>
+
+<!-- ===== H2: Tools comparison ===== -->
+<h2 id="tools-comparison">Best tools for SRT export</h2>
+
+<p>
+  We compared five options creators mention most for getting an actual file out — not just pretty previews.
+</p>
+
+<div class="ba-comparison">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Tool</th>
+        <th scope="col">SRT export</th>
+        <th scope="col">Mobile friendly</th>
+        <th scope="col">Speed</th>
+        <th scope="col">Best for</th>
+        <th scope="col">Free plan</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>VEED</td>
+        <td>Paid tier for clean SRT</td>
+        <td>Limited</td>
+        <td>Medium</td>
+        <td>Styled captions + browser editing</td>
+        <td>Yes, limited</td>
+      </tr>
+      <tr>
+        <td>Kapwing</td>
+        <td>Paid tier / export caps</td>
+        <td>OK</td>
+        <td>Medium</td>
+        <td>Team review on social clips</td>
+        <td>Yes, limited</td>
+      </tr>
+      <tr>
+        <td>Descript</td>
+        <td>Included</td>
+        <td>Limited</td>
+        <td>Slow start, fast later</td>
+        <td>Podcasts &amp; long-form transcript editing</td>
+        <td>Yes, limited</td>
+      </tr>
+      <tr>
+        <td>Cutup</td>
+        <td>Included (SRT on free tier)</td>
+        <td>Strong</td>
+        <td>Fast</td>
+        <td>Link → SRT without a timeline</td>
+        <td>Yes</td>
+      </tr>
+      <tr>
+        <td>YouTube auto captions</td>
+        <td>Sometimes / inconsistent</td>
+        <td>N/A (Studio app)</td>
+        <td>Automatic</td>
+        <td>Quick preview only</td>
+        <td>Free</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="ba-image-placeholder" role="img" aria-label="VEED screenshot placeholder">
+  <span class="ba-image-placeholder-eyebrow">Screenshot</span>
+  <span class="ba-image-placeholder-text">VEED — export menu showing SRT download behind a plan badge.</span>
+</div>
+
+<div class="ba-image-placeholder" role="img" aria-label="Descript screenshot placeholder">
+  <span class="ba-image-placeholder-eyebrow">Screenshot</span>
+  <span class="ba-image-placeholder-text">Descript — transcript panel with “Export subtitles” and SRT format selected.</span>
+</div>
+
+<aside class="ba-cta" aria-label="Promotional call to action">
+  <div class="ba-cta-text">
+    <span class="ba-cta-eyebrow">Quick workflow</span>
+    <p class="ba-cta-title">Need a clean SRT in under two minutes?</p>
+  </div>
+  <a class="ba-cta-btn" href="/#tool">
+    Try Cutup
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <line x1="5" y1="12" x2="19" y2="12"></line>
+      <polyline points="12 5 19 12 12 19"></polyline>
+    </svg>
+  </a>
+</aside>
+
+<!-- ===== H2: Step by step ===== -->
+<h2 id="step-by-step">Step-by-step: generate subtitles from a YouTube link</h2>
+
+<p>
+  This is the workflow we recommend for most creators who edit in a desktop NLE but publish on YouTube. Adjust if you caption entirely inside Studio.
+</p>
+
+<h3 id="step-1-link">1. Paste the YouTube URL (or upload the file)</h3>
+<p>
+  Use a tool that accepts the link directly — you avoid downloading, re-uploading, and quality loss. If the video isn’t public yet, upload the exported MP4 instead.
+</p>
+
+<h3 id="step-2-wait">2. Let transcription finish — don’t refresh</h3>
+<p>
+  Browser refreshes are how you lose quota on some platforms. Wait for a complete transcript. A ten-minute talking-head clip should be ready in a couple of minutes on a healthy pipeline.
+</p>
+
+<h3 id="step-3-review">3. Skim for names, numbers, and jargon</h3>
+<p>
+  Fix product names, URLs, and acronyms. AI still confuses “GraphQL” with “graphic well” more often than anyone admits.
+</p>
+
+<h3 id="step-4-export">4. Export SRT</h3>
+<p>
+  Download the <strong>.srt</strong>. Keep a copy in your project folder named <code>video-title_en.srt</code> so you’re not hunting Downloads at upload time.
+</p>
+
+<h3 id="step-5-upload">5. Upload to YouTube Studio</h3>
+<p>
+  Video → Subtitles → Upload file → choose language → preview on the timeline. Scrub the moments that matter: hook, CTA, punchline.
+</p>
+
+<h3 id="step-6-final-cut">6. If you trim the video again, regenerate or retime</h3>
+<p>
+  This is where timing drift appears. Either update the SRT timestamps or re-run transcription on the final export.
+</p>
+
+<div class="ba-image-placeholder" role="img" aria-label="Cutup workflow screenshot placeholder">
+  <span class="ba-image-placeholder-eyebrow">Screenshot</span>
+  <span class="ba-image-placeholder-text">Cutup — paste YouTube URL, processing state, and one-click SRT download.</span>
+</div>
+
+<!-- ===== H2: Common problems ===== -->
+<h2 id="common-problems">Common subtitle problems creators face</h2>
+
+<h3 id="timing-drift">Timing drift after edits</h3>
+<p>
+  You cut 12 seconds from the intro but keep the old SRT. Every cue is early. Fix: re-export from the final timeline or shift timestamps in Subtitle Edit / your NLE.
+</p>
+
+<h3 id="line-length">Lines too long for Shorts</h3>
+<p>
+  YouTube and Shorts players wrap ugly when a cue is a full paragraph. Aim for ~32–42 characters per line, two lines max. Split cues in your editor.
+</p>
+
+<h3 id="export-failures">Export failures on mobile browsers</h3>
+<p>
+  Same Wi-Fi, same file, export fails once in five. Usually memory pressure on the tab. Download on desktop when possible, or use a tool that emails/links the file instead of rendering in-tab.
+</p>
+
+<h3 id="cleanup-pain">Cleanup takes longer than transcription</h3>
+<p>
+  Normal. Budget 10–15 minutes of review per 10-minute video for brand channels; less for casual vlogs.
+</p>
+
+<div class="ba-callout">
+  <p><strong>Shorts-specific tip:</strong> Generate subtitles on the final vertical export, not the landscape master. Aspect-ratio mismatches are how captions end up off-frame.</p>
+</div>
+
+<!-- ===== H2: Final recommendations ===== -->
+<h2 id="final-recommendations">Final recommendations</h2>
+
+<div class="ba-verdict">
+  <span class="ba-verdict-label">Our take</span>
+  <p>
+    If you need one reliable habit in 2026: <strong>generate SRT subtitles outside YouTube</strong>, review them once, upload them yourself. Use YouTube auto-captions as backup, not source of truth.
+  </p>
+  <p>
+    Pick <strong>Descript</strong> when the transcript <em>is</em> your edit. Pick <strong>VEED or Kapwing</strong> when you want styled captions without leaving the browser. Pick <strong>Cutup</strong> when you want the file in your hands fast — especially on mobile — and you’ll style elsewhere. Compare options in our <a href="/blog/best-ai-subtitle-generators-2026">subtitle generator roundup</a>; see <a href="/#pricing">pricing</a> if you’re publishing daily and hitting quotas.
+  </p>
+</div>
+
+<!-- ===== H2: FAQ ===== -->
+<h2 id="faq">FAQ</h2>
+
+<div class="ba-faq">
+  <div class="ba-faq-item">
+    <h3>What is an SRT subtitle file?</h3>
+    <p>An SRT file is a plain-text subtitle format with numbered cues, timestamps, and caption lines. Editors and YouTube use it to show timed text on your video.</p>
+  </div>
+  <div class="ba-faq-item">
+    <h3>How do I generate subtitles automatically?</h3>
+    <p>Upload video or paste a link into an AI subtitle tool, wait for transcription, then export SRT. Review proper nouns and timing before you publish.</p>
+  </div>
+  <div class="ba-faq-item">
+    <h3>Can I export subtitles from YouTube?</h3>
+    <p>Sometimes, if auto-captions exist and Studio offers a download. It’s inconsistent — don’t build your workflow around it.</p>
+  </div>
+  <div class="ba-faq-item">
+    <h3>Are AI subtitle generators accurate?</h3>
+    <p>Good for clear speech; weaker on accents, overlap, and music. Treat output as a draft you audit, not a final publish.</p>
+  </div>
+  <div class="ba-faq-item">
+    <h3>Which subtitle tool works best on mobile?</h3>
+    <p>Tools that return a downloadable SRT without a heavy timeline — lightweight web apps beat full editors on phones.</p>
+  </div>
+  <div class="ba-faq-item">
+    <h3>Can I edit SRT files manually?</h3>
+    <p>Yes. Open in any text editor or dedicated subtitle app, fix lines and timestamps, save, re-upload.</p>
+  </div>
+  <div class="ba-faq-item">
+    <h3>How do I fix SRT timing drift?</h3>
+    <p>Re-export subtitles from your final cut, or shift cue times to match. Don’t trim video after subtitles without updating the file.</p>
+  </div>
+  <div class="ba-faq-item">
+    <h3>Does YouTube accept SRT uploads?</h3>
+    <p>Yes — YouTube Studio → your video → Subtitles → upload file. Match the language to your track.</p>
+  </div>
+</div>
+
+<!-- ===== Distribution notes (editorial) ===== -->
+<h2 id="sharing-this-guide">Sharing this guide (for creators)</h2>
+
+<div class="ba-callout">
+  <p><strong>Reddit:</strong> Post as a workflow breakdown in r/NewTubers or r/YouTubers — lead with “timing drift after trimming” as the hook, not a product pitch. r/VideoEditing loves SRT vs VTT clarifications. r/podcasting if you mention long-form.</p>
+  <p><strong>Twitter/X thread angle:</strong> “YouTube auto-captions are not an SRT workflow” → 5 tweets on drift, mobile failures, export checklist. End with the step-by-step list.</p>
+  <p><strong>Hooks:</strong> “Your captions are late because you cut the intro after generating them.” / “Auto-captions ≠ owning your subtitle file.”</p>
+  <p><strong>Teaser copy:</strong> “How to actually generate SRT subtitles for YouTube in 2026 — without trusting auto-captions as your master file.”</p>
+</div>

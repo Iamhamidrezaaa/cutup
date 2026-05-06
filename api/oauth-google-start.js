@@ -34,16 +34,19 @@ export default async function handler(req, res) {
       GOOGLE_REDIRECT_URI
     );
 
-    // Generate Google OAuth URL
-    // No prompt=consent / select_account — avoids forcing account picker every visit (standard SaaS UX).
-    const authUrl = oAuth2Client.generateAuthUrl({
+    const selectAccount = Boolean(req.body?.selectAccount);
+    const authParams = {
       access_type: 'offline',
       scope: [
         'https://www.googleapis.com/auth/userinfo.email',
         'https://www.googleapis.com/auth/userinfo.profile'
       ],
       include_granted_scopes: true
-    });
+    };
+    if (selectAccount) {
+      authParams.prompt = 'select_account';
+    }
+    const authUrl = oAuth2Client.generateAuthUrl(authParams);
 
     console.log('[oauth-google-start] Generated auth URL successfully');
     console.log('[oauth-google-start] Redirect URI:', GOOGLE_REDIRECT_URI);

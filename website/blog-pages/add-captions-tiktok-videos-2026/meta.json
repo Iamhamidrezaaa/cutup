@@ -1,0 +1,88 @@
+{
+  "slug": "add-captions-tiktok-videos-2026",
+  "title": "The Fastest Way to Add Captions to TikTok Videos",
+  "titleSuffix": "in 2026",
+  "deck": "TikTok’s auto-captions are fast — until you need readable hooks, clean exports, or the same text in CapCut and Premiere. Here’s the caption workflow TikTok creators actually use on mobile in 2026.",
+  "excerpt": "How to add captions to TikTok videos fast: native vs CapCut vs SRT tools, mobile workflows, safe zones, readability, retention, and an honest tool comparison.",
+  "category": "Tutorials",
+  "tags": [
+    "add-captions-tiktok-videos",
+    "tiktok-subtitles",
+    "tiktok-captions",
+    "automatic-captions-tiktok",
+    "subtitle-workflow-tiktok",
+    "vertical-video-captions",
+    "tiktok-editing-workflow",
+    "srt-captions"
+  ],
+  "eyebrow": "Tutorial · TikTok workflow",
+  "author": "Cutup Editorial",
+  "authorInitials": "CT",
+  "authorRole": "TikTok caption workflows · mobile tests 2026",
+  "publishedAt": "2026-05-26",
+  "updatedAt": "2026-05-26",
+  "readingTimeMinutes": 12,
+  "coverImageUrl": "/cms-media/images/blog/add-captions-tiktok-videos-2026-cover.jpg",
+  "heroImageAlt": "TikTok creator adding captions to a vertical video on mobile",
+  "heroImagePrompt": "Cinematic editorial photograph, realistic creator holding phone in vertical orientation showing TikTok-style caption editor with clean two-line subtitles, desk with soft purple-blue accent lighting from a monitor, shallow depth of field, premium SaaS blog aesthetic, no brand logos, no readable trademark UI text, no cyberpunk, no animals, 16:9 hero composition.",
+  "metaTitle": "Fastest Way to Add Captions to TikTok Videos (2026) — Cutup",
+  "metaDescription": "Add captions to TikTok videos the fast way in 2026 — native auto-captions vs CapCut, SRT export, mobile workflows, safe zones, and tools compared honestly.",
+  "ogTitle": "The Fastest Way to Add Captions to TikTok Videos in 2026",
+  "ogDescription": "Mobile-first TikTok subtitle workflow: speed, readability, exports, and what actually holds retention.",
+  "status": "published",
+  "source": "static",
+  "faqSchema": [
+    {
+      "question": "How do I add captions to TikTok videos?",
+      "answer": "Use TikTok’s in-app auto-captions for speed, CapCut for styled burn-in on mobile, or generate SRT/transcript with a tool like Cutup then import into your editor. Always review the hook and fix names before posting."
+    },
+    {
+      "question": "Are TikTok auto captions accurate?",
+      "answer": "Good enough for clear speech as a first draft. Fast delivery, slang, accents, and music still cause errors. Review before publish — especially the first line viewers read muted."
+    },
+    {
+      "question": "What subtitle style works best on TikTok?",
+      "answer": "High contrast, two short lines, positioned above UI chrome and faces. Trendy kinetic styles work in some niches; readable box captions win for most education and talking-head content."
+    },
+    {
+      "question": "Which subtitle tools work best on mobile?",
+      "answer": "CapCut for native mobile burn-in; Cutup for fast link-to-SRT without a heavy timeline; avoid full browser editors on phone for long caption passes."
+    },
+    {
+      "question": "Can I export SRT files for TikTok videos?",
+      "answer": "TikTok doesn’t upload SRT like YouTube Studio. You burn captions in CapCut or another editor, or use SRT inside your NLE then export vertical MP4 for TikTok."
+    },
+    {
+      "question": "Why do TikTok captions go out of sync?",
+      "answer": "Usually because you trimmed video after captions were generated, or auto-captions mis-timed fast speech. Re-generate on the final cut or adjust cue timing manually."
+    },
+    {
+      "question": "Do captions increase TikTok retention?",
+      "answer": "Yes for muted scrollers — readable captions reduce swipe-aways. Over-animated or face-covering text can hurt retention; see readability-focused guides."
+    },
+    {
+      "question": "Is CapCut better than TikTok native captions?",
+      "answer": "CapCut offers more styling and control; TikTok native is fastest for simple posts. Many creators use native for drafts and CapCut for final polish."
+    }
+  ],
+  "related": [
+    {
+      "href": "/blog/clean-subtitles-increase-watch-time-2026",
+      "eyebrow": "Guide",
+      "title": "Clean subtitles & watch time",
+      "description": "Why readable captions beat flashy editing for retention."
+    },
+    {
+      "href": "/blog/best-subtitle-workflow-youtube-shorts-2026",
+      "eyebrow": "Guide",
+      "title": "Shorts subtitle workflow",
+      "description": "Vertical safe zones apply to TikTok too."
+    },
+    {
+      "href": "/blog/how-to-generate-srt-subtitles",
+      "eyebrow": "Tutorial",
+      "title": "How to generate SRT subtitles",
+      "description": "SRT path when you edit outside TikTok."
+    }
+  ]
+}

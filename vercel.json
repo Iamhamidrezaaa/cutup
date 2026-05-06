@@ -1,6 +1,27 @@
 {
   "version": 2,
+  "functions": {
+    "api/payment-create.js": {
+      "maxDuration": 60
+    },
+    "api/payment-verify.js": {
+      "maxDuration": 60
+    },
+    "api/payment-callback.js": {
+      "maxDuration": 60
+    }
+  },
   "redirects": [
+    {
+      "source": "/admin/ops",
+      "destination": "/adminha.html?section=ops",
+      "permanent": false
+    },
+    {
+      "source": "/admin/command-center",
+      "destination": "/adminha.html?section=ops",
+      "permanent": false
+    },
     {
       "source": "/index.html",
       "destination": "/",
@@ -105,6 +126,26 @@
       "dest": "/api/user-profile.js"
     },
     {
+      "src": "/api/offers",
+      "dest": "/api/offers.js"
+    },
+    {
+      "src": "/api/offers/validate",
+      "dest": "/api/offers.js"
+    },
+    {
+      "src": "/api/admin/offers",
+      "dest": "/api/admin-offers.js"
+    },
+    {
+      "src": "/api/admin-offers",
+      "dest": "/api/admin-offers.js"
+    },
+    {
+      "src": "/api/system-health",
+      "dest": "/api/system-health.js"
+    },
+    {
       "src": "/api/admin/users/(.*)",
       "dest": "/api/admin-users-manage.js"
     },
@@ -123,6 +164,10 @@
     {
       "src": "/api/admin/auth/me",
       "dest": "/api/admin-auth-me.js"
+    },
+    {
+      "src": "/api/admin/ops/state",
+      "dest": "/api/admin-ops-state.js"
     },
     {
       "src": "/api/admin/forgot-password",

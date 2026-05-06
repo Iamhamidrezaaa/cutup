@@ -1,0 +1,248 @@
+// Instalogist operational memory — PostgreSQL
+// Append-first: prefer new rows for audit-heavy types; Task/Incident allow controlled upsert for workspace sync.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Where this row originated (ingestion / system).
+enum MemorySource {
+  markdown_workspace
+  github
+  stripe
+  auth_logs
+  analytics
+  customer_support
+  deployment
+  admin_api
+  system
+  seed
+  unknown
+}
+
+enum EscalationStatus {
+  pending
+  acknowledged
+  resolved
+  cancelled
+}
+
+enum DeploymentEventStatus {
+  started
+  success
+  failure
+  rolled_back
+  cancelled
+}
+
+/// Registered agent persona (Dev-01, Ops-01, …). Stable registry row.
+model Agent {
+  id           String       @id @default(cuid())
+  /// Stable code e.g. Dev-01
+  code         String       @unique @map("code")
+  displayName  String?      @map("display_name")
+  role         String?      @map("role")
+  metadata     Json?        @map("metadata")
+  source       MemorySource @default(system) @map("source")
+  sourceRef    String?      @map("source_ref")
+  /// When this memory record was generated / materialized.
+  generatedAt  DateTime     @default(now()) @map("generated_at")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  ownedTasks       Task[]       @relation("TaskOwner")
+  ownedIncidents   Incident[]   @relation("IncidentOwner")
+  conversations    Conversation[]
+  escalationsFrom  Escalation[] @relation("EscalationFrom")
+  escalationsTo    Escalation[] @relation("EscalationTo")
+
+  @@index([source])
+  @@index([generatedAt(sort: Desc)])
+  @@map("agents")
+}
+
+/// Materialized task memory (idempotent upsert from workspace / ingestion).
+model Task {
+  id             String       @id @default(cuid())
+  /// Business key: task_id from YAML or derived slug.
+  externalKey    String       @map("external_key")
+  title          String       @map("title")
+  status         String?      @map("status")
+  priority       String?      @map("priority")
+  riskClass      String?      @map("risk_class")
+  workspacePath  String?      @unique @map("workspace_path")
+  ownerAgentId   String?      @map("owner_agent_id")
+  owner          Agent?       @relation("TaskOwner", fields: [ownerAgentId], references: [id], onDelete: SetNull)
+  source         MemorySource @map("source")
+  sourceRef      String?      @map("source_ref")
+  /// Optional: parser / snapshot generated_at from upstream.
+  sourceGeneratedAt DateTime? @map("source_generated_at")
+  payload        Json?        @map("payload")
+  generatedAt    DateTime     @default(now()) @map("generated_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  decisions    Decision[]
+  conversations Conversation[] @relation("ConversationTask")
+  escalations  Escalation[]
+
+  @@unique([source, externalKey])
+  @@index([ownerAgentId])
+  @@index([status])
+  @@index([generatedAt(sort: Desc)])
+  @@map("tasks")
+}
+
+model Incident {
+  id             String       @id @default(cuid())
+  externalKey    String       @map("external_key")
+  title          String       @map("title")
+  status         String?      @map("status")
+  priority       String?      @map("priority")
+  workspacePath  String?      @unique @map("workspace_path")
+  ownerAgentId   String?      @map("owner_agent_id")
+  owner          Agent?       @relation("IncidentOwner", fields: [ownerAgentId], references: [id], onDelete: SetNull)
+  source         MemorySource @map("source")
+  sourceRef      String?      @map("source_ref")
+  sourceGeneratedAt DateTime? @map("source_generated_at")
+  payload        Json?        @map("payload")
+  generatedAt    DateTime     @default(now()) @map("generated_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  decisions     Decision[]
+  conversations Conversation[] @relation("ConversationIncident")
+  escalations   Escalation[]
+
+  @@unique([source, externalKey])
+  @@index([ownerAgentId])
+  @@index([priority])
+  @@index([generatedAt(sort: Desc)])
+  @@map("incidents")
+}
+
+/// Human or agent decision record — append-only in application layer (no updates).
+model Decision {
+  id            String       @id @default(cuid())
+  title         String       @map("title")
+  body          String       @map("body") @db.Text
+  /// Actor: email or agent code.
+  decidedBy     String       @map("decided_by")
+  taskId        String?      @map("task_id")
+  task          Task?        @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  incidentId    String?      @map("incident_id")
+  incident      Incident?    @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+  /// Optional correction chain: points to previous decision this supersedes.
+  supersedesId  String?      @map("supersedes_id")
+  supersedes    Decision?    @relation("DecisionChain", fields: [supersedesId], references: [id], onDelete: SetNull)
+  supersedesNext Decision[]  @relation("DecisionChain")
+  source        MemorySource @map("source")
+  sourceRef     String?      @map("source_ref")
+  metadata      Json?        @map("metadata")
+  generatedAt   DateTime     @default(now()) @map("generated_at")
+
+  @@index([taskId])
+  @@index([incidentId])
+  @@index([decidedBy])
+  @@index([generatedAt(sort: Desc)])
+  @@map("decisions")
+}
+
+/// Conversation thread metadata (messages stored elsewhere or in payload later).
+model Conversation {
+  id             String       @id @default(cuid())
+  agentId        String       @map("agent_id")
+  agent          Agent        @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  title          String?      @map("title")
+  relatedTaskId  String?      @map("related_task_id")
+  relatedTask    Task?        @relation("ConversationTask", fields: [relatedTaskId], references: [id], onDelete: SetNull)
+  relatedIncidentId String?   @map("related_incident_id")
+  relatedIncident Incident?  @relation("ConversationIncident", fields: [relatedIncidentId], references: [id], onDelete: SetNull)
+  channel        String?    @map("channel")
+  source         MemorySource @map("source")
+  sourceRef      String?      @map("source_ref")
+  payload        Json?        @map("payload")
+  startedAt      DateTime     @default(now()) @map("started_at")
+  endedAt        DateTime?    @map("ended_at")
+  generatedAt    DateTime     @default(now()) @map("generated_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  @@index([agentId])
+  @@index([relatedTaskId])
+  @@index([relatedIncidentId])
+  @@index([generatedAt(sort: Desc)])
+  @@map("conversations")
+}
+
+model Escalation {
+  id           String             @id @default(cuid())
+  fromAgentId  String             @map("from_agent_id")
+  fromAgent    Agent              @relation("EscalationFrom", fields: [fromAgentId], references: [id], onDelete: Restrict)
+  toAgentId    String?            @map("to_agent_id")
+  toAgent      Agent?             @relation("EscalationTo", fields: [toAgentId], references: [id], onDelete: SetNull)
+  reasonCode   String             @map("reason_code")
+  taskId       String?            @map("task_id")
+  task         Task?              @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  incidentId   String?            @map("incident_id")
+  incident     Incident?          @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+  status       EscalationStatus   @default(pending) @map("status")
+  source       MemorySource       @map("source")
+  sourceRef    String?            @map("source_ref")
+  metadata     Json?              @map("metadata")
+  generatedAt  DateTime           @default(now()) @map("generated_at")
+  /// When marked resolved (one-way transition in repo API).
+  resolvedAt   DateTime?          @map("resolved_at")
+
+  @@index([fromAgentId])
+  @@index([toAgentId])
+  @@index([status])
+  @@index([reasonCode])
+  @@index([generatedAt(sort: Desc)])
+  @@map("escalations")
+}
+
+/// Append-only deployment facts.
+model DeploymentEvent {
+  id          String                 @id @default(cuid())
+  environment String                 @map("environment")
+  serviceName String?                @map("service_name")
+  version     String?                @map("version")
+  gitSha      String?                @map("git_sha")
+  status      DeploymentEventStatus  @map("status")
+  source      MemorySource           @map("source")
+  sourceRef   String?                @map("source_ref")
+  payload     Json?                  @map("payload")
+  generatedAt DateTime               @default(now()) @map("generated_at")
+
+  @@index([environment])
+  @@index([gitSha])
+  @@index([status])
+  @@index([generatedAt(sort: Desc)])
+  @@map("deployment_events")
+}
+
+/// Snapshot of operational summary (e.g. parser output digest) — append-only rows.
+model OperationalSummary {
+  id             String       @id @default(cuid())
+  /// Idempotency key: e.g. hash of generated_at + contract from source.
+  snapshotKey    String       @unique @map("snapshot_key")
+  contractId     String?      @map("contract_id")
+  parserVersion  String?      @map("parser_version")
+  snapshotStatus String?      @map("snapshot_status")
+  summary        Json         @map("summary")
+  itemsCount     Int?         @map("items_count")
+  source         MemorySource @map("source")
+  sourceRef      String?      @map("source_ref")
+  sourceGeneratedAt DateTime? @map("source_generated_at")
+  generatedAt    DateTime     @default(now()) @map("generated_at")
+
+  @@index([contractId])
+  @@index([generatedAt(sort: Desc)])
+  @@map("operational_summaries")
+}

@@ -1,0 +1,93 @@
+{
+  "slug": "best-subtitle-styles-for-tiktok-2026",
+  "title": "The Cleanest Subtitle Styles for TikTok in 2026",
+  "titleSuffix": "(With Real Examples)",
+  "deck": "We A/B tested caption styles on real Shorts — kinetic rainbows looked viral in the editor and lost viewers in the feed. Here’s what actually stayed readable on a phone in a dark room.",
+  "excerpt": "We tested modern TikTok subtitle styles in 2026 to see which captions actually improve retention, readability, and watch time — and which styles hurt videos.",
+  "category": "Guides",
+  "tags": [
+    "tiktok-subtitles",
+    "subtitle-styles",
+    "creator-workflow",
+    "shorts-editing",
+    "subtitle-retention",
+    "captions-design",
+    "mobile-creators"
+  ],
+  "eyebrow": "Guides · TikTok caption tests",
+  "author": "Cutup Editorial",
+  "authorInitials": "CT",
+  "authorRole": "TikTok caption style tests · retention notes",
+  "publishedAt": "2026-05-31",
+  "updatedAt": "2026-05-31",
+  "readingTimeMinutes": 11,
+  "coverImageUrl": "/cms-media/images/blog/best-subtitle-styles-for-tiktok-2026-cover.jpg",
+  "heroImageAlt": "Creator comparing messy versus clean TikTok subtitle styles on a smartphone",
+  "heroImagePrompt": "Premium cinematic 16:9 YouTube thumbnail, full-bleed 1920x1080, bold gradient headline left BEST TIKTOK SUBTITLE STYLES, creator right holding phone with chaotic vs clean caption comparison, gold and purple-blue lighting, floating UI cards, rich detail, photorealistic, no fake logos, headline upper-left safe zone.",
+  "metaTitle": "The Cleanest Subtitle Styles for TikTok in 2026 (With Real Examples) — Cutup",
+  "metaDescription": "We tested modern TikTok subtitle styles in 2026 to see which captions actually improve retention, readability, and watch time — and which styles hurt videos.",
+  "ogTitle": "The Cleanest Subtitle Styles for TikTok in 2026 (With Real Examples)",
+  "ogDescription": "Real Shorts tests: which TikTok caption styles improved retention — and which flashy styles killed readability.",
+  "status": "published",
+  "source": "static",
+  "faqSchema": [
+    {
+      "question": "What subtitle style works best for TikTok?",
+      "answer": "Bold, high-contrast, two-line captions in the safe zone — white or yellow text with a dark background or strong shadow. Minimal motion, consistent placement. Fancy kinetic styles often hurt readability on mobile."
+    },
+    {
+      "question": "Do captions improve watch time?",
+      "answer": "Yes for muted-first viewing when text is readable and paced with speech. Over-animated or low-contrast captions can hurt completion rate despite looking trendy in the editor."
+    },
+    {
+      "question": "Are animated subtitles better?",
+      "answer": "Subtle word-by-word highlight can help emphasis; excessive zoom, bounce, and color cycling usually hurt. Simple styles often outperform flashy ones in retention tests."
+    },
+    {
+      "question": "What font works best for Shorts?",
+      "answer": "Sans-serif bold families (Montserrat Bold, Arial Black, similar) at large size. Avoid thin scripts, serif body fonts, and all-caps paragraphs longer than one line."
+    },
+    {
+      "question": "Why are my subtitles hard to read?",
+      "answer": "Common causes: text too small, low contrast, placement over faces or TikTok UI, too many colors, and animation faster than speech. Test muted on your phone at minimum brightness."
+    },
+    {
+      "question": "How big should TikTok captions be?",
+      "answer": "Roughly 8–12% of frame height per line for 1080×1920, two lines max. If you squint on your phone arm’s length away, go bigger."
+    },
+    {
+      "question": "Should captions cover the screen?",
+      "answer": "No — keep captions in the lower-middle safe zone, above the comment/description overlay. Never block eyes or the main subject."
+    },
+    {
+      "question": "What is the fastest subtitle workflow for TikTok?",
+      "answer": "Generate transcript, export SRT, import into CapCut or TikTok, apply one clean template, rewrite hook line, export vertical MP4. Use lightweight tools like Cutup for text-first steps."
+    }
+  ],
+  "related": [
+    {
+      "href": "/blog/best-subtitle-workflow-youtube-shorts-2026",
+      "eyebrow": "Guide",
+      "title": "Best subtitle workflow for YouTube Shorts",
+      "description": "Vertical safe zones and pacing — same rules, different shelf."
+    },
+    {
+      "href": "/blog/add-captions-tiktok-videos-2026",
+      "eyebrow": "Tutorial",
+      "title": "Add captions to TikTok videos",
+      "description": "Native vs CapCut vs SRT — the full TikTok caption stack."
+    },
+    {
+      "href": "/blog/clean-subtitles-increase-watch-time-2026",
+      "eyebrow": "Guide",
+      "title": "Clean subtitles & watch time",
+      "description": "Why readability beats editing flex on retention."
+    },
+    {
+      "href": "/blog/how-to-generate-srt-subtitles",
+      "eyebrow": "Tutorial",
+      "title": "How to generate SRT subtitles",
+      "description": "Text-first before you pick a style template."
+    }
+  ]
+}

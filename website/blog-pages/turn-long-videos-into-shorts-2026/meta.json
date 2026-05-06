@@ -1,0 +1,88 @@
+{
+  "slug": "turn-long-videos-into-shorts-2026",
+  "title": "How Creators Turn Long Videos Into Shorts Faster",
+  "titleSuffix": "in 2026",
+  "deck": "AI clipping didn’t kill the grind — it moved it. Here’s how solo creators and small teams actually repurpose long-form into Shorts without drowning in footage, bad reframes, or caption cleanup.",
+  "excerpt": "Turn long videos into Shorts faster in 2026: manual vs AI clipping, subtitle bottlenecks, mobile workflows, podcast-to-Shorts, and an honest tool comparison.",
+  "category": "Guides",
+  "tags": [
+    "turn-long-videos-into-shorts",
+    "repurpose-long-videos",
+    "ai-clipping-tools",
+    "youtube-shorts-workflow",
+    "podcast-to-shorts",
+    "video-repurposing-tools",
+    "clip-generator",
+    "vertical-video-workflow"
+  ],
+  "eyebrow": "Guides · Repurposing workflow",
+  "author": "Cutup Editorial",
+  "authorInitials": "CT",
+  "authorRole": "Long-form → Shorts pipelines · 2026 field notes",
+  "publishedAt": "2026-05-23",
+  "updatedAt": "2026-05-23",
+  "readingTimeMinutes": 12,
+  "coverImageUrl": "/cms-media/images/blog/turn-long-videos-into-shorts-2026-cover.jpg",
+  "heroImageAlt": "Creator repurposing a long video timeline into vertical Shorts clips",
+  "heroImagePrompt": "Cinematic editorial photograph, realistic creator workstation, ultrawide monitor showing a long-form timeline branching into multiple 9:16 Shorts thumbnails with subtitle overlays, soft purple-blue accent lighting, shallow depth of field, premium SaaS blog aesthetic, clean modern UI, no brand logos, no readable trademark text, no cyberpunk, no animals, 16:9 hero composition.",
+  "metaTitle": "Turn Long Videos Into Shorts Faster (2026 Creator Workflow) — Cutup",
+  "metaDescription": "How creators turn long videos into Shorts in 2026 — AI clipping limits, subtitle workflows, mobile stacks, podcast repurposing, and tools compared honestly.",
+  "ogTitle": "How Creators Turn Long Videos Into Shorts Faster in 2026",
+  "ogDescription": "Grounded guide to repurposing long-form: clip selection, vertical crop, captions, and the workflows that actually ship daily.",
+  "status": "published",
+  "source": "static",
+  "faqSchema": [
+    {
+      "question": "What is the fastest way to turn long videos into Shorts?",
+      "answer": "Pick moments manually or with AI assist, cut vertical masters (not landscape crops last), caption the final 9:16 export, and batch exports. Fastest stacks combine Opus Clip or Descript for clipping with Cutup for SRT and CapCut for mobile polish."
+    },
+    {
+      "question": "Which AI clipping tools are best in 2026?",
+      "answer": "Opus Clip leads for auto-clipping long-form to Shorts. Descript excels for podcast and interview repurposing. VEED and Kapwing add styled social exports. None replace human judgment on hooks and context."
+    },
+    {
+      "question": "Can AI automatically generate Shorts from podcasts?",
+      "answer": "Yes — tools can detect highlights and produce vertical clips. Accuracy varies; you still need to verify context, names, and framing. Subtitle cleanup often takes longer than the clip cut itself."
+    },
+    {
+      "question": "Do Shorts need subtitles?",
+      "answer": "Most Shorts audiences watch muted first. Captions improve retention and comprehension. Burn-in on mobile or SRT through a dedicated workflow both work — see our Shorts subtitle guide."
+    },
+    {
+      "question": "Which workflow works best for creators on mobile?",
+      "answer": "Record or import clips on phone, auto-caption in CapCut, fix the hook, export vertical. For long-form sources, generate SRT or clips on desktop, finish on mobile if needed."
+    },
+    {
+      "question": "How do creators repurpose YouTube videos efficiently?",
+      "answer": "Download or link source, mark chapters or AI-suggested moments, export vertical cuts with safe-zone captions, schedule in batches. Avoid re-transcribing the same audio in five different tools."
+    },
+    {
+      "question": "Why does AI clipping miss good moments?",
+      "answer": "Models optimize for engagement proxies — loudness, face detection, keyword spikes — not narrative payoff. Inside jokes, slow burns, and visual-only punchlines get skipped."
+    },
+    {
+      "question": "Is manual clipping still worth it?",
+      "answer": "For brand and comedy channels, yes — AI is a first pass. For volume channels, AI plus a strict human hook review is the sustainable hybrid."
+    }
+  ],
+  "related": [
+    {
+      "href": "/blog/best-subtitle-workflow-youtube-shorts-2026",
+      "eyebrow": "Guide",
+      "title": "Best subtitle workflow for Shorts",
+      "description": "Vertical safe zones, caption rhythm, and mobile-first finishing."
+    },
+    {
+      "href": "/blog/best-ai-subtitle-generators-2026",
+      "eyebrow": "Comparison",
+      "title": "Best AI subtitle generators",
+      "description": "Where Cutup, Descript, VEED, and others fit in a repurpose stack."
+    },
+    {
+      "href": "/blog/free-vs-paid-ai-subtitle-tools-2026",
+      "eyebrow": "Guide",
+      "title": "Free vs paid subtitle tools",
+      "description": "What free tiers actually export — and when to upgrade."
+    }
+  ]
+}

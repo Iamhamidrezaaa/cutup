@@ -1,0 +1,14 @@
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+import path from 'path';
+const dir = path.dirname(fileURLToPath(import.meta.url));
+const p = path.join(dir, '..', 'website', 'admin-outputs.js');
+let c = fs.readFileSync(p, 'utf8');
+const badClose = '</' + 'motion>';
+const goodClose = '</' + 'div>';
+const badOpen = '<' + 'motion ';
+const goodOpen = '<' + 'div ';
+c = c.split(badClose).join(goodClose);
+c = c.split(badOpen).join(goodOpen);
+fs.writeFileSync(p, c);
+console.log('fixed');

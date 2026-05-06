@@ -57,15 +57,16 @@ export async function sendEmail({ to, subject, html, text }) {
   const toAddr = String(to).trim();
   try {
     console.log('[email] sending to:', toAddr);
-    await transport.sendMail({
+    const info = await transport.sendMail({
       from: process.env.SMTP_FROM,
       to: toAddr,
       subject: String(subject || '').slice(0, 200),
       html: String(html || ''),
       text: text != null ? String(text) : stripHtml(html),
     });
-    console.log('[email] sent successfully');
-    return { sent: true };
+    const providerResponse = String(info?.response || '').slice(0, 500);
+    console.log('[email] sent successfully', { to: toAddr, providerResponse });
+    return { sent: true, providerResponse };
   } catch (error) {
     console.error('[email] failed', error);
     return { sent: false, error: error?.message || String(error) };

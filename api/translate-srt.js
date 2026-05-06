@@ -1,68 +1,202 @@
-// API endpoint for translating SRT subtitle files
-// Uses GPT to translate subtitle text while preserving timing
+// API endpoint for translating SRT subtitle files (GPT). Production validation — no silent English fallback.
 
 import { handleCORS, setCORSHeaders } from './cors.js';
 import OpenAI from 'openai';
 import {
   requireSessionEmail,
-  enforceQuota,
   billingMinutesFromSrtSegments,
-  consumeSrtUsage,
-  respondConsumeFailure
+  consumeSrtUsage
 } from './processing-enforcement.js';
+import { canUseFeature } from './subscription.js';
+import { resolveTraceId, userMessageForCode } from './transcript-errors.js';
+import { traceLog } from './pipeline-trace.js';
+import { classifyOpenAiTranscriptionFailure } from './transcription-provider.js';
+import { logProviderQuota } from './provider-health.js';
+
+/** Approximate output expansion vs English subtitle chars for max_tokens budgeting */
+const LANG_OUTPUT_EXPANSION = {
+  es: 1.38,
+  de: 1.38,
+  fr: 1.35,
+  it: 1.32,
+  pt: 1.32,
+  nl: 1.28,
+  pl: 1.28,
+  ru: 1.18,
+  ar: 1.05,
+  fa: 0.95,
+  tr: 1.22,
+  zh: 0.72,
+  ja: 0.74,
+  ko: 0.82,
+  en: 1.0
+};
+
+const OPENAI_TRANSLATE_TIMEOUT_MS = Number(process.env.TRANSLATE_OPENAI_TIMEOUT_MS || 120000);
+const GROQ_TRANSLATE_TIMEOUT_MS = Number(process.env.TRANSLATE_GROQ_TIMEOUT_MS || 120000);
+const GROQ_TRANSLATE_MODEL = String(process.env.TRANSLATE_GROQ_MODEL || 'llama-3.3-70b-versatile').trim();
+const MIN_TRANSLATE_KEY_LEN = 10;
+
+function hasGroqTranslateKey() {
+  return Boolean(process.env.GROQ_API_KEY && String(process.env.GROQ_API_KEY).length >= MIN_TRANSLATE_KEY_LEN);
+}
+
+function hasOpenAiTranslateKey() {
+  return Boolean(process.env.OPENAI_API_KEY && String(process.env.OPENAI_API_KEY).length >= MIN_TRANSLATE_KEY_LEN);
+}
+
+function isTranslateFailoverEligible(err) {
+  if (!err || typeof err !== 'object') return true;
+  const name = String(err.name || '');
+  if (name === 'QuotaError') return true;
+  const code = String(err.code || err.errorCode || '').toUpperCase();
+  if (code === 'TRANSLATION_MALFORMED' || code === 'TRANSLATION_UNCHANGED' || code === 'TRANSLATION_EMPTY_RESPONSE') {
+    return false;
+  }
+  const st = Number(err.status || err.statusCode || 0);
+  if (st === 401 || st === 403) return false;
+  if (st === 429 || st >= 500 || st === 408) return true;
+  const msg = String(err.message || '').toLowerCase();
+  if (/insufficient_quota|billing|quota exceeded|rate limit|timeout|timed out|econnreset|etimedout/i.test(msg)) {
+    return true;
+  }
+  return st === 0;
+}
+
+function translateFail(res, traceId, statusCode, errorCode, message, retryable, phase, providerDebug) {
+  console.error(`[translate-failed][${traceId}]`, { errorCode, phase, statusCode, message: String(message).slice(0, 220) });
+  traceLog(traceId, 'failed', { phase, errorCode });
+  setCORSHeaders(res);
+  res.setHeader('X-Trace-Id', traceId);
+  const body = {
+    success: false,
+    errorCode,
+    message,
+    retryable: Boolean(retryable),
+    traceId,
+    phase
+  };
+  if (process.env.ADMIN_DEBUG === 'true' && providerDebug != null && typeof providerDebug === 'object') {
+    body.debug = { provider: providerDebug };
+  }
+  return res.status(statusCode).json(body);
+}
 
 export default async function handler(req, res) {
-  // Handle CORS
+  const requestId = req.headers['x-request-id'] || `req_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const traceId = resolveTraceId(req, requestId);
+  res.setHeader('X-Request-Id', requestId);
+  res.setHeader('X-Trace-Id', traceId);
+
   const corsHandled = handleCORS(req, res);
   if (corsHandled) return;
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return translateFail(res, traceId, 405, 'METHOD_NOT_ALLOWED', 'Method not allowed', false, 'translate-parse');
   }
+
+  console.log(`[translate-start][${traceId}]`, { route: 'translate-srt' });
+  traceLog(traceId, 'start', { route: 'translate-srt' });
 
   const userEmail = requireSessionEmail(req, res);
   if (!userEmail) return;
 
   try {
-    // Check API Key
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      console.error('TRANSLATE_SRT_ERROR: OPENAI_API_KEY is not set');
-      return res.status(500).json({ 
-        error: 'OPENAI_ERROR', 
-        details: 'API Key is not configured. Please set OPENAI_API_KEY in server .env file.' 
-      });
+    const groqReady = hasGroqTranslateKey();
+    const openaiReady = hasOpenAiTranslateKey();
+    console.log('[translate-provider]', {
+      traceId,
+      groq: groqReady,
+      openai: openaiReady,
+      groqModel: groqReady ? GROQ_TRANSLATE_MODEL : null
+    });
+    if (!groqReady && !openaiReady) {
+      return translateFail(
+        res,
+        traceId,
+        503,
+        'TRANSLATION_PROVIDER_UNAVAILABLE',
+        'Translation service is not configured.',
+        false,
+        'translate-parse'
+      );
     }
 
-    const { srtContent, targetLanguage, sourceLanguage, metadata } = req.body;
+    const { srtContent, targetLanguage, sourceLanguage, metadata } = req.body || {};
+    traceLog(traceId, 'parse', { hasSrt: !!srtContent, targetLanguage: targetLanguage || null, sourceLanguage: sourceLanguage || null });
 
     if (!srtContent || !targetLanguage) {
-      return res.status(400).json({ error: 'srtContent and targetLanguage are required' });
+      return translateFail(res, traceId, 400, 'TRANSCRIPT_MISSING', 'srtContent and targetLanguage are required.', false, 'translate-parse');
     }
 
-    console.log(`TRANSLATE_SRT: Translating SRT from ${sourceLanguage || 'auto'} to ${targetLanguage}`);
+    const srcNorm = String(sourceLanguage || '').toLowerCase().trim().slice(0, 8);
+    const tgtNorm = String(targetLanguage || '').toLowerCase().trim().slice(0, 8);
+    if (srcNorm && tgtNorm && srcNorm === tgtNorm) {
+      return translateFail(res, traceId, 400, 'TRANSLATION_SAME_LANGUAGE', 'Source and target language are the same. Pick a different target language.', false, 'translate-parse');
+    }
 
-    // Parse SRT content
     const segments = parseSRT(srtContent);
-    console.log(`TRANSLATE_SRT: Parsed ${segments.length} segments`);
+    traceLog(traceId, 'parse', { segmentCount: segments.length });
 
     if (segments.length === 0) {
-      return res.status(400).json({ error: 'No valid segments found in SRT content' });
+      return translateFail(res, traceId, 400, 'TRANSLATION_MALFORMED', 'No valid subtitle cues found. Regenerate subtitles and try again.', false, 'translate-parse');
     }
 
     const srtMinutes = billingMinutesFromSrtSegments(segments);
-    if (!(await enforceQuota(res, userEmail, 'srt', srtMinutes))) return;
+    const featureCheck = await canUseFeature(userEmail, 'srt', srtMinutes);
+    if (featureCheck && featureCheck.allowed === false) {
+      return translateFail(res, traceId, 403, 'FEATURE_NOT_AVAILABLE', featureCheck.reason || 'Translation is not available on your current plan.', false, 'translate-parse');
+    }
 
-    // Translate segments using GPT
-    const translatedSegments = await translateSegments(segments, targetLanguage, sourceLanguage, apiKey);
+    let translatedSegments;
+    try {
+      translatedSegments = await translateSegments(segments, targetLanguage, sourceLanguage, traceId);
+    } catch (batchErr) {
+      const msg = batchErr?.message || String(batchErr);
+      const code = batchErr?.errorCode || 'TRANSLATION_UNAVAILABLE';
+      const retryable =
+        batchErr?.retryable !== false &&
+        (/timeout|timed out|ECONNRESET|429|rate/i.test(msg) || batchErr?.code === 'ETIMEDOUT');
+      return translateFail(
+        res,
+        traceId,
+        batchErr?.statusCode || (retryable ? 503 : 500),
+        code,
+        (code === 'TRANSLATION_UNAVAILABLE' || code === 'TRANSLATION_TIMEOUT'
+          ? userMessageForCode(code)
+          : null) ||
+          msg ||
+          'Translation failed.',
+        retryable,
+        batchErr?.phase || 'translate-batch',
+        batchErr?.providerDebug || null
+      );
+    }
 
-    // Reconstruct SRT file
+    traceLog(traceId, 'translate-response', { batchesDone: true, cues: translatedSegments.length });
+
+    validateTranslationVsOriginal(segments, translatedSegments, sourceLanguage, targetLanguage);
+
     const translatedSRT = generateSRT(translatedSegments);
+    traceLog(traceId, 'translate-parse', { outChars: translatedSRT.length });
 
-    console.log('TRANSLATE_SRT: Translation complete');
+    const roundTrip = parseSRT(translatedSRT);
+    if (roundTrip.length !== segments.length) {
+      return translateFail(res, traceId, 500, 'TRANSLATION_MALFORMED', 'Translated file cue count does not match original.', true, 'translate-parse');
+    }
+    for (let i = 0; i < segments.length; i++) {
+      const dtStart = Math.abs((roundTrip[i]?.start ?? 0) - segments[i].start);
+      const dtEnd = Math.abs((roundTrip[i]?.end ?? 0) - segments[i].end);
+      if (dtStart > 0.06 || dtEnd > 0.06) {
+        return translateFail(res, traceId, 500, 'TRANSLATION_TIMESTAMP_MISMATCH', 'Translated subtitles lost timing alignment.', true, 'translate-parse');
+      }
+    }
 
-    const consumed = await consumeSrtUsage(userEmail, srtMinutes, {
+    traceLog(traceId, 'srt', { cues: translatedSegments.length });
+
+    await consumeSrtUsage(userEmail, srtMinutes, {
       route: 'translate-srt',
+      processingSessionId: metadata?.processingSessionId || metadata?.sessionId || null,
       segmentCount: translatedSegments.length,
       targetLanguage,
       outputType: 'srt',
@@ -73,45 +207,94 @@ export default async function handler(req, res) {
       filename: metadata?.filename || null,
       ...((metadata && typeof metadata === 'object') ? metadata : {})
     });
-    if (respondConsumeFailure(res, consumed)) return;
+
+    traceLog(traceId, 'success', { segmentCount: translatedSegments.length, targetLanguage });
+
+    console.log(`[translate-render][${traceId}]`, { segmentCount: translatedSegments.length, targetLanguage });
 
     setCORSHeaders(res);
     return res.status(200).json({
+      success: true,
+      traceId,
       srtContent: translatedSRT,
       segmentCount: translatedSegments.length,
       targetLanguage
     });
-
   } catch (error) {
-    console.error('TRANSLATE_SRT_ERROR:', error);
-    setCORSHeaders(res);
-    return res.status(500).json({
-      error: 'TRANSLATE_SRT_ERROR',
-      details: error.message,
-      message: 'SRT translation failed'
-    });
+    console.error('TRANSLATE_SRT_ERROR', traceId, error);
+    if (error?.errorCode === 'OPENAI_QUOTA_EXCEEDED' || error?.errorCode === 'TRANSLATION_UNAVAILABLE') {
+      const dbg =
+        process.env.ADMIN_DEBUG === 'true' && error?.providerDebug && typeof error.providerDebug === 'object'
+          ? error.providerDebug
+          : null;
+      const code = error.errorCode === 'OPENAI_QUOTA_EXCEEDED' ? 'TRANSLATION_UNAVAILABLE' : error.errorCode;
+      return translateFail(
+        res,
+        traceId,
+        error?.statusCode || 503,
+        code,
+        error?.message || userMessageForCode('TRANSLATION_UNAVAILABLE'),
+        false,
+        error?.phase || 'translate-batch',
+        dbg
+      );
+    }
+    const msg = String(error?.message || error);
+    const code = error?.errorCode || 'TRANSLATION_UNAVAILABLE';
+    const retryable =
+      error?.retryable !== false &&
+      ![
+        'TRANSLATION_SAME_LANGUAGE',
+        'TRANSLATION_MALFORMED',
+        'TRANSCRIPT_MISSING',
+        'OPENAI_QUOTA_EXCEEDED'
+      ].includes(code);
+    return translateFail(res, traceId, error?.statusCode || 500, code, msg, retryable, error?.phase || 'translate-parse');
   }
 }
 
-// Parse SRT content into segments
+const SRT_TIME_RE = /(\d{1,2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})[,.](\d{3})/;
+
+function preprocessSrtInput(srtContent) {
+  return String(srtContent || '')
+    .replace(/\uFEFF/g, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\n# Generated by Cutup[^\n]*/gi, '')
+    .replace(/\[Preview only[\s\S]*?(?=\n\n\d+\n|$)/gi, '')
+    .replace(/\[Preview ends here[\s\S]*?(?=\n\n\d+\n|$)/gi, '')
+    .trim();
+}
+
 function parseSRT(srtContent) {
   const segments = [];
-  const blocks = srtContent.trim().split(/\n\s*\n/);
+  const normalized = preprocessSrtInput(srtContent);
+  if (!normalized) return segments;
+
+  const blocks = normalized.split(/\n\s*\n/);
   
   for (const block of blocks) {
-    const lines = block.trim().split('\n');
-    if (lines.length < 3) continue;
-    
-    // Skip index line (first line)
-    const timeLine = lines[1];
-    const textLines = lines.slice(2);
-    
-    const timeMatch = timeLine.match(/(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})/);
+    const lines = block.trim().split('\n').map((l) => l.trim()).filter(Boolean);
+    if (lines.length < 2) continue;
+
+    let timeLineIdx = -1;
+    let timeMatch = null;
+    for (let i = 0; i < lines.length; i++) {
+      const m = lines[i].match(SRT_TIME_RE);
+      if (m) {
+        timeLineIdx = i;
+        timeMatch = m;
+        break;
+      }
+    }
     if (!timeMatch) continue;
     
     const startTime = parseSRTTime(timeMatch[1], timeMatch[2], timeMatch[3], timeMatch[4]);
     const endTime = parseSRTTime(timeMatch[5], timeMatch[6], timeMatch[7], timeMatch[8]);
-    const text = textLines.join(' ').trim();
+    const text = lines
+      .slice(timeLineIdx + 1)
+      .filter((line) => !/^\[preview/i.test(line) && !/^#\s*generated by cutup/i.test(line))
+      .join(' ')
+      .trim();
     
     if (text.length > 0) {
       segments.push({ start: startTime, end: endTime, text });
@@ -121,91 +304,501 @@ function parseSRT(srtContent) {
   return segments;
 }
 
-// Parse SRT time format to seconds
 function parseSRTTime(hours, minutes, seconds, milliseconds) {
-  return parseInt(hours) * 3600 + parseInt(minutes) * 60 + parseInt(seconds) + parseInt(milliseconds) / 1000;
+  return parseInt(hours, 10) * 3600 + parseInt(minutes, 10) * 60 + parseInt(seconds, 10) + parseInt(milliseconds, 10) / 1000;
 }
 
-// Translate segments using GPT
-async function translateSegments(segments, targetLanguage, sourceLanguage, apiKey) {
-  const client = new OpenAI({ apiKey });
-  
-  // Get language names
-  const languageNames = {
-    'fa': 'Persian/Farsi',
-    'en': 'English',
-    'ar': 'Arabic',
-    'es': 'Spanish',
-    'fr': 'French',
-    'de': 'German',
-    'it': 'Italian',
-    'ru': 'Russian',
-    'tr': 'Turkish',
-    'zh': 'Chinese',
-    'ja': 'Japanese',
-    'ko': 'Korean'
-  };
-  
-  const targetLangName = languageNames[targetLanguage] || targetLanguage;
-  const sourceLangName = sourceLanguage ? (languageNames[sourceLanguage] || sourceLanguage) : 'the original language';
-  
-  // Batch translate segments (translate in chunks to avoid token limits)
-  const batchSize = 20; // Translate 20 segments at a time
-  const translatedSegments = [];
-  
-  for (let i = 0; i < segments.length; i += batchSize) {
-    const batch = segments.slice(i, i + batchSize);
-    const batchTexts = batch.map(s => s.text).join('\n---SEGMENT---\n');
-    
-    const systemPrompt = `You are a professional subtitle translator. Your task is to translate subtitle text accurately from the source language to the target language. You MUST translate to the target language specified, regardless of what language the source text is in. Return only the translated text, one segment per line, separated by "---SEGMENT---". Do not add any explanations, formatting, or keep the original language. Always translate to the target language.`;
-    
-    const userPrompt = `Translate the following subtitle segments from ${sourceLangName} to ${targetLangName}. 
+function normalizeForCompare(s) {
+  return String(s || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
-IMPORTANT: You MUST translate ALL text to ${targetLangName}. Do NOT keep any text in the original language. Every word must be translated to ${targetLangName}.
+function validateTranslationVsOriginal(originalSegments, translatedSegments, sourceLanguage, targetLanguage) {
+  if (!translatedSegments || translatedSegments.length !== originalSegments.length) {
+    const err = new Error('Translation returned the wrong number of subtitle cues.');
+    err.errorCode = 'TRANSLATION_MALFORMED';
+    err.phase = 'translate-parse';
+    err.retryable = true;
+    throw err;
+  }
 
-Return the translated text exactly as provided, with each segment on a separate line, separated by "---SEGMENT---". 
-Preserve the meaning and keep the translation natural and accurate in ${targetLangName}.
+  let empty = 0;
+  let unchangedLong = 0;
+  let longCount = 0;
 
-Subtitle segments:
+  for (let i = 0; i < originalSegments.length; i++) {
+    const t = translatedSegments[i]?.text;
+    if (!t || !String(t).trim()) {
+      empty++;
+      continue;
+    }
+    const o = originalSegments[i].text;
+    const nt = normalizeForCompare(t);
+    const no = normalizeForCompare(o);
+    if (no.length >= 18) {
+      longCount++;
+      if (nt === no) unchangedLong++;
+    }
+  }
+
+  if (empty > 0) {
+    const err = new Error('Translation produced empty subtitle lines.');
+    err.errorCode = 'TRANSLATION_EMPTY_RESPONSE';
+    err.phase = 'translate-parse';
+    err.retryable = true;
+    throw err;
+  }
+
+  const src = String(sourceLanguage || '').toLowerCase().slice(0, 2);
+  const tgt = String(targetLanguage || '').toLowerCase().slice(0, 2);
+  const threshold = src && tgt && src !== tgt ? 0.34 : 0.52;
+  if (longCount >= 4 && unchangedLong / longCount > threshold) {
+    const err = new Error(
+      'Translation did not change the subtitle text enough — the output still matches the original. Try again or pick another target language.'
+    );
+    err.errorCode = 'TRANSLATION_UNCHANGED';
+    err.phase = 'translate-parse';
+    err.retryable = true;
+    throw err;
+  }
+}
+
+function computeMaxTokensForBatch(batch, targetLanguage) {
+  const charEstimate = batch.reduce((n, s) => n + String(s.text || '').length, 0);
+  const expansion = LANG_OUTPUT_EXPANSION[String(targetLanguage || '').toLowerCase().slice(0, 2)] ?? 1.28;
+  return Math.min(4096, Math.max(768, Math.ceil(charEstimate * 2.1 * expansion) + batch.length * 48));
+}
+
+const LANGUAGE_NAMES = {
+    fa: 'Persian/Farsi',
+    en: 'English',
+    ar: 'Arabic',
+    es: 'Spanish',
+    fr: 'French',
+    de: 'German',
+    it: 'Italian',
+    ru: 'Russian',
+    tr: 'Turkish',
+    zh: 'Chinese',
+    ja: 'Japanese',
+    ko: 'Korean'
+};
+
+const GROQ_TRANSLATE_RULES =
+  ' CRITICAL OUTPUT RULES: DO NOT add explanations. DO NOT add numbering. DO NOT add timestamps. RETURN ONLY subtitle text lines in the same order. KEEP EXACT ORDER. Use exactly N segments separated only by ---SEGMENT--- on its own line between segments.';
+
+function buildTranslationPrompts(batch, targetLanguage, sourceLanguage, { groqHardening = false } = {}) {
+  const targetLangName = LANGUAGE_NAMES[targetLanguage] || targetLanguage;
+  const sourceLangName = sourceLanguage
+    ? LANGUAGE_NAMES[sourceLanguage] || sourceLanguage
+    : 'the original language';
+  const batchTexts = batch.map((s) => s.text).join('\n---SEGMENT---\n');
+  const n = batch.length;
+  const groqExtra = groqHardening ? GROQ_TRANSLATE_RULES.replace(/exactly N/g, `exactly ${n}`) : '';
+  const systemPrompt = `You are a professional subtitle translator. Translate each segment from the source language to ${targetLangName}. Output MUST contain exactly ${n} segments separated only by the delimiter "---SEGMENT---" on its own between segments. No numbering, no timestamps, no explanations.${groqExtra}`;
+  const userPrompt = `Translate these ${n} subtitle segments from ${sourceLangName} to ${targetLangName}. Every segment must be fully translated. Return ONLY translated subtitle text — no preamble, no markdown, no bullets.
+
+Segments (delimiter ---SEGMENT---):
 ${batchTexts}
 
-Translated segments (ALL in ${targetLangName}):`;
-    
-    try {
-      const completion = await client.chat.completions.create({
+Translated segments (${n} parts, delimiter ---SEGMENT--- only):`;
+  return { systemPrompt, userPrompt };
+}
+
+/** Remove provider chatter, markdown fences, and list prefixes from raw model output. */
+function sanitizeTranslatedRaw(raw) {
+  let t = String(raw || '')
+    .replace(/\uFEFF/g, '')
+    .trim();
+  if (!t) return '';
+  t = t.replace(/^```[a-zA-Z]*\s*\r?\n?/gm, '').replace(/\r?\n?```\s*$/gm, '').trim();
+  t = t
+    .replace(
+      /^(?:here\s+(?:is|are)\s+(?:the\s+)?(?:translation|translated\s+(?:subtitles?|segments?|text))|translated?\s*(?:subtitles?|segments?|text)\s*:)\s*[\r\n:]*/gim,
+      ''
+    )
+    .trim();
+  t = t
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^[\s]*[-*•]\s+/, '').trim())
+    .join('\n')
+    .trim();
+  return t;
+}
+
+function sanitizeSegmentText(text) {
+  let t = sanitizeTranslatedRaw(text);
+  if (!t) return '';
+  t = t.replace(/^\d+\.\s+/, '').trim();
+  t = t.replace(/^#+\s+/, '').trim();
+  return t;
+}
+
+function isNumericOnlyLine(line) {
+  return /^\d{1,4}$/.test(String(line || '').trim());
+}
+
+function isTimestampLine(line) {
+  return SRT_TIME_RE.test(String(line || '').trim());
+}
+
+/** Strict delimiter / newline split (no recovery). */
+function parseTranslatedBlocksStrict(raw) {
+  const sanitized = sanitizeTranslatedRaw(raw);
+  if (!sanitized) return [];
+  let blocks = sanitized.split('---SEGMENT---').map((part) => sanitizeSegmentText(part));
+  const nonEmpty = blocks.filter(Boolean);
+  if (nonEmpty.length <= 1 && blocks.length <= 1) {
+    blocks = sanitized
+      .split(/\r?\n/)
+      .map((line) => sanitizeSegmentText(line))
+      .filter(Boolean);
+  } else {
+    blocks = blocks.filter(Boolean);
+  }
+  return blocks;
+}
+
+/** Lenient split: drop blanks, indices, timestamps; keep text blocks in order. */
+function parseTranslatedBlocksLenient(raw) {
+  const sanitized = sanitizeTranslatedRaw(raw);
+  if (!sanitized) return [];
+
+  let parts = sanitized.split('---SEGMENT---').map((p) => sanitizeSegmentText(p));
+  if (parts.filter(Boolean).length <= 1) {
+    parts = sanitized.split(/\r?\n/).map((line) => sanitizeSegmentText(line));
+  }
+
+  return parts
+    .map((line) => String(line || '').trim())
+    .filter((line) => line.length > 0)
+    .filter((line) => !isNumericOnlyLine(line))
+    .filter((line) => !isTimestampLine(line))
+    .filter((line) => !/^---\s*segment\s*---$/i.test(line));
+}
+
+/**
+ * Map translated text blocks onto original cue timestamps (recovery).
+ */
+function recoverBatchSegments(originalBatch, translatedBlocks, traceId, batchIndex) {
+  const expected = originalBatch.length;
+  let blocks = translatedBlocks.map((b) => sanitizeSegmentText(b)).filter((b) => b.length > 0);
+
+  if (blocks.length > expected) {
+    const merged = [];
+    for (let i = 0; i < expected; i++) {
+      const start = Math.floor((i * blocks.length) / expected);
+      const end = Math.floor(((i + 1) * blocks.length) / expected);
+      const slice = blocks.slice(start, Math.max(start + 1, end));
+      merged.push(slice.join(' ').trim());
+    }
+    blocks = merged;
+  }
+
+  let fallbackCount = 0;
+  let recoveredCount = 0;
+  const segments = originalBatch.map((seg, i) => {
+    let text = blocks[i];
+    let fromFallback = false;
+    if (text == null || !String(text).trim()) {
+      text = String(seg.text || '').trim();
+      fromFallback = true;
+      fallbackCount++;
+    } else {
+      recoveredCount++;
+    }
+    return {
+      start: seg.start,
+      end: seg.end,
+      text: String(text).trim(),
+      fromFallback
+    };
+  });
+
+  const recoveredRatio = expected > 0 ? recoveredCount / expected : 0;
+  const hasUsableText = segments.some((s) => s.text.length > 0);
+
+  return {
+    segments: segments.map(({ start, end, text }) => ({ start, end, text })),
+    recoveredCount,
+    recoveredRatio,
+    fallbackCount,
+    hasUsableText,
+    expected,
+    gotBlocks: translatedBlocks.length
+  };
+}
+
+const MIN_RECOVERY_RATIO = 0.4;
+
+function mapStrictBatch(originalBatch, translatedBlocks) {
+  return originalBatch.map((seg, j) => ({
+    start: seg.start,
+    end: seg.end,
+    text: translatedBlocks[j]
+  }));
+}
+
+function mapTranslateProviderError(apiErr, provider, traceId, batchIndex) {
+  const st =
+    Number(apiErr?.status) ||
+    Number(apiErr?.response?.status) ||
+    (String(apiErr?.code || '').toLowerCase() === 'insufficient_quota' ? 429 : 0) ||
+    500;
+  const errObj =
+    apiErr?.error && typeof apiErr.error === 'object'
+      ? apiErr.error
+      : { message: String(apiErr?.message || apiErr || ''), code: apiErr?.code };
+  const classified = classifyOpenAiTranscriptionFailure(st, { error: errObj });
+  const e = new Error(classified.rawMessage || String(errObj.message || 'Translation provider error'));
+  e.statusCode = classified.httpStatus || st || 503;
+  e.phase = provider === 'groq' ? 'translate-groq' : 'translate-openai';
+  e.batchIndex = batchIndex;
+  e.providerDebug = { provider, openaiCode: classified.openaiCode, httpStatus: e.statusCode };
+  if (classified.category === 'quota') {
+    logProviderQuota(provider, { traceId, phase: 'translate_gpt', batchIndex });
+    e.errorCode = 'TRANSLATION_UNAVAILABLE';
+    e.retryable = false;
+    e.message = 'Translation provider quota is temporarily unavailable.';
+  } else if (classified.category === 'rate_limit' || st === 429) {
+    e.errorCode = 'TRANSLATION_TIMEOUT';
+    e.retryable = true;
+    e.message = 'Translation rate limit hit. Please try again.';
+  } else {
+    e.errorCode = 'TRANSLATION_UNAVAILABLE';
+    e.retryable = st >= 500 || st === 408 || /timeout|econnreset/i.test(String(e.message));
+  }
+  return e;
+}
+
+/**
+ * Groq chat completion (OpenAI-compatible API).
+ */
+export async function translateWithGroq({ systemPrompt, userPrompt, maxTokens, traceId, batchIndex }) {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey || String(apiKey).length < MIN_TRANSLATE_KEY_LEN) {
+    const e = new Error('GROQ_API_KEY not configured');
+    e.errorCode = 'TRANSLATION_PROVIDER_UNAVAILABLE';
+    e.retryable = false;
+    throw e;
+  }
+  const client = new OpenAI({
+    apiKey,
+    baseURL: 'https://api.groq.com/openai/v1',
+    timeout: GROQ_TRANSLATE_TIMEOUT_MS
+  });
+  console.log(`[translate-groq][${traceId}]`, { batchIndex, model: GROQ_TRANSLATE_MODEL, maxTokens });
+  try {
+    return await client.chat.completions.create({
+      model: GROQ_TRANSLATE_MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.25,
+      max_tokens: maxTokens
+    });
+  } catch (apiErr) {
+    console.error(`[translate-groq][${traceId}] batch ${batchIndex}`, apiErr?.message || apiErr);
+    throw mapTranslateProviderError(apiErr, 'groq', traceId, batchIndex);
+  }
+}
+
+/**
+ * OpenAI chat completion (fallback).
+ */
+export async function translateWithOpenAi({ systemPrompt, userPrompt, maxTokens, traceId, batchIndex, isFallback = false }) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey || String(apiKey).length < MIN_TRANSLATE_KEY_LEN) {
+    const e = new Error('OPENAI_API_KEY not configured');
+    e.errorCode = 'TRANSLATION_PROVIDER_UNAVAILABLE';
+    e.retryable = false;
+    throw e;
+  }
+  const client = new OpenAI({ apiKey, timeout: OPENAI_TRANSLATE_TIMEOUT_MS });
+  const logTag = isFallback ? 'translate-openai-fallback' : 'translate-openai';
+  console.log(`[${logTag}][${traceId}]`, { batchIndex, model: 'gpt-4o-mini', maxTokens, isFallback });
+  try {
+    return await client.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        temperature: 0.3,
-        max_tokens: Math.min(batchTexts.length * 3, 4000)
+      temperature: 0.25,
+      max_tokens: maxTokens
+    });
+  } catch (apiErr) {
+    console.error(`[${logTag}][${traceId}] batch ${batchIndex}`, apiErr?.message || apiErr);
+    throw mapTranslateProviderError(apiErr, 'openai', traceId, batchIndex);
+  }
+}
+
+function applyBatchTranslation(completion, batch, traceId, batchIndex) {
+  const rawContent = completion?.choices?.[0]?.message?.content;
+  traceLog(traceId, 'translate-response', {
+    batchIndex,
+    finishReason: completion?.choices?.[0]?.finish_reason || null,
+    contentChars: rawContent ? String(rawContent).length : 0
+  });
+  console.log(`[translate-response][${traceId}]`, {
+    batchIndex,
+    finishReason: completion?.choices?.[0]?.finish_reason || null,
+    contentChars: rawContent ? String(rawContent).length : 0
+  });
+  if (!rawContent || !String(rawContent).trim()) {
+    const e = new Error('Empty translation response from provider.');
+    e.errorCode = 'TRANSLATION_EMPTY_RESPONSE';
+    e.retryable = true;
+    throw e;
+  }
+
+  const sanitizedRaw = sanitizeTranslatedRaw(rawContent);
+  const strictBlocks = parseTranslatedBlocksStrict(sanitizedRaw);
+
+  if (strictBlocks.length === batch.length) {
+    return mapStrictBatch(batch, strictBlocks);
+  }
+
+  console.log('[translate-recovery]', {
+    traceId,
+    batchIndex,
+    expected: batch.length,
+    strictGot: strictBlocks.length,
+    mode: 'segment-count-mismatch'
+  });
+
+  const lenientBlocks = parseTranslatedBlocksLenient(sanitizedRaw);
+  const recovery = recoverBatchSegments(batch, lenientBlocks, traceId, batchIndex);
+
+  if (recovery.hasUsableText && recovery.recoveredRatio >= MIN_RECOVERY_RATIO) {
+    console.log('[translate-recovery-success]', {
+      traceId,
+      batchIndex,
+      expected: recovery.expected,
+      strictGot: strictBlocks.length,
+      lenientGot: lenientBlocks.length,
+      recoveredCount: recovery.recoveredCount,
+      recoveredRatio: Number(recovery.recoveredRatio.toFixed(3)),
+      fallbackCount: recovery.fallbackCount
+    });
+    return recovery.segments;
+  }
+
+  console.error('[translate-recovery-failed]', {
+    traceId,
+    batchIndex,
+    expected: recovery.expected,
+    strictGot: strictBlocks.length,
+    lenientGot: lenientBlocks.length,
+    recoveredCount: recovery.recoveredCount,
+    recoveredRatio: Number(recovery.recoveredRatio.toFixed(3)),
+    hasUsableText: recovery.hasUsableText
+  });
+
+  const e = new Error(
+    recovery.hasUsableText
+      ? `Translation recovery insufficient (${Math.round(recovery.recoveredRatio * 100)}% of segments recovered, need ${Math.round(MIN_RECOVERY_RATIO * 100)}%).`
+      : 'No usable translated text in provider response.'
+  );
+  e.errorCode = 'TRANSLATION_MALFORMED';
+  e.retryable = true;
+  throw e;
+}
+
+async function translateBatchWithProviders(batch, targetLanguage, sourceLanguage, traceId, batchIndex) {
+  const groqPrompts = buildTranslationPrompts(batch, targetLanguage, sourceLanguage, { groqHardening: true });
+  const openaiPrompts = buildTranslationPrompts(batch, targetLanguage, sourceLanguage, { groqHardening: false });
+  const maxTokens = computeMaxTokensForBatch(batch, targetLanguage);
+  const groqReady = hasGroqTranslateKey();
+  const openaiReady = hasOpenAiTranslateKey();
+  let lastErr = null;
+
+  if (groqReady) {
+    try {
+      const completion = await translateWithGroq({
+        systemPrompt: groqPrompts.systemPrompt,
+        userPrompt: groqPrompts.userPrompt,
+        maxTokens,
+        traceId,
+        batchIndex
       });
-      
-      const translatedText = completion.choices[0].message.content.trim();
-      const translatedBatch = translatedText.split('---SEGMENT---').map(t => t.trim());
-      
-      // Map translated text back to segments
-      for (let j = 0; j < batch.length && j < translatedBatch.length; j++) {
-        translatedSegments.push({
-          start: batch[j].start,
-          end: batch[j].end,
-          text: translatedBatch[j] || batch[j].text // Fallback to original if translation failed
-        });
+      return { segments: applyBatchTranslation(completion, batch, traceId, batchIndex), provider: 'groq' };
+    } catch (groqErr) {
+      lastErr = groqErr;
+      if (!isTranslateFailoverEligible(groqErr) || !openaiReady) {
+        throw groqErr;
       }
-      
-      console.log(`TRANSLATE_SRT: Translated batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(segments.length / batchSize)}`);
-    } catch (error) {
-      console.error(`TRANSLATE_SRT: Error translating batch ${Math.floor(i / batchSize) + 1}:`, error.message);
-      // Fallback: use original text for this batch
-      translatedSegments.push(...batch);
+      console.log('[translate-openai-fallback]', {
+        traceId,
+        batchIndex,
+        from: 'groq',
+        to: 'openai',
+        reason: groqErr?.errorCode || groqErr?.message
+      });
     }
   }
+
+  if (openaiReady) {
+    const completion = await translateWithOpenAi({
+      systemPrompt: openaiPrompts.systemPrompt,
+      userPrompt: openaiPrompts.userPrompt,
+      maxTokens,
+      traceId,
+      batchIndex,
+      isFallback: Boolean(groqReady && lastErr)
+    });
+    return { segments: applyBatchTranslation(completion, batch, traceId, batchIndex), provider: 'openai' };
+  }
+
+  if (lastErr) throw lastErr;
+  const e = new Error('No translation provider available');
+  e.errorCode = 'TRANSLATION_PROVIDER_UNAVAILABLE';
+  e.retryable = false;
+  throw e;
+}
+
+async function translateSegments(segments, targetLanguage, sourceLanguage, traceId) {
+  const batchSize = 20;
+  const translatedSegments = [];
+  let lastProvider = null;
+
+  for (let i = 0; i < segments.length; i += batchSize) {
+    const batch = segments.slice(i, i + batchSize);
+    const batchIndex = Math.floor(i / batchSize) + 1;
+
+    traceLog(traceId, 'translate-batch', { batchIndex, cues: batch.length });
+    console.log(`[translate-batch][${traceId}]`, { batchIndex, cues: batch.length });
+
+    const { segments: mapped, provider } = await translateBatchWithProviders(
+      batch,
+      targetLanguage,
+      sourceLanguage,
+      traceId,
+      batchIndex
+    );
+    lastProvider = provider;
+    translatedSegments.push(...mapped);
+
+    traceLog(traceId, 'translate-parse', { batchIndex, mappedCues: batch.length, provider });
+    console.log(`[translate-parse][${traceId}]`, { batchIndex, mappedCues: batch.length, provider });
+  }
+
+  console.log('[translate-success]', {
+    traceId,
+    segmentCount: translatedSegments.length,
+    provider: lastProvider,
+    batches: Math.ceil(segments.length / batchSize)
+  });
   
   return translatedSegments;
 }
 
-// Generate SRT content from segments
 function generateSRT(segments) {
   let srtContent = '';
   
@@ -218,7 +811,6 @@ function generateSRT(segments) {
   return srtContent;
 }
 
-// Format time in seconds to SRT format (HH:MM:SS,mmm)
 function formatSRTTime(seconds) {
   const secs = Math.max(0, Number(seconds) || 0);
   const hours = Math.floor(secs / 3600);
@@ -228,4 +820,3 @@ function formatSRTTime(seconds) {
   
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secsPart).padStart(2, '0')},${String(milliseconds).padStart(3, '0')}`;
 }
-

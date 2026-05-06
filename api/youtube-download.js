@@ -10,13 +10,29 @@ import { unlinkSync, existsSync, readFileSync, statSync, readdirSync, mkdirSync,
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { sessions } from './auth.js';
-import { isBillingDbConfigured, consumeDownloadSlotAtomic } from './billing-repository.js';
+import { isBillingDbConfigured, consumeDownloadSlotAtomic, refundDownloadSlotAtomic } from './billing-repository.js';
+import {
+  resolveTraceId,
+  sendTranscriptError,
+  mapLegacyDownloadError
+} from './transcript-errors.js';
+import { traceLog } from './pipeline-trace.js';
+import {
+  detectPlatformFromUrl,
+  validateMediaUrl,
+  parseYouTubeVideoId,
+  normalizeYouTubeWatchUrl,
+  stripTrackingQueryParams,
+  normalizeInstagramUrl
+} from './media-url.js';
 
 // Import subscription functions for atomic check + record
 // We'll need to access these functions - for now, we'll duplicate the logic
 // In production, refactor to a shared module
 
 const execAsync = promisify(exec);
+const YTDLP_TIMEOUT_MS = Number(process.env.YTDLP_TIMEOUT_MS || 120000);
+
 
 // Helper to get userId from session - use email as userId (consistent with subscription.js)
 function getUserIdFromSession(sessionId) {
@@ -35,12 +51,33 @@ function getUserIdFromSession(sessionId) {
 }
 
 export default async function handler(req, res) {
+  const requestId = req.headers['x-request-id'] || `req_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const traceId = resolveTraceId(req, requestId);
+  const plog = (stage, data = {}) => console.log(`[PIPELINE][${requestId}][youtube-download][${stage}]`, data);
+  traceLog(traceId, 'start', { route: 'youtube-download', requestId });
+  res.setHeader('X-Request-Id', requestId);
+  res.setHeader('X-Trace-Id', traceId);
   // Handle CORS
   const corsHandled = handleCORS(req, res);
   if (corsHandled) return;
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  let slotConsumed = false;
+  let downloadUserEmail = null;
+  let downloadKind = null;
+  let downloadMeta = null;
+
+  async function refundDownloadSlotIfConsumed() {
+    if (!slotConsumed || !downloadUserEmail || !downloadKind) return;
+    try {
+      await refundDownloadSlotAtomic(downloadUserEmail, downloadKind, downloadMeta || {});
+      slotConsumed = false;
+    } catch (refundErr) {
+      console.warn('[quota-refund-failed]', refundErr?.message);
+    }
   }
 
   try {
@@ -78,6 +115,8 @@ export default async function handler(req, res) {
 
     // **STEP 2: Parse request body**
     const { videoId, url, type, quality, platform } = req.body;
+    plog('REQUEST_PARSED', { hasUrl: !!url, hasVideoId: !!videoId, type, quality, platform });
+    traceLog(traceId, 'parse', { type, quality, platform: platform || null, hasUrl: !!url, hasVideoId: !!videoId });
 
     if (!videoId && !url) {
       setCORSHeaders(res);
@@ -89,29 +128,81 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'type must be "audio" or "video"' });
     }
     
-    // Determine platform from URL if not provided (accepts any subdomain)
-    let detectedPlatform = platform || 'youtube';
-    if (url && !platform) {
-      if (url.includes('youtube.com') || url.includes('youtu.be')) {
-        detectedPlatform = 'youtube';
-      } else if (url.includes('tiktok.com')) {
-        // Accepts any TikTok subdomain (vt.tiktok.com, vm.tiktok.com, www.tiktok.com, etc.)
-        detectedPlatform = 'tiktok';
-      } else if (url.includes('instagram.com')) {
-        // Accepts any Instagram subdomain
-        detectedPlatform = 'instagram';
+    const cleanedUrl = url ? stripTrackingQueryParams(url) : '';
+    let detectedPlatform = platform || detectPlatformFromUrl(cleanedUrl) || 'youtube';
+    plog('PLATFORM_DETECTED', { requestedPlatform: platform || null, detectedPlatform, incomingUrl: cleanedUrl || null });
+    console.log('[platform-detected]', { traceId, detectedPlatform, url: cleanedUrl?.slice(0, 120) });
+
+    if (cleanedUrl) {
+      const validation = validateMediaUrl(cleanedUrl, detectedPlatform);
+      if (!validation.ok) {
+        plog('URL_VALIDATION_FAILED', { detectedPlatform, code: validation.code, reason: validation.reason, url: cleanedUrl });
+        const mapped = mapLegacyDownloadError(validation.code, { message: validation.reason, platform: detectedPlatform });
+        return sendTranscriptError(res, {
+          statusCode: 400,
+          errorCode: mapped.errorCode,
+          message: mapped.message,
+          retryable: false,
+          traceId,
+          stage: 'youtube-download'
+        });
       }
+      detectedPlatform = validation.platform || detectedPlatform;
     }
 
     const platformName = detectedPlatform === 'youtube' ? 'YouTube' : 
                          detectedPlatform === 'tiktok' ? 'TikTok' : 'Instagram';
-    const metadata = {
+    downloadKind = type;
+    downloadMeta = {
       title: `${platformName} ${type}`,
       quality: quality,
-      url: url,
+      url: cleanedUrl || url,
       videoId: videoId,
       platform: detectedPlatform
     };
+    const metadata = downloadMeta;
+
+    // Extract video ID / canonical URL before consuming quota
+    let finalVideoId = videoId;
+    let finalUrl = cleanedUrl;
+
+    if (detectedPlatform === 'youtube') {
+      finalVideoId = videoId || (cleanedUrl ? parseYouTubeVideoId(cleanedUrl) : null);
+      if (cleanedUrl && /\/shorts\//i.test(cleanedUrl)) {
+        console.log('[yt-shorts]', { traceId, url: cleanedUrl, videoId: finalVideoId, normalized: normalizeYouTubeWatchUrl(cleanedUrl) });
+      }
+      if (!finalVideoId) {
+        const errorCode = cleanedUrl && /\/shorts\//i.test(cleanedUrl) ? 'SHORTS_PARSE_ERROR' : 'INVALID_URL';
+        return sendTranscriptError(res, {
+          statusCode: 400,
+          errorCode,
+          message: mapLegacyDownloadError(errorCode).message,
+          retryable: false,
+          traceId,
+          stage: 'youtube-download'
+        });
+      }
+      finalUrl = normalizeYouTubeWatchUrl(finalVideoId) || `https://www.youtube.com/watch?v=${finalVideoId}`;
+      traceLog(traceId, 'normalize', { platform: 'youtube', videoId: finalVideoId, shorts: /\/shorts\//i.test(cleanedUrl || '') });
+    } else {
+      if (!cleanedUrl) {
+        return sendTranscriptError(res, {
+          statusCode: 400,
+          errorCode: 'INVALID_URL',
+          message: mapLegacyDownloadError('INVALID_URL').message,
+          retryable: false,
+          traceId,
+          stage: 'youtube-download'
+        });
+      }
+      if (detectedPlatform === 'instagram') {
+        finalUrl = normalizeInstagramUrl(cleanedUrl) || cleanedUrl;
+        if (finalUrl.includes('/stories/')) {
+          console.log('[instagram-story]', { traceId, url: finalUrl });
+        }
+      }
+      traceLog(traceId, 'normalize', { platform: detectedPlatform, urlLen: (finalUrl || '').length });
+    }
 
     const slot = await consumeDownloadSlotAtomic(userId, type, metadata);
     if (!slot.ok) {
@@ -123,56 +214,26 @@ export default async function handler(req, res) {
           ? 'SUBSCRIPTION_INACTIVE'
           : 'LIMIT_EXCEEDED';
       return res.status(403).json({
+        success: false,
         error: 'forbidden',
+        errorCode: code,
         code,
-        message: reason
+        message: reason,
+        retryable: false,
+        traceId,
+        phase: 'youtube-download'
       });
     }
 
-    console.log(`[youtube-download] User ${userId} authorized for ${type} download from ${detectedPlatform}, download slot consumed atomically`);
-
-    // Extract video ID from URL if provided (only for YouTube)
-    let finalVideoId = videoId;
-    let finalUrl = url;
-    
-    if (detectedPlatform === 'youtube') {
-      if (url && !videoId) {
-        const patterns = [
-          /[?&]v=([^&]+)/,
-          /youtu\.be\/([^?]+)/,
-          /^([a-zA-Z0-9_-]{11})$/
-        ];
-        
-        for (const pattern of patterns) {
-          const match = url.match(pattern);
-          if (match) {
-            finalVideoId = match[1];
-            break;
-          }
-        }
-      }
-
-      if (!finalVideoId && !url) {
-        setCORSHeaders(res);
-        return res.status(400).json({ error: 'Invalid YouTube URL or video ID' });
-      }
-      
-      // Construct YouTube URL if we have video ID
-      if (finalVideoId && !url) {
-        finalUrl = `https://www.youtube.com/watch?v=${finalVideoId}`;
-      }
-    } else {
-      // For TikTok and Instagram, use the URL directly
-      if (!url) {
-        setCORSHeaders(res);
-        return res.status(400).json({ error: `Invalid ${platformName} URL` });
-      }
-      finalUrl = url;
-    }
+    downloadUserEmail = userId;
+    slotConsumed = true;
+    console.log(`[youtube-download] User ${userId} authorized for ${type} download from ${detectedPlatform}, download slot reserved`);
 
     console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: ${type} download for URL: ${finalUrl}, quality: ${quality}`);
+    plog('DOWNLOAD_START', { detectedPlatform, type, quality });
+    console.log('[download-start]', { traceId, platform: detectedPlatform, url: finalUrl?.slice(0, 120) });
 
-    // Check if yt-dlp is installed
+    // Check runtime dependencies
     let ytDlpPath = 'yt-dlp';
     try {
       const { stdout } = await execAsync('which yt-dlp');
@@ -180,14 +241,56 @@ export default async function handler(req, res) {
         ytDlpPath = stdout.trim();
       }
     } catch (err) {
-      console.warn('YOUTUBE_DOWNLOAD: yt-dlp not found in PATH, trying default');
+      try {
+        const { stdout } = await execAsync('where yt-dlp');
+        if (stdout.trim()) {
+          ytDlpPath = stdout.split(/\r?\n/).find(Boolean)?.trim() || ytDlpPath;
+        }
+      } catch (_err2) {
+        plog('DEPENDENCY_CHECK_FAILED', { dependency: 'yt-dlp', error: String(err?.message || err) });
+      }
     }
+    traceLog(traceId, 'ffmpeg', { phase: 'dependency_check' });
+    try {
+      await execAsync('ffmpeg -version');
+      plog('DEPENDENCY_OK', { dependency: 'ffmpeg' });
+      traceLog(traceId, 'ffmpeg', { ok: true });
+    } catch (ffmpegErr) {
+      traceLog(traceId, 'ffmpeg', { ok: false, error: String(ffmpegErr?.message || ffmpegErr).slice(0, 200) });
+      plog('DEPENDENCY_CHECK_FAILED', { dependency: 'ffmpeg', error: String(ffmpegErr?.message || ffmpegErr) });
+      await refundDownloadSlotIfConsumed();
+      return sendTranscriptError(res, {
+        statusCode: 500,
+        errorCode: 'FFMPEG_MISSING',
+        message: 'ffmpeg is not available on server.',
+        retryable: false,
+        traceId,
+        phase: 'ffmpeg'
+      });
+    }
+    plog('DEPENDENCY_OK', { dependency: 'yt-dlp', ytDlpPath });
     const tempDir = tmpdir();
     const timestamp = Date.now();
     
     // Create a job directory for this download
     const jobDir = join(tempDir, `cutup_${timestamp}`);
-    mkdirSync(jobDir, { recursive: true });
+    try {
+      mkdirSync(jobDir, { recursive: true });
+      traceLog(traceId, 'yt-dlp', { tempJobDirReady: true, suffix: jobDir.slice(-48) });
+    } catch (tmpErr) {
+      traceLog(traceId, 'failed', { reason: 'temp_dir', message: tmpErr?.message });
+      plog('TMP_DIR_ERROR', { tempDir, jobDir, error: tmpErr?.message || String(tmpErr) });
+      await refundDownloadSlotIfConsumed();
+      return sendTranscriptError(res, {
+        statusCode: 500,
+        errorCode: 'TEMP_DIR_UNAVAILABLE',
+        message: 'Temporary storage is not writable on server.',
+        retryable: true,
+        traceId,
+        phase: 'normalize'
+      });
+    }
+    plog('JOB_DIR_READY', { tempDir, jobDir, writable: existsSync(jobDir) });
     
     const outputTemplate = join(jobDir, 'out.%(ext)s');
     
@@ -254,16 +357,38 @@ export default async function handler(req, res) {
 
         const args = [...baseArgs, ...formatArgs, finalUrl];
         
-        console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Trying format: ${formatSelector}`);
+        plog('YTDLP_COMMAND', {
+          detectedPlatform,
+          formatSelector,
+          ytDlpPath,
+          argsPreview: args.slice(0, 10),
+          hasCookiesFlag: args.includes('--cookies') || args.includes('--cookies-from-browser')
+        });
 
-        const p = spawn(ytDlpPath, args, { 
+        const p = spawn(ytDlpPath, args, {
           stdio: ['ignore', 'pipe', 'pipe'],
           cwd: jobDir
+        });
+        plog('YTDLP_SPAWNED', { pid: p.pid || null, timeoutMs: YTDLP_TIMEOUT_MS });
+        traceLog(traceId, 'yt-dlp', {
+          spawned: true,
+          pid: p.pid || null,
+          timeoutMs: YTDLP_TIMEOUT_MS,
+          audio: type === 'audio'
         });
 
         let stdout = '';
         let stderr = '';
         let printedPath = null;
+        let timedOut = false;
+        const timeoutHandle = setTimeout(() => {
+          timedOut = true;
+          try {
+            p.kill('SIGKILL');
+          } catch (_e) {
+            /* noop */
+          }
+        }, YTDLP_TIMEOUT_MS);
 
         p.stdout.on('data', (d) => {
           const s = d.toString();
@@ -297,6 +422,21 @@ export default async function handler(req, res) {
         });
 
         p.on('close', (code) => {
+          clearTimeout(timeoutHandle);
+          plog('YTDLP_EXIT', {
+            detectedPlatform,
+            code,
+            timedOut,
+            stdoutTail: stdout.slice(-1200),
+            stderrTail: stderr.slice(-1200)
+          });
+          if (timedOut) {
+            const err = new Error(`yt-dlp timeout after ${YTDLP_TIMEOUT_MS}ms`);
+            err.stderr = stderr;
+            err.stdout = stdout;
+            err.code = 'YTDLP_TIMEOUT';
+            return reject(err);
+          }
           if (code !== 0) {
             const err = new Error(`yt-dlp failed (code=${code})`);
             err.stderr = stderr;
@@ -329,7 +469,8 @@ export default async function handler(req, res) {
         });
 
         p.on('error', (err) => {
-          console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: spawn error:`, err);
+          clearTimeout(timeoutHandle);
+          plog('YTDLP_SPAWN_ERROR', { message: err?.message || String(err) });
           reject(new Error(`Failed to spawn yt-dlp: ${err.message}`));
         });
       });
@@ -411,6 +552,7 @@ export default async function handler(req, res) {
     }
     
     try {
+      traceLog(traceId, 'yt-dlp', { phase: 'invoke', platform: detectedPlatform });
       const { filepath, stdout, stderr } = await runYtdlpWithFallback();
       
       const outputFile = filepath;
@@ -444,6 +586,8 @@ export default async function handler(req, res) {
                      fileExt === 'mkv' ? 'video/x-matroska' :
                      'video/mp4';
       }
+
+      traceLog(traceId, 'audio-download', { bytes: fileSize, ext: fileExt, contentType });
       
       const extension = fileExt;
       const filenamePrefix = detectedPlatform === 'youtube' ? `youtube_${finalVideoId || 'video'}` :
@@ -485,6 +629,8 @@ export default async function handler(req, res) {
         }
       }
       
+      traceLog(traceId, 'success', { phase: 'stream_start', bytes: fileSize, platform: detectedPlatform });
+
       // Clean up only after response is fully sent
       res.on('finish', safeCleanup);
       res.on('close', safeCleanup);
@@ -492,14 +638,18 @@ export default async function handler(req, res) {
       // Stream file instead of reading into memory
       const fileStream = createReadStream(outputFile);
       
-      fileStream.on('error', (streamError) => {
+      fileStream.on('error', async (streamError) => {
         console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Stream error:`, streamError);
         safeCleanup();
         if (!res.headersSent) {
-          setCORSHeaders(res);
-          return res.status(500).json({
-            error: 'STREAM_ERROR',
-            message: streamError.message || 'Error streaming file'
+          await refundDownloadSlotIfConsumed();
+          return sendTranscriptError(res, {
+            statusCode: 500,
+            errorCode: 'DOWNLOAD_FAILED',
+            message: streamError.message || 'Error streaming downloaded file.',
+            retryable: true,
+            traceId,
+            phase: 'audio-download'
           });
         } else {
           res.destroy(streamError);
@@ -507,6 +657,7 @@ export default async function handler(req, res) {
       });
       
       fileStream.pipe(res);
+      plog('DOWNLOAD_STREAMING', { detectedPlatform, fileSize, outputFile });
 
     } catch (downloadError) {
       console.error(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Download error:`, downloadError);
@@ -547,55 +698,54 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('DOWNLOAD_ERROR:', error);
-    console.error('DOWNLOAD_ERROR stack:', error.stack);
-    if (error.stderr) {
-      console.error('DOWNLOAD_ERROR stderr:', error.stderr);
-    }
-    if (error.stdout) {
-      console.error('DOWNLOAD_ERROR stdout:', error.stdout);
-    }
+    console.error('[download-failed]', { traceId, message: error?.message });
+    if (error.stderr) console.error('[extractor-failed] stderr:', String(error.stderr).slice(-800));
+    if (error.stdout) console.error('[extractor-failed] stdout:', String(error.stdout).slice(-800));
+
+    await refundDownloadSlotIfConsumed();
+
     setCORSHeaders(res);
-    
-    // Determine platform for error message
+
     const { url, platform } = req.body || {};
-    let detectedPlatform = platform || 'youtube';
-    if (url && !platform) {
-      if (url.includes('youtube.com') || url.includes('youtu.be')) {
-        detectedPlatform = 'youtube';
-      } else if (url.includes('tiktok.com') || url.includes('vm.tiktok.com')) {
-        detectedPlatform = 'tiktok';
-      } else if (url.includes('instagram.com')) {
-        detectedPlatform = 'instagram';
-      }
+    const cleaned = url ? stripTrackingQueryParams(url) : '';
+    const detectedPlatform = platform || detectPlatformFromUrl(cleaned) || 'youtube';
+
+    const stderrText = String(error.stderr || '').toLowerCase();
+    const stdoutText = String(error.stdout || '').toLowerCase();
+    let legacyCode = 'DOWNLOAD_ERROR';
+    if (String(error.code || '') === 'YTDLP_TIMEOUT' || stderrText.includes('timed out') || stderrText.includes('timeout')) {
+      legacyCode = 'YTDLP_TIMEOUT';
+    } else if (stderrText.includes('ffmpeg') && (stderrText.includes('not found') || stderrText.includes('not installed'))) {
+      legacyCode = 'FFMPEG_MISSING';
+    } else if (stderrText.includes('cookies') || stderrText.includes('login required') || stderrText.includes('you need to log in')) {
+      legacyCode = 'SOCIAL_LOGIN_REQUIRED';
+    } else if (stderrText.includes('private') || stderrText.includes('not available') || stderrText.includes('unable to extract')) {
+      legacyCode = 'MEDIA_UNAVAILABLE';
+    } else if (stderrText.includes('unsupported url') || stderrText.includes('unsupported')) {
+      legacyCode = 'UNSUPPORTED_URL';
+    } else if (stderrText.includes('spawn') || stdoutText.includes('spawn')) {
+      legacyCode = 'YTDLP_SPAWN_FAILED';
+    } else if (detectedPlatform === 'instagram') {
+      legacyCode = 'INSTAGRAM_EXTRACTION_FAILED';
+      console.log('[instagram-story]', { traceId, failed: true, url: cleaned?.slice(0, 80) });
+    } else if (detectedPlatform === 'tiktok') {
+      legacyCode = 'TIKTOK_EXTRACTION_FAILED';
     }
-    
-    const platformName = detectedPlatform === 'youtube' ? 'YouTube' : 
-                         detectedPlatform === 'tiktok' ? 'TikTok' : 
-                         detectedPlatform === 'instagram' ? 'Instagram' : 'platform';
-    
-    // Check if error is related to Instagram stories authentication
-    const isInstagramStory = url && url.includes('/stories/');
-    const isAuthError = error.stderr && (
-      error.stderr.includes('You need to log in') ||
-      error.stderr.includes('authentication') ||
-      error.stderr.includes('cookies') ||
-      error.stderr.includes('log in to access')
-    );
-    
-    let userFriendlyMessage = error.message || `Failed to download from ${platformName}`;
-    if (isInstagramStory && isAuthError) {
-      userFriendlyMessage = 'دانلود استوری‌های اینستاگرام نیاز به احراز هویت دارد. در حال حاضر این قابلیت در دسترس نیست. لطفاً از پست‌ها یا ریلز استفاده کنید.';
-    }
-    
-    // Return detailed error for debugging (include stderr/stdout)
-    return res.status(500).json({
-      error: 'DOWNLOAD_ERROR',
-      message: userFriendlyMessage,
-      stderr: error.stderr || null,
-      stdout: error.stdout || null,
-      code: error.code || null,
-      // Include stack only in development (you can remove this in production)
-      stack: process.env.NODE_ENV !== 'production' ? error.stack : undefined
+
+    const mapped = mapLegacyDownloadError(legacyCode, { message: error.message, platform: detectedPlatform });
+    plog('DOWNLOAD_FAILED', {
+      detectedPlatform,
+      mappedCode: mapped.errorCode,
+      legacyCode,
+      stderrTail: stderrText.slice(-1200)
+    });
+    return sendTranscriptError(res, {
+      statusCode: mapped.errorCode === 'VIDEO_UNAVAILABLE' ? 422 : 500,
+      errorCode: mapped.errorCode,
+      message: mapped.message,
+      retryable: mapped.retryable !== false,
+      traceId,
+      stage: 'youtube-download'
     });
   }
 }

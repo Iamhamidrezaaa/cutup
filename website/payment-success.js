@@ -2,6 +2,7 @@
   const API_BASE_URL =
     typeof window !== 'undefined' && typeof window.CUTUP_API_BASE !== 'undefined' ? window.CUTUP_API_BASE : '';
   const PAYMENT_RETRY_KEY = 'cutup_payment_retry';
+  const PAID_PLANS = new Set(['starter', 'pro', 'business', 'advanced']);
 
   function displayPlanName(planKey, planNameEn) {
     const k = String(planKey || '').toLowerCase();
@@ -38,14 +39,29 @@
     }
   }
 
-  function renderOk(planLabel) {
+  function formatRenewalDate(isoOrDate) {
+    if (!isoOrDate) return '';
+    try {
+      const d = new Date(isoOrDate);
+      if (Number.isNaN(d.getTime())) return '';
+      return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch (_e) {
+      return '';
+    }
+  }
+
+  function renderOk(planLabel, renewalLine) {
     const el = document.getElementById('cutupPaySuccessRoot');
     if (!el) return;
+    const renewalHtml = renewalLine
+      ? `<p class="cutup-pay-success-renewal" style="margin-top:12px;color:#a1a1aa;font-size:0.95rem">${escapeHtml(renewalLine)}</p>`
+      : '';
     el.innerHTML = `
       <div class="cutup-pay-success-icon" aria-hidden="true">✓</div>
       <h1>Payment successful</h1>
       <p>Thank you — your subscription is active. You now have full access for your plan.</p>
       <div class="cutup-pay-success-plan">${escapeHtml(planLabel)}</div>
+      ${renewalHtml}
       <a class="cutup-pay-success-btn" href="/dashboard.html">Go to dashboard</a>
     `;
   }
@@ -86,10 +102,28 @@
       { headers: { 'X-Session-Id': sessionId } }
     );
     const d = await r.json().catch(() => ({}));
-    if (!r.ok) return { label: 'Your plan' };
+    if (!r.ok) return { label: 'Your plan', planKey: 'free', endDate: null };
+    const planKey = String(d.plan || 'free').toLowerCase();
     return {
-      label: displayPlanName(d.plan, d.planName || d.planNameEn),
+      label: displayPlanName(planKey, d.planName || d.planNameEn),
+      planKey,
+      endDate: d.subscription?.endDate || d.subscription?.end_date || null
     };
+  }
+
+  function sleep(ms) {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
+  async function pollPaidSubscription(sessionId, maxAttempts, delayMs) {
+    for (let i = 0; i < maxAttempts; i++) {
+      const sub = await fetchSubscriptionPlan(sessionId);
+      if (PAID_PLANS.has(String(sub.planKey || '').toLowerCase())) {
+        return sub;
+      }
+      await sleep(delayMs);
+    }
+    return fetchSubscriptionPlan(sessionId);
   }
 
   async function init() {
@@ -104,11 +138,11 @@
     }
 
     const paymentResult = params.get('payment');
-    const isMock = params.get('mock') === 'true';
     const paymentId = params.get('payment_id');
     const checkoutSessionId = params.get('checkout_session_id');
     const authority = params.get('authority');
     const hadStripeReturn = paymentResult === 'success' && paymentId && checkoutSessionId;
+    const fromYekpay = params.get('from') === 'yekpay' && params.get('status') === 'success';
 
     let verified = false;
     let pending = false;
@@ -119,12 +153,12 @@
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Session-Id': sessionId,
+            'X-Session-Id': sessionId
           },
           body: JSON.stringify({
             payment_id: paymentId,
-            provider_reference: checkoutSessionId,
-          }),
+            provider_reference: checkoutSessionId
+          })
         });
         const data = await r.json().catch(() => ({}));
         if (r.ok && (data.success === true || data.status === 'success')) {
@@ -142,13 +176,13 @@
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Session-Id': sessionId,
+            'X-Session-Id': sessionId
           },
           body: JSON.stringify({
             payment_id: paymentId,
             provider_reference: authority,
-            provider: 'yekpay',
-          }),
+            provider: 'yekpay'
+          })
         });
         const data = await r.json().catch(() => ({}));
         if (r.ok && (data.success === true || data.status === 'success')) {
@@ -158,12 +192,19 @@
       } catch (_e) {
         /* noop */
       }
-    } else if (paymentResult === 'success' && !hadStripeReturn) {
-      emitPaymentSuccessAnalytics(sessionId);
-      verified = true;
+    } else if (fromYekpay) {
+      const sub = await pollPaidSubscription(sessionId, 10, 450);
+      if (PAID_PLANS.has(String(sub.planKey || '').toLowerCase())) {
+        verified = true;
+        emitPaymentSuccessAnalytics(sessionId);
+      }
     }
 
     const sub = await fetchSubscriptionPlan(sessionId);
+    const renewal =
+      verified && sub.endDate
+        ? `Next renewal: ${formatRenewalDate(sub.endDate)}`
+        : '';
 
     window.history.replaceState(
       {},
@@ -172,7 +213,7 @@
     );
 
     if (verified) {
-      renderOk(sub.label);
+      renderOk(sub.label, renewal);
     } else if (pending) {
       renderWarn(
         'Your bank is still confirming payment. Refresh the dashboard in a minute if your plan has not updated.',
@@ -185,8 +226,11 @@
         'We could not confirm this payment automatically. If you completed checkout, open your dashboard — your plan usually updates within a minute.',
         sub.label
       );
-    } else if (paymentResult === 'success' || isMock) {
-      renderOk(sub.label);
+    } else if (fromYekpay) {
+      renderWarn(
+        'Your payment is being confirmed. Open the dashboard in a moment — your plan should appear once processing finishes.',
+        sub.label
+      );
     } else {
       renderErr('Missing payment return data. Please retry payment from checkout.');
     }

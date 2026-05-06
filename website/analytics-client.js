@@ -126,11 +126,10 @@
       starter: 'Upgrade',
       pro: 'Upgrade',
       business: 'Upgrade',
-      advanced: 'Upgrade',
     };
     document.querySelectorAll('a.pricing-dashboard-cta').forEach(function (a) {
       var p = (a.getAttribute('data-cutup-plan') || '').trim();
-      if (p === 'starter' || p === 'pro' || p === 'advanced' || p === 'business') {
+      if (p === 'starter' || p === 'pro' || p === 'business') {
         if (labels[p]) a.textContent = labels[p];
       } else if (a.id === 'monetizationUpgradeBtn') {
         a.textContent = 'Upgrade';

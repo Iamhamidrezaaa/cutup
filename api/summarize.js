@@ -5,10 +5,8 @@ import OpenAI from 'openai';
 import { handleCORS, setCORSHeaders } from './cors.js';
 import {
   requireSessionEmail,
-  enforceQuota,
   estimateSummarizationBillMinutes,
-  consumeSummarizationUsage,
-  respondConsumeFailure
+  consumeSummarizationUsage
 } from './processing-enforcement.js';
 
 // Initialize OpenAI client
@@ -54,7 +52,6 @@ export default async function handler(req, res) {
     }
 
     const billMinutes = estimateSummarizationBillMinutes(text);
-    if (!(await enforceQuota(res, userEmail, 'summarization', billMinutes))) return;
 
     console.log(`SUMMARIZE: Processing text, length: ${text.length} characters, language: ${language || 'auto-detect'}`);
 
@@ -74,9 +71,10 @@ export default async function handler(req, res) {
 
     console.log('SUMMARIZE: Success');
 
-    const consumed = await consumeSummarizationUsage(userEmail, billMinutes, {
+    await consumeSummarizationUsage(userEmail, billMinutes, {
       route: 'summarize',
       textLength: text.length,
+      processingSessionId: metadata?.processingSessionId || metadata?.sessionId || null,
       outputType: 'summary',
       platform: metadata?.platform || null,
       title: metadata?.title || null,
@@ -85,7 +83,6 @@ export default async function handler(req, res) {
       filename: metadata?.filename || null,
       ...((metadata && typeof metadata === 'object') ? metadata : {})
     });
-    if (respondConsumeFailure(res, consumed)) return;
 
     return res.status(200).json(summary);
 

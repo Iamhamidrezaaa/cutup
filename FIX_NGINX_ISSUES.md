@@ -81,6 +81,25 @@ server {
     root /var/www/cutup/website;
     index index.html;
 
+    # Blog posts — static files at /var/www/cutup/blog/{slug}.html
+    location ~ ^/blog/([a-z0-9][a-z0-9-]*)/?$ {
+        root /var/www/cutup;
+        try_files /blog/$1.html =404;
+    }
+
+    location /images/blog/ {
+        alias /var/www/cutup/public/images/blog/;
+    }
+
+    location = /sitemap.xml {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     # Frontend Routes
     location / {
         try_files $uri $uri/ /index.html;

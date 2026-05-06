@@ -1,0 +1,409 @@
+{
+  "contract_id": "instalogist-operational-state-1",
+  "generated_at": "2026-05-10T12:00:00.000Z",
+  "workspace_root": "E:\\Machine Learning\\cutup\\instalogist\\workspace",
+  "parser_version": "0.1.0",
+  "snapshot_status": "ok",
+  "items": [
+    {
+      "source_path": "active/tasks/TASK-CUTUP-2026-00001--summarize-timeout-long-audio.md",
+      "entity_type": "task",
+      "parse_status": "ok",
+      "fields": {
+        "task_id": "CUTUP-2026-00001",
+        "title": "Summarize fails for long audio — extension shows generic error",
+        "created_at": "2026-05-10T08:00:00Z",
+        "updated_at": "2026-05-10T08:00:00Z",
+        "owner_agent": "Dev-01",
+        "collaborators": [
+          "Audit-01"
+        ],
+        "human_owner": "",
+        "priority": "P2",
+        "risk_class": "M",
+        "domains": [
+          "extension",
+          "api",
+          "core-processing"
+        ],
+        "status": "analyzing",
+        "escalation": {
+          "from_agent": "Support-01",
+          "reason": "customer_impact",
+          "escalated_at": "2026-05-10T07:45:00Z"
+        },
+        "links": {
+          "protocol": "docs/architecture/instalogist-agent-protocol.md",
+          "risk_register": "docs/architecture/risk-register.md"
+        },
+        "tags": [
+          "simulation",
+          "summarize",
+          "extension",
+          "timeout",
+          "support-path"
+        ],
+        "blast_radius_summary": "Processing path only; no payment or auth tables"
+      },
+      "validation": {
+        "errors": [],
+        "warnings": []
+      },
+      "derived": {
+        "stale": false,
+        "blocked_stale": false,
+        "days_since_update": 0
+      },
+      "extras": {}
+    },
+    {
+      "source_path": "active/tasks/TASK-CUTUP-2026-00002--vps-deploy-502-after-pm2-restart.md",
+      "entity_type": "task",
+      "parse_status": "ok",
+      "fields": {
+        "task_id": "CUTUP-2026-00002",
+        "title": "VPS returns 502 after PM2 restart — extension and site partial outage",
+        "created_at": "2026-05-10T10:15:00Z",
+        "updated_at": "2026-05-10T10:30:00Z",
+        "owner_agent": "Ops-01",
+        "collaborators": [
+          "Dev-01",
+          "Audit-01"
+        ],
+        "human_owner": "",
+        "priority": "P0",
+        "risk_class": "H",
+        "domains": [
+          "deployment"
+        ],
+        "status": "in_progress",
+        "escalation": {
+          "from_agent": "Ops-01",
+          "reason": "deploy_failure",
+          "escalated_at": "2026-05-10T10:15:00Z"
+        },
+        "links": {
+          "protocol": "docs/architecture/instalogist-agent-protocol.md",
+          "api_overview": "docs/architecture/api-overview.md"
+        },
+        "tags": [
+          "simulation",
+          "pm2",
+          "vps",
+          502,
+          "rollback-candidate"
+        ],
+        "blast_radius_summary": "Full Express API on VPS; Vercel-hosted paths may still work for subset of users"
+      },
+      "validation": {
+        "errors": [],
+        "warnings": []
+      },
+      "derived": {
+        "stale": false,
+        "blocked_stale": false,
+        "days_since_update": 0
+      },
+      "extras": {}
+    },
+    {
+      "source_path": "active/tasks/TASK-CUTUP-2026-00003--stripe-paid-ui-still-shows-free.md",
+      "entity_type": "task",
+      "parse_status": "ok",
+      "fields": {
+        "task_id": "CUTUP-2026-00003",
+        "title": "Customer paid — subscription UI still shows Free plan",
+        "created_at": "2026-05-10T11:00:00Z",
+        "updated_at": "2026-05-10T11:00:00Z",
+        "owner_agent": "Dev-01",
+        "collaborators": [
+          "Audit-01"
+        ],
+        "human_owner": "billing-owner@example.com",
+        "priority": "P0",
+        "risk_class": "C",
+        "domains": [
+          "payments",
+          "subscriptions"
+        ],
+        "status": "blocked",
+        "escalation": {
+          "from_agent": "Support-01",
+          "reason": "payment_failure",
+          "escalated_at": "2026-05-10T10:50:00Z"
+        },
+        "links": {
+          "protocol": "docs/architecture/instalogist-agent-protocol.md",
+          "risk_register": "docs/architecture/risk-register.md"
+        },
+        "tags": [
+          "simulation",
+          "stripe",
+          "subscription",
+          "webhook",
+          "mismatch"
+        ],
+        "blast_radius_summary": "Billing + webhook + DB subscription row; no code deploy without human approval"
+      },
+      "validation": {
+        "errors": [],
+        "warnings": []
+      },
+      "derived": {
+        "stale": false,
+        "blocked_stale": false,
+        "days_since_update": 0
+      },
+      "extras": {}
+    },
+    {
+      "source_path": "active/tasks/TASK-CUTUP-2026-00004--activation-first-successful-run.md",
+      "entity_type": "task",
+      "parse_status": "ok",
+      "fields": {
+        "task_id": "CUTUP-2026-00004",
+        "title": "Measure activation: install → first successful summarize within 24h",
+        "created_at": "2026-05-10T09:00:00Z",
+        "updated_at": "2026-05-10T09:00:00Z",
+        "owner_agent": "Growth-01",
+        "collaborators": [
+          "Dev-01"
+        ],
+        "human_owner": "",
+        "priority": "P3",
+        "risk_class": "L",
+        "domains": [
+          "analytics",
+          "onboarding",
+          "extension"
+        ],
+        "status": "triaged",
+        "escalation": {},
+        "links": {
+          "protocol": "docs/architecture/instalogist-agent-protocol.md"
+        },
+        "tags": [
+          "simulation",
+          "funnel",
+          "activation",
+          "analytics",
+          "mvp"
+        ],
+        "blast_radius_summary": "Event definitions and dashboards only until Dev-01 approves any new PII-bearing fields"
+      },
+      "validation": {
+        "errors": [],
+        "warnings": []
+      },
+      "derived": {
+        "stale": false,
+        "blocked_stale": false,
+        "days_since_update": 0
+      },
+      "extras": {}
+    },
+    {
+      "source_path": "active/tasks/TASK-CUTUP-2026-00005--oauth-callback-not-returning-to-extension.md",
+      "entity_type": "task",
+      "parse_status": "ok",
+      "fields": {
+        "task_id": "CUTUP-2026-00005",
+        "title": "Google sign-in: browser completes but extension never receives session",
+        "created_at": "2026-05-10T12:00:00Z",
+        "updated_at": "2026-05-10T12:00:00Z",
+        "owner_agent": "Dev-01",
+        "collaborators": [
+          "Audit-01"
+        ],
+        "human_owner": "",
+        "priority": "P1",
+        "risk_class": "C",
+        "domains": [
+          "auth",
+          "extension"
+        ],
+        "status": "analyzing",
+        "escalation": {
+          "from_agent": "Support-01",
+          "reason": "auth_session",
+          "escalated_at": "2026-05-10T11:40:00Z"
+        },
+        "links": {
+          "protocol": "docs/architecture/instalogist-agent-protocol.md",
+          "risk_register": "docs/architecture/risk-register.md"
+        },
+        "tags": [
+          "simulation",
+          "oauth",
+          "extension",
+          "support-escalation",
+          "session"
+        ],
+        "blast_radius_summary": "Auth and callback URLs; manifest host permissions; no payment code"
+      },
+      "validation": {
+        "errors": [],
+        "warnings": []
+      },
+      "derived": {
+        "stale": false,
+        "blocked_stale": false,
+        "days_since_update": 0
+      },
+      "extras": {}
+    }
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "CUTUP-2026-00001",
+        "type": "item"
+      },
+      {
+        "id": "Dev-01",
+        "type": "agent"
+      },
+      {
+        "id": "Audit-01",
+        "type": "agent"
+      },
+      {
+        "id": "Support-01",
+        "type": "agent"
+      },
+      {
+        "id": "CUTUP-2026-00002",
+        "type": "item"
+      },
+      {
+        "id": "Ops-01",
+        "type": "agent"
+      },
+      {
+        "id": "CUTUP-2026-00003",
+        "type": "item"
+      },
+      {
+        "id": "billing-owner@example.com",
+        "type": "human"
+      },
+      {
+        "id": "CUTUP-2026-00004",
+        "type": "item"
+      },
+      {
+        "id": "Growth-01",
+        "type": "agent"
+      },
+      {
+        "id": "CUTUP-2026-00005",
+        "type": "item"
+      }
+    ],
+    "edges": [
+      {
+        "from": "CUTUP-2026-00001",
+        "to": "Dev-01",
+        "label": "owns"
+      },
+      {
+        "from": "CUTUP-2026-00001",
+        "to": "Audit-01",
+        "label": "collaborates"
+      },
+      {
+        "from": "CUTUP-2026-00001",
+        "to": "Support-01",
+        "label": "escalated_from"
+      },
+      {
+        "from": "CUTUP-2026-00002",
+        "to": "Ops-01",
+        "label": "owns"
+      },
+      {
+        "from": "CUTUP-2026-00002",
+        "to": "Dev-01",
+        "label": "collaborates"
+      },
+      {
+        "from": "CUTUP-2026-00002",
+        "to": "Audit-01",
+        "label": "collaborates"
+      },
+      {
+        "from": "CUTUP-2026-00002",
+        "to": "Ops-01",
+        "label": "escalated_from"
+      },
+      {
+        "from": "CUTUP-2026-00003",
+        "to": "Dev-01",
+        "label": "owns"
+      },
+      {
+        "from": "CUTUP-2026-00003",
+        "to": "Audit-01",
+        "label": "collaborates"
+      },
+      {
+        "from": "CUTUP-2026-00003",
+        "to": "billing-owner@example.com",
+        "label": "human_owner"
+      },
+      {
+        "from": "CUTUP-2026-00003",
+        "to": "Support-01",
+        "label": "escalated_from"
+      },
+      {
+        "from": "CUTUP-2026-00004",
+        "to": "Growth-01",
+        "label": "owns"
+      },
+      {
+        "from": "CUTUP-2026-00004",
+        "to": "Dev-01",
+        "label": "collaborates"
+      },
+      {
+        "from": "CUTUP-2026-00005",
+        "to": "Dev-01",
+        "label": "owns"
+      },
+      {
+        "from": "CUTUP-2026-00005",
+        "to": "Audit-01",
+        "label": "collaborates"
+      },
+      {
+        "from": "CUTUP-2026-00005",
+        "to": "Support-01",
+        "label": "escalated_from"
+      }
+    ]
+  },
+  "summary": {
+    "counts_by_status": {
+      "analyzing": 2,
+      "in_progress": 1,
+      "blocked": 1,
+      "triaged": 1
+    },
+    "counts_by_owner": {
+      "Dev-01": 3,
+      "Ops-01": 1,
+      "Growth-01": 1
+    },
+    "counts_by_priority": {
+      "P2": 1,
+      "P0": 2,
+      "P3": 1,
+      "P1": 1
+    },
+    "stale_count": 0,
+    "unparsed_count": 0,
+    "item_count": 5
+  },
+  "errors": []
+}

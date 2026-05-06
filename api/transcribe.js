@@ -3,23 +3,44 @@
 // VERSION 4.1 - Using node-fetch directly to avoid ECONNRESET - NO client variable
 
 import { handleCORS, setCORSHeaders } from './cors.js';
-import FormDataLib from 'form-data';
 import fetchModule from 'node-fetch';
 import OpenAI from 'openai';
 import Busboy from 'busboy';
 import { transcribeLargeFile } from './chunk-processor.js';
 import {
   requireSessionEmail,
-  enforceQuota,
   estimateTranscriptionMinutesFromBytes,
   billingMinutesFromWhisperSegments,
   consumeTranscriptionUsage,
   respondConsumeFailure
 } from './processing-enforcement.js';
+import {
+  resolveTraceId,
+  sendTranscriptError,
+  sendTranscriptErrorFromLegacy,
+  sendTranscriptSuccess,
+  mapToTranscriptErrorCode,
+  userMessageForCode,
+  retryableForCode
+} from './transcript-errors.js';
+import { traceLog } from './pipeline-trace.js';
+import { transcribeAudioPayload, messageForAllProvidersFailed } from './transcription/transcription-router.js';
+import { ensureTranscriptionProvidersInit, getTranscriptionProviderRegistry } from './transcription/init.js';
+import { AllProvidersFailedError, TranscriptionProviderError } from './transcription/errors.js';
+import { logProviderTimeout } from './provider-health.js';
 
 export default async function handler(req, res) {
+  const requestId = req.headers['x-request-id'] || `req_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const traceId = resolveTraceId(req, requestId);
+  const pipelineLog = (stage, data = {}) => {
+    console.log(`[PIPELINE][${requestId}][${stage}]`, data);
+  };
+  res.setHeader('X-Request-Id', requestId);
+  res.setHeader('X-Trace-Id', traceId);
+  traceLog(traceId, 'start', { route: 'transcribe', requestId });
   // Log immediately when function is called
   console.log("=== TRANSCRIBE FUNCTION CALLED V4.2 ===");
+  pipelineLog('REQUEST_RECEIVED', { method: req.method, url: req.url });
   console.log("TRANSCRIBE V4.2: NO OpenAI SDK - NO client variable - Using node-fetch");
   console.log("TRANSCRIBE: Timestamp:", new Date().toISOString());
   console.log("TRANSCRIBE: Request method:", req.method);
@@ -36,10 +57,12 @@ export default async function handler(req, res) {
       throw new Error(`fetch is not a function, got: ${typeof fetch}`);
     }
   } catch (err) {
-    console.error("TRANSCRIBE_ERROR: Failed to initialize fetch:", err);
+      console.error("TRANSCRIBE_ERROR: Failed to initialize fetch:", err);
+      pipelineLog('INIT_ERROR', { error: err?.message });
     setCORSHeaders(res);
     return res.status(500).json({ 
       error: 'INIT_ERROR', 
+        requestId,
       details: `Failed to initialize fetch: ${err.message}`,
       errorType: 'ReferenceError',
       message: 'Transcription failed [ReferenceError]'
@@ -53,51 +76,45 @@ export default async function handler(req, res) {
     return; // OPTIONS request handled
   }
 
-  // Test logs for API Key - show more characters to identify the key
-  const envKey = process.env.OPENAI_API_KEY || '';
-  console.log("HAS_KEY", !!envKey);
-  console.log("KEY_PREFIX", envKey.slice(0, 20));
-  console.log("KEY_SUFFIX", envKey.length > 10 ? '...' + envKey.slice(-10) : '');
+  console.log('TRANSCRIBE: Provider env presence:', {
+    hasOpenAi: !!(process.env.OPENAI_API_KEY && String(process.env.OPENAI_API_KEY).length >= 10),
+    hasGroq: !!(process.env.GROQ_API_KEY && String(process.env.GROQ_API_KEY).length >= 10),
+    hasDeepgram: !!(process.env.DEEPGRAM_API_KEY && String(process.env.DEEPGRAM_API_KEY).length >= 10),
+    whisperLocalEnabled: process.env.WHISPER_LOCAL_ENABLED === 'true'
+  });
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    // Check API Key - try multiple ways to access it
-    const apiKey = process.env.OPENAI_API_KEY || 
-                   (typeof process !== 'undefined' && process.env && process.env.OPENAI_API_KEY) ||
-                   '';
-    
-    // Log more of the API key prefix to help identify which key is being used
-    const keyPrefix = apiKey ? apiKey.substring(0, 20) + '...' : 'MISSING';
-    const keySuffix = apiKey && apiKey.length > 10 ? '...' + apiKey.substring(apiKey.length - 10) : '';
-    
-    console.log('TRANSCRIBE: Environment check:', {
-      hasProcess: typeof process !== 'undefined',
-      hasEnv: typeof process !== 'undefined' && !!process.env,
-      apiKeyPresent: !!apiKey,
-      apiKeyLength: apiKey ? apiKey.length : 0,
-      apiKeyPrefix: keyPrefix,
-      apiKeySuffix: keySuffix,
-      allEnvKeys: typeof process !== 'undefined' && process.env ? Object.keys(process.env).filter(k => k.includes('OPENAI')) : []
+    const reg = ensureTranscriptionProvidersInit();
+    const configuredProviders = [...reg.activeProviders];
+    const openAiKeyForGpt = process.env.OPENAI_API_KEY || '';
+
+    console.log('[provider-runtime]', {
+      route: 'transcribe',
+      traceId,
+      activeProviders: configuredProviders,
+      fallbackProviders: [...reg.fallbackProviders]
     });
-    
-    if (!apiKey || apiKey.length < 10) {
-      console.error('TRANSCRIBE_ERROR: OPENAI_API_KEY is not set or invalid');
-      return res.status(500).json({ 
-        error: 'OPENAI_ERROR', 
-        details: 'API Key is not configured. Please set OPENAI_API_KEY in Vercel environment variables and redeploy.',
-        debug: {
-          hasProcess: typeof process !== 'undefined',
-          hasEnv: typeof process !== 'undefined' && !!process.env
-        }
+
+    if (configuredProviders.length === 0) {
+      console.error('TRANSCRIBE_ERROR: No transcription providers configured');
+      return sendTranscriptError(res, {
+        statusCode: 503,
+        errorCode: 'TRANSCRIPTION_FAILED',
+        message: userMessageForCode('TRANSCRIPTION_FAILED'),
+        retryable: false,
+        traceId,
+        phase: 'transcription'
       });
     }
 
     const userEmail = requireSessionEmail(req, res);
     if (!userEmail) return;
 
+    console.log('[transcript-start]', { traceId, requestId, email: userEmail });
     const languageHint =
       typeof req.body === 'object' && req.body && req.body.languageHint
         ? req.body.languageHint
@@ -109,12 +126,16 @@ export default async function handler(req, res) {
 
     // Check if request is multipart/form-data (file upload) or JSON
     const contentType = req.headers['content-type'] || '';
+    pipelineLog('INPUT_PARSE_START', { contentType });
+    traceLog(traceId, 'parse', { multipart: contentType.includes('multipart') });
     let audioBuffer = null;
     let mimeType = 'audio/mpeg';
     
     if (contentType.includes('multipart/form-data')) {
       // Handle direct file upload (multipart/form-data) using busboy
       console.log('TRANSCRIBE: Receiving file as multipart/form-data');
+      pipelineLog('MULTIPART_RECEIVE_START');
+      traceLog(traceId, 'parse', { mode: 'multipart' });
       
       const busboy = Busboy({ headers: req.headers });
       const chunks = [];
@@ -160,7 +181,7 @@ export default async function handler(req, res) {
       });
       
       if (!audioBuffer || audioBuffer.length === 0) {
-        return res.status(400).json({ error: 'No audio file provided in multipart request' });
+        return res.status(400).json({ error: 'No audio file provided in multipart request', requestId });
       }
       
     } else {
@@ -168,7 +189,7 @@ export default async function handler(req, res) {
       const { audioUrl, videoId } = req.body;
 
       if (!audioUrl && !videoId) {
-        return res.status(400).json({ error: 'audioUrl, videoId, or file is required' });
+        return res.status(400).json({ error: 'audioUrl, videoId, or file is required', requestId });
       }
       
       if (videoId) {
@@ -195,6 +216,7 @@ export default async function handler(req, res) {
           // Use arrayBuffer() for node-fetch v3 compatibility
           const arrayBuffer = await audioResponse.arrayBuffer();
           audioBuffer = Buffer.from(arrayBuffer);
+          traceLog(traceId, 'audio-download', { bytes: audioBuffer.length, remoteUrl: true });
         }
       }
     }
@@ -202,9 +224,11 @@ export default async function handler(req, res) {
     if (!audioBuffer || audioBuffer.length === 0) {
       throw new Error('Audio buffer is empty');
     }
+    pipelineLog('INPUT_READY', { bytes: audioBuffer.length, mimeType });
+    traceLog(traceId, 'normalize', { bytes: audioBuffer.length, mimeType });
+    console.log('[transcript-download]', { traceId, bytes: audioBuffer.length, mimeType });
 
     const preMinutes = estimateTranscriptionMinutesFromBytes(audioBuffer.length);
-    if (!(await enforceQuota(res, userEmail, 'transcription', preMinutes))) return;
 
     console.log(`TRANSCRIBE: Processing audio file, size: ${audioBuffer.length} bytes, type: ${mimeType}`);
     console.log('=== TRANSCRIBE V4.0: NO OpenAI SDK - Using node-fetch directly ===');
@@ -216,166 +240,98 @@ export default async function handler(req, res) {
     else if (mimeType.includes('ogg')) extension = 'ogg';
     else if (mimeType.includes('webm')) extension = 'webm';
 
-    // Transcribe using OpenAI Whisper API with retry logic
-    // VERSION 4.0 - Using node-fetch directly (NO OpenAI SDK) to avoid ECONNRESET
-    console.log('=== TRANSCRIBE V4.0: Using node-fetch (NO SDK) ===');
-    console.log('TRANSCRIBE: File size:', audioBuffer.length, 'bytes, type:', mimeType);
-    
-    // If file is larger than 25MB, use chunk processor
+    // Multi-provider transcription router (OpenAI → Groq → Deepgram → local scaffold)
+    console.log('TRANSCRIBE: Starting transcription router…');
+
+    const transcribeOne = async (buf, mt, ext) =>
+      transcribeAudioPayload({
+        fetch,
+        traceId,
+        audioBuffer: buf,
+        mimeType: mt,
+        extension: ext,
+        languageHint
+      });
+
+    /** @type {{ text: string, segments: unknown[], language: string }} */
     let transcript;
+
+    try {
     if (audioBuffer.length > 25 * 1024 * 1024) {
       console.log(`TRANSCRIBE: File is ${(audioBuffer.length / 1024 / 1024).toFixed(2)}MB, using chunk processor`);
-      try {
-        const chunkResult = await transcribeLargeFile(audioBuffer, mimeType, apiKey, extension);
+        const chunkResult = await transcribeLargeFile(audioBuffer, mimeType, extension, transcribeOne);
         transcript = {
           text: chunkResult.text,
           segments: chunkResult.segments,
           language: chunkResult.language
         };
         console.log('TRANSCRIBE: Chunk processing completed, text length:', transcript.text?.length || 0);
-      } catch (chunkError) {
-        console.error('TRANSCRIBE: Chunk processing error:', chunkError);
-        setCORSHeaders(res);
-        return res.status(500).json({
-          error: 'TRANSCRIBE_ERROR',
-          details: chunkError.message || 'Failed to transcribe large file',
-          message: 'Transcription failed'
+        traceLog(traceId, 'transcription', { phase: 'chunk_transcribe_ok', chars: transcript.text?.length || 0 });
+      } else {
+        transcript = await transcribeOne(audioBuffer, mimeType, extension);
+        pipelineLog('TRANSCRIPTION_ROUTER_OK', {
+          mimeType,
+          bytes: audioBuffer.length,
+          language: transcript?.language || null
+        });
+        traceLog(traceId, 'transcription', {
+          phase: 'single_transcribe_ok',
+          segmentCount: transcript?.segments?.length ?? 0
         });
       }
-    } else {
-      // Process normally for files <= 25MB
-      const maxRetries = 5;
-      let lastError;
-      
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-          console.log(`TRANSCRIBE V4.0: Attempt ${attempt}/${maxRetries} starting...`);
-          
-          // Create FormData using form-data library
-          const formData = new FormDataLib();
-          formData.append('file', audioBuffer, {
-            filename: `audio.${extension}`,
-            contentType: mimeType,
-            knownLength: audioBuffer.length
-          });
-          formData.append('model', 'whisper-1');
-          // Use language hint if provided for faster processing
-          // Whisper is faster when language is specified
-          if (languageHint) {
-            formData.append('language', languageHint);
-            console.log(`TRANSCRIBE: Using language hint: ${languageHint}`);
-          }
-          formData.append('response_format', 'verbose_json'); // Get segments with timestamps
-          
-          // Don't add prompt yet - we'll add it only if Persian is detected
-          
-          // Get form data headers
-          const formHeaders = formData.getHeaders();
-          
-          console.log(`TRANSCRIBE V4.0: Sending request to OpenAI API (attempt ${attempt})...`);
-          
-          // Use node-fetch with timeout
-          const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${apiKey}`,
-              ...formHeaders
-            },
-            body: formData,
-            timeout: 180000 // 3 minutes timeout (reduced from 5 minutes for faster failure detection)
-          });
-          
-          if (!response.ok) {
-            const errorText = await response.text();
-            let errorData;
-            try {
-              errorData = JSON.parse(errorText);
-            } catch {
-              errorData = { message: errorText };
-            }
-            
-            const errorMessage = errorData.error?.message || errorText || `OpenAI API error: ${response.status} ${response.statusText}`;
-            
-            // Log detailed error information
-            console.log(`TRANSCRIBE V4.0: OpenAI API Error (attempt ${attempt}):`, {
-              status: response.status,
-              statusText: response.statusText,
-              errorType: errorData.error?.type,
-              errorCode: errorData.error?.code,
-              errorMessage: errorMessage,
-              fullError: errorData
-            });
-            
-            // Check for quota errors
-            if (errorMessage.includes('quota') || errorMessage.includes('billing') || response.status === 429) {
-              const quotaError = new Error(errorMessage);
-              quotaError.name = 'QuotaError';
-              quotaError.status = response.status;
-              quotaError.errorType = errorData.error?.type;
-              quotaError.errorCode = errorData.error?.code;
-              throw quotaError;
-            }
-            
-            // Check for authentication errors
-            if (response.status === 401 || errorMessage.includes('Invalid API key') || errorMessage.includes('Incorrect API key')) {
-              const authError = new Error(errorMessage);
-              authError.name = 'AuthError';
-              authError.status = 401;
-              throw authError;
-            }
-            
-            throw new Error(errorMessage);
-          }
-          
-          transcript = await response.json();
-          console.log('TRANSCRIBE V4.0: Success! Text length:', transcript.text?.length || 0);
-          console.log('TRANSCRIBE V4.0: Segments count:', transcript.segments?.length || 0);
-          console.log('TRANSCRIBE V4.0: Detected language:', transcript.language);
-          // No second-pass Whisper with language=fa: Arabic-script languages share Unicode with Persian
-          // and forced-fa retries mis-transcribed non-Persian media. First-pass auto-detect only.
+    } catch (routerErr) {
+      console.error('TRANSCRIBE: Transcription router error:', routerErr);
+      traceLog(traceId, 'failed', {
+        phase: 'transcription',
+        name: routerErr?.name,
+        message: routerErr?.message
+      });
 
-          break; // Success, exit retry loop
-        
-        } catch (retryError) {
-          lastError = retryError;
-          const isConnectionError = 
-            retryError?.code === 'ECONNRESET' || 
-            retryError?.code === 'ETIMEDOUT' ||
-            retryError?.cause?.code === 'ECONNRESET' ||
-            retryError?.message?.includes('ECONNRESET') ||
-            retryError?.message?.includes('Connection error') ||
-            retryError?.message?.includes('timeout') ||
-            retryError?.message?.includes('aborted') ||
-            retryError?.name === 'AbortError' ||
-            retryError?.name === 'FetchError' ||
-            retryError?.type === 'system' ||
-            (retryError?.cause && retryError.cause.code === 'ECONNRESET');
-          
-          console.log(`TRANSCRIBE V4.0: Attempt ${attempt} failed:`, {
-            error: retryError?.message,
-            code: retryError?.code,
-            name: retryError?.name,
-            type: retryError?.type,
-            causeCode: retryError?.cause?.code,
-            isConnectionError
-          });
-          
-          if (isConnectionError && attempt < maxRetries) {
-            const waitTime = Math.min(attempt * 3000, 10000); // 3s, 6s, 9s, 10s, 10s
-            console.log(`TRANSCRIBE V4.0: Connection error detected, retrying in ${waitTime}ms...`);
-            await new Promise(resolve => setTimeout(resolve, waitTime));
-            continue; // Retry
-          } else {
-            console.log(`TRANSCRIBE V4.0: Not retrying - isConnectionError: ${isConnectionError}, attempt: ${attempt}/${maxRetries}`);
-            throw retryError;
+      if (routerErr?.name === 'TranscriptionProviderError') {
+        const pe = routerErr;
+        const retry = pe.code !== 'INVALID_AUDIO';
+        return sendTranscriptError(res, {
+          statusCode: pe.code === 'INVALID_AUDIO' ? 400 : 503,
+          errorCode: pe.code || 'TRANSCRIPTION_FAILED',
+          message: userMessageForCode(pe.code) || userMessageForCode('TRANSCRIPTION_FAILED'),
+          retryable: retry && retryableForCode(pe.code || 'TRANSCRIPTION_FAILED'),
+          traceId,
+          phase: 'transcription',
+          providerDebug: {
+            providerId: pe.providerId,
+            httpStatus: pe.httpStatus,
+            details: pe.details
           }
-        }
+        });
       }
-      
-      if (!transcript) {
-        console.error('TRANSCRIBE V4.0: Failed after all retries');
-        throw lastError || new Error('Failed to transcribe after all retries');
+
+      if (routerErr?.name === 'AllProvidersFailedError') {
+        const reg = getTranscriptionProviderRegistry();
+        return sendTranscriptError(res, {
+          statusCode: 503,
+          errorCode: 'TRANSCRIPTION_FAILED',
+          message: messageForAllProvidersFailed(routerErr, reg),
+          retryable: true,
+          traceId,
+          phase: 'transcription',
+          providerDebug: {
+            attemptedProviders: routerErr.attemptedProviders || [],
+            lastProvider: routerErr.lastProviderId || null,
+            lastError: String(routerErr.lastError?.message || '').slice(0, 500),
+            activeProviders: [...reg.activeProviders],
+            fallbackProviders: [...reg.fallbackProviders]
+          }
+        });
       }
+
+      return sendTranscriptError(res, {
+        statusCode: 500,
+        errorCode: 'PROVIDER_ERROR',
+        message: userMessageForCode('PROVIDER_ERROR'),
+        retryable: true,
+        traceId,
+        phase: 'transcription'
+      });
     }
 
     console.log('TRANSCRIBE: Success, text length:', transcript.text?.length || 0);
@@ -396,9 +352,9 @@ export default async function handler(req, res) {
     try {
       if (!shouldRunPersianGptCorrection) {
         console.log('TRANSCRIBE: Skipping GPT correction (non-Persian or low Arabic-script ratio)');
-      } else {
+      } else if (openAiKeyForGpt.length >= 10) {
       console.log('TRANSCRIBE: Starting Persian-only GPT correction...');
-      const corrected = await correctTranscriptionWithGPT(transcript.text, apiKey);
+        const corrected = await correctTranscriptionWithGPT(transcript.text, openAiKeyForGpt);
       correctedText = corrected.text;
       
       // Update segment texts with corrected text
@@ -409,24 +365,21 @@ export default async function handler(req, res) {
         // Strategy: Split corrected text proportionally based on segment durations
         // This preserves timing while updating text content
         const totalDuration = correctedSegments[correctedSegments.length - 1].end || 0;
-        const correctedWords = correctedText.split(/\s+/).filter(w => w.trim().length > 0);
-        const originalWords = originalText.split(/\s+/).filter(w => w.trim().length > 0);
+          const correctedWords = correctedText.split(/\s+/).filter((w) => w.trim().length > 0);
+          const originalWords = originalText.split(/\s+/).filter((w) => w.trim().length > 0);
         
         // If word count is similar, map word by word
         if (Math.abs(correctedWords.length - originalWords.length) / Math.max(originalWords.length, 1) < 0.5) {
           let wordIndex = 0;
           correctedSegments = correctedSegments.map((segment, segIndex) => {
-            const segmentWords = segment.text.trim().split(/\s+/).filter(w => w.trim().length > 0);
+              const segmentWords = segment.text.trim().split(/\s+/).filter((w) => w.trim().length > 0);
             const segmentWordCount = segmentWords.length;
             
-            // Calculate how many words from corrected text should go in this segment
             const wordsForSegment = correctedWords.slice(wordIndex, wordIndex + segmentWordCount);
             wordIndex += segmentWordCount;
             
-            // If we have words, use them; otherwise keep original
-            const newText = wordsForSegment.length > 0 
-              ? wordsForSegment.join(' ').trim()
-              : segment.text.trim();
+              const newText =
+                wordsForSegment.length > 0 ? wordsForSegment.join(' ').trim() : segment.text.trim();
             
             return {
               ...segment,
@@ -434,11 +387,11 @@ export default async function handler(req, res) {
             };
           });
         } else {
-          // If word count changed significantly, distribute corrected text proportionally by duration
           let charIndex = 0;
           correctedSegments = correctedSegments.map((segment, segIndex) => {
             const segmentDuration = segment.end - segment.start;
-            const segmentRatio = totalDuration > 0 ? segmentDuration / totalDuration : 1 / correctedSegments.length;
+              const segmentRatio =
+                totalDuration > 0 ? segmentDuration / totalDuration : 1 / correctedSegments.length;
             const charsForSegment = Math.ceil(correctedText.length * segmentRatio);
             
             const segmentText = correctedText.substring(charIndex, charIndex + charsForSegment).trim();
@@ -453,6 +406,8 @@ export default async function handler(req, res) {
       }
       
       console.log('TRANSCRIBE: GPT correction completed');
+      } else {
+        console.log('TRANSCRIBE: Skipping GPT correction (OPENAI_API_KEY not configured for chat step)');
       }
     } catch (correctionError) {
       console.warn('TRANSCRIBE: GPT correction failed, using original transcription:', correctionError.message);
@@ -499,9 +454,18 @@ export default async function handler(req, res) {
           : sourceUrl
             ? 'url'
             : 'upload';
+    console.log('[quota-state]', {
+      requestId,
+      email: userEmail,
+      billedMinutes,
+      preMinutes,
+      platform: requestMetadata.platform || guessedPlatform,
+      phase: 'before_consume'
+    });
     const consumed = await consumeTranscriptionUsage(userEmail, billedMinutes, {
       route: 'transcribe',
       precheckMinutes: preMinutes,
+      processingSessionId: requestMetadata.processingSessionId || requestMetadata.sessionId || null,
       outputType: 'transcript',
       platform: requestMetadata.platform || guessedPlatform,
       title: requestMetadata.title || null,
@@ -509,76 +473,98 @@ export default async function handler(req, res) {
       durationSeconds: validSegments.length ? Math.ceil(validSegments[validSegments.length - 1].end || 0) : null,
       ...requestMetadata
     });
-    if (respondConsumeFailure(res, consumed)) return;
-
-    // Ensure CORS headers are set on success
-    setCORSHeaders(res);
-    
-    return res.status(200).json({
-      text: correctedText,
-      language: transcript.language || 'unknown',
-      segments: validSegments // Include valid segments with timestamps for SRT
-    });
-  } catch (err) {
-    console.error('TRANSCRIBE_ERROR:', {
-      message: err?.message,
-      status: err?.status,
-      response: err?.response?.data,
-      error: err,
-      stack: err?.stack,
-      name: err?.name,
-      code: err?.code,
-      cause: err?.cause
-    });
-
-    // Ensure CORS headers are set even on error
-    setCORSHeaders(res);
-
-    // Check error type
-    const isConnectionError = err?.code === 'ECONNRESET' || 
-                              err?.cause?.code === 'ECONNRESET' ||
-                              err?.message?.includes('ECONNRESET') ||
-                              err?.message?.includes('Connection error');
-    
-    const isQuotaError = err?.name === 'QuotaError' || 
-                         err?.message?.includes('quota') || 
-                         err?.message?.includes('billing') ||
-                         err?.status === 429;
-    
-    const isAuthError = err?.name === 'AuthError' || 
-                        err?.status === 401 ||
-                        err?.message?.includes('Invalid API key') ||
-                        err?.message?.includes('Incorrect API key');
-    
-    // Return detailed error information
-    const errorDetails = err?.response?.data || err?.message || 'Unknown error';
-    const statusCode = err?.status || err?.response?.status || 500;
-    
-    // User-friendly error message
-    let userMessage = 'Transcription failed';
-    let errorType = 'OPENAI_ERROR';
-    
-    if (isQuotaError) {
-      userMessage = 'سهمیه OpenAI شما تمام شده است. لطفاً به حساب OpenAI خود بروید و سهمیه یا روش پرداخت را بررسی کنید.';
-      errorType = 'QUOTA_ERROR';
-    } else if (isAuthError) {
-      userMessage = 'کلید API معتبر نیست. لطفاً کلید API را در تنظیمات Vercel بررسی کنید.';
-      errorType = 'AUTH_ERROR';
-    } else if (isConnectionError) {
-      userMessage = 'خطای اتصال به سرور OpenAI. لطفاً دوباره تلاش کنید. اگر مشکل ادامه داشت، فایل ممکن است خیلی بزرگ باشد.';
-      errorType = 'CONNECTION_ERROR';
+    console.log('[transcript-provider]', { traceId, stage: 'whisper_complete', billedMinutes });
+    traceLog(traceId, 'transcription', { phase: 'segments_ready', segmentCount: validSegments.length, billedMinutes });
+    traceLog(traceId, 'srt', { phase: 'timestamps_ready', cues: validSegments.length });
+    if (respondConsumeFailure(res, consumed, req)) {
+      console.log('[transcript-failed]', { traceId, reason: 'quota_consume_denied', consumed });
+      return;
     }
 
-    // Log full error for debugging
-    console.error('TRANSCRIBE: Full error object:', JSON.stringify(err, Object.getOwnPropertyNames(err)));
+    return sendTranscriptSuccess(res, traceId, {
+      requestId,
+      text: correctedText,
+      language: transcript.language || 'unknown',
+      segments: validSegments
+    });
+  } catch (err) {
+    traceLog(traceId, 'failed', {
+      message: String(err?.message || err).slice(0, 240),
+      name: err?.name,
+      code: err?.code
+    });
+    console.error('TRANSCRIBE_ERROR:', {
+      traceId,
+      message: err?.message,
+      name: err?.name,
+      code: err?.code
+    });
 
-    return res.status(statusCode).json({ 
-      error: errorType, 
-      details: errorDetails,
-      message: userMessage,
-      errorType: err?.name || 'Unknown',
-      errorCode: err?.code || err?.cause?.code || 'N/A',
-      retryable: isConnectionError && !isQuotaError && !isAuthError
+    if (err?.name === 'AllProvidersFailedError') {
+      const reg = getTranscriptionProviderRegistry();
+      return sendTranscriptError(res, {
+        statusCode: 503,
+        errorCode: 'TRANSCRIPTION_FAILED',
+        message: messageForAllProvidersFailed(err, reg),
+        retryable: true,
+        traceId,
+        phase: 'transcription',
+        providerDebug: {
+          attemptedProviders: err.attemptedProviders || [],
+          lastProvider: err.lastProviderId || null,
+          lastError: String(err.lastError?.message || '').slice(0, 500),
+          activeProviders: [...reg.activeProviders],
+          fallbackProviders: [...reg.fallbackProviders]
+        }
+      });
+    }
+
+    if (err?.name === 'TranscriptionProviderError') {
+      const pe = err;
+      return sendTranscriptError(res, {
+        statusCode: pe.code === 'INVALID_AUDIO' ? 400 : 503,
+        errorCode: pe.code || 'TRANSCRIPTION_FAILED',
+        message: userMessageForCode(pe.code) || userMessageForCode('TRANSCRIPTION_FAILED'),
+        retryable: pe.code !== 'INVALID_AUDIO' && retryableForCode(pe.code || 'TRANSCRIPTION_FAILED'),
+        traceId,
+        phase: 'transcription',
+        providerDebug: {
+          providerId: pe.providerId,
+          httpStatus: pe.httpStatus,
+          details: pe.details
+        }
+      });
+    }
+
+    const isConnectionError =
+      err?.code === 'ECONNRESET' ||
+      err?.cause?.code === 'ECONNRESET' ||
+      err?.message?.includes('ECONNRESET') ||
+      err?.message?.includes('Connection error') ||
+      err?.message?.includes('timeout');
+
+    if (isConnectionError || /timed out|timeout/i.test(String(err?.message || ''))) {
+      logProviderTimeout('openai', { traceId, kind: 'connection_or_timeout' });
+    }
+
+    const legacyType = err?.name === 'AuthError' ? 'OPENAI_ERROR' : isConnectionError ? 'CONNECTION_ERROR' : 'OPENAI_ERROR';
+    const errorCode = mapToTranscriptErrorCode(legacyType, { message: err?.message });
+    const statusCode = err?.status || err?.response?.status || (isConnectionError ? 503 : 500);
+
+    const fallbackMsg = userMessageForCode(errorCode);
+    const detail = String(err?.message || '').trim();
+    let message = fallbackMsg;
+    if (detail && detail !== fallbackMsg && detail.length < 900) {
+      message = `${fallbackMsg} — ${detail}`;
+    }
+
+    return sendTranscriptErrorFromLegacy(res, {
+      statusCode,
+      legacyCode: legacyType,
+      message,
+      traceId,
+      stage: 'transcription',
+      retryable: retryableForCode(errorCode)
     });
   }
 }

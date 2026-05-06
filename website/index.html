@@ -22,7 +22,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;700&family=Noto+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="cinematic-preview/cinematic-preview.css?v=20260524-cine-premium">
+  <link rel="stylesheet" href="video-export/video-export.css?v=20260526-export-options">
+  <link rel="stylesheet" href="creator-wall/creator-wall.css?v=20260520-live">
+  <link rel="stylesheet" href="demo-live-micro.css?v=20260520-live">
+  <link rel="stylesheet" href="subtitle-styles/subtitle-styles.css?v=20260524-polish">
   <link rel="stylesheet" href="responsive-global.css?v=1">
 </head>
 <body class="cutup-home">
@@ -66,37 +72,183 @@
           <p class="hero-description">
             <strong>Creators</strong> stop retyping captions. <strong>Students</strong> turn lectures into notes. <strong>Professionals</strong> export clean transcripts—fast, simple, and powerful. Your first preview runs in seconds.
           </p>
-          <div class="download-box hero-download-preview" aria-label="Quick subtitle starter">
-            <div class="platform-tabs-container source-selector">
-              <button class="platform-tab hero-platform-tab active" type="button" data-hero-platform="youtube">
-                <span class="platform-icon">📺</span>
-                <span class="platform-name">YouTube</span>
-              </button>
-              <button class="platform-tab hero-platform-tab" type="button" data-hero-platform="instagram">
-                <span class="platform-icon">📷</span>
-                <span class="platform-name">Instagram</span>
-              </button>
-              <button class="platform-tab hero-platform-tab" type="button" data-hero-platform="tiktok">
-                <span class="platform-icon">🎵</span>
-                <span class="platform-name">TikTok</span>
-              </button>
-              <button class="platform-tab hero-platform-tab" type="button" data-hero-platform="audiofile">
-                <span class="platform-icon">📁</span>
-                <span class="platform-name">Upload File</span>
-              </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="download-section" id="tool">
+      <div class="container">
+        <div class="download-box">
+          <div class="platform-tabs-container source-selector">
+            <button class="platform-tab active" data-tab="youtube" type="button"><span class="platform-icon">📺</span><span class="platform-name">YouTube</span></button>
+            <button class="platform-tab" data-tab="instagram" type="button"><span class="platform-icon">📷</span><span class="platform-name">Instagram</span></button>
+            <button class="platform-tab" data-tab="tiktok" type="button"><span class="platform-icon">🎵</span><span class="platform-name">TikTok</span></button>
+            <button class="platform-tab" data-tab="audiofile" type="button"><span class="platform-icon">📁</span><span class="platform-name">Upload File</span></button>
+          </div>
+
+          <div class="tab-content active" id="youtube-tab">
+            <h2 class="download-title">Paste a YouTube link</h2>
+            <div class="download-input-group">
+              <input type="text" id="youtubeUrlInput" class="download-input" placeholder="https://youtube.com/watch?v=...">
+              <button class="download-btn-main" id="pasteBtnMain" type="button">📋 Paste</button>
             </div>
-            <h2 class="download-title hero-preview-tool-title" id="heroPreviewToolTitle">Paste a YouTube link</h2>
-            <div class="download-input-group hero-preview-input-group">
-              <input
-                type="text"
-                class="download-input"
-                id="heroPreviewInput"
-                placeholder="https://youtube.com/watch?v=..."
-                aria-label="Sample YouTube URL input"
-              >
-              <button class="download-btn-main" type="button" id="heroPreviewPasteBtn">
-                📋 Paste
-              </button>
+            <div class="download-options" id="downloadOptionsYoutube" style="display: none;">
+              <div class="download-option-group">
+                <button class="download-option-btn download-option-btn--primary" id="fullTextBtnMain" type="button"><span class="option-text">Full Transcript</span></button>
+                <button class="download-option-btn download-option-btn--primary" id="downloadSubtitleBtnMain" type="button"><span class="option-text">SRT Subtitles</span></button>
+                <button class="download-option-btn" id="downloadVideoBtnMain" type="button"><span class="option-text">Download Video</span></button>
+                <button class="download-option-btn" id="downloadAudioBtnMain" type="button"><span class="option-text">Download Audio</span></button>
+              </div>
+            </div>
+          </div>
+
+          <div class="tab-content" id="instagram-tab">
+            <h2 class="download-title">Paste an Instagram link</h2>
+            <div class="download-input-group">
+              <input type="text" id="instagramUrlInput" class="download-input" placeholder="https://www.instagram.com/p/...">
+              <button class="download-btn-main" id="pasteInstagramBtn" type="button">📋 Paste</button>
+            </div>
+            <div class="download-options" id="downloadOptionsInstagram" style="display: none;">
+              <div class="download-option-group">
+                <button class="download-option-btn download-option-btn--primary" id="fullTextBtnInstagram" type="button"><span class="option-text">Full Transcript</span></button>
+                <button class="download-option-btn download-option-btn--primary" id="downloadSubtitleBtnInstagram" type="button"><span class="option-text">SRT Subtitles</span></button>
+                <button class="download-option-btn" id="downloadVideoBtnInstagram" type="button"><span class="option-text">Download Video</span></button>
+                <button class="download-option-btn" id="downloadAudioBtnInstagram" type="button"><span class="option-text">Download Audio</span></button>
+              </div>
+            </div>
+          </div>
+
+          <div class="tab-content" id="tiktok-tab">
+            <h2 class="download-title">Paste a TikTok link</h2>
+            <div class="download-input-group">
+              <input type="text" id="tiktokUrlInput" class="download-input" placeholder="https://www.tiktok.com/...">
+              <button class="download-btn-main" id="pasteTiktokBtn" type="button">📋 Paste</button>
+            </div>
+            <div class="download-options" id="downloadOptionsTiktok" style="display: none;">
+              <div class="download-option-group">
+                <button class="download-option-btn download-option-btn--primary" id="fullTextBtnTiktok" type="button"><span class="option-text">Full Transcript</span></button>
+                <button class="download-option-btn download-option-btn--primary" id="downloadSubtitleBtnTiktok" type="button"><span class="option-text">SRT Subtitles</span></button>
+                <button class="download-option-btn" id="downloadVideoBtnTiktok" type="button"><span class="option-text">Download Video</span></button>
+                <button class="download-option-btn" id="downloadAudioBtnTiktok" type="button"><span class="option-text">Download Audio</span></button>
+              </div>
+            </div>
+          </div>
+
+          <div class="tab-content" id="audiofile-tab">
+            <h2 class="download-title">Upload audio or video</h2>
+            <div class="download-input-group">
+              <label for="audioFileInput" class="file-input-label-full">
+                <input type="file" id="audioFileInput" accept="audio/*,video/*" style="display:none;">
+                <span class="file-input-btn-full">📁 Choose file</span>
+              </label>
+            </div>
+            <div class="download-options" id="downloadOptionsAudiofile" style="display: none;">
+              <div class="download-option-group">
+                <button class="download-option-btn download-option-btn--primary" id="fullTextBtnAudiofile" type="button"><span class="option-text">Full Transcript</span></button>
+                <button class="download-option-btn download-option-btn--primary" id="downloadSubtitleBtnAudiofile" type="button"><span class="option-text">SRT Subtitles</span></button>
+              </div>
+            </div>
+          </div>
+
+          <input type="text" id="currentUrlInput" style="display:none;">
+          <div class="download-message" id="downloadMessage" role="status" aria-live="polite"></div>
+          <button type="button" id="pipelineRetryBtn" class="pipeline-retry-btn" style="display:none;">Retry</button>
+
+          <div class="download-progress-container" id="downloadProgressContainer" style="display:none;">
+            <div class="progress-header"><span class="progress-title" id="progressTitle">Working on it…</span><span class="progress-close" id="progressClose">×</span></div>
+            <div class="progress-info"><span class="file-size" id="fileSize">Sizing file…</span><span class="progress-percent" id="progressPercent">0%</span></div>
+            <div class="progress-bar-wrapper"><div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div></div>
+            <div class="progress-details" id="progressDetails"><span id="progressDownloaded">0 MB</span> / <span id="progressTotal">0 MB</span></div>
+          </div>
+
+          <div class="result-section premium-output-panel" id="resultSection" style="display:none;">
+            <div id="cutupCinematicPreviewMount" class="cutup-cinematic-mount" hidden aria-live="polite"></div>
+            <div class="result-header">
+              <h2>Your output</h2>
+              <div class="result-header-actions">
+                <button type="button" class="copy-btn" id="shareResultBtn" title="Share">🔗 Share</button>
+                <button class="copy-btn" id="copyBtn" title="Copy active tab">📋 Copy</button>
+              </div>
+            </div>
+            <div class="result-tabs">
+              <button class="tab-btn active" data-tab="fulltext" type="button">Transcript</button>
+              <button class="tab-btn" data-tab="summary" type="button">Summary</button>
+              <button class="tab-btn" data-tab="srt" type="button">SRT</button>
+            </div>
+            <div class="result-content">
+              <div class="tab-content active" id="fulltext-tab">
+                <div class="srt-container">
+                  <div class="srt-controls">
+                    <label for="fulltextLanguage" class="srt-language-label">Translate to</label>
+                    <select id="fulltextLanguage" class="srt-language-select"><option value="original">Original language</option><option value="en">English</option><option value="fa">فارسی</option></select>
+                    <button class="translate-srt-btn" id="translateFulltextBtn" type="button">🔄 Translate</button>
+                    <button class="download-btn" id="downloadFulltextTxtBtn" type="button">📥 Download TXT</button>
+                    <button class="download-btn" id="downloadFulltextDocxBtn" type="button">📄 Download DOCX</button>
+                  </div>
+                  <div class="fulltext-soft-lock-wrap" id="fulltextSoftLockWrap">
+                    <div class="fulltext-soft-lock-scroll">
+                      <p class="fulltext" id="fulltext" style="line-height:1.8; text-align:left; padding:16px; background:#f5f5f5; border-radius:8px;"></p>
+                    </div>
+                    <div class="fulltext-soft-lock-veil" id="fulltextSoftLockVeil" hidden aria-hidden="true">
+                      <div class="fulltext-soft-lock-veil-inner">
+                        <p class="fulltext-soft-lock-heading" id="fulltextSoftLockHeading">Unlock full transcript</p>
+                        <div class="fulltext-soft-lock-ctas">
+                          <button type="button" class="download-btn" id="fulltextSoftLockLoginBtn">Log in</button>
+                          <button type="button" class="btn btn-secondary" id="fulltextSoftLockSaveBtn">Save</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="tab-content" id="summary-tab">
+                <div class="srt-container">
+                  <div class="srt-controls">
+                    <label for="summaryLanguage" class="srt-language-label">Translate to</label>
+                    <select id="summaryLanguage" class="srt-language-select"><option value="original">Original language</option><option value="en">English</option><option value="fa">فارسی</option></select>
+                    <button class="translate-srt-btn" id="translateSummaryBtn" type="button">🔄 Translate</button>
+                    <button class="download-btn" id="downloadSummaryTxtBtn" type="button">📥 Download TXT</button>
+                    <button class="download-btn" id="downloadSummaryDocxBtn" type="button">📄 Download DOCX</button>
+                  </div>
+                  <div class="summary-text" id="summaryText"></div>
+                </div>
+              </div>
+              <div class="tab-content" id="srt-tab">
+                <div class="srt-container" id="srtContainer">
+                  <div class="srt-controls">
+                    <label for="srtLanguage" class="srt-language-label">Subtitle language</label>
+                    <select id="srtLanguage" class="srt-language-select"><option value="original">Original language</option><option value="en">English</option><option value="fa">فارسی</option></select>
+                    <button class="translate-srt-btn" id="translateSrtBtn" type="button">🔄 Translate</button>
+                  </div>
+                  <div class="cutup-subtitle-version-bar" id="cutupSubtitleVersionBar" hidden>
+                    <label for="cutupSubtitleVersionSelect" class="cutup-subtitle-version-bar__label">Subtitle version</label>
+                    <select id="cutupSubtitleVersionSelect" class="cutup-subtitle-version-bar__select" aria-label="Subtitle version"></select>
+                  </div>
+                  <section class="cutup-export-options" id="cutupExportOptions" aria-label="Export options">
+                    <h3 class="cutup-export-options__heading">Export options</h3>
+                    <div class="cutup-export-options__grid">
+                      <div class="cutup-export-options__card cutup-export-options__card--srt">
+                        <h4 class="cutup-export-options__title">Clean SRT</h4>
+                        <p class="cutup-export-options__desc">Accurate timing · plain text · Premiere, CapCut &amp; DaVinci ready.</p>
+                        <button type="button" class="cutup-export-options__btn cutup-export-options__btn--srt" id="downloadCleanSrtBtn">Download Clean SRT</button>
+                        <button type="button" class="download-btn cutup-export-options__btn-secondary" id="downloadSrtBtn" hidden>Download SRT (legacy)</button>
+                      </div>
+                      <div class="cutup-export-options__card cutup-export-options__card--viral">
+                        <div id="cutupViralExportMount" class="cutup-viral-export-mount" hidden></div>
+                      </div>
+                    </div>
+                  </section>
+                  <div id="cutupStylePresetsMount" class="cutup-style-presets-mount"></div>
+                  <div class="srt-styled-preview-wrap">
+                    <div id="srtStyledPreview" class="cutup-subtitle-stage" aria-label="Styled subtitle preview"></div>
+                  </div>
+                  <details class="srt-raw-panel">
+                    <summary>View clean SRT (accurate timing)</summary>
+                    <pre class="srt-preview-raw" id="srtPreviewRaw"></pre>
+                  </details>
+                  <div class="srt-preview" id="srtPreview" hidden aria-hidden="true"></div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -115,10 +267,10 @@
           </div>
           <div class="demo-live-meta">
             <span class="demo-live-badge">Live AI output</span>
-            <span class="demo-processing">Processing<span class="typing-dots"></span></span>
+            <span class="demo-processing" data-demo-status>Processing<span class="typing-dots" aria-hidden="true"></span></span>
           </div>
           <div class="demo-product-grid">
-            <div class="demo-sample-card demo-srt-panel">
+            <div class="demo-sample-card demo-srt-panel demo-panel--active" data-demo-panel="srt">
               <div class="demo-srt-meta">
                 <span class="demo-meta-badge">Real output</span>
                 <span class="demo-meta-item">Duration: 00:01:20</span>
@@ -136,11 +288,11 @@ Here's the fastest path from link to publish-ready captions.
 # Generated by Cutup</pre>
             </div>
             <div class="demo-side-cards">
-              <div class="demo-sample-card">
+              <div class="demo-sample-card" data-demo-panel="transcript">
                 <h3 class="demo-sample-label">Transcript</h3>
                 <p class="demo-sample-text">Clean, readable paragraphs instead of a wall of auto-captions—ready for blogs, study guides, or client deliverables.</p>
               </div>
-              <div class="demo-sample-card">
+              <div class="demo-sample-card" data-demo-panel="summary">
                 <h3 class="demo-sample-label">AI summary</h3>
                 <ul class="demo-sample-bullets">
                   <li>Key ideas stay in order</li>
@@ -178,7 +330,48 @@ Here's the fastest path from link to publish-ready captions.
       </div>
     </section>
 
-    
+    <!-- Creator Wall — compact premium showcase -->
+    <section class="creator-wall" id="creator-wall" aria-labelledby="creator-wall-title">
+      <div class="container">
+        <header class="creator-wall__header">
+          <p class="creator-wall__eyebrow">
+            Creator Wall
+            <span class="creator-wall__live-dot" aria-hidden="true"></span>
+          </p>
+          <h2 class="creator-wall__title section-text" id="creator-wall-title">Creators are already publishing with Cutup</h2>
+          <p class="creator-wall__lede section-text">Real exports. Real creators. Real retention-focused captions.</p>
+        </header>
+        <div class="creator-wall__metrics" aria-label="Platform activity">
+          <div class="creator-wall__metric-tile">
+            <span class="creator-wall__metric-value" data-cw-stat-videos>12,584</span>
+            <span class="creator-wall__metric-label">Exports generated</span>
+          </div>
+          <div class="creator-wall__metric-tile">
+            <span class="creator-wall__metric-value" data-cw-stat-subs>284,921</span>
+            <span class="creator-wall__metric-label">Subtitle lines</span>
+          </div>
+          <div class="creator-wall__metric-tile">
+            <span class="creator-wall__metric-value" data-cw-stat-creators>18,432</span>
+            <span class="creator-wall__metric-label">Creators</span>
+          </div>
+          <div class="creator-wall__metric-tile">
+            <span class="creator-wall__metric-value" data-cw-stat-highlights>92,418</span>
+            <span class="creator-wall__metric-label">AI highlights</span>
+          </div>
+        </div>
+        <div class="creator-wall__ticker" aria-live="polite" aria-atomic="true">
+          <span class="creator-wall__ticker-prefix" aria-hidden="true">Live</span>
+          <span class="creator-wall__ticker-viewport">
+            <span class="creator-wall__ticker-line creator-wall__ticker-line--active" id="creatorWallTickerA">+ Processing creator exports worldwide…</span>
+            <span class="creator-wall__ticker-line" id="creatorWallTickerB"></span>
+          </span>
+        </div>
+        <div class="creator-wall__showcase" id="creatorWallShowcase" aria-live="polite" aria-busy="true"></div>
+        <noscript>
+          <p class="creator-wall__lede">Creators worldwide publish with Cutup — viral caption styles for TikTok, YouTube, and Reels.</p>
+        </noscript>
+      </div>
+    </section>
 
     <!-- Features Section -->
     <section id="features" class="features">
@@ -287,17 +480,17 @@ Here's the fastest path from link to publish-ready captions.
         <div id="cutupPricingPaywall" class="cutup-pricing-paywall" hidden></div>
         <h2 class="section-title section-text">Pricing that speaks your language</h2>
         <p class="hero-description" style="text-align: center; max-width: 760px; margin: 0 auto 16px;">
-          Save hours of manual work: we bill in <strong>video-sized outcomes</strong>, not jargon. Pick a tier by how much you publish—creators, students, and teams all start with the same instant preview.
+          Clear monthly limits per plan. Pick a tier by how much you publish—creators, students, and teams all start with the same simple workflow.
         </p>
         <p class="hero-description" style="text-align: center; max-width: 640px; margin: 0 auto 20px; font-size: 15px; color: #555;">
-          <strong>How we count:</strong> 1 processed video ≈ an average <strong>5–10 minutes</strong> of talking-head or lesson audio. Longer files simply use more of your monthly pool—your dashboard shows live estimates.
+          <strong>How we count:</strong> each <strong>successful completed generation</strong> (one full run) counts as <strong>one</strong> toward your monthly included amount. Your dashboard shows exactly how many you have left.
         </p>
         <div class="pricing-plans-grid">
           <div class="feature-card pricing-card">
             <h3 class="feature-title">Free · €0</h3>
-            <p class="feature-description" style="font-weight: 600; color: var(--primary);">~2–3 videos total</p>
-            <p class="feature-description pricing-micro-note">Limited preview only</p>
-            <p class="feature-description pricing-access-note">Cancel anytime · Instant access after upgrade</p>
+            <p class="feature-description" style="font-weight: 600; color: var(--primary);" data-cutup-plan-line="free">3 videos per month</p>
+            <p class="feature-description pricing-micro-note">Full workflow on Free—upgrade when you need more volume</p>
+            <p class="feature-description pricing-access-note" data-cutup-plan-access="free">Instant access after login</p>
             <p class="feature-description">Perfect for a quick proof-of-concept. Preview subtitles &amp; text, feel the workflow, then upgrade when you are ready to ship.</p>
             <ul class="feature-description" style="padding-left: 18px; margin: 0 0 12px; font-size: 14px; line-height: 1.5;">
               <li>No full SRT download (locked)</li>
@@ -308,45 +501,45 @@ Here's the fastest path from link to publish-ready captions.
           </div>
           <div class="feature-card pricing-card">
             <h3 class="feature-title">Starter · €9/mo</h3>
-            <p class="feature-description" style="font-weight: 600; color: var(--primary);">~10–15 videos / month</p>
+            <p class="feature-description" style="font-weight: 600; color: var(--primary);" data-cutup-plan-line="starter">15 videos per month</p>
             <p class="feature-description pricing-tier-note">For individuals starting out</p>
-            <p class="feature-description pricing-access-note">Cancel anytime · Instant access after upgrade</p>
+            <p class="feature-description pricing-access-note" data-cutup-plan-access="starter">Cancel anytime · Instant access after upgrade</p>
             <p class="feature-description">Ideal for solo creators posting weekly. Download real SRT files, keep summaries on, and stay bilingual without hiring a transcriptionist.</p>
             <ul class="feature-description" style="padding-left: 18px; margin: 0 0 12px; font-size: 14px; line-height: 1.5;">
               <li>Subtitle download (SRT) unlocked</li>
               <li>Up to 2 languages</li>
               <li>Summaries enabled</li>
             </ul>
-            <a href="/dashboard.html" class="btn btn-primary pricing-dashboard-cta" style="margin-top: auto; display: inline-block;" data-cutup-plan="starter">Upgrade</a>
+            <a href="/checkout.html?plan=starter&amp;source=pricing" class="btn btn-primary pricing-dashboard-cta" style="margin-top: auto; display: inline-block;" data-cutup-plan="starter">Upgrade</a>
           </div>
           <div class="feature-card pricing-card pricing-card-pro plan-card plan--popular" style="position:relative; overflow:visible; padding-top:18px;">
             <div class="plan-badge" style="position:relative !important; top:-28px !important; left:18px !important; transform:none !important; z-index:999 !important; display:inline-block !important; white-space:nowrap !important; margin:0 0 -16px auto !important;">Most Popular</div>
             <h3 class="feature-title">Pro · €19/mo</h3>
-            <p class="feature-description" style="font-weight: 600; color: var(--primary);">~25–35 videos / month</p>
+            <p class="feature-description" style="font-weight: 600; color: var(--primary);" data-cutup-plan-line="pro">35 videos per month</p>
             <p class="feature-description pricing-tier-note">For consistent creators</p>
             <p class="feature-description pricing-micro-note">Most users choose this plan</p>
             <p class="feature-description pricing-fit-note">Best for creators publishing weekly</p>
-            <p class="feature-description pricing-access-note">Cancel anytime · Instant access after upgrade</p>
+            <p class="feature-description pricing-access-note" data-cutup-plan-access="pro">Cancel anytime · Instant access after upgrade</p>
             <p class="feature-description">For channels, educators, and agencies juggling multiple languages. Faster processing, richer exports, fewer bottlenecks.</p>
             <ul class="feature-description" style="padding-left: 18px; margin: 0 0 12px; font-size: 14px; line-height: 1.5;">
               <li>Multilingual subtitles &amp; translations</li>
               <li>Faster queue times</li>
               <li>Better TXT / DOCX exports</li>
             </ul>
-            <a href="/dashboard.html" class="btn btn-primary pricing-dashboard-cta" style="margin-top: auto; display: inline-block;" data-cutup-plan="pro">Upgrade</a>
+            <a href="/checkout.html?plan=pro&amp;source=pricing" class="btn btn-primary pricing-dashboard-cta" style="margin-top: auto; display: inline-block;" data-cutup-plan="pro">Upgrade</a>
           </div>
           <div class="feature-card pricing-card">
             <h3 class="feature-title">Business · €49/mo</h3>
-            <p class="feature-description" style="font-weight: 600; color: var(--primary);">~80–100 videos / month</p>
+            <p class="feature-description" style="font-weight: 600; color: var(--primary);" data-cutup-plan-line="business">100 videos per month</p>
             <p class="feature-description pricing-tier-note">For teams and heavy usage</p>
-            <p class="feature-description pricing-access-note">Cancel anytime · Instant access after upgrade</p>
+            <p class="feature-description pricing-access-note" data-cutup-plan-access="business">Cancel anytime · Instant access after upgrade</p>
             <p class="feature-description">Heavy publishing schedules get priority routing, generous fair-use headroom, and every premium export option unlocked.</p>
             <ul class="feature-description" style="padding-left: 18px; margin: 0 0 12px; font-size: 14px; line-height: 1.5;">
               <li>Priority processing</li>
               <li>Fair-use pool (no scary fine print in-app)</li>
               <li>Full feature access</li>
             </ul>
-            <a href="/dashboard.html" class="btn btn-primary pricing-dashboard-cta" style="margin-top: auto; display: inline-block;" data-cutup-plan="business">Upgrade</a>
+            <a href="/checkout.html?plan=business&amp;source=pricing" class="btn btn-primary pricing-dashboard-cta" style="margin-top: auto; display: inline-block;" data-cutup-plan="business">Upgrade</a>
           </div>
         </div>
         <p class="hero-description" style="text-align: center; max-width: 720px; margin: 20px auto 0; font-size: 14px; color: #666;">
@@ -454,7 +647,24 @@ Here's the fastest path from link to publish-ready captions.
     document.body.insertAdjacentHTML('beforeend', renderFooter());
   </script>
 
+  <link rel="stylesheet" href="customer-role-guard.css">
   <script src="api-config.js"></script>
+  <script src="customer-role-guard.js"></script>
+  <script src="plan-display.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      var D = window.CutupPlanDisplay;
+      if (!D) return;
+      document.querySelectorAll('[data-cutup-plan-line]').forEach(function (el) {
+        var k = el.getAttribute('data-cutup-plan-line');
+        if (k) el.textContent = D.formatMonthlyVideosLine(k);
+      });
+      document.querySelectorAll('[data-cutup-plan-access]').forEach(function (el) {
+        var k = el.getAttribute('data-cutup-plan-access');
+        if (k) el.textContent = D.pricingAccessNote(k);
+      });
+    });
+  </script>
   <script src="audit-track.js"></script>
   <script src="analytics-client.js"></script>
   <script src="viral-referral.js"></script>
@@ -462,7 +672,36 @@ Here's the fastest path from link to publish-ready captions.
   <script src="pricing-segmentation.js"></script>
   <script src="growth-optimization.js"></script>
   <script src="growth-orchestrator.js"></script>
-  <script src="script.js"></script>
+  <script src="offers-resolver.js"></script>
+  <script src="plan-checkout-router.js?v=OAUTH_DIRECT_2026_01"></script>
+  <script src="cinematic-preview/transcript-insights-engine.js?v=20260524-cine-premium"></script>
+  <script src="cinematic-preview/fake-player-animator.js?v=20260524-cine-premium"></script>
+  <script src="cinematic-preview/cinematic-preview-renderer.js?v=20260524-cine-premium"></script>
+  <script src="video-export/video-export.js?v=20260520-wall"></script>
+  <script src="subtitle-versions.js?v=20260526-versions"></script>
+  <script src="subtitle-styles/utils/subtitle-clean.js?v=20260526-engine"></script>
+  <script src="subtitle-styles/utils/emphasis-engine.js?v=20260524-polish"></script>
+  <script src="subtitle-styles/utils/text-layout.js?v=20260522-styles"></script>
+  <script src="subtitle-styles/presets/registry.js?v=20260522-styles"></script>
+  <script src="subtitle-styles/renderer/style-renderer.js?v=20260522-styles"></script>
+  <script src="subtitle-styles/export/style-export.js?v=20260522-styles"></script>
+  <script src="subtitle-styles/ui/preset-selector.js?v=20260522-styles"></script>
+  <script src="subtitle-styles/index.js?v=20260522-styles"></script>
+  <script src="creator-wall/creator-wall-frames.js?v=20260520-live"></script>
+  <script src="creator-wall/creator-wall-live.js?v=20260520-live"></script>
+  <script src="creator-wall/creator-wall.js?v=20260520-live"></script>
+  <script src="demo-live-micro.js?v=20260520-live"></script>
+  <script src="script.js?v=20260526-placement-versions"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async function () {
+      if (!window.CutupOffersResolver) return;
+      const resolved = await window.CutupOffersResolver.resolveActiveUserOffers().catch(function () { return null; });
+      if (!resolved || !resolved.ok) return;
+      window.CutupOffersResolver.renderGlobalRibbon(resolved);
+      var pricing = document.querySelector('.pricing-plans-grid');
+      if (pricing) window.CutupOffersResolver.applyPlanHighlight(pricing, resolved);
+    });
+  </script>
 </body>
 </html>
 

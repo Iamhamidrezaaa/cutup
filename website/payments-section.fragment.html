@@ -1,0 +1,23 @@
+        <section id="section-payments" class="panel">
+          <div class="pay-header">
+            <div>
+              <h2>Payments</h2>
+              <p class="pay-subtitle">Financial operations — YekPay-first, provider-agnostic revenue intelligence.</p>
+            </div>
+            <div class="pay-header-actions">
+              <button type="button" class="btn ghost" id="paymentsExportCsvBtn">Export CSV</button>
+            </div>
+          </div>
+          <div id="paymentsWorkspace" class="pay-root" aria-live="polite"></div>
+          <div id="paymentsLegacyWrap" hidden><div id="paymentsPanel"></div></div>
+          <aside id="paymentsDetailDrawer" class="pay-drawer" hidden aria-hidden="true">
+            <div class="pay-drawer-backdrop" id="paymentsDrawerBackdrop"></div>
+            <div class="pay-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="paymentsDrawerTitle">
+              <header class="pay-drawer-head">
+                <h3 id="paymentsDrawerTitle">Payment details</h3>
+                <button type="button" class="btn ghost" id="paymentsDrawerClose" aria-label="Close">×</button>
+              </header>
+              <div id="paymentsDrawerBody" class="pay-drawer-body"></div>
+            </div>
+          </aside>
+        </section>

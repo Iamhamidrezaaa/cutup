@@ -1,0 +1,93 @@
+{
+  "slug": "editing-shorts-entirely-on-mobile-2026",
+  "title": "I Tried Editing YouTube Shorts Entirely on Mobile for 7 Days",
+  "titleSuffix": "",
+  "deck": "Seven days, phone only — no desktop rescue. Trains, cafés, hotel Wi-Fi, overheating, exports at 99%, and the subtitle stack that didn’t murder my battery.",
+  "excerpt": "We spent 7 days editing Shorts entirely on mobile in 2026 — testing subtitle workflows, exports, TikTok uploads, Safari issues, and whether phone-only editing is actually realistic.",
+  "category": "Guides",
+  "tags": [
+    "mobile-editing",
+    "youtube-shorts",
+    "creator-workflow",
+    "subtitle-tools",
+    "iphone-creators",
+    "tiktok-editing",
+    "mobile-video-editing"
+  ],
+  "eyebrow": "Guides · 7-day mobile experiment",
+  "author": "Cutup Editorial",
+  "authorInitials": "CT",
+  "authorRole": "Phone-only Shorts edit · field diary 2026",
+  "publishedAt": "2026-06-01",
+  "updatedAt": "2026-06-01",
+  "readingTimeMinutes": 11,
+  "coverImageUrl": "/cms-media/images/blog/editing-shorts-entirely-on-mobile-2026-cover.jpg",
+  "heroImageAlt": "Exhausted creator editing YouTube Shorts on iPhone with export progress and battery warning",
+  "heroImagePrompt": "Premium cinematic 16:9 1920x1080 full-bleed YouTube thumbnail, bold gradient headline left EDITING SHORTS ONLY ON MOBILE, exhausted creator right holding iPhone with Shorts editor and export bar, battery warning, purple-blue and orange lighting, gold accents, rich detail, photorealistic, headline upper-left safe zone, no fake logos.",
+  "metaTitle": "I Tried Editing YouTube Shorts Entirely on Mobile for 7 Days — Cutup",
+  "metaDescription": "We spent 7 days editing Shorts entirely on mobile in 2026 — testing subtitle workflows, exports, TikTok uploads, Safari issues, and whether phone-only editing is actually realistic.",
+  "ogTitle": "I Tried Editing YouTube Shorts Entirely on Mobile for 7 Days",
+  "ogDescription": "A honest 7-day diary: what worked, what broke on day 3, and whether mobile-only Shorts editing is realistic in 2026.",
+  "status": "published",
+  "source": "static",
+  "faqSchema": [
+    {
+      "question": "Can you edit YouTube Shorts entirely on mobile?",
+      "answer": "Yes for simple talking-head Shorts, Reels, and TikTok clips — trim, caption, export vertical. Heavy multi-layer edits, long podcast clips, and 4K projects still fight phone RAM, heat, and export queues."
+    },
+    {
+      "question": "What is the best mobile workflow for Shorts?",
+      "answer": "Record or import vertical, generate transcript/SRT in a lightweight browser tool, finish captions in CapCut or native app, export 1080x1920. Avoid full NLE timelines in mobile Safari when possible."
+    },
+    {
+      "question": "Do subtitle apps work well on phones?",
+      "answer": "Native apps (CapCut, TikTok) work well for burn-in. Heavy browser subtitle editors often lag, refresh tabs, or stall exports. Text-first tools are less painful than giant timelines on phone."
+    },
+    {
+      "question": "Why do exports fail on mobile editing apps?",
+      "answer": "Thermal throttling, background app kills, low storage, cellular timeouts, and server-side render queues. The 99% freeze is often a stalled job, not your phone lying."
+    },
+    {
+      "question": "Is Safari good for video editing?",
+      "answer": "Safari is fine for lightweight text and SRT workflows. It is poor for hour-long uploads, full timeline editors, and long background exports — tabs refresh under memory pressure."
+    },
+    {
+      "question": "What tools work best for mobile creators?",
+      "answer": "CapCut for finish, TikTok/Reels native for speed, Cutup or similar for link-to-SRT without a bloated editor. Split text and pixels instead of doing both in one heavy tab."
+    },
+    {
+      "question": "Can I generate subtitles on iPhone?",
+      "answer": "Yes — use lightweight web tools for transcript and SRT, then import into CapCut. See our Safari and SRT guides for friction points."
+    },
+    {
+      "question": "Are browser subtitle tools better than apps?",
+      "answer": "Browsers win for quick text and SRT; native apps win for touch-first burn-in and vertical export. Hybrid mobile stacks beat either alone."
+    }
+  ],
+  "related": [
+    {
+      "href": "/blog/why-mobile-subtitle-apps-break-on-safari-2026",
+      "eyebrow": "Guide",
+      "title": "Mobile subtitle apps on Safari",
+      "description": "Why browser tabs refresh and exports fail on iPhone."
+    },
+    {
+      "href": "/blog/best-subtitle-workflow-youtube-shorts-2026",
+      "eyebrow": "Guide",
+      "title": "Best Shorts subtitle workflow",
+      "description": "Safe zones and caption rhythm for vertical."
+    },
+    {
+      "href": "/blog/subtitle-workflows-mobile-2026",
+      "eyebrow": "Guide",
+      "title": "Subtitle workflows on mobile",
+      "description": "Broader mobile caption friction beyond this diary."
+    },
+    {
+      "href": "/blog/how-to-generate-srt-subtitles",
+      "eyebrow": "Tutorial",
+      "title": "Generate SRT subtitles",
+      "description": "Text-first step before CapCut burn-in."
+    }
+  ]
+}

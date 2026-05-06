@@ -3,7 +3,7 @@ import { setCORSHeaders } from './cors.js';
 import { sessions } from './auth.js';
 import { getSubscriptionRowByEmail, isBillingDbConfigured } from './billing-repository.js';
 
-const STRIPE_PLAN_KEYS = ['starter', 'pro', 'advanced', 'business'];
+const STRIPE_PLAN_KEYS = ['starter', 'pro', 'business'];
 
 /** Public URLs for Checkout return. Prefer FRONTEND_URL; with Stripe test keys default to localhost for safer local QA. */
 function getFrontendBaseUrl() {
@@ -22,8 +22,7 @@ function resolvePriceId(priceKey) {
   const envMap = {
     starter: process.env.STRIPE_PRICE_STARTER,
     pro: process.env.STRIPE_PRICE_PRO,
-    advanced: process.env.STRIPE_PRICE_ADVANCED,
-    business: process.env.STRIPE_PRICE_ADVANCED
+    business: process.env.STRIPE_PRICE_BUSINESS || process.env.STRIPE_PRICE_ADVANCED
   };
   return envMap[priceKey] || null;
 }

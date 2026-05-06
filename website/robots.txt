@@ -3,8 +3,7 @@ Allow: /
 
 # Key pages
 Allow: /blog.html
-Allow: /tools.html
-Allow: /subtitle-generator.html
+Allow: /faq.html
 Allow: /video-to-text.html
 Allow: /translate-video.html
 

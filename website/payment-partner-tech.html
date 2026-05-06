@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>برش فنی پلتفرم — Cutup (سند داخلی درگاه)</title>
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="description" content="خلاصهٔ فناوری‌های استفاده‌شده در Cutup برای همکاران درگاه پرداخت.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <meta name="theme-color" content="#6366f1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .partner-tech-page {
+      font-family: 'Vazirmatn', 'Segoe UI', Tahoma, sans-serif;
+      background: linear-gradient(180deg, #f8fafc 0%, #fff 32%);
+      min-height: 100vh;
+      padding: 2rem 0 4rem;
+    }
+    .partner-tech-page .doc-badge {
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: var(--primary);
+      background: rgba(99, 102, 241, 0.12);
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      margin-bottom: 1rem;
+    }
+    .partner-tech-page h1 {
+      font-size: clamp(1.5rem, 4vw, 2rem);
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      color: var(--text-primary);
+    }
+    .partner-tech-page section {
+      margin-bottom: 2rem;
+    }
+    .partner-tech-page h2 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: var(--primary);
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.35rem;
+      border-bottom: 2px solid var(--border);
+    }
+    .partner-tech-page ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .partner-tech-page li {
+      position: relative;
+      padding-right: 1.25rem;
+      margin-bottom: 0.6rem;
+      line-height: 1.7;
+      color: var(--text-primary);
+    }
+    .partner-tech-page li::before {
+      content: '';
+      position: absolute;
+      right: 0;
+      top: 0.55em;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--primary);
+    }
+    .partner-tech-page .muted {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      margin-top: 2rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+    }
+    .partner-tech-page .stack-grid {
+      display: grid;
+      gap: 1rem;
+    }
+    @media (min-width: 640px) {
+      .partner-tech-page .stack-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+    .partner-tech-page .card {
+      background: var(--bg-light);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem 1.15rem;
+      box-shadow: 0 1px 3px var(--shadow);
+    }
+    .partner-tech-page .card h3 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: var(--text-primary);
+    }
+    .partner-tech-page .card p,
+    .partner-tech-page .card li {
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body class="partner-tech-page">
+  <div class="container">
+    <p class="doc-badge">سند داخلی — فقط برای ارائه به همکار درگاه پرداخت</p>
+    <h1>برش فنی پلتفرم Cutup</h1>
+
+    <div class="stack-grid">
+      <section class="card">
+        <h3>زبان برنامه‌نویسی و بک‌اند</h3>
+        <ul>
+          <li><strong>JavaScript</strong> روی <strong>Node.js</strong> (ماژول‌های ES / <code>type: module</code>)</li>
+          <li>فریمورک HTTP: <strong>Express.js</strong> (اجرای محلی / توسعه)</li>
+          <li>استقرار API: <strong>Vercel Serverless</strong> با زمان‌اجرای <strong>@vercel/node</strong></li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h3>فرانت‌اند وب‌سایت</h3>
+        <ul>
+          <li>صفحات <strong>HTML</strong> ایستا</li>
+          <li>استایل: <strong>CSS</strong> (فایل‌های <code>style.css</code>، <code>responsive-global.css</code>)</li>
+          <li>اسکریپت سمت مرورگر: <strong>JavaScript وانیلی</strong> (بدون React/Vue/Angular)</li>
+          <li><strong>Service Worker</strong> و <strong>PWA manifest</strong> برای بخش وب</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h3>داده و زیرساخت</h3>
+        <ul>
+          <li>پایگاه داده: <strong>PostgreSQL</strong> (درایور <code>pg</code> در Node.js)</li>
+          <li>میزبانی و مسیریابی: <strong>Vercel</strong></li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h3>پرداخت و صورتحساب</h3>
+        <ul>
+          <li><strong>Stripe</strong> (اشتراک، چک‌اوت، وب‌هوک)</li>
+          <li><strong>YekPay</strong> — اتصال به API درگاه (مثلاً <code>gate.ypsapi.com</code>) برای پرداخت ریالی/کاربر نهایی</li>
+          <li>مسیرهای نمونهٔ بک‌اند: <code>/api/payment/create</code>، <code>/api/payment/callback</code>، <code>/api/payment/verify</code></li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h3>هوش مصنوعی و پردازش محتوا</h3>
+        <ul>
+          <li><strong>OpenAI API</strong> برای رونویسی و خلاصه‌سازی</li>
+          <li>آپلود فایل: <strong>Busboy</strong> (multipart)</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h3>احراز هویت، ایمیل و سایر کتابخانه‌ها</h3>
+        <ul>
+          <li><strong>Google OAuth</strong> (<code>google-auth-library</code>)</li>
+          <li>ایمیل: <strong>Nodemailer</strong></li>
+          <li>رمزنگاری رمز عبور: <strong>bcryptjs</strong></li>
+          <li>وب‌سوکت: <strong>ws</strong> (بخش‌های ممیزی/نظارت داخلی در صورت فعال بودن)</li>
+          <li>خروجی سند Word: <strong>docx</strong></li>
+        </ul>
+      </section>
+
+      <section class="card" style="grid-column: 1 / -1;">
+        <h3>افزونهٔ مرورگر (Chrome)</h3>
+        <ul>
+          <li>بستهٔ جدا از سایت اصلی: <strong>Manifest V3</strong> با اسکریپت‌های <code>popup</code>، <code>background</code> و <code>content script</code></li>
+          <li>ارتباط با همان بک‌اند Node.js / Vercel از طریق API</li>
+        </ul>
+      </section>
+    </div>
+
+    <p class="muted">
+      نسخهٔ وابستگی‌های دقیق npm در ریشهٔ مخزن در فایل <code>package.json</code> و <code>package-lock.json</code> قابل بررسی است. برای سوالات امنیتی یا IPهای سفیدشده، لطفاً با تیم فنی Cutup هماهنگ شود.
+    </p>
+  </div>
+</body>
+</html>

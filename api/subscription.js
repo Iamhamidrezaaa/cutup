@@ -2,7 +2,7 @@
 
 import { setCORSHeaders } from './cors.js';
 import { sessions } from './auth.js';
-import { PLANS } from './plans-config.js';
+import { PLANS, getPlanDef, resolvePlanKey } from './plans-config.js';
 import {
   isBillingDbConfigured,
   ensureUserByEmail,
@@ -25,7 +25,7 @@ const SPECIAL_EMAIL = 'h.asgarizade@gmail.com';
 
 /** Stripe checkout.session.completed — full IDs + period end. */
 export async function applyStripeCheckoutCompleted(userEmail, planKey, stripeCustomerId, stripeSubscriptionId, currentPeriodEnd) {
-  if (!isBillingDbConfigured() || !userEmail || !PLANS[planKey]) {
+  if (!isBillingDbConfigured() || !userEmail || !getPlanDef(planKey)) {
     console.warn('[applyStripeCheckoutCompleted] skipped', userEmail, planKey);
     return false;
   }
@@ -42,7 +42,7 @@ export async function applyStripeCheckoutCompleted(userEmail, planKey, stripeCus
 
 /** invoice.paid / subscription sync — merge Stripe fields without wiping customer id. */
 export async function applyStripeSubscriptionRenewal(userEmail, planKey, stripeCustomerId, stripeSubscriptionId, currentPeriodEnd, status = 'active') {
-  if (!isBillingDbConfigured() || !userEmail || !PLANS[planKey]) return false;
+  if (!isBillingDbConfigured() || !userEmail || !getPlanDef(planKey)) return false;
   await syncStripeSubscriptionFromStripeObject(
     userEmail,
     planKey,
@@ -109,10 +109,14 @@ export default async function handler(req, res) {
     if (method === 'GET' && action === 'plans') {
       const plans = Object.keys(PLANS)
         .filter((key) => PLANS[key].publicOffer !== false)
-        .map((key) => ({
-          id: key,
-          ...PLANS[key]
-        }));
+        .map((key) => {
+          const p = PLANS[key];
+          return {
+            id: key,
+            ...p,
+            monthlyGenerationLimit: p.monthlyGenerationLimit ?? p.monthlyLimit
+          };
+        });
       return res.json({ plans });
     }
 
@@ -144,7 +148,7 @@ export default async function handler(req, res) {
         subscriptionRow = { plan: 'business', current_period_end: subShape.endDate, billing_period: 'annual', created_at: subShape.startDate };
       } else {
         subscriptionRow = await getSubscriptionRowByEmail(userId);
-        planKey = subscriptionRow?.plan || 'free';
+        planKey = resolvePlanKey(subscriptionRow?.plan || 'free');
         subShape = {
           plan: planKey,
           startDate: subscriptionRow?.created_at || new Date(),
@@ -153,7 +157,7 @@ export default async function handler(req, res) {
         };
       }
 
-      const plan = PLANS[planKey];
+      const plan = getPlanDef(planKey);
       const usage = await getLegacyUsageShape(userId);
 
       const responseData = {
@@ -161,6 +165,7 @@ export default async function handler(req, res) {
         planName: plan.nameEn || plan.name,
         planNameEn: plan.nameEn,
         features: plan.features,
+        monthlyGenerationLimit: plan.monthlyGenerationLimit ?? plan.monthlyLimit,
         usage: {
           daily: usage.daily,
           monthly: usage.monthly,
@@ -197,7 +202,7 @@ export default async function handler(req, res) {
       const subscriptionRow =
         userId === SPECIAL_EMAIL ? { plan: 'business' } : await getSubscriptionRowByEmail(userId);
       const planKey = subscriptionRow?.plan || 'free';
-      const plan = PLANS[planKey];
+      const plan = getPlanDef(planKey);
       const usage = await getLegacyUsageShape(userId);
 
       let nearLimit = false;
@@ -243,8 +248,8 @@ export default async function handler(req, res) {
         const subscriptionRow = userId === SPECIAL_EMAIL
           ? { plan: 'business' }
           : await getSubscriptionRowByEmail(userId);
-        const pk = subscriptionRow?.plan || 'free';
-        const plan = PLANS[pk];
+        const pk = resolvePlanKey(subscriptionRow?.plan || 'free');
+        const plan = getPlanDef(pk);
         return res.json({
           allowed: true,
           usage: {
@@ -325,7 +330,7 @@ export default async function handler(req, res) {
 
     if (method === 'POST' && action === 'upgrade') {
       const { plan, billingPeriod = 'monthly' } = body;
-      if (!PLANS[plan]) {
+      if (!getPlanDef(plan)) {
         return res.status(400).json({ error: 'Invalid plan' });
       }
       await upgradePlanLegacyDb(userId, plan, billingPeriod);

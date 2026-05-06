@@ -1,0 +1,23 @@
+{
+  "name": "@instalogist/agent-office-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Read-only operational-state.json → Agent Office–styled UI model (no I/O in core)",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "instalogist-agent-office-adapt": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "adapt": "node dist/cli.js",
+    "test": "npm run build && node --test test/adapt.test.mjs"
+  },
+  "devDependencies": {
+    "typescript": "~5.6.3"
+  }
+}

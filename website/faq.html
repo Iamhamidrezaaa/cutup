@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FAQ — Cutup</title>
+  <meta name="description" content="Answers about accounts, subtitle speed, supported platforms, downloads, trials, languages, payments, and plans on Cutup.">
+  <link rel="canonical" href="https://cutup.shop/faq.html">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://cutup.shop/faq.html">
+  <meta property="og:title" content="FAQ — Cutup">
+  <meta property="og:description" content="Answers about accounts, subtitle speed, supported platforms, downloads, trials, languages, payments, and plans on Cutup.">
+  <meta property="og:site_name" content="Cutup">
+  <meta name="twitter:card" content="summary">
+  <meta name="theme-color" content="#6366f1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="responsive-global.css?v=1">
+</head>
+<body>
+  <script src="site-chrome.js"></script>
+  <div id="cutupInlineNotify" class="cutup-inline-notify" role="region" aria-label="Notifications" hidden></div>
+  <script type="module">
+    import { renderSimpleHeader, initSiteHeaderNav } from '/site-header.js';
+    import { renderFooter } from '/site-footer.js';
+    var n = document.getElementById('cutupInlineNotify');
+    if (n) n.insertAdjacentHTML('afterend', renderSimpleHeader());
+    else document.body.insertAdjacentHTML('afterbegin', renderSimpleHeader());
+    initSiteHeaderNav(document.querySelector('header.simple-header'));
+    document.body.insertAdjacentHTML('beforeend', renderFooter());
+  </script>
+
+  <main>
+    <section id="faq" class="faq-section" aria-labelledby="faq-heading">
+      <div class="container">
+        <h1 id="faq-heading" class="section-title section-title--faq section-text">FAQ</h1>
+        <div class="faq-accordion" id="faqAccordion">
+          <div class="faq-item">
+            <button type="button" class="faq-question" id="faq-q-1" aria-expanded="false" aria-controls="faq-a-1" data-faq-btn>Do I need an account?</button>
+            <div class="faq-answer" id="faq-a-1" role="region" aria-labelledby="faq-q-1">
+              <p>No. Paste a link and preview timed subtitles right away. A free account adds history, saved outputs, and higher limits when you’re ready.</p>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button type="button" class="faq-question" id="faq-q-2" aria-expanded="false" aria-controls="faq-a-2" data-faq-btn>How fast is subtitle generation?</button>
+            <div class="faq-answer" id="faq-a-2" role="region" aria-labelledby="faq-q-2">
+              <p>Most short-to-medium videos finish in about a minute. Longer files take a bit more—you’ll see progress in the tool so you’re never guessing.</p>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button type="button" class="faq-question" id="faq-q-3" aria-expanded="false" aria-controls="faq-a-3" data-faq-btn>What video platforms are supported?</button>
+            <div class="faq-answer" id="faq-a-3" role="region" aria-labelledby="faq-q-3">
+              <p>YouTube, TikTok, and Instagram links work out of the box. You can also upload audio or video files when you want to run everything in one place.</p>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button type="button" class="faq-question" id="faq-q-4" aria-expanded="false" aria-controls="faq-a-4" data-faq-btn>Can I download subtitles?</button>
+            <div class="faq-answer" id="faq-a-4" role="region" aria-labelledby="faq-q-4">
+              <p>Yes. Paid plans unlock full SRT downloads and exports so you can drop captions straight into your editor or upload platform.</p>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button type="button" class="faq-question" id="faq-q-5" aria-expanded="false" aria-controls="faq-a-5" data-faq-btn>Is there a free trial?</button>
+            <div class="faq-answer" id="faq-a-5" role="region" aria-labelledby="faq-q-5">
+              <p>You get a real in-browser preview without a card. When you need full files, longer clips, or higher volume, upgrading takes one minute.</p>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button type="button" class="faq-question" id="faq-q-6" aria-expanded="false" aria-controls="faq-a-6" data-faq-btn>What languages are supported?</button>
+            <div class="faq-answer" id="faq-a-6" role="region" aria-labelledby="faq-q-6">
+              <p>Transcription and subtitles work across many languages—pick the output language you need in the tool. Paid plans add translation for SRT, transcript, and summaries.</p>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button type="button" class="faq-question" id="faq-q-7" aria-expanded="false" aria-controls="faq-a-7" data-faq-btn>Can I edit subtitles before exporting?</button>
+            <div class="faq-answer" id="faq-a-7" role="region" aria-labelledby="faq-q-7">
+              <p>Absolutely. Review timing and text in the preview, tweak what you need, then export when it matches your style.</p>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button type="button" class="faq-question" id="faq-q-8" aria-expanded="false" aria-controls="faq-a-8" data-faq-btn>What payment methods do you accept?</button>
+            <div class="faq-answer" id="faq-a-8" role="region" aria-labelledby="faq-q-8">
+              <p>Payments are handled securely via international card processors. You can pay with Visa, Mastercard, and other global payment methods. Pricing is in EUR.</p>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button type="button" class="faq-question" id="faq-q-9" aria-expanded="false" aria-controls="faq-a-9" data-faq-btn>Can I translate subtitles for other markets?</button>
+            <div class="faq-answer" id="faq-a-9" role="region" aria-labelledby="faq-q-9">
+              <p>Yes. On paid plans you can translate SRT, full transcript, and summaries so one video can ship in multiple languages.</p>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button type="button" class="faq-question" id="faq-q-10" aria-expanded="false" aria-controls="faq-a-10" data-faq-btn>Where do I manage my plan?</button>
+            <div class="faq-answer" id="faq-a-10" role="region" aria-labelledby="faq-q-10">
+              <p>After you sign in, your dashboard shows usage, saved work, and plan options in one place—no digging through emails.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="api-config.js"></script>
+  <script src="conversion-banners.js"></script>
+  <script src="offers-resolver.js"></script>
+  <script src="faq.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async function () {
+      if (!window.CutupOffersResolver) return;
+      const resolved = await window.CutupOffersResolver.resolveActiveUserOffers().catch(function () { return null; });
+      if (!resolved || !resolved.ok) return;
+      window.CutupOffersResolver.renderGlobalRibbon(resolved);
+    });
+  </script>
+</body>
+</html>

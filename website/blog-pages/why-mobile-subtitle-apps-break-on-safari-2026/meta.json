@@ -1,0 +1,93 @@
+{
+  "slug": "why-mobile-subtitle-apps-break-on-safari-2026",
+  "title": "Why Mobile Subtitle Apps Still Break on iPhone Safari in 2026",
+  "titleSuffix": "",
+  "deck": "We ran real iPhone tests — Safari tab reloads, export stuck at 99%, uploads that restart, and browser subtitle tools that feel fine on desktop until you’re on LTE with one thumb. Here’s what actually broke.",
+  "excerpt": "Mobile subtitle apps still break constantly on Safari in 2026. We tested uploads, exports, captions, and browser-based subtitle tools to find out why.",
+  "category": "Guides",
+  "tags": [
+    "mobile-subtitle-workflow",
+    "safari-video-editing",
+    "iphone-creators",
+    "subtitle-tools",
+    "mobile-editing",
+    "youtube-shorts",
+    "tiktok-workflow"
+  ],
+  "eyebrow": "Guides · iPhone Safari tests",
+  "author": "Cutup Editorial",
+  "authorInitials": "CT",
+  "authorRole": "iPhone subtitle tests · Safari & Chrome 2026",
+  "publishedAt": "2026-05-28",
+  "updatedAt": "2026-05-28",
+  "readingTimeMinutes": 11,
+  "coverImageUrl": "/cms-media/images/blog/why-mobile-subtitle-apps-break-on-safari-2026-cover.jpg",
+  "heroImageAlt": "Frustrated creator on iPhone with Safari refresh during subtitle export failure",
+  "heroImagePrompt": "Photorealistic 16:9 1920x1080 full-bleed blog cover, creator frustrated at iPhone Safari export fail, purple-blue desk lighting, bold white headline with black stroke in upper third only: WHY MOBILE SUBTITLE APPS BREAK, no letterboxing, no black bars, headline in upper 35% safe zone, bottom third text-free, no fake logos.",
+  "metaTitle": "Why Mobile Subtitle Apps Still Break on iPhone Safari in 2026 — Cutup",
+  "metaDescription": "Mobile subtitle workflows still break constantly on Safari in 2026. We tested uploads, exports, captions, and browser-based subtitle tools to find out why.",
+  "ogTitle": "Why Mobile Subtitle Apps Still Break on iPhone Safari in 2026",
+  "ogDescription": "Real iPhone tests: Safari reloads, export freezes, and which lightweight subtitle workflow actually survived.",
+  "status": "published",
+  "source": "static",
+  "faqSchema": [
+    {
+      "question": "Why do subtitle apps crash on iPhone?",
+      "answer": "Usually memory pressure — large video previews, heavy browser editors, and iOS killing background tabs. Safari and Chrome on iPhone both use WebKit; crashes often follow long uploads, export queues, or scrubbing in a full timeline inside the browser."
+    },
+    {
+      "question": "Why does Safari refresh during uploads?",
+      "answer": "iOS aggressively reclaims RAM from background tabs. A long upload or video processing session looks like low priority to the system. Switch apps, take a call, or open the camera — Safari may reload and your in-browser project state can vanish."
+    },
+    {
+      "question": "Is Chrome better than Safari on iPhone?",
+      "answer": "Not dramatically for video. Chrome on iOS is still WebKit under the hood. Some creators prefer Chrome for downloads or clipboard quirks, but both browsers hit similar memory limits. Stability wins come from lighter tools, not swapping browser icons."
+    },
+    {
+      "question": "What is the fastest way to add subtitles on mobile?",
+      "answer": "Native burn-in in CapCut or TikTok for same-day posts. For SRT-first workflows: paste a link, generate transcript, export SRT in a lightweight tool, import into your finisher — avoid a full desktop-class editor inside mobile Safari."
+    },
+    {
+      "question": "Why do exports fail on mobile subtitle tools?",
+      "answer": "Timeouts on cellular, server queue limits, tab reload mid-export, or the tool trying to render a heavy preview while encoding. The 99% freeze is often a stalled network job, not your phone lying about progress."
+    },
+    {
+      "question": "Can I generate SRT subtitles on iPhone?",
+      "answer": "Yes — use a mobile-friendly web tool that returns downloadable SRT without loading a giant timeline. Cutup and similar lightweight flows work in Safari when the job is text-first, not pixel editing in the browser."
+    },
+    {
+      "question": "Are browser subtitle tools better than apps?",
+      "answer": "Browser tools excel at cross-platform text and SRT. Native apps excel at touch-first burn-in and vertical export. Most daily Shorts creators hybridize: browser for words, app for finish."
+    },
+    {
+      "question": "What subtitle workflow works best for Shorts?",
+      "answer": "Caption the final 9:16 cut, two short lines in the safe zone, hook rewritten by hand. See our Shorts workflow guide — generate SRT separately if you edit in a desktop NLE, then style once in CapCut."
+    }
+  ],
+  "related": [
+    {
+      "href": "/blog/best-subtitle-workflow-youtube-shorts-2026",
+      "eyebrow": "Guide",
+      "title": "Best subtitle workflow for YouTube Shorts",
+      "description": "Vertical safe zones, tools, and retention on small screens."
+    },
+    {
+      "href": "/blog/how-to-generate-srt-subtitles",
+      "eyebrow": "Tutorial",
+      "title": "How to generate SRT subtitles",
+      "description": "Clean SRT export path when mobile browsers fail timelines."
+    },
+    {
+      "href": "/blog/why-youtube-auto-captions-fail-2026",
+      "eyebrow": "Guide",
+      "title": "Why YouTube auto captions fail",
+      "description": "When platform captions are enough — and when they’re not."
+    },
+    {
+      "href": "/blog/best-ai-subtitle-generators-2026",
+      "eyebrow": "Roundup",
+      "title": "Best AI subtitle generators 2026",
+      "description": "Tool-by-tool friction on mobile vs desktop."
+    }
+  ]
+}

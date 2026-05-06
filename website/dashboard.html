@@ -1,7 +1,8 @@
 <!DOCTYPE html>
-<!-- VERSION: CLEAN_BUILD_2026_04 — View Source must show this; if not, wrong file or CDN path. -->
+<!-- VERSION: DASH_PROFILE_2026_01 — View Source must show this; if not, wrong file or CDN path. -->
 <html lang="en" dir="ltr">
 <head>
+  <meta name="cutup-dashboard-build" content="DASH_PROFILE_2026_01">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard — Cutup | Account &amp; usage</title>
@@ -19,11 +20,13 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css?v=CLEAN_BUILD_2026_04">
-  <link rel="stylesheet" href="dashboard.css?v=CLEAN_BUILD_2026_04">
+  <link rel="stylesheet" href="dashboard.css?v=20260519-no-quick-action-1">
   <link rel="stylesheet" href="responsive-global.css?v=1">
+  <link rel="stylesheet" href="customer-role-guard.css">
 </head>
 <body>
   <script src="site-chrome.js"></script>
+  <script src="customer-role-guard.js"></script>
   <div id="initialLoader" class="dashboard-initial-loader" aria-live="polite" aria-busy="true">
     <div class="dashboard-initial-loader-inner">
       <span class="dashboard-initial-loader-spinner" aria-hidden="true"></span>
@@ -45,6 +48,10 @@
         >
           <span class="dashboard-nav-toggle-bars" aria-hidden="true"></span>
         </button>
+        <a href="https://cutup.shop" class="dashboard-brand-link logo" aria-label="Cutup home">
+          <img src="logo.svg" alt="Cutup" class="dashboard-brand-logo logo-icon" width="32" height="32" decoding="async">
+          <span>Cutup</span>
+        </a>
         <div class="header-actions">
           <div class="user-profile-header" id="userProfileHeader">
             <a href="#overview" class="user-profile-link" id="userProfileLink" style="text-decoration: none; color: inherit; display: flex; align-items: center; gap: 12px; cursor: pointer;">
@@ -66,6 +73,7 @@
     <main class="dashboard-main">
       <!-- Sidebar -->
       <aside class="dashboard-sidebar" id="cutupDashboardSidebar">
+        <div class="dashboard-sidebar-profile" id="dashboardSidebarProfile" aria-label="Your account" hidden></div>
         <nav class="sidebar-nav">
           <a href="#overview" class="nav-item active" data-section="overview">
             <span class="nav-icon">📊</span>
@@ -83,6 +91,10 @@
             <span class="nav-icon">💳</span>
             <span class="nav-text">Plans</span>
           </a>
+          <a href="#profile" class="nav-item" data-section="profile">
+            <span class="nav-icon">👤</span>
+            <span class="nav-text">Profile</span>
+          </a>
           <a href="#financial" class="nav-item" data-section="financial">
             <span class="nav-icon">💰</span>
             <span class="nav-text">Billing</span>
@@ -96,22 +108,22 @@
         <section class="dashboard-section active" id="overview-section">
           <h1 class="section-title">Account overview</h1>
           <div class="welcome-message" id="welcomeMessage"></div>
+          <div id="dashboardOfferBannerHost"></div>
           <div id="upgradeWarning"></div>
 
           <div class="identity-strip" id="identityStrip"></div>
 
-          <div class="quick-action-card" id="quickActionCard"></div>
-
           <div class="insights-grid" id="insightsGrid"></div>
 
           <div class="current-plan-card" id="currentPlanCard"></div>
+          <div class="current-plan-card" id="myOffersCard"></div>
 
           <div class="stats-grid">
             <div class="stat-card">
               <div class="stat-icon">📊</div>
               <div class="stat-content">
                 <div class="stat-value" id="remainingVideos">0</div>
-                <div class="stat-label" id="statRemainingLabel">Videos left (~this month)</div>
+                <div class="stat-label" id="statRemainingLabel">Videos left this month</div>
               </div>
             </div>
             <div class="stat-card">
@@ -148,6 +160,12 @@
           <div class="plans-grid" id="plansGrid"></div>
         </section>
 
+        <section class="dashboard-section" id="profile-section">
+          <h1 class="section-title">Profile &amp; settings</h1>
+          <p class="dashboard-section-lead">Manage your account details and preferences.</p>
+          <div id="profileSettingsRoot" class="profile-settings-root"></div>
+        </section>
+
         <section class="dashboard-section" id="financial-section">
           <h1 class="section-title">Billing</h1>
           <div class="financial-info" id="financialInfo"></div>
@@ -162,12 +180,16 @@
   </script>
 
   <script src="api-config.js"></script>
+  <script src="plan-display.js"></script>
   <script src="audit-track.js"></script>
   <script src="analytics-client.js"></script>
   <script src="conversion-banners.js"></script>
   <script src="pricing-segmentation.js"></script>
   <script src="growth-optimization.js"></script>
-  <script src="dashboard.js?v=CLEAN_BUILD_2026_04"></script>
+  <script src="offers-resolver.js"></script>
+  <script src="plan-checkout-router.js?v=OAUTH_DIRECT_2026_01"></script>
+  <script src="account-security-ui.js?v=ACCOUNT_SEC_2026_01"></script>
+  <script src="dashboard.js?v=20260519-no-quick-action-1"></script>
 </body>
 </html>
 

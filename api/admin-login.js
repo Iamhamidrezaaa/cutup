@@ -10,6 +10,7 @@ import {
   setAdminSessionCookie,
   generateAdminSessionToken,
   saveAdminSession,
+  ADMIN_SESSION_MS,
 } from './admin-panel-auth.js';
 import { recordServerAuditEvent } from './audit-internal.js';
 
@@ -55,16 +56,13 @@ export default async function adminLoginHandler(req, res) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    const rememberMe = Boolean(body.rememberMe);
-    const sessionMs = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
-    const maxAgeSec = Math.floor(sessionMs / 1000);
     const token = generateAdminSessionToken();
     await saveAdminSession(
       token,
       { id: admin.id, email: admin.email, role: admin.role },
-      sessionMs,
+      ADMIN_SESSION_MS,
     );
-    setAdminSessionCookie(res, token, maxAgeSec);
+    setAdminSessionCookie(res, token);
 
     void recordServerAuditEvent({
       eventType: 'security',

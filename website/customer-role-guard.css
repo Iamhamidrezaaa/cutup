@@ -1,0 +1,117 @@
+/* Admin vs customer identity boundaries */
+.crg-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(8px);
+  animation: crg-fade-in 0.28s ease;
+}
+
+.crg-overlay[hidden] {
+  display: none !important;
+}
+
+.crg-card {
+  width: 100%;
+  max-width: 440px;
+  background: linear-gradient(165deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid rgba(99, 102, 241, 0.18);
+  border-radius: 18px;
+  padding: 32px 28px;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.18);
+  text-align: center;
+  animation: crg-slide-up 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.crg-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 16px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.35);
+}
+
+.crg-card h2 {
+  margin: 0 0 10px;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+}
+
+.crg-card p {
+  margin: 0 0 20px;
+  font-size: 15px;
+  line-height: 1.55;
+  color: #475569;
+}
+
+.crg-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.crg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 20px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.crg-btn--primary {
+  background: linear-gradient(135deg, #6366f1, #7c3aed);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
+}
+
+.crg-btn--primary:hover {
+  transform: translateY(-1px);
+}
+
+.crg-btn--ghost {
+  background: transparent;
+  color: #6366f1;
+}
+
+.crg-countdown {
+  font-size: 13px;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+.crg-fullpage {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: radial-gradient(ellipse at top, #eef2ff 0%, #f8fafc 45%, #f1f5f9 100%);
+}
+
+@keyframes crg-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes crg-slide-up {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}

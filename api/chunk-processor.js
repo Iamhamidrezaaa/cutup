@@ -1,58 +1,56 @@
 // Utility for processing large audio files by splitting into chunks
-// Whisper API has a 25MB limit, so we split larger files
+// Whisper-compatible APIs have a ~25MB limit, so we split larger files
 
-import FormDataLib from 'form-data';
-import fetchModule from 'node-fetch';
-
-const WHISPER_MAX_SIZE = 25 * 1024 * 1024; // 25MB - Whisper API limit
+const WHISPER_MAX_SIZE = 25 * 1024 * 1024; // 25MB — provider-side upload limit (approximate)
 const CHUNK_SIZE = 20 * 1024 * 1024; // 20MB chunks (safe margin)
 
 /**
- * Split audio file into chunks and transcribe each
- * @param {Buffer} audioBuffer - The audio file buffer
- * @param {string} mimeType - MIME type of the audio
- * @param {string} apiKey - OpenAI API key
- * @param {string} extension - File extension
- * @returns {Promise<{text: string, segments: Array, language: string}>}
+ * Split audio file into chunks and transcribe each via injected provider callback (supports failover router).
+ * @param {Buffer} audioBuffer
+ * @param {string} mimeType
+ * @param {string} extension
+ * @param {(buf: Buffer, mt: string, ext: string) => Promise<{ text: string, segments: Array, language: string }>} transcribeOneChunk
  */
-export async function transcribeLargeFile(audioBuffer, mimeType, apiKey, extension = 'mp3') {
+export async function transcribeLargeFile(audioBuffer, mimeType, extension = 'mp3', transcribeOneChunk) {
   const fileSize = audioBuffer.length;
-  
+
+  if (typeof transcribeOneChunk !== 'function') {
+    throw new Error('transcribeLargeFile requires transcribeOneChunk(buffer, mimeType, extension)');
+  }
+
   // If file is small enough, process directly
   if (fileSize <= WHISPER_MAX_SIZE) {
-    return await transcribeChunk(audioBuffer, mimeType, apiKey, extension);
+    return transcribeOneChunk(audioBuffer, mimeType, extension);
   }
-  
+
   console.log(`CHUNK_PROCESSOR: File is ${(fileSize / 1024 / 1024).toFixed(2)}MB, splitting into chunks...`);
-  
-  // Split into chunks
+
   const chunks = splitAudioIntoChunks(audioBuffer, CHUNK_SIZE);
   console.log(`CHUNK_PROCESSOR: Split into ${chunks.length} chunks`);
-  
-  // Transcribe chunks sequentially for reliability
-  // Parallel processing was causing issues, so we process one at a time
-  // But we can still optimize by removing delays
-  const BATCH_SIZE = 1; // Changed back to 1 for reliability
+
+  const BATCH_SIZE = 1;
   const transcriptions = [];
   let detectedLanguage = null;
-  
+
   for (let batchStart = 0; batchStart < chunks.length; batchStart += BATCH_SIZE) {
     const batchEnd = Math.min(batchStart + BATCH_SIZE, chunks.length);
     const batch = chunks.slice(batchStart, batchEnd);
-    
-    console.log(`CHUNK_PROCESSOR: Processing batch ${Math.floor(batchStart / BATCH_SIZE) + 1} (chunks ${batchStart + 1}-${batchEnd} of ${chunks.length})...`);
-    
-    // Process batch in parallel
+
+    console.log(
+      `CHUNK_PROCESSOR: Processing batch ${Math.floor(batchStart / BATCH_SIZE) + 1} (chunks ${batchStart + 1}-${batchEnd} of ${chunks.length})...`
+    );
+
     const batchPromises = batch.map((chunk, batchIndex) => {
       const chunkIndex = batchStart + batchIndex;
-      return transcribeChunk(chunk.buffer, mimeType, apiKey, extension).then(result => {
-        // Adjust timestamps based on chunk offset (in seconds)
-        const adjustedSegments = result.segments.map(segment => ({
-          ...segment,
-          start: segment.start + chunk.offset,
-          end: segment.end + chunk.offset
-        })).filter(segment => segment.end > segment.start); // Remove invalid segments
-        
+      return transcribeOneChunk(chunk.buffer, mimeType, extension).then((result) => {
+        const adjustedSegments = result.segments
+          .map((segment) => ({
+            ...segment,
+            start: segment.start + chunk.offset,
+            end: segment.end + chunk.offset
+          }))
+          .filter((segment) => segment.end > segment.start);
+
         return {
           text: result.text,
           segments: adjustedSegments,
@@ -61,73 +59,29 @@ export async function transcribeLargeFile(audioBuffer, mimeType, apiKey, extensi
         };
       });
     });
-    
+
     const batchResults = await Promise.all(batchPromises);
-    
-    // Store results in correct order
+
     for (const result of batchResults) {
       transcriptions.push(result);
-      
+
       if (!detectedLanguage && result.language) {
         detectedLanguage = result.language;
       }
     }
   }
-  
-  // Sort by index to maintain order
+
   transcriptions.sort((a, b) => a.index - b.index);
-  
-  // Combine results
-  const combinedText = transcriptions.map(t => t.text).join(' ');
-  const combinedSegments = transcriptions.flatMap(t => t.segments).sort((a, b) => a.start - b.start);
-  
+
+  const combinedText = transcriptions.map((t) => t.text).join(' ');
+  const combinedSegments = transcriptions.flatMap((t) => t.segments).sort((a, b) => a.start - b.start);
+
   console.log(`CHUNK_PROCESSOR: Combined ${transcriptions.length} chunks, total segments: ${combinedSegments.length}`);
-  
+
   return {
     text: combinedText,
     segments: combinedSegments,
     language: detectedLanguage || 'unknown'
-  };
-}
-
-/**
- * Transcribe a single chunk
- */
-async function transcribeChunk(audioBuffer, mimeType, apiKey, extension) {
-  const fetch = fetchModule.default || fetchModule;
-  
-  const formData = new FormDataLib();
-  formData.append('file', audioBuffer, {
-    filename: `audio.${extension}`,
-    contentType: mimeType,
-    knownLength: audioBuffer.length
-  });
-  formData.append('model', 'whisper-1');
-  formData.append('response_format', 'verbose_json');
-  
-  const formHeaders = formData.getHeaders();
-  
-  const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      ...formHeaders
-    },
-    body: formData,
-    timeout: 180000 // 3 minutes timeout (reduced for faster failure detection)
-  });
-  
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Whisper API error: ${response.status} - ${errorText}`);
-  }
-  
-  const transcript = await response.json();
-  
-  return {
-    text: transcript.text || '',
-    segments: (transcript.segments && Array.isArray(transcript.segments)) ? transcript.segments : [],
-    language: transcript.language || 'unknown'
   };
 }
 

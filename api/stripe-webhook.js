@@ -13,7 +13,7 @@ import {
   downgradeStripeSubscription
 } from './subscription.js';
 
-const PUBLIC_STRIPE_PLANS = new Set(['starter', 'pro', 'advanced', 'business']);
+const PUBLIC_STRIPE_PLANS = new Set(['starter', 'pro', 'business']);
 
 function planKeyFromStripeMetadata(meta) {
   const p = String(meta || '').toLowerCase();

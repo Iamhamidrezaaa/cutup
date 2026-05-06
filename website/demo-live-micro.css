@@ -1,0 +1,45 @@
+/* Cutup Preview — micro-demo loop */
+
+.demo-product-frame {
+  transition: opacity 0.45s ease, box-shadow 0.45s ease;
+}
+
+.demo-product-frame--processing {
+  opacity: 0.92;
+}
+
+.demo-product-frame--processing .demo-product-grid {
+  opacity: 0.55;
+  filter: saturate(0.85);
+}
+
+.demo-product-frame--style-flash {
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.35), 0 12px 40px rgba(79, 70, 229, 0.12);
+}
+
+.demo-sample-card[data-demo-panel] {
+  transition: border-color 0.4s ease, box-shadow 0.4s ease, transform 0.4s ease;
+  border: 1px solid transparent;
+}
+
+.demo-sample-card.demo-panel--active {
+  border-color: rgba(99, 102, 241, 0.35);
+  box-shadow: 0 8px 28px rgba(79, 70, 229, 0.1);
+  transform: translateY(-2px);
+}
+
+.demo-processing[hidden] {
+  display: none !important;
+}
+
+.demo-sample-pre.demo-srt--styled {
+  box-shadow: inset 3px 0 0 #6366f1;
+}
+
+.demo-live-badge {
+  transition: color 0.3s ease;
+}
+
+.demo-product-frame--style-flash .demo-live-badge {
+  color: #4f46e5;
+}

@@ -1,0 +1,88 @@
+{
+  "slug": "best-subtitle-workflow-youtube-shorts-2026",
+  "title": "The Best Subtitle Workflow for YouTube Shorts",
+  "titleSuffix": "in 2026",
+  "deck": "Shorts punish lazy captions. Here’s the subtitle workflow Shorts creators actually land on after burning hours in browser editors — mobile-first, vertical-safe, and fast enough to post daily.",
+  "excerpt": "The best subtitle workflow for YouTube Shorts in 2026: vertical safe zones, mobile export, SRT vs burned-in captions, tool comparison, and retention-focused styling without the burnout.",
+  "category": "Guides",
+  "tags": [
+    "subtitle-workflow-youtube-shorts",
+    "youtube-shorts-subtitles",
+    "shorts-caption-workflow",
+    "subtitle-tools-for-shorts",
+    "automatic-subtitles-for-shorts",
+    "vertical-video-captions",
+    "srt-workflow",
+    "shorts-editing-workflow"
+  ],
+  "eyebrow": "Guides · Shorts workflow",
+  "author": "Cutup Editorial",
+  "authorInitials": "CT",
+  "authorRole": "Shorts publishing · vertical caption tests",
+  "publishedAt": "2026-05-21",
+  "updatedAt": "2026-05-21",
+  "readingTimeMinutes": 12,
+  "coverImageUrl": "/cms-media/images/blog/best-subtitle-workflow-youtube-shorts-2026-cover.jpg",
+  "heroImageAlt": "Creator editing vertical YouTube Shorts with subtitle overlays",
+  "heroImagePrompt": "Cinematic editorial photograph, realistic creator workspace with phone on vertical stand showing 9:16 Shorts preview and floating subtitle lines, monitor with timeline in background, soft purple-blue accent lighting, premium SaaS blog aesthetic, shallow depth of field, no brand logos, no readable trademark text, no cyberpunk, no animals, 16:9 hero composition.",
+  "metaTitle": "Best Subtitle Workflow for YouTube Shorts (2026) — Cutup",
+  "metaDescription": "The subtitle workflow for YouTube Shorts that survives mobile, vertical safe zones, and daily posting — tools, SRT path, styling vs readability, and retention tips.",
+  "ogTitle": "The Best Subtitle Workflow for YouTube Shorts in 2026",
+  "ogDescription": "Creator-first Shorts caption workflow: what breaks on mobile, when to burn in vs export SRT, and the fastest tools in 2026.",
+  "status": "published",
+  "source": "static",
+  "faqSchema": [
+    {
+      "question": "What is the best subtitle workflow for YouTube Shorts?",
+      "answer": "Caption the final vertical export (not the landscape master), keep lines short, stay inside the lower-third safe zone, and choose burned-in styling in CapCut or VEED for social-native looks — or generate SRT with Cutup if you edit in a desktop NLE."
+    },
+    {
+      "question": "Are automatic subtitles accurate for Shorts?",
+      "answer": "Good enough as a first draft for clear speech. Fast pacing, music beds, and accents still produce errors. Always skim before publish — especially hooks and product names in the first three seconds."
+    },
+    {
+      "question": "Which subtitle style works best for retention?",
+      "answer": "High contrast, two short lines max, minimal animation on the hook. Over-styled kinetic captions can help some niches but often distract on small screens and hurt readability."
+    },
+    {
+      "question": "Should Shorts subtitles be burned into the video?",
+      "answer": "For most Shorts-native creators, yes — platforms expect captions in the frame. Use SRT upload when you want YouTube’s player captions or you’re repurposing the same master to long-form."
+    },
+    {
+      "question": "What tools do creators use for Shorts captions?",
+      "answer": "CapCut for mobile burn-in, VEED and Kapwing for styled browser captions, Cutup for fast SRT from a link, Descript for podcast-to-Shorts repurposing, and YouTube auto-captions as a baseline only."
+    },
+    {
+      "question": "Can I export SRT subtitles for Shorts?",
+      "answer": "Yes. Generate SRT from your vertical file or source link, style or trim in your editor, then upload to YouTube Studio if you want a caption track instead of burned-in text."
+    },
+    {
+      "question": "Why do captions cover faces in Shorts?",
+      "answer": "9:16 framing puts faces lower in frame. Default caption positions sit on the chin or eyes. Move captions up, shorten lines, or use safe-zone guides in your editor."
+    },
+    {
+      "question": "Is YouTube auto-caption enough for Shorts?",
+      "answer": "As a starting point, sometimes. It rarely handles vertical safe zones, pacing, or brand styling. Serious Shorts channels still fix captions in CapCut or export SRT elsewhere."
+    }
+  ],
+  "related": [
+    {
+      "href": "/blog/why-youtube-auto-captions-fail-2026",
+      "eyebrow": "Guide",
+      "title": "Why YouTube auto captions fail",
+      "description": "Where Studio captions break on Shorts, exports, and timing."
+    },
+    {
+      "href": "/blog/how-to-generate-srt-subtitles",
+      "eyebrow": "Tutorial",
+      "title": "How to generate SRT subtitles",
+      "description": "Link to clean SRT — then style in your vertical editor."
+    },
+    {
+      "href": "/blog/best-ai-subtitle-generators-2026",
+      "eyebrow": "Comparison",
+      "title": "Best AI subtitle generators",
+      "description": "VEED, Kapwing, Descript, Cutup — tested for real friction."
+    }
+  ]
+}

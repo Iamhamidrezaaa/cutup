@@ -1,5 +1,6 @@
 import { getPool, isBillingDbConfigured } from './db/pool.js';
-import { PLANS } from './plans-config.js';
+import { PLANS, getPlanDef, resolvePlanKey } from './plans-config.js';
+import { createHash } from 'crypto';
 
 const UNLIMITED_EMAIL = 'h.asgarizade@gmail.com';
 
@@ -13,6 +14,30 @@ function dayUtc() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function normalizeSourceUrlForQuota(raw) {
+  const v = raw != null ? String(raw).trim() : '';
+  if (!v) return '';
+  try {
+    const u = new URL(v);
+    u.hash = '';
+    const params = Array.from(u.searchParams.entries())
+      .filter(([k]) => !/^utm_/i.test(k))
+      .sort(([a], [b]) => a.localeCompare(b));
+    u.search = params.length
+      ? `?${params.map(([k, val]) => `${encodeURIComponent(k)}=${encodeURIComponent(val)}`).join('&')}`
+      : '';
+    return u.toString();
+  } catch {
+    return v.replace(/\s+/g, '');
+  }
+}
+
+function sourceUrlHash(raw) {
+  const normalized = normalizeSourceUrlForQuota(raw);
+  if (!normalized) return '';
+  return createHash('sha256').update(normalized).digest('hex');
+}
+
 /**
  * Create user + default subscription + usage if missing.
  */
@@ -22,8 +47,20 @@ export async function ensureUserByEmail(email) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    let r = await client.query('SELECT id FROM users WHERE email = $1 FOR UPDATE', [email]);
+    let r = await client.query(
+      `SELECT id, COALESCE(account_status, 'active') AS account_status
+       FROM users WHERE lower(email) = lower($1) FOR UPDATE`,
+      [email]
+    );
     let userId;
+    if (r.rows.length > 0) {
+      const st = String(r.rows[0].account_status || 'active').toLowerCase();
+      if (st === 'deactivated' || st === 'banned') {
+        const err = new Error('ACCOUNT_DEACTIVATED');
+        err.code = 'ACCOUNT_DEACTIVATED';
+        throw err;
+      }
+    }
     if (r.rows.length === 0) {
       r = await client.query('INSERT INTO users (email) VALUES ($1) RETURNING id', [email]);
       userId = r.rows[0].id;
@@ -446,8 +483,8 @@ export async function applyUsageMinutesAtomic(email, deltaMinutes, usageType, me
 
     const subR = await client.query('SELECT * FROM subscriptions WHERE user_id = $1 FOR UPDATE', [userId]);
     const sub = subR.rows[0];
-    const planKey = sub?.plan || 'free';
-    const plan = PLANS[planKey];
+    const planKey = resolvePlanKey(sub?.plan || 'free');
+    const plan = getPlanDef(planKey);
     if (!plan) {
       await client.query('ROLLBACK');
       return { ok: false, reason: 'Invalid plan state.' };
@@ -473,43 +510,85 @@ export async function applyUsageMinutesAtomic(email, deltaMinutes, usageType, me
     const u = await lockUsageAndNormalizeClient(client, userId);
 
     if (delta > 0) {
-      const dAmt = Math.min(delta, MAX_MINUTE_DELTA);
-      if (planKey === 'free') {
-        if (u.dailyMinutes + dAmt > plan.dailyLimit) {
-          await client.query('ROLLBACK');
-          return {
-            ok: false,
-            reason: `Daily limit reached (${plan.dailyLimit} minutes). Try again tomorrow or upgrade.`
-          };
-        }
-        if (u.monthlyMinutes + dAmt > plan.monthlyLimit) {
-          await client.query('ROLLBACK');
-          return {
-            ok: false,
-            reason: `Monthly limit reached (${plan.monthlyLimit} minutes). Upgrade for more processing time.`
-          };
-        }
-      } else {
-        if (u.monthlyMinutes + dAmt > plan.monthlyLimit) {
-          await client.query('ROLLBACK');
-          return {
-            ok: false,
-            reason: `Monthly limit reached (${plan.monthlyLimit} minutes). Upgrade or wait for renewal.`
-          };
+      if (usageType !== 'transcription') {
+        await client.query('COMMIT');
+        return { ok: true };
+      }
+
+      const normalizedSourceUrl = normalizeSourceUrlForQuota(metadata?.sourceUrl || metadata?.url || '');
+      const normalizedSourceHash = sourceUrlHash(normalizedSourceUrl);
+      if (normalizedSourceHash) {
+        const reused = await client.query(
+          `SELECT id
+           FROM usage_history
+           WHERE user_id = $1
+             AND type = 'transcription'
+             AND metadata->>'sourceUrlHash' = $2
+             AND created_at >= date_trunc('month', NOW())
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          [userId, normalizedSourceHash]
+        );
+        if (reused.rows.length > 0) {
+          console.log('[quota-session]', {
+            sessionId: metadata?.processingSessionId || null,
+            sourceUrl: normalizedSourceUrl || null,
+            quotaIncremented: false,
+            reusedExistingPipeline: true,
+            translationOnly: false,
+            cacheHit: true
+          });
+          await client.query('COMMIT');
+          return { ok: true, reused: true };
         }
       }
 
-      const newMonthly = u.monthlyMinutes + dAmt;
-      const newDaily = u.dailyMinutes + dAmt;
+      const genLimit =
+        plan.monthlyGenerationLimit != null ? plan.monthlyGenerationLimit : plan.monthlyLimit;
+      const billUnits = 1;
+
+      if (planKey === 'free' && Number(plan.dailyLimit) < 50000) {
+        if (u.dailyMinutes + billUnits > plan.dailyLimit) {
+          await client.query('ROLLBACK');
+          return {
+            ok: false,
+            reason: 'Daily limit reached. Try again tomorrow or upgrade.'
+          };
+        }
+      }
+      if (u.monthlyMinutes + billUnits > genLimit) {
+        await client.query('ROLLBACK');
+        return {
+          ok: false,
+          reason: `You've used all ${genLimit} included generations this month. Upgrade for more capacity.`
+        };
+      }
+
+      const newMonthly = u.monthlyMinutes + billUnits;
+      const newDaily = u.dailyMinutes + billUnits;
       await client.query(
         `UPDATE usage SET minutes_used = $2, daily_minutes_used = $3, last_reset_at = NOW() WHERE user_id = $1`,
         [userId, newMonthly, newDaily]
       );
+      const usageMeta = {
+        ...(metadata || {}),
+        sourceUrlNorm: normalizedSourceUrl || null,
+        sourceUrlHash: normalizedSourceHash || null,
+        generations: billUnits
+      };
       await client.query(
         `INSERT INTO usage_history (user_id, type, minutes, metadata)
          VALUES ($1, $2, $3, $4::jsonb)`,
-        [userId, usageType, dAmt, JSON.stringify(metadata || {})]
+        [userId, usageType, billUnits, JSON.stringify(usageMeta)]
       );
+      console.log('[quota-session]', {
+        sessionId: metadata?.processingSessionId || null,
+        sourceUrl: normalizedSourceUrl || null,
+        quotaIncremented: true,
+        reusedExistingPipeline: false,
+        translationOnly: false,
+        cacheHit: false
+      });
     } else {
       const refund = Math.min(Math.abs(delta), MAX_MINUTE_DELTA);
       const newMonthly = Math.max(0, u.monthlyMinutes - refund);
@@ -559,8 +638,8 @@ export async function consumeDownloadSlotAtomic(email, kind, metadata = {}) {
 
     const subR = await client.query('SELECT * FROM subscriptions WHERE user_id = $1 FOR UPDATE', [userId]);
     const sub = subR.rows[0];
-    const planKey = sub?.plan || 'free';
-    const plan = PLANS[planKey];
+    const planKey = resolvePlanKey(sub?.plan || 'free');
+    const plan = getPlanDef(planKey);
     if (!plan) {
       await client.query('ROLLBACK');
       return { ok: false, reason: 'Invalid plan state.' };
@@ -609,6 +688,48 @@ export async function consumeDownloadSlotAtomic(email, kind, metadata = {}) {
     );
 
     await client.query('COMMIT');
+    return { ok: true, consumed: true };
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Refund one download slot after a failed extraction (social / yt-dlp).
+ * Safe to call if slot was never consumed.
+ */
+export async function refundDownloadSlotAtomic(email, kind, metadata = {}) {
+  if (email === UNLIMITED_EMAIL) return { ok: true };
+  if (kind !== 'audio' && kind !== 'video') return { ok: false, reason: 'Invalid download kind.' };
+
+  await ensureUserByEmail(email);
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const uRow = await client.query('SELECT id FROM users WHERE email = $1 FOR UPDATE', [email]);
+    const userId = uRow.rows[0]?.id;
+    if (!userId) {
+      await client.query('ROLLBACK');
+      return { ok: false, reason: 'User not found.' };
+    }
+    const u = await lockUsageAndNormalizeClient(client, userId);
+    const newAudio = kind === 'audio' ? Math.max(0, u.audioDownloads - 1) : u.audioDownloads;
+    const newVideo = kind === 'video' ? Math.max(0, u.videoDownloads - 1) : u.videoDownloads;
+    await client.query(
+      `UPDATE usage SET audio_downloads = $2, video_downloads = $3, last_reset_at = NOW() WHERE user_id = $1`,
+      [userId, newAudio, newVideo]
+    );
+    await client.query(
+      `INSERT INTO usage_history (user_id, type, minutes, metadata)
+       VALUES ($1, 'download', 0, $2::jsonb)`,
+      [userId, JSON.stringify({ ...metadata, kind, adjustment: 'refund' })]
+    );
+    await client.query('COMMIT');
+    console.log('[quota-session]', { email, kind, quotaIncremented: false, refunded: true });
     return { ok: true };
   } catch (e) {
     await client.query('ROLLBACK');
@@ -840,20 +961,20 @@ export async function getAdminOverviewDb() {
 }
 
 /** Admin Customers: editable plans (must match UI dropdown). */
-const ADMIN_CUSTOMER_PLAN_KEYS = new Set(['free', 'starter', 'pro', 'business', 'advanced']);
+const ADMIN_CUSTOMER_PLAN_KEYS = new Set(['free', 'starter', 'pro', 'business']);
 
 function planLabelForAdmin(planKey) {
-  const k = planKey && String(planKey).toLowerCase();
+  const k = resolvePlanKey(planKey);
   if (!k) return 'Free';
-  const def = PLANS[k];
+  const def = getPlanDef(k);
   if (def?.name) return def.name;
   return k.charAt(0).toUpperCase() + k.slice(1);
 }
 
 function subscriptionPriceLabel(planKey) {
-  const k = planKey && String(planKey).toLowerCase();
-  if (!k || !PLANS[k]) return '—';
-  const eur = PLANS[k].priceEur?.monthly;
+  const k = resolvePlanKey(planKey);
+  if (!k || !getPlanDef(k)) return '—';
+  const eur = getPlanDef(k).priceEur?.monthly;
   if (eur == null || Number(eur) === 0) return '€0';
   const n = Number(eur);
   return `€${Number.isInteger(n) ? n : n.toFixed(2)}`;
@@ -1202,6 +1323,10 @@ function isExcludedCustomerRole(roleVal) {
 
 export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200, forUserId = null } = {}) {
   await ensureUserProfilesTable();
+  if (isBillingDbConfigured()) {
+    const { ensureAccountSecuritySchema } = await import('./account-security-repository.js');
+    await ensureAccountSecuritySchema();
+  }
   const pool = getPool();
   const filters = [];
   const params = [];
@@ -1267,6 +1392,9 @@ export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200, 
        lp.last_pay_currency,
        lp.last_pay_plan_key,
        u.created_at,
+       COALESCE(u.account_status, 'active') AS account_status,
+       u.deleted_at,
+       u.deletion_reason,
        us.minutes_used,
        COALESCE(so.saved_count, 0)::int AS saved_outputs_count,
        last_h.created_at AS last_activity_at,
@@ -1275,9 +1403,19 @@ export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200, 
        up.phone AS prof_phone,
        up.country AS prof_country,
        up.address AS prof_address,
-       up.postal_code AS prof_postal_code
+       up.postal_code AS prof_postal_code,
+       cooldown.blocked_until AS cooldown_blocked_until,
+       cooldown.reason AS cooldown_reason
      FROM users u
      LEFT JOIN user_profiles up ON up.user_id = u.id
+     LEFT JOIN LATERAL (
+       SELECT blocked_until, reason
+       FROM deleted_account_cooldowns dac
+       WHERE dac.email_normalized = lower(u.email)
+         AND dac.blocked_until > NOW()
+       ORDER BY dac.blocked_until DESC
+       LIMIT 1
+     ) cooldown ON true
      LEFT JOIN subscriptions s ON s.user_id = u.id
      LEFT JOIN usage us ON us.user_id = u.id
      LEFT JOIN (
@@ -1318,11 +1456,37 @@ export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200, 
       const planResolved = resolvePlanKeyForCustomer(row.email, effectivePlanKey);
       const subPlan = planResolved;
 
+      const accountStatusDb = String(row.account_status || 'active').toLowerCase();
+      const cooldownUntilRaw = row.cooldown_blocked_until;
+      const cooldownUntilIso = cooldownUntilRaw?.toISOString
+        ? cooldownUntilRaw.toISOString()
+        : cooldownUntilRaw || null;
+      const hasActiveCooldown =
+        cooldownUntilRaw && new Date(cooldownUntilRaw).getTime() > Date.now();
+      const hasDeletedAt = Boolean(row.deleted_at);
+      const isAccountDeactivated =
+        accountStatusDb === 'deactivated' ||
+        accountStatusDb === 'banned' ||
+        hasDeletedAt ||
+        hasActiveCooldown;
+      const accountStatus = isAccountDeactivated ? 'deactivated' : 'active';
+
+      if (isAccountDeactivated) {
+        console.log('[admin-user-status]', {
+          email: row.email,
+          active: false,
+          cooldown: hasActiveCooldown,
+          deleted: hasDeletedAt || accountStatusDb === 'deactivated' || accountStatusDb === 'banned'
+        });
+      }
+
       const uiStatus =
-        hasSubscriptionRow &&
-        String(row.subscription_status || 'active').toLowerCase() === 'canceled'
-          ? 'inactive'
-          : 'active';
+        isAccountDeactivated
+          ? 'deactivated'
+          : hasSubscriptionRow &&
+              String(row.subscription_status || 'active').toLowerCase() === 'canceled'
+            ? 'inactive'
+            : 'active';
 
       const profile = {
         first_name: row.prof_first_name || '',
@@ -1377,7 +1541,14 @@ export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200, 
         profile,
         plan: planResolved,
         planLabel: planLabelForAdmin(planResolved),
-        status: hasSubscriptionRow ? uiStatus : 'active',
+        status: uiStatus,
+        accountStatus,
+        accountStatusDb,
+        cooldownActive: hasActiveCooldown,
+        cooldownUntil: cooldownUntilIso,
+        cooldownReason: row.cooldown_reason || null,
+        deletedAt: row.deleted_at?.toISOString ? row.deleted_at.toISOString() : row.deleted_at || null,
+        deletionReason: row.deletion_reason || null,
         subscription: subscriptionObj,
         lastPayment:
           row.last_pay_at
@@ -1435,6 +1606,7 @@ export async function adminPatchCustomerUser(userId, patch = {}) {
     name,
     plan,
     status,
+    account_status: accountStatusPatch,
     email: emailPatch,
     first_name,
     last_name,
@@ -1453,6 +1625,14 @@ export async function adminPatchCustomerUser(userId, patch = {}) {
   }
   if (statusStr !== undefined && !['active', 'inactive'].includes(statusStr)) {
     return { ok: false, error: 'invalid_status' };
+  }
+  const accountStatusStr =
+    accountStatusPatch !== undefined ? String(accountStatusPatch).trim().toLowerCase() : undefined;
+  if (
+    accountStatusStr !== undefined &&
+    !['active', 'deactivated', 'banned'].includes(accountStatusStr)
+  ) {
+    return { ok: false, error: 'invalid_account_status' };
   }
 
   const anyProfileField = [
@@ -1539,6 +1719,28 @@ export async function adminPatchCustomerUser(userId, patch = {}) {
         ]);
       }
     }
+    if (accountStatusStr !== undefined) {
+      if (accountStatusStr === 'active') {
+        await client.query(
+          `UPDATE users SET account_status = 'active', deleted_at = NULL, deletion_reason = NULL WHERE id = $1::uuid`,
+          [uid]
+        );
+        await client.query(
+          `DELETE FROM deleted_account_cooldowns WHERE email_normalized = lower($1)`,
+          [accountEmail]
+        );
+        console.log('[account-restored]', { userId: uid, email: accountEmail });
+      } else {
+        await client.query(
+          `UPDATE users
+           SET account_status = $2,
+               deleted_at = COALESCE(deleted_at, NOW()),
+               deletion_reason = COALESCE(deletion_reason, 'admin_set')
+           WHERE id = $1::uuid`,
+          [uid, accountStatusStr]
+        );
+      }
+    }
     if (planStr !== undefined || statusStr !== undefined) {
       const cur = await client.query(
         'SELECT plan, status FROM subscriptions WHERE user_id = $1::uuid FOR UPDATE',
@@ -1579,17 +1781,8 @@ export async function adminPatchCustomerUser(userId, patch = {}) {
 }
 
 export async function adminDeleteCustomerUser(userId) {
-  const pool = getPool();
-  const uid = String(userId || '').trim();
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uid)) {
-    return { ok: false, error: 'invalid_id' };
-  }
-  const uRes = await pool.query('SELECT id, email FROM users WHERE id = $1::uuid', [uid]);
-  if (!uRes.rows[0]) return { ok: false, error: 'not_found' };
-  const adm = await pool.query('SELECT 1 FROM admins WHERE lower(email) = lower($1)', [uRes.rows[0].email]);
-  if (adm.rows.length) return { ok: false, error: 'cannot_delete_admin' };
-  await pool.query('DELETE FROM users WHERE id = $1::uuid', [uid]);
-  return { ok: true };
+  const { deleteCustomerAccountCompletely } = await import('./account-security-repository.js');
+  return deleteCustomerAccountCompletely(userId, { deletionReason: 'admin_deleted' });
 }
 
 export async function getAdminUsageDb({ type = 'all', platform = 'all', startDate = '', endDate = '', limit = 300 } = {}) {
@@ -1684,7 +1877,11 @@ export async function listAdminBlogPostsDb(limit = 200) {
      LIMIT $1`,
     [Math.min(Math.max(Number(limit) || 200, 1), 500)]
   );
-  return r.rows.map((row) => ({
+  return r.rows.map((row) => mapBlogPostRow(row));
+}
+
+function mapBlogPostRow(row) {
+  return {
     id: String(row.id),
     slug: row.slug,
     title: row.title,
@@ -1699,10 +1896,61 @@ export async function listAdminBlogPostsDb(limit = 200) {
     canonicalUrl: row.canonical_url,
     ogTitle: row.og_title,
     ogDescription: row.og_description,
+    htmlPath: row.html_path || null,
     createdAt: row.created_at?.toISOString ? row.created_at.toISOString() : row.created_at,
     updatedAt: row.updated_at?.toISOString ? row.updated_at.toISOString() : row.updated_at,
-    publishedAt: row.published_at?.toISOString ? row.published_at.toISOString() : row.published_at
-  }));
+    publishedAt: row.published_at?.toISOString ? row.published_at.toISOString() : row.published_at,
+    contentHtml: row.content_html || null,
+    readingTimeMinutes:
+      row.reading_time_minutes != null ? Number(row.reading_time_minutes) : null,
+    seoTitle: row.seo_title || null,
+    ogImageUrl: row.og_image_url || null,
+    authorEmail: row.author_email || null
+  };
+}
+
+export async function listPublishedBlogPostsDb(limit = 200) {
+  const pool = getPool();
+  const r = await pool.query(
+    `SELECT *
+     FROM blog_posts
+     WHERE status = 'published'
+     ORDER BY published_at DESC NULLS LAST, updated_at DESC
+     LIMIT $1`,
+    [Math.min(Math.max(Number(limit) || 200, 1), 500)]
+  );
+  return r.rows.map((row) => mapBlogPostRow(row));
+}
+
+export async function getBlogPostByIdDb(id) {
+  const pool = getPool();
+  const idStr = String(id || '').trim();
+  if (!idStr) return null;
+  const r = await pool.query('SELECT * FROM blog_posts WHERE id = $1::bigint LIMIT 1', [idStr]);
+  return r.rows[0] ? mapBlogPostRow(r.rows[0]) : null;
+}
+
+export async function getBlogPostBySlugDb(slug) {
+  const pool = getPool();
+  const s = String(slug || '').trim();
+  if (!s) return null;
+  const r = await pool.query('SELECT * FROM blog_posts WHERE slug = $1::text LIMIT 1', [s]);
+  return r.rows[0] ? mapBlogPostRow(r.rows[0]) : null;
+}
+
+export async function updateBlogPostHtmlPathDb(id, htmlPath) {
+  const pool = getPool();
+  const idStr = String(id || '').trim();
+  if (!idStr) return;
+  try {
+    await pool.query(
+      `UPDATE blog_posts SET html_path = $2::text, updated_at = NOW() WHERE id = $1::bigint`,
+      [idStr, htmlPath || null]
+    );
+  } catch (err) {
+    if (!String(err?.message || '').toLowerCase().includes('html_path')) throw err;
+    console.warn('[blog] html_path column missing — run schema-blog-html-path.sql');
+  }
 }
 
 async function resolveAdminBlogPostTargetId(pool, explicitId, slug) {
@@ -1737,7 +1985,13 @@ export async function saveAdminBlogPostDb(payload = {}) {
   if (!slug || !title) {
     throw new Error('slug_and_title_required');
   }
-  const normalizedStatus = status === 'published' ? 'published' : 'draft';
+  const rawStatus = String(status || 'draft').toLowerCase();
+  const cmsStatuses = new Set(['draft', 'published', 'scheduled', 'archived', 'trash']);
+  const normalizedStatus = cmsStatuses.has(rawStatus)
+    ? rawStatus
+    : rawStatus === 'deleted'
+      ? 'trash'
+      : 'draft';
   const cleanTags = Array.isArray(tags)
     ? tags.map((t) => String(t).trim()).filter(Boolean).slice(0, 30)
     : [];
@@ -1854,8 +2108,8 @@ export async function canUseFeatureDb(email, feature, videoDurationMinutes = 0) 
 
   await ensureUserByEmail(email);
   const sub = await getSubscriptionRowByEmail(email);
-  const planKey = sub?.plan || 'free';
-  const plan = PLANS[planKey];
+  const planKey = resolvePlanKey(sub?.plan || 'free');
+  const plan = getPlanDef(planKey);
   if (!plan) {
     return { allowed: false, reason: 'Invalid plan state.' };
   }
@@ -1895,28 +2149,38 @@ export async function canUseFeatureDb(email, feature, videoDurationMinutes = 0) 
         };
       }
     }
+    return { allowed: true };
   }
 
-  if (planKey === 'free') {
-    if (usage.dailyMinutes + videoDurationMinutes > plan.dailyLimit) {
+  const genLimit =
+    plan.monthlyGenerationLimit != null ? plan.monthlyGenerationLimit : plan.monthlyLimit;
+  const maxJob = plan.maxJobMinutes != null ? plan.maxJobMinutes : 180;
+  const usedGens = usage.monthlyMinutes;
+
+  if (feature === 'transcription') {
+    if (usedGens + 1 > genLimit) {
       return {
         allowed: false,
-        reason: `Daily limit reached (${plan.dailyLimit} minutes). Try again tomorrow or upgrade.`
+        reason: `You've used all ${genLimit} included generations this month. Upgrade for more capacity.`
       };
     }
-    if (usage.monthlyMinutes + videoDurationMinutes > plan.monthlyLimit) {
+    if (videoDurationMinutes > maxJob) {
       return {
         allowed: false,
-        reason: `Monthly limit reached (${plan.monthlyLimit} minutes). Upgrade for more processing time.`
+        reason: `This run exceeds the maximum length for one generation on your plan (${maxJob} minutes). Try a shorter clip or upgrade.`
       };
     }
-  } else {
-    if (usage.monthlyMinutes + videoDurationMinutes > plan.monthlyLimit) {
+    return { allowed: true };
+  }
+
+  if (feature === 'summarization' || feature === 'srt' || feature === 'subtitles') {
+    if (usedGens >= genLimit) {
       return {
         allowed: false,
-        reason: `Monthly limit reached (${plan.monthlyLimit} minutes). Upgrade or wait for renewal.`
+        reason: `You've used all ${genLimit} included generations this month. Upgrade for more capacity.`
       };
     }
+    return { allowed: true };
   }
 
   return { allowed: true };
@@ -2107,16 +2371,32 @@ export async function mergeRetentionGuestToUser(guestKey, email) {
 }
 
 /** Pending payment row; plan_key is source of truth for upgrades (not amount). */
-export async function insertPaymentPending({ email, provider, amount, amountIrr = null, currency, externalId, planKey, discountCode }) {
+export async function insertPaymentPending({
+  email,
+  provider,
+  amount,
+  amountIrr = null,
+  currency,
+  externalId,
+  providerOrderId = null,
+  planKey,
+  discountCode,
+  originalAmountEur = null,
+  discountAmountEur = null,
+  finalAmountEur = null,
+  appliedOfferId = null
+}) {
   const userId = await ensureUserByEmail(email);
   const pool = getPool();
-  const pk = planKey && PLANS[planKey] ? String(planKey).slice(0, 32) : null;
+  const pk = planKey && getPlanDef(planKey) ? String(resolvePlanKey(planKey)).slice(0, 32) : null;
   const dc = discountCode ? String(discountCode).slice(0, 32) : null;
+  const orderId = providerOrderId ? String(providerOrderId).slice(0, 64) : null;
   const r = await pool.query(
     `INSERT INTO payments (
-      user_id, provider, gateway, status, amount, amount_eur, amount_irr, currency, external_id, authority, plan_key, plan, discount_code
+      user_id, provider, gateway, status, amount, amount_eur, amount_irr, currency,
+      external_id, authority, plan_key, plan, discount_code, provider_order_id
      )
-     VALUES ($1, $2, $2, 'pending', $3, $3, $4, $5, $6, $6, $7, $7, $8)
+     VALUES ($1, $2, $2, 'pending', $3, $9, $4, $5, $6, $6, $7, $7, $8, $10)
      RETURNING id`,
     [
       userId,
@@ -2126,7 +2406,24 @@ export async function insertPaymentPending({ email, provider, amount, amountIrr 
       String(currency || 'EUR').slice(0, 8),
       externalId ? String(externalId).slice(0, 255) : null,
       pk,
-      dc
+      dc,
+      finalAmountEur != null ? Number(finalAmountEur) : (amount != null ? Number(amount) : null),
+      orderId
+    ]
+  );
+  await pool.query(
+    `UPDATE payments
+     SET original_amount_eur = COALESCE($2::numeric, original_amount_eur),
+         discount_amount_eur = COALESCE($3::numeric, discount_amount_eur),
+         final_amount_eur = COALESCE($4::numeric, final_amount_eur),
+         applied_offer_id = COALESCE($5::uuid, applied_offer_id)
+     WHERE id = $1::uuid`,
+    [
+      r.rows[0].id,
+      originalAmountEur != null ? Number(originalAmountEur) : null,
+      discountAmountEur != null ? Number(discountAmountEur) : null,
+      finalAmountEur != null ? Number(finalAmountEur) : null,
+      appliedOfferId || null
     ]
   );
   return r.rows[0].id;
@@ -2208,6 +2505,36 @@ export async function updatePaymentExternalId(paymentId, email, externalId) {
   return r.rowCount > 0;
 }
 
+export async function setPaymentProviderOrderId(paymentId, email, providerOrderId) {
+  const pool = getPool();
+  const r = await pool.query(
+    `UPDATE payments p SET provider_order_id = $3, updated_at = NOW()
+     FROM users u WHERE p.id = $1::uuid AND p.user_id = u.id AND u.email = $2
+     RETURNING p.id`,
+    [paymentId, email, String(providerOrderId).slice(0, 64)]
+  );
+  return r.rowCount > 0;
+}
+
+/** Reset failed payment for YekPay retry with a fresh gateway order id. */
+export async function preparePaymentYekpayRetry(email, paymentId, providerOrderId) {
+  const pool = getPool();
+  const r = await pool.query(
+    `UPDATE payments p SET
+       status = 'pending',
+       provider_order_id = $3,
+       external_id = NULL,
+       authority = NULL,
+       updated_at = NOW()
+     FROM users u
+     WHERE p.id = $1::uuid AND p.user_id = u.id AND lower(u.email) = lower($2)
+       AND p.status = 'failed'
+     RETURNING p.id`,
+    [paymentId, email, String(providerOrderId).slice(0, 64)]
+  );
+  return r.rowCount > 0;
+}
+
 export async function getPaymentForUserById(paymentId, email) {
   const pool = getPool();
   const r = await pool.query(
@@ -2230,6 +2557,21 @@ export async function getPaymentByProviderExternalId(provider, externalId) {
      ORDER BY p.created_at DESC
      LIMIT 1`,
     [String(provider || '').slice(0, 64), String(externalId || '').slice(0, 255)]
+  );
+  return r.rows[0] || null;
+}
+
+export async function getPaymentByProviderOrderId(provider, providerOrderId) {
+  const pool = getPool();
+  const r = await pool.query(
+    `SELECT p.*, u.email
+     FROM payments p
+     JOIN users u ON u.id = p.user_id
+     WHERE lower(p.provider) = lower($1)
+       AND p.provider_order_id = $2
+     ORDER BY p.created_at DESC
+     LIMIT 1`,
+    [String(provider || '').slice(0, 64), String(providerOrderId || '').slice(0, 64)]
   );
   return r.rows[0] || null;
 }
@@ -2269,12 +2611,12 @@ export async function finalizePendingPaymentSuccess(
       await client.query('ROLLBACK');
       return { ok: false, error: row.status };
     }
-    const fromDb = row.plan_key ? String(row.plan_key).toLowerCase() : '';
-    const fromArg = planKey ? String(planKey).toLowerCase() : '';
+    const fromDb = row.plan_key ? resolvePlanKey(row.plan_key) : '';
+    const fromArg = planKey ? resolvePlanKey(planKey) : '';
     const pk =
-      fromDb && PLANS[fromDb]
+      fromDb && getPlanDef(fromDb)
         ? fromDb
-        : fromArg && PLANS[fromArg]
+        : fromArg && getPlanDef(fromArg)
           ? fromArg
           : null;
     if (!pk) {
@@ -2318,11 +2660,13 @@ export async function markPaymentSuccess(paymentId, { refId = null, paidAt = new
          ref_id = COALESCE($3, ref_id),
          amount_irr = COALESCE($4::numeric, amount_irr),
          updated_at = NOW()
-     WHERE id = $1::uuid
+     WHERE id = $1::uuid AND status = 'pending'
      RETURNING *`,
     [paymentId, paidAt, refId, amountIrr]
   );
-  return r.rows[0] || null;
+  if (r.rows[0]) return r.rows[0];
+  const ex = await pool.query(`SELECT * FROM payments WHERE id = $1::uuid`, [paymentId]);
+  return ex.rows[0]?.status === 'success' ? ex.rows[0] : null;
 }
 
 export async function markPaymentFailed(paymentId, errorMessage = null) {

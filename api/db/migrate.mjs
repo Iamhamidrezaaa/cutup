@@ -17,6 +17,21 @@ async function main() {
   const sql = readFileSync(join(__dirname, 'schema.sql'), 'utf8');
   await getPool().query(sql);
   console.log('Migration applied: schema.sql');
+  const cmsSql = readFileSync(join(__dirname, 'schema-cms.sql'), 'utf8');
+  await getPool().query(cmsSql);
+  console.log('Migration applied: schema-cms.sql');
+  const cmsSoft = readFileSync(join(__dirname, 'schema-cms-soft-delete.sql'), 'utf8');
+  await getPool().query(cmsSoft);
+  console.log('Migration applied: schema-cms-soft-delete.sql');
+  const cmsTax = readFileSync(join(__dirname, 'schema-cms-taxonomy.sql'), 'utf8');
+  await getPool().query(cmsTax);
+  console.log('Migration applied: schema-cms-taxonomy.sql');
+  const cmsTrash = readFileSync(join(__dirname, 'schema-cms-status-trash.sql'), 'utf8');
+  await getPool().query(cmsTrash);
+  console.log('Migration applied: schema-cms-status-trash.sql');
+  const blogHtml = readFileSync(join(__dirname, 'schema-blog-html-path.sql'), 'utf8');
+  await getPool().query(blogHtml);
+  console.log('Migration applied: schema-blog-html-path.sql');
   await closePool();
 }
 

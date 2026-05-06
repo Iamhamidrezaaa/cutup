@@ -23,7 +23,16 @@ module.exports = {
   SMTP_PASS: '',
   SMTP_FROM: 'Cutup <you@gmail.com>',
   // Protect GET/POST /api/cron/conversion-emails (Vercel Cron sends Authorization: Bearer <secret>)
-  CRON_SECRET: ''
+  CRON_SECRET: '',
+  // --- YekPay (production): set these in the Node server `.env` or host env (never in the browser / never commit secrets) ---
+  // YEKPAY_MERCHANT=your_live_merchant_code
+  // Optional legacy name: YEKPAY_MERCHANT_ID (same value)
+  // EUR_TO_IRR=550000
+  // Optional legacy: YEKPAY_EUR_TO_IRR (same as EUR_TO_IRR)
+  // YEKPAY_CALLBACK_URL=https://cutup.shop/api/payment/callback
+  // YEKPAY_FETCH_TIMEOUT_MS=22000
+  // Production default API: https://gate.ypsapi.com — override only with YEKPAY_API_BASE_URL if required
+  // YEKPAY_SANDBOX_MODE must be false or unset in production; if true you must set YEKPAY_API_BASE_URL explicitly
 };
 
 // توجه: این فایل در .gitignore است و commit نمی‌شود

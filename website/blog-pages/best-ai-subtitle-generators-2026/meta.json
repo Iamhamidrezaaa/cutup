@@ -1,0 +1,44 @@
+{
+  "slug": "best-ai-subtitle-generators-2026",
+  "title": "Best AI Subtitle Generators in 2026",
+  "titleSuffix": "(Tested by Real Creators)",
+  "deck": "Six weeks. Fifteen videos. Five subtitle tools that creators actually use in 2026. We graded each one on the things that matter at 11pm before a publish deadline — not feature lists.",
+  "excerpt": "A creator-first comparison of VEED, Kapwing, Descript, Cutup, and Opus Clip in 2026 — focused on workflow speed, mobile reliability, SRT export, and the friction nobody talks about.",
+  "category": "Guides",
+  "tags": ["ai-subtitles", "subtitle-generator", "srt-generator", "creator-tools", "youtube-shorts", "comparison"],
+  "eyebrow": "Guides · Creator workflows",
+  "author": "Cutup Editorial",
+  "authorInitials": "CT",
+  "authorRole": "Workflow research · 6 weeks of testing",
+  "publishedAt": "2026-05-18",
+  "updatedAt": "2026-05-18",
+  "readingTimeMinutes": 10,
+  "coverImageUrl": "/cms-media/images/blog/ai-subtitle-generators-2026-cover.jpg",
+  "heroImageAlt": "AI subtitle generators 2026 — creator workspace with floating captions",
+  "metaTitle": "Best AI Subtitle Generators in 2026 (Tested by Real Creators) — Cutup",
+  "metaDescription": "Six weeks of testing VEED, Kapwing, Descript, Cutup, and Opus Clip. A creator-focused 2026 comparison of subtitle workflows, SRT export, mobile reliability, and the friction nobody talks about.",
+  "ogTitle": "Best AI Subtitle Generators in 2026 (Tested by Real Creators)",
+  "ogDescription": "Six weeks of testing VEED, Kapwing, Descript, Cutup, and Opus Clip — a creator-first 2026 comparison.",
+  "status": "published",
+  "source": "static",
+  "related": [
+    {
+      "href": "/blog/how-to-generate-srt-subtitles",
+      "eyebrow": "Tutorial",
+      "title": "How to generate SRT subtitles",
+      "description": "The clean way to produce a timing-accurate SRT file from any video source."
+    },
+    {
+      "href": "/blog/why-youtube-auto-captions-fail-2026",
+      "eyebrow": "Guide",
+      "title": "Why YouTube auto captions still fail",
+      "description": "Honest look at Studio caption limits, Shorts pain, and when external tools win."
+    },
+    {
+      "href": "/blog/best-subtitle-workflow-youtube-shorts-2026",
+      "eyebrow": "Guide",
+      "title": "Best subtitle workflow for YouTube Shorts",
+      "description": "Mobile-first Shorts caption workflow — safe zones, tools, and retention."
+    }
+  ]
+}

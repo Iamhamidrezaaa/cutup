@@ -52,12 +52,12 @@ function fixPersianBidi(text) {
       let fixed = line;
       
       // First, protect email addresses and URLs (they contain @ and : which might interfere)
-      const protected = [];
+      const protectedTokens = [];
       fixed = fixed.replace(
         /(https?:\/\/[^\s\u0600-\u06FF]+|[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z]{2,})/g,
         (match) => {
-          const placeholder = `__PROTECTED_${protected.length}__`;
-          protected.push({ placeholder, value: match });
+          const placeholder = `__PROTECTED_${protectedTokens.length}__`;
+          protectedTokens.push({ placeholder, value: match });
           return placeholder;
         }
       );
@@ -75,7 +75,7 @@ function fixPersianBidi(text) {
       );
       
       // Restore protected email addresses and URLs
-      protected.forEach(({ placeholder, value }) => {
+      protectedTokens.forEach(({ placeholder, value }) => {
         fixed = fixed.replace(placeholder, `${LTR}${value}${LTR}`);
       });
       
@@ -139,7 +139,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Content is required and must be a string' });
     }
 
-    if (!(await enforceQuota(res, userEmail, 'summarization', 0))) return;
+    if (!(await enforceQuota(res, userEmail, 'summarization', 0, req))) return;
 
     console.log(`GENERATE_DOCX: Generating DOCX for ${filename || 'document'}, content length: ${content.length}`);
 

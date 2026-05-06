@@ -206,3 +206,15 @@
     }
   }
 })();
+
+(function cutupLoadBackToTop() {
+  try {
+    if (document.documentElement.dataset.cutupBackToTop === 'off') return;
+    var s = document.createElement('script');
+    s.src = '/back-to-top.js?v=1';
+    s.defer = true;
+    (document.head || document.documentElement).appendChild(s);
+  } catch (_e) {
+    /* ignore */
+  }
+})();

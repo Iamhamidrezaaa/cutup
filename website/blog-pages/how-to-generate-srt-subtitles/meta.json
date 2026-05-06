@@ -1,0 +1,87 @@
+{
+  "slug": "how-to-generate-srt-subtitles",
+  "title": "How to Generate SRT Subtitles for YouTube Videos",
+  "titleSuffix": "in 2026",
+  "deck": "YouTube auto-captions look fine until you need a real file. Here’s the creator workflow we actually use to generate SRT subtitles — from link paste to export — without living inside a heavy editor.",
+  "excerpt": "Learn how to generate SRT subtitles for YouTube in 2026: what SRT files are, manual vs AI workflows, tool comparison, mobile pitfalls, and a step-by-step path from video link to clean export.",
+  "category": "Tutorials",
+  "tags": [
+    "generate-srt-subtitles",
+    "youtube-subtitle-generator",
+    "ai-srt-generator",
+    "srt-export",
+    "subtitle-workflow",
+    "youtube-captions",
+    "subtitle-file-generator"
+  ],
+  "eyebrow": "Tutorial · YouTube workflow",
+  "author": "Cutup Editorial",
+  "authorInitials": "CT",
+  "authorRole": "Subtitle workflows · field-tested May 2026",
+  "publishedAt": "2026-05-19",
+  "updatedAt": "2026-05-19",
+  "readingTimeMinutes": 12,
+  "coverImageUrl": "/cms-media/images/blog/how-to-generate-srt-subtitles-cover.jpg",
+  "heroImageAlt": "Creator generating SRT subtitles for a YouTube video on a modern workspace",
+  "heroImagePrompt": "Cinematic editorial photograph, realistic creator desk at dusk, laptop showing a YouTube video timeline with a subtitle track and SRT file icon, soft purple-blue accent lighting from the screen, shallow depth of field, premium SaaS blog aesthetic, clean modern UI glow, no logos, no text overlays, no cyberpunk, no animals, 16:9 hero composition.",
+  "metaTitle": "How to Generate SRT Subtitles for YouTube (2026 Guide) — Cutup",
+  "metaDescription": "Generate SRT subtitles for YouTube the way creators actually do it in 2026: SRT basics, AI vs manual workflows, tool comparison, mobile tips, and a step-by-step export guide.",
+  "ogTitle": "How to Generate SRT Subtitles for YouTube Videos in 2026",
+  "ogDescription": "A practical guide to generating SRT subtitle files for YouTube — tools, tradeoffs, and a workflow that doesn’t break on mobile.",
+  "status": "published",
+  "source": "static",
+  "faqSchema": [
+    {
+      "question": "What is an SRT subtitle file?",
+      "answer": "An SRT (SubRip) file is a plain-text subtitle format with numbered cues, start/end timestamps, and caption lines. Video editors and YouTube accept SRT uploads to display timed captions on your video."
+    },
+    {
+      "question": "How do I generate subtitles automatically?",
+      "answer": "Upload your video or paste a YouTube link into an AI subtitle tool. The service transcribes speech, assigns timestamps, and lets you download an SRT. Review the file before publishing — especially names and technical terms."
+    },
+    {
+      "question": "Can I export subtitles from YouTube?",
+      "answer": "Sometimes. If YouTube auto-captions exist for your video, Studio may let you download a caption file. Availability varies by channel, language, and whether you own the content. It is not a reliable production workflow."
+    },
+    {
+      "question": "Are AI subtitle generators accurate?",
+      "answer": "For clear English speech, modern AI tools produce a strong first draft. Accuracy drops with heavy accents, crosstalk, and background music. Always skim the SRT before upload."
+    },
+    {
+      "question": "Which subtitle tool works best on mobile?",
+      "answer": "Lightweight tools that return a file quickly — without loading a full browser editor — work best on phones. Heavy timeline UIs often lag or fail on mobile browsers."
+    },
+    {
+      "question": "Can I edit SRT files manually?",
+      "answer": "Yes. SRT is plain text. You can edit in any text editor, Subtitle Edit, or inside your NLE. Fix wording and timing, then re-import to YouTube or your editor."
+    },
+    {
+      "question": "How do I fix SRT timing drift after editing video?",
+      "answer": "Re-align cues to your final cut: either re-export subtitles from the finished timeline, or shift cue timestamps in your editor. Avoid editing video after subtitles without updating the SRT."
+    },
+    {
+      "question": "Does YouTube accept SRT uploads?",
+      "answer": "Yes. In YouTube Studio, open Subtitles for a video, upload your SRT, and review the preview. Match the language label to your caption track."
+    }
+  ],
+  "related": [
+    {
+      "href": "/blog/best-ai-subtitle-generators-2026",
+      "eyebrow": "Comparison",
+      "title": "Best AI subtitle generators in 2026",
+      "description": "We tested VEED, Kapwing, Descript, Cutup, and more — graded on SRT export, mobile, and real friction."
+    },
+    {
+      "href": "/blog/why-youtube-auto-captions-fail-2026",
+      "eyebrow": "Guide",
+      "title": "Why YouTube auto captions still fail",
+      "description": "Where Studio captions help, where they break, and why creators export SRT elsewhere."
+    },
+    {
+      "href": "/#pricing",
+      "eyebrow": "Product",
+      "title": "Cutup plans & pricing",
+      "description": "Free tier for occasional exports — upgrade when you publish daily."
+    }
+  ]
+}

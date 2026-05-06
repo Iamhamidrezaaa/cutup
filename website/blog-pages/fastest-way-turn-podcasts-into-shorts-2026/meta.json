@@ -1,0 +1,93 @@
+{
+  "slug": "fastest-way-turn-podcasts-into-shorts-2026",
+  "title": "I Tested 7 Ways to Turn Podcasts Into Shorts",
+  "titleSuffix": "(Here’s the Fastest)",
+  "deck": "Seven podcast-to-Shorts workflows, one week of real episodes, and a lot of bad AI clip picks later — here’s what actually saved time (and what was way slower than the ads promised).",
+  "excerpt": "We tested 7 different podcast-to-Shorts workflows in 2026 — from AI clipping tools to manual editing — to find the fastest setup that actually works.",
+  "category": "Guides",
+  "tags": [
+    "podcast-workflow",
+    "youtube-shorts",
+    "tiktok-clips",
+    "ai-clipping",
+    "subtitle-workflow",
+    "creator-tools",
+    "repurpose-content"
+  ],
+  "eyebrow": "Guides · Podcast → Shorts tests",
+  "author": "Cutup Editorial",
+  "authorInitials": "CT",
+  "authorRole": "Podcast repurposing · 7-workflow field test",
+  "publishedAt": "2026-05-29",
+  "updatedAt": "2026-05-29",
+  "readingTimeMinutes": 12,
+  "coverImageUrl": "/cms-media/images/blog/fastest-way-turn-podcasts-into-shorts-2026-cover.jpg",
+  "heroImageAlt": "Creator turning a long podcast episode into multiple vertical Shorts clips with subtitles",
+  "heroImagePrompt": "Photorealistic 16:9 1920x1080 full-bleed blog cover, creator desk podcast-to-Shorts workflow, purple-blue lighting, bold white headline with black stroke in upper third only: TURN PODCASTS INTO SHORTS FAST, no letterboxing, no black bars, text fully inside upper 35% safe zone, bottom third text-free, no fake logos.",
+  "metaTitle": "I Tested 7 Ways to Turn Podcasts Into Shorts (Here’s the Fastest) — Cutup",
+  "metaDescription": "We tested 7 different podcast-to-Shorts workflows in 2026 — from AI clipping tools to manual editing — to find the fastest setup that actually works.",
+  "ogTitle": "I Tested 7 Ways to Turn Podcasts Into Shorts (Here’s the Fastest)",
+  "ogDescription": "Seven real workflows compared: AI clipping, CapCut mobile, Premiere manual, transcript-first — what broke and what shipped.",
+  "status": "published",
+  "source": "static",
+  "faqSchema": [
+    {
+      "question": "What is the fastest way to turn podcasts into Shorts?",
+      "answer": "For most solo creators: AI or manual clip selection on the long episode, cut vertical masters, generate transcript/SRT in a lightweight tool, finish captions in CapCut, export 9:16. The fastest stack minimizes re-transcribing and giant browser timelines."
+    },
+    {
+      "question": "Can AI automatically create podcast clips?",
+      "answer": "Yes — Opus Clip, Descript, and similar tools suggest moments and vertical exports. Accuracy varies; you still fix context, hooks, names, and framing. AI is a search engine for moments, not a full editor."
+    },
+    {
+      "question": "What tools work best for podcast subtitles?",
+      "answer": "Transcript-first tools for SRT (Cutup, Descript) plus mobile burn-in (CapCut, TikTok). Avoid re-transcribing the same audio in every app — one master transcript saves the most time."
+    },
+    {
+      "question": "How do creators make TikTok clips from podcasts?",
+      "answer": "Export vertical MP4 with burned-in captions or upload to TikTok and auto-caption, then rewrite the hook line. For cross-posting, generate SRT once and reuse styling rules."
+    },
+    {
+      "question": "Is CapCut good for podcast clips?",
+      "answer": "Yes for finishing: import vertical cuts, auto-caption, template styling, fast export. Weak for finding moments in hour-long audio — do clip selection elsewhere first."
+    },
+    {
+      "question": "What aspect ratio works best for Shorts?",
+      "answer": "9:16 vertical (1080×1920). Cut vertical masters early; cropping landscape last creates caption and framing problems."
+    },
+    {
+      "question": "Can I create podcast clips on mobile?",
+      "answer": "Yes for finishing and posting. Long-form clip mining and transcript cleanup are faster on desktop or lightweight browser tools, then hand off to phone for burn-in."
+    },
+    {
+      "question": "What is the easiest subtitle workflow for podcasts?",
+      "answer": "Paste link or upload audio once, export SRT, import into your editor, fix names and hook line once, style template in CapCut. See our SRT and Shorts workflow guides for details."
+    }
+  ],
+  "related": [
+    {
+      "href": "/blog/best-subtitle-workflow-youtube-shorts-2026",
+      "eyebrow": "Guide",
+      "title": "Best subtitle workflow for YouTube Shorts",
+      "description": "Vertical safe zones and caption rhythm after you have clips."
+    },
+    {
+      "href": "/blog/how-to-generate-srt-subtitles",
+      "eyebrow": "Tutorial",
+      "title": "How to generate SRT subtitles",
+      "description": "One transcript file for every clip from the same episode."
+    },
+    {
+      "href": "/blog/turn-long-videos-into-shorts-2026",
+      "eyebrow": "Guide",
+      "title": "Turn long videos into Shorts",
+      "description": "Broader repurposing stack beyond podcast-only workflows."
+    },
+    {
+      "href": "/blog/why-mobile-subtitle-apps-break-on-safari-2026",
+      "eyebrow": "Guide",
+      "title": "Mobile subtitle apps on Safari",
+      "description": "When browser tools break on iPhone — and what to do instead."
+    }
+  ]
+}

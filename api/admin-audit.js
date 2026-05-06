@@ -16,7 +16,17 @@ import {
   evaluateAuditAlertsDb,
   seedTestAuditEventsDb
 } from './audit-repository.js';
+import {
+  getAdminAuditLogDashboard,
+  listAuditEventsEnriched,
+  resolveUserIdFromJourneyQuery,
+  getUserJourneyExplorer,
+  listEventNotesDb,
+  upsertEventNoteDb,
+  listPinnedNotesDb
+} from './admin-audit-log-repository.js';
 import { ensureAdminsSchema } from './admins-repository.js';
+import { ensureAuditEventNotesSchema } from './audit-event-notes-bootstrap.js';
 
 function normalizeAdminRole(role) {
   return String(role || '')
@@ -77,8 +87,124 @@ function listFiltersFromQuery(req) {
     dateTo: req.query.date_to || req.query.dateTo || null,
     plan: req.query.plan || null,
     countryCode: req.query.country || req.query.country_code || req.query.countryCode || null,
-    activityMin: req.query.activity_min || req.query.activityMin || null
+    activityMin: req.query.activity_min || req.query.activityMin || null,
+    email: req.query.email || null,
+    ip: req.query.ip || null,
+    sessionId: req.query.session_id || req.query.sessionId || null,
+    severity: req.query.severity || null,
+    category: req.query.category || null,
+    adminOnly: req.query.admin_only || req.query.adminOnly || null,
+    customerOnly: req.query.customer_only || req.query.customerOnly || null,
+    paymentEvents: req.query.payment_events || req.query.paymentEvents || null,
+    authEvents: req.query.auth_events || req.query.authEvents || null,
+    aiEvents: req.query.ai_events || req.query.aiEvents || null,
+    provider: req.query.provider || null,
+    requestId: req.query.request_id || req.query.requestId || null
   };
+}
+
+export async function adminAuditDashboardHandler(req, res) {
+  const auth = await requireAuditReader(req, res);
+  if (!auth) return;
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+  try {
+    await ensureAuditEventNotesSchema();
+    const dashboard = await getAdminAuditLogDashboard({
+      preset: req.query.preset || '24h',
+      dateFrom: req.query.date_from || req.query.dateFrom,
+      dateTo: req.query.date_to || req.query.dateTo
+    });
+    const pinned = await listPinnedNotesDb(20);
+    return res.json({ ok: true, ...dashboard, incidentPins: pinned });
+  } catch (e) {
+    console.error('[admin-audit dashboard]', e);
+    return res.status(500).json({ error: 'dashboard_failed' });
+  }
+}
+
+export async function adminAuditJourneyHandler(req, res) {
+  const auth = await requireAuditReader(req, res);
+  if (!auth) return;
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+  try {
+    const q = req.query.q || req.query.email || req.query.userId || req.query.sessionId;
+    const resolved = await resolveUserIdFromJourneyQuery(q);
+    if (resolved.error) return res.status(404).json({ error: resolved.error });
+    const journey = await getUserJourneyExplorer(resolved.userId, Number(req.query.limit) || 300);
+    return res.json({ ok: true, ...resolved, ...journey });
+  } catch (e) {
+    console.error('[admin-audit journey]', e);
+    return res.status(500).json({ error: 'journey_failed' });
+  }
+}
+
+export async function adminAuditNotesHandler(req, res) {
+  const auth = await requireAuditReader(req, res);
+  if (!auth) return;
+  await ensureAuditEventNotesSchema();
+  const eventId = req.params?.eventId || req.query?.eventId;
+  if (req.method === 'GET') {
+    if (!eventId || !isUuid(String(eventId))) {
+      return res.status(400).json({ error: 'invalid_event_id' });
+    }
+    const notes = await listEventNotesDb(eventId);
+    return res.json({ ok: true, notes });
+  }
+  if (req.method === 'POST') {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const eid = body.eventId || eventId;
+    if (!eid || !isUuid(String(eid))) return res.status(400).json({ error: 'invalid_event_id' });
+    const row = await upsertEventNoteDb({
+      eventId: eid,
+      adminEmail: auth.email,
+      note: body.note || '',
+      resolved: Boolean(body.resolved),
+      pinned: Boolean(body.pinned),
+      sessionKey: body.sessionKey || null
+    });
+    return res.json({ ok: true, note: row });
+  }
+  return res.status(405).json({ error: 'Method not allowed' });
+}
+
+export async function adminAuditExportHandler(req, res) {
+  const auth = await requireAuditReader(req, res);
+  if (!auth) return;
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+  try {
+    const format = String(req.query.format || 'json').toLowerCase();
+    const page = 1;
+    const limit = Math.min(5000, Math.max(1, Number(req.query.limit) || 2000));
+    const filters = { ...listFiltersFromQuery(req), limit, offset: 0, page };
+    const { events } = await listAuditEventsEnriched(filters);
+    if (format === 'csv') {
+      const header = 'id,createdAt,userEmail,eventName,eventType,severity,countryCode,ip,plan\n';
+      const rows = events
+        .map((e) =>
+          [
+            e.id,
+            e.createdAt,
+            e.userEmail || '',
+            e.eventName,
+            e.eventType,
+            e.severity,
+            e.countryCode || '',
+            e.ip || '',
+            e.plan || ''
+          ]
+            .map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`)
+            .join(',')
+        )
+        .join('\n');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="audit-export.csv"');
+      return res.send(header + rows);
+    }
+    return res.json({ ok: true, events, exportedAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('[admin-audit export]', e);
+    return res.status(500).json({ error: 'export_failed' });
+  }
 }
 
 export async function adminAuditListHandler(req, res) {
@@ -97,15 +223,15 @@ export async function adminAuditListHandler(req, res) {
       return res.status(400).json({ error: 'invalid_user_id' });
     }
 
-    const [events, total] = await Promise.all([listAuditEventsDb(filters), countAuditEventsDb(filters)]);
+    const result = await listAuditEventsEnriched({ ...filters, page, limit, offset });
 
     return res.json({
       ok: true,
-      events,
+      events: result.events,
       page,
       limit,
-      total,
-      totalPages: Math.ceil(total / limit) || 1
+      total: result.total,
+      totalPages: result.totalPages
     });
   } catch (e) {
     console.error('[admin-audit list]', e);

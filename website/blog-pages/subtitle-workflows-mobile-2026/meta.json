@@ -1,0 +1,88 @@
+{
+  "slug": "subtitle-workflows-mobile-2026",
+  "title": "Why Most Subtitle Workflows Break on Mobile",
+  "titleSuffix": "(And How Creators Fix It)",
+  "deck": "Phone-first publishing is normal now — but browser editors, giant timelines, and fragile exports still wreck subtitle workflows. Here’s what breaks on mobile in 2026 and the lightweight stacks creators actually use.",
+  "excerpt": "Why subtitle workflows on mobile break: Safari uploads, browser refreshes, laggy editors, export failures — and how creators fix it with native apps and lightweight SRT tools.",
+  "category": "Guides",
+  "tags": [
+    "subtitle-workflows-on-mobile",
+    "mobile-subtitle-tools",
+    "subtitle-workflow",
+    "mobile-video-editing",
+    "mobile-creator-workflow",
+    "tiktok-subtitle-editing",
+    "youtube-shorts-captions",
+    "mobile-srt-export"
+  ],
+  "eyebrow": "Guides · Mobile workflow",
+  "author": "Cutup Editorial",
+  "authorInitials": "CT",
+  "authorRole": "Mobile caption tests · iOS & Android 2026",
+  "publishedAt": "2026-05-27",
+  "updatedAt": "2026-05-27",
+  "readingTimeMinutes": 12,
+  "coverImageUrl": "/cms-media/images/blog/subtitle-workflows-mobile-2026-cover.jpg",
+  "heroImageAlt": "Creator editing subtitles on a phone with a frustrated browser tab in background",
+  "heroImagePrompt": "Cinematic editorial photograph, creator at cafe table editing vertical video on smartphone, subtitle text visible on screen, laptop closed nearby, soft purple-blue ambient light, shallow depth of field, premium SaaS editorial aesthetic, realistic mobile UI glow, no brand logos, no readable trademark text, no cyberpunk, no animals, 16:9 hero composition.",
+  "metaTitle": "Why Subtitle Workflows Break on Mobile (2026 Fixes) — Cutup",
+  "metaDescription": "Subtitle workflows on mobile still break in 2026 — browser lag, lost progress, export fails. What goes wrong and how creators fix it with lightweight tools.",
+  "ogTitle": "Why Most Subtitle Workflows Break on Mobile (And How Creators Fix It)",
+  "ogDescription": "Honest guide to mobile subtitle workflows — friction, fixes, and tools that don’t fight your phone browser.",
+  "status": "published",
+  "source": "static",
+  "faqSchema": [
+    {
+      "question": "What's the best subtitle workflow on mobile?",
+      "answer": "Record or import vertical video, auto-caption in CapCut or TikTok native, fix the hook line, export MP4. For SRT-first workflows, generate text with a lightweight tool like Cutup on mobile browser, then import into CapCut — avoid full timeline editors in mobile Chrome."
+    },
+    {
+      "question": "Why do subtitle editors lag on phones?",
+      "answer": "Heavy browser editors load full timelines, video previews, and effects in limited RAM. Scrubbing and live preview tax the GPU. Native apps like CapCut are optimized for mobile; most web studios are not."
+    },
+    {
+      "question": "Which subtitle tools work best on iPhone?",
+      "answer": "CapCut and TikTok native for burn-in; Cutup for link-to-SRT without a heavy editor. Avoid long caption passes in mobile Safari for desktop-class browser tools."
+    },
+    {
+      "question": "Can I export SRT subtitles on mobile?",
+      "answer": "Yes with tools that offer SRT download on mobile web or apps that export subtitle files. Many browser editors gate SRT behind desktop or paid tiers. Cutup includes SRT export on mobile browsers when quotas allow."
+    },
+    {
+      "question": "Why do mobile browsers crash during editing?",
+      "answer": "Memory pressure from video preview, too many tabs, background app kills, and large uploads on weak connections. iOS Safari and Android Chrome handle video differently — crashes often follow scrubbing or export."
+    },
+    {
+      "question": "Are lightweight subtitle tools better for phones?",
+      "answer": "Usually yes. Tools that return transcript or SRT without rendering a full NLE in the browser reduce lag, lost progress, and export failures compared to giant AI editing suites."
+    },
+    {
+      "question": "Why do subtitles go out of sync on mobile edits?",
+      "answer": "Trimming after auto-caption, unstable preview timing, or re-importing clips without regenerating captions. Fix on final vertical cut before export."
+    },
+    {
+      "question": "Should I finish captions on desktop?",
+      "answer": "If your channel is brand-heavy or you edit long sources, desktop saves time. Daily Shorts creators can stay mobile-first with a simple CapCut template and strict hook review."
+    }
+  ],
+  "related": [
+    {
+      "href": "/blog/add-captions-tiktok-videos-2026",
+      "eyebrow": "Tutorial",
+      "title": "Add captions to TikTok videos",
+      "description": "Fast TikTok-native and CapCut paths for mobile."
+    },
+    {
+      "href": "/blog/best-subtitle-workflow-youtube-shorts-2026",
+      "eyebrow": "Guide",
+      "title": "Shorts subtitle workflow",
+      "description": "Vertical safe zones and readable captions on small screens."
+    },
+    {
+      "href": "/blog/clean-subtitles-increase-watch-time-2026",
+      "eyebrow": "Guide",
+      "title": "Clean subtitles & watch time",
+      "description": "Why readability beats flashy captions on mobile feeds."
+    }
+  ]
+}

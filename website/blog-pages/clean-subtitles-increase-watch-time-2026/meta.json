@@ -1,0 +1,88 @@
+{
+  "slug": "clean-subtitles-increase-watch-time-2026",
+  "title": "Why Clean Subtitles Increase Watch Time More Than Fancy Editing",
+  "titleSuffix": "",
+  "deck": "Viewers scroll muted, on phones, half-distracted. A readable two-line caption often beats a kinetic font explosion — not because editing doesn’t matter, but because clarity is what keeps people watching.",
+  "excerpt": "Do subtitles increase watch time? Yes — when they’re readable. Why clean captions beat flashy editing for retention, mobile viewing, pacing, and practical subtitle workflows in 2026.",
+  "category": "Guides",
+  "tags": [
+    "subtitles-increase-watch-time",
+    "subtitle-retention",
+    "youtube-watch-time",
+    "shorts-retention",
+    "caption-readability",
+    "subtitle-design",
+    "viewer-retention",
+    "subtitle-workflow"
+  ],
+  "eyebrow": "Guides · Retention & captions",
+  "author": "Cutup Editorial",
+  "authorInitials": "CT",
+  "authorRole": "Retention patterns · caption readability tests",
+  "publishedAt": "2026-05-25",
+  "updatedAt": "2026-05-25",
+  "readingTimeMinutes": 12,
+  "coverImageUrl": "/cms-media/images/blog/clean-subtitles-increase-watch-time-2026-cover.jpg",
+  "heroImageAlt": "Clean readable subtitles on a video with retention analytics on screen",
+  "heroImagePrompt": "Cinematic editorial photograph, realistic creator editing desk, monitor showing a vertical video with simple high-contrast two-line subtitles and a subtle retention graph overlay, soft purple-blue accent lighting, shallow depth of field, premium SaaS blog aesthetic, clean modern UI, no brand logos, no readable trademark text, no cyberpunk, no animals, 16:9 hero composition.",
+  "metaTitle": "Why Clean Subtitles Increase Watch Time (2026) — Cutup",
+  "metaDescription": "Subtitles increase watch time when they’re readable — not flashy. Retention psychology, mobile viewing, pacing, subtitle styles compared, and workflows that ship.",
+  "ogTitle": "Why Clean Subtitles Increase Watch Time More Than Fancy Editing",
+  "ogDescription": "Readable captions vs over-edited Shorts — what actually holds attention in 2026.",
+  "status": "published",
+  "source": "static",
+  "faqSchema": [
+    {
+      "question": "Do subtitles increase watch time?",
+      "answer": "Yes, especially for muted and mobile viewing. Clear, well-timed captions help viewers follow speech without audio. Over-styled or unreadable captions can hurt retention by adding visual noise."
+    },
+    {
+      "question": "Why do viewers watch videos muted?",
+      "answer": "Autoplay in feeds, public spaces, habit, and platform defaults. Many viewers turn sound on only after captions hook them — so the first lines must read instantly."
+    },
+    {
+      "question": "Which subtitle styles work best?",
+      "answer": "High contrast, two short lines, stable timing matched to speech. Minimal box or stroke styles outperform busy kinetic animations for most education and talking-head content."
+    },
+    {
+      "question": "Are animated captions better for retention?",
+      "answer": "Sometimes in entertainment and meme niches. For most creators, aggressive word-by-word animation increases cognitive load and can reduce watch time on small screens."
+    },
+    {
+      "question": "How should subtitles be timed?",
+      "answer": "Align with natural speech rhythm and cuts. Avoid text appearing before audio on jokes; avoid long single cues. Split at breaths, not arbitrary character counts."
+    },
+    {
+      "question": "What fonts work best for mobile subtitles?",
+      "answer": "Bold sans-serif with strong contrast and a stroke or background box. Avoid thin fonts, all-caps paragraphs, and low-contrast gray on busy B-roll."
+    },
+    {
+      "question": "Do fancy edits help YouTube Shorts retention?",
+      "answer": "Pacing and hook matter more than effect count. Over-editing plus busy captions often creates visual overload — viewers swipe when they can’t parse the frame quickly."
+    },
+    {
+      "question": "How do I improve subtitle readability fast?",
+      "answer": "Shorten lines, raise captions above faces and UI safe zones, fix timing drift, and test on a phone before publish. Start from a clean SRT draft, then style once."
+    }
+  ],
+  "related": [
+    {
+      "href": "/blog/best-subtitle-workflow-youtube-shorts-2026",
+      "eyebrow": "Guide",
+      "title": "Best subtitle workflow for Shorts",
+      "description": "Safe zones, mobile finish, and caption rhythm for vertical video."
+    },
+    {
+      "href": "/blog/real-problem-ai-video-editing-tools-2026",
+      "eyebrow": "Guide",
+      "title": "The real problem with AI video tools",
+      "description": "Why automation often adds review work instead of removing it."
+    },
+    {
+      "href": "/blog/how-to-generate-srt-subtitles",
+      "eyebrow": "Tutorial",
+      "title": "How to generate SRT subtitles",
+      "description": "Clean SRT first — style second."
+    }
+  ]
+}
