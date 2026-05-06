@@ -6190,10 +6190,16 @@ function initFeaturesSlider() {
   
   const slider = document.createElement('div');
   slider.className = 'features-slider';
-  slider.style.width = `${features.length * 100}%`;
+  slider.style.width = '100%';
   features.forEach(feature => {
-    feature.style.width = `${100 / features.length}%`;
-    feature.style.minWidth = `${100 / features.length}%`;
+    // Prevent global scroll-observer fade styles from hiding slider cards.
+    feature.style.opacity = '1';
+    feature.style.transform = 'none';
+    feature.style.transition = 'none';
+    feature.style.width = '100%';
+    feature.style.minWidth = '100%';
+    feature.style.flex = '0 0 100%';
+    feature.style.maxWidth = '100%';
     slider.appendChild(feature);
   });
   
@@ -6210,6 +6216,31 @@ function initFeaturesSlider() {
     dotsContainer.appendChild(dot);
   }
   featuresGrid.appendChild(dotsContainer);
+
+  const nav = document.createElement('div');
+  nav.className = 'features-nav';
+  const prevBtn = document.createElement('button');
+  prevBtn.type = 'button';
+  prevBtn.className = 'features-nav-btn features-nav-btn-prev';
+  prevBtn.setAttribute('aria-label', 'Previous feature');
+  prevBtn.textContent = '←';
+  const nextBtn = document.createElement('button');
+  nextBtn.type = 'button';
+  nextBtn.className = 'features-nav-btn features-nav-btn-next';
+  nextBtn.setAttribute('aria-label', 'Next feature');
+  nextBtn.textContent = '→';
+  nav.appendChild(prevBtn);
+  nav.appendChild(nextBtn);
+  featuresGrid.appendChild(nav);
+
+  prevBtn.addEventListener('click', () => {
+    currentFeatureIndex = (currentFeatureIndex - 1 + features.length) % features.length;
+    goToFeature(currentFeatureIndex);
+  });
+  nextBtn.addEventListener('click', () => {
+    currentFeatureIndex = (currentFeatureIndex + 1) % features.length;
+    goToFeature(currentFeatureIndex);
+  });
   featuresGrid.dataset.sliderInitialized = '1';
   currentFeatureIndex = 0;
   goToFeature(0);
@@ -6250,11 +6281,12 @@ function initFeaturesSlider() {
 function goToFeature(index) {
   const slider = document.querySelector('.features-slider');
   const dots = document.querySelectorAll('.features-dot');
+  const featuresGrid = document.querySelector('.features-grid');
   
-  if (slider) {
+  if (slider && featuresGrid) {
     const total = slider.children.length || 1;
     const normalizedIndex = ((index % total) + total) % total;
-    slider.style.transform = `translateX(-${normalizedIndex * (100 / total)}%)`;
+    slider.style.transform = `translateX(-${normalizedIndex * 100}%)`;
     index = normalizedIndex;
   }
   
@@ -6283,6 +6315,7 @@ window.addEventListener('DOMContentLoaded', () => {
 window.addEventListener('resize', () => {
   if (window.innerWidth <= 768) {
     initFeaturesSlider();
+    goToFeature(currentFeatureIndex);
   }
 });
 

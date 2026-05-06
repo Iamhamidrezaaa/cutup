@@ -47,94 +47,138 @@ body {
   }
 }
 
-/* PWA install control */
-.install-btn {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
-  color: white;
-  border: none;
-  border-radius: 12px;
-  padding: 12px 16px;
-  font-size: 15px;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-  z-index: 9999;
-}
-
-.install-btn:focus-visible {
-  outline: 2px solid #c7d2fe;
-  outline-offset: 2px;
-}
-
 .cutup-ios-install-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.55);
+  background:
+    radial-gradient(220px 220px at 14% 18%, rgba(99, 102, 241, 0.45), transparent 65%),
+    radial-gradient(240px 240px at 86% 82%, rgba(139, 92, 246, 0.36), transparent 67%),
+    radial-gradient(200px 200px at 20% 78%, rgba(56, 189, 248, 0.28), transparent 70%),
+    rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(10px);
   z-index: 10000;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: calc(env(safe-area-inset-top, 0px) + 18px) 16px calc(env(safe-area-inset-bottom, 0px) + 18px);
   box-sizing: border-box;
+  animation: cutupInstallFadeIn 260ms ease forwards;
+}
+
+.cutup-ios-install-panel {
+  width: min(460px, 100%);
+  display: grid;
+  gap: 16px;
+  animation: cutupInstallSlideUp 360ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.cutup-ios-install-top {
+  text-align: center;
 }
 
 .cutup-ios-install-modal {
   background: #fff;
   color: #0f172a;
-  border-radius: 16px;
-  max-width: 400px;
+  border-radius: 28px;
   width: 100%;
-  padding: 24px;
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.25);
+  padding: 20px 18px 18px;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.22);
   position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.75);
 }
 
-.cutup-ios-install-modal h2 {
-  margin: 0 0 16px;
-  font-size: 20px;
+.cutup-ios-install-logo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.cutup-ios-install-logo p {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.cutup-ios-install-top h2 {
+  margin: 0 0 8px;
+  font-size: clamp(2rem, 7vw, 2.35rem);
   line-height: 1.2;
+  text-align: center;
+  color: #fff;
+  letter-spacing: -0.02em;
 }
 
-.cutup-ios-install-modal ol {
-  margin: 0 0 20px;
-  padding-left: 22px;
+.cutup-ios-install-sub {
+  margin: 0;
+  text-align: center;
+  font-size: 15px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.cutup-ios-install-steps {
+  margin: 0 0 18px;
+  display: grid;
+  gap: 12px;
+}
+
+.cutup-ios-step {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px 10px;
+  border-radius: 14px;
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.cutup-ios-step p {
+  margin: 0;
+  font-size: 16px;
   line-height: 1.5;
+  color: #0f172a;
 }
 
-.cutup-ios-install-modal li + li {
-  margin-top: 8px;
+.cutup-ios-step-icon {
+  width: 28px;
+  height: 28px;
+  color: #6366f1;
+}
+
+.cutup-ios-step-icon svg {
+  width: 100%;
+  height: 100%;
 }
 
 .cutup-ios-install-close {
   width: 100%;
-  padding: 12px 16px;
+  padding: 14px 16px;
   border: none;
-  border-radius: 12px;
+  border-radius: 14px;
   background: linear-gradient(135deg, #6366f1, #8b5cf6);
   color: #fff;
-  font-weight: 600;
-  font-size: 15px;
+  font-weight: 700;
+  font-size: 16px;
   font-family: inherit;
   cursor: pointer;
+  box-shadow: 0 12px 24px rgba(99, 102, 241, 0.3);
 }
 
-.cutup-ios-install-dismiss {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: 8px;
-  background: rgba(148, 163, 184, 0.2);
-  color: #475569;
-  font-size: 22px;
-  line-height: 1;
-  cursor: pointer;
+.cutup-ios-install-close:active {
+  transform: translateY(1px) scale(0.995);
+}
+
+@keyframes cutupInstallFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes cutupInstallSlideUp {
+  from { opacity: 0; transform: translateY(22px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 img,

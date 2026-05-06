@@ -49,12 +49,40 @@
     return false;
   }
 
-  /** iOS: only Mobile Safari fires the “Add to Home Screen” flow; not Chrome/Fx/Edge on iOS. */
+  /** iOS: only Mobile Safari should see the A2HS onboarding. */
   function isIOSSafari() {
     if (!isIOSDevice()) return false;
     var ua = navigator.userAgent || '';
     if (/CriOS|FxiOS|EdgiOS|OPiOS|Brave/i.test(ua)) return false;
     return /Safari/i.test(ua);
+  }
+
+  function iconShare() {
+    return (
+      '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+      '<path d="M12 16V4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' +
+      '<path d="M8 8l4-4 4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path d="M5 12v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' +
+      '</svg>'
+    );
+  }
+
+  function iconPlusSquare() {
+    return (
+      '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+      '<rect x="3" y="3" width="18" height="18" rx="3" fill="none" stroke="currentColor" stroke-width="2"/>' +
+      '<path d="M12 8v8M8 12h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' +
+      '</svg>'
+    );
+  }
+
+  function iconCheckCircle() {
+    return (
+      '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+      '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/>' +
+      '<path d="M8 12.5l2.5 2.5L16 9.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '</svg>'
+    );
   }
 
   function showIOSInstallGuide() {
@@ -66,30 +94,46 @@
     overlay.setAttribute('aria-modal', 'true');
     overlay.setAttribute('aria-labelledby', 'cutup-ios-install-title');
 
-    var modal = document.createElement('div');
-    modal.className = 'cutup-ios-install-modal';
+    var panel = document.createElement('div');
+    panel.className = 'cutup-ios-install-panel';
 
-    var dismiss = document.createElement('button');
-    dismiss.type = 'button';
-    dismiss.className = 'cutup-ios-install-dismiss';
-    dismiss.innerHTML = '&times;';
-    dismiss.setAttribute('aria-label', 'Close');
+    var top = document.createElement('div');
+    top.className = 'cutup-ios-install-top';
+
+    var logo = document.createElement('div');
+    logo.className = 'cutup-ios-install-logo';
+    logo.innerHTML = '<img src="/logo.svg" alt="" width="62" height="62"><p>Cutup</p>';
 
     var title = document.createElement('h2');
     title.id = 'cutup-ios-install-title';
     title.textContent = 'Install Cutup';
 
-    var list = document.createElement('ol');
-    var steps = [
-      'Tap the Share icon',
-      'Tap "Add to Home Screen"',
-      'Tap "Add"'
-    ];
-    steps.forEach(function (text) {
-      var li = document.createElement('li');
-      li.textContent = text;
-      list.appendChild(li);
-    });
+    var sub = document.createElement('p');
+    sub.className = 'cutup-ios-install-sub';
+    sub.textContent = 'Add Cutup to your Home Screen for a faster app-like experience.';
+
+    top.appendChild(logo);
+    top.appendChild(title);
+    top.appendChild(sub);
+
+    var modal = document.createElement('div');
+    modal.className = 'cutup-ios-install-modal';
+
+    var list = document.createElement('div');
+    list.className = 'cutup-ios-install-steps';
+    list.innerHTML =
+      '<div class="cutup-ios-step">' +
+      '<span class="cutup-ios-step-icon">' + iconShare() + '</span>' +
+      '<p>Tap the Share button in Safari</p>' +
+      '</div>' +
+      '<div class="cutup-ios-step">' +
+      '<span class="cutup-ios-step-icon">' + iconPlusSquare() + '</span>' +
+      '<p>Select “Add to Home Screen”</p>' +
+      '</div>' +
+      '<div class="cutup-ios-step">' +
+      '<span class="cutup-ios-step-icon">' + iconCheckCircle() + '</span>' +
+      '<p>Tap “Add” to finish installation</p>' +
+      '</div>';
 
     var ok = document.createElement('button');
     ok.type = 'button';
@@ -100,53 +144,17 @@
       overlay.remove();
     }
 
-    dismiss.onclick = close;
     ok.onclick = close;
     overlay.addEventListener('click', function (e) {
       if (e.target === overlay) close();
     });
 
-    modal.appendChild(dismiss);
-    modal.appendChild(title);
     modal.appendChild(list);
     modal.appendChild(ok);
-    overlay.appendChild(modal);
+    panel.appendChild(top);
+    panel.appendChild(modal);
+    overlay.appendChild(panel);
     document.body.appendChild(overlay);
-  }
-
-  function ensureInstallButton() {
-    var btn = document.getElementById('installAppBtn');
-    if (btn) return btn;
-    btn = document.createElement('button');
-    btn.id = 'installAppBtn';
-    btn.type = 'button';
-    btn.className = 'install-btn';
-    btn.setAttribute('aria-label', 'Install Cutup app');
-    btn.textContent = 'Install App';
-    document.body.appendChild(btn);
-    return btn;
-  }
-
-  function initInstallButton() {
-    var btn = ensureInstallButton();
-    btn.onclick = async function () {
-      if (!window.deferredPrompt) {
-        alert('Install option available in browser menu');
-        return;
-      }
-      window.deferredPrompt.prompt();
-      try {
-        await window.deferredPrompt.userChoice;
-      } catch (_e) {
-        /* ignore */
-      }
-      window.deferredPrompt = null;
-    };
-  }
-
-  function hideInstallButtonIfStandalone() {
-    var btn = document.getElementById('installAppBtn');
-    if (btn) btn.hidden = true;
   }
 
   ensureManifestLink();
@@ -174,14 +182,7 @@
       console.error('manifest.json:', err);
     });
 
-  if (isStandaloneDisplay()) {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', hideInstallButtonIfStandalone);
-    } else {
-      hideInstallButtonIfStandalone();
-    }
-    return;
-  }
+  if (isStandaloneDisplay()) return;
 
   window.addEventListener('beforeinstallprompt', function (e) {
     console.log('PWA install available');
@@ -189,18 +190,12 @@
     window.deferredPrompt = e;
   });
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initInstallButton);
-  } else {
-    initInstallButton();
-  }
-
   if (
     isIOSSafari() &&
     !isStandaloneDisplay() &&
-    !sessionStorage.getItem('cutup_ios_install_hint')
+    !localStorage.getItem('cutup_ios_install_hint_v2')
   ) {
-    sessionStorage.setItem('cutup_ios_install_hint', '1');
+    localStorage.setItem('cutup_ios_install_hint_v2', '1');
     function showIOS() {
       showIOSInstallGuide();
     }
