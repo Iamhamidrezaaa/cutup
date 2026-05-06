@@ -2664,6 +2664,7 @@ body {
 .pricing-plans-grid {
   gap: 28px;
   overflow: visible;
+  padding-top: 14px;
 }
 
 .plan-card {
@@ -2699,15 +2700,18 @@ body {
   box-shadow: 0 18px 45px rgba(79, 70, 229, 0.18);
   background: linear-gradient(180deg, #ffffff 0%, #f6f5ff 100%);
   transform: scale(1.04);
-  padding-top: 40px;
+  padding-top: 26px;
   overflow: visible;
+  z-index: 2;
 }
 
 .plan-badge {
   position: absolute;
-  top: 10px;
-  right: 20px;
-  z-index: 10;
+  top: 0;
+  left: 56%;
+  right: auto;
+  transform: translate(-50%, -50%);
+  z-index: 30;
   background: linear-gradient(135deg, #6366f1, #8b5cf6);
   color: #fff;
   font-size: 12px;
@@ -2719,8 +2723,10 @@ body {
 
 @media (max-width: 768px) {
   .plan-badge {
-    top: 10px;
-    right: 12px;
+    top: 0;
+    left: 54%;
+    right: auto;
+    transform: translate(-50%, -50%);
     font-size: 11px;
   }
 }
