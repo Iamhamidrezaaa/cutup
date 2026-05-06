@@ -2647,14 +2647,13 @@ document.addEventListener('DOMContentLoaded', () => {
 function wireHeroQuickStart() {
   const heroInput = document.getElementById('heroUrlInput');
   const heroBtn = document.getElementById('heroGenerateBtn');
-  const heroDemo = document.getElementById('heroSeeDemoBtn');
   if (!heroBtn || !heroInput) return;
 
   heroBtn.addEventListener('click', () => {
     const v = (heroInput.value || '').trim();
     if (!v) {
       heroInput.focus();
-      showMessage('Paste a video link—your first preview runs without signup.', 'info');
+      showMessage('Paste a video link to continue.', 'info');
       return;
     }
     let platform = 'youtube';
@@ -2680,12 +2679,6 @@ function wireHeroQuickStart() {
       heroBtn.click();
     }
   });
-
-  if (heroDemo) {
-    heroDemo.addEventListener('click', () => {
-      document.getElementById('demo-sample')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-  }
 }
 
 // Extract common handlers

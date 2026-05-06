@@ -641,11 +641,14 @@ body {
   flex-wrap: wrap;
   gap: 10px;
   justify-content: center;
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto 14px;
 }
 
 .hero-quick-actions .btn {
-  flex: 1 1 auto;
-  min-width: 140px;
+  flex: 1 1 100%;
+  min-width: 0;
   padding: 12px 20px;
   font-size: 15px;
   border: none;
@@ -654,6 +657,10 @@ body {
 }
 
 .hero-primary-btn {
+  width: 100%;
+  max-width: 640px;
+  display: block;
+  margin: 0 auto;
   box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
 }
 
@@ -2487,8 +2494,8 @@ body {
 }
 
 .hero-quick-tool {
-  max-width: 700px;
-  padding: 24px;
+  max-width: 740px;
+  padding: 28px;
   border-radius: 18px;
   border: 1px solid rgba(99, 102, 241, 0.25);
   box-shadow: var(--shadow-strong);
@@ -2498,11 +2505,12 @@ body {
   position: relative;
   border: 1px solid rgba(79, 70, 229, 0.35);
   box-shadow: 0 24px 60px rgba(79, 70, 229, 0.22);
+  backdrop-filter: blur(4px);
 }
 
 .smart-input-wrap {
   position: relative;
-  margin-bottom: 14px;
+  margin-bottom: 18px;
 }
 
 .smart-input-icon {
@@ -2543,8 +2551,8 @@ body {
 
 .hero-primary-btn {
   font-size: 16px;
-  padding: 15px 26px;
-  min-height: 54px;
+  padding: 16px 26px;
+  min-height: 56px;
   box-shadow: 0 16px 36px rgba(79, 70, 229, 0.4);
 }
 
@@ -2992,6 +3000,8 @@ body {
 
 .hero-url-input {
   margin-bottom: 0;
+  min-height: 58px;
+  font-size: 17px;
   padding-left: 42px;
   background:
     linear-gradient(#ffffff, #ffffff) padding-box,
