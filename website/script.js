@@ -2631,8 +2631,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
   
-  // Setup platform tabs
-  document.querySelectorAll('.platform-tab').forEach(tab => {
+  // Setup platform tabs (main tool only)
+  document.querySelectorAll('#tool .platform-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       const platform = tab.dataset.tab;
       if (platform) {
@@ -2641,8 +2641,57 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  initHeroPreviewTabs();
   wireHeroQuickStart();
 });
+
+function initHeroPreviewTabs() {
+  const tabs = Array.from(document.querySelectorAll('.hero-platform-tab'));
+  const title = document.getElementById('heroPreviewToolTitle');
+  const input = document.getElementById('heroPreviewInput');
+  const pasteBtn = document.getElementById('heroPreviewPasteBtn');
+  if (!tabs.length || !title || !input || !pasteBtn) return;
+
+  const copy = {
+    youtube: {
+      title: 'Paste a YouTube link',
+      placeholder: 'https://youtube.com/watch?v=...',
+      cta: '📋 Paste'
+    },
+    instagram: {
+      title: 'Paste an Instagram link',
+      placeholder: 'https://www.instagram.com/p/...',
+      cta: '📋 Paste'
+    },
+    tiktok: {
+      title: 'Paste a TikTok link',
+      placeholder: 'https://www.tiktok.com/@...',
+      cta: '📋 Paste'
+    },
+    audiofile: {
+      title: 'Upload an audio or video file',
+      placeholder: 'Choose file from your device...',
+      cta: '📁 Choose file'
+    }
+  };
+
+  function apply(platform) {
+    const payload = copy[platform] || copy.youtube;
+    tabs.forEach((tab) => tab.classList.toggle('active', tab.dataset.heroPlatform === platform));
+    title.textContent = payload.title;
+    input.placeholder = payload.placeholder;
+    input.disabled = platform === 'audiofile';
+    pasteBtn.textContent = payload.cta;
+  }
+
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      apply(tab.dataset.heroPlatform || 'youtube');
+    });
+  });
+
+  apply('youtube');
+}
 
 function wireHeroQuickStart() {
   const heroInput = document.getElementById('heroUrlInput');
@@ -6173,48 +6222,45 @@ function downloadSRTFile(srtContent, videoId) {
   showMessage('Subtitles downloaded successfully.', 'success');
 }
 
-// Features slider for mobile
-let currentFeatureIndex = 0;
-let featureSliderInterval = null;
+// Features slider for mobile (native scroll-snap, no translateX math)
+let mobileFeaturesState = null;
 
 function initFeaturesSlider() {
-  if (window.innerWidth > 768) return; // Only on mobile
-  
-  const featuresGrid = document.querySelector('.features-grid');
-  if (!featuresGrid) return;
-  if (featuresGrid.dataset.sliderInitialized === '1' || featuresGrid.querySelector('.features-slider')) return;
-  
-  // Wrap features in slider
-  const features = Array.from(featuresGrid.children).filter((el) => el.classList?.contains('feature-card'));
-  if (features.length === 0) return;
-  
-  const slider = document.createElement('div');
-  slider.className = 'features-slider';
-  slider.style.width = '100%';
-  features.forEach(feature => {
-    // Prevent global scroll-observer fade styles from hiding slider cards.
-    feature.style.opacity = '1';
-    feature.style.transform = 'none';
-    feature.style.transition = 'none';
-    feature.style.width = '100%';
-    feature.style.minWidth = '100%';
-    feature.style.flex = '0 0 100%';
-    feature.style.maxWidth = '100%';
-    slider.appendChild(feature);
+  const featuresGrid = document.querySelector('#features .features-grid');
+  if (!featuresGrid || window.innerWidth > 768) return;
+  if (featuresGrid.dataset.sliderInitialized === '1') return;
+
+  const cards = Array.from(featuresGrid.children).filter((el) => el.classList?.contains('feature-card'));
+  if (!cards.length) return;
+
+  const rail = document.createElement('div');
+  rail.className = 'features-slider-mobile';
+  const track = document.createElement('div');
+  track.className = 'features-track';
+
+  cards.forEach((card) => {
+    // Neutralize global observer inline styles on cards inside slider.
+    card.style.opacity = '1';
+    card.style.transform = 'none';
+    card.style.transition = 'none';
+    track.appendChild(card);
   });
-  
+
+  rail.appendChild(track);
   featuresGrid.innerHTML = '';
-  featuresGrid.appendChild(slider);
-  
-  // Create dots
+  featuresGrid.appendChild(rail);
+
   const dotsContainer = document.createElement('div');
   dotsContainer.className = 'features-dots';
-  for (let i = 0; i < features.length; i++) {
+  const dots = cards.map((_, i) => {
     const dot = document.createElement('div');
     dot.className = `features-dot ${i === 0 ? 'active' : ''}`;
-    dot.addEventListener('click', () => goToFeature(i));
+    dot.addEventListener('click', () => {
+      track.scrollTo({ left: track.clientWidth * i, behavior: 'smooth' });
+    });
     dotsContainer.appendChild(dot);
-  }
+    return dot;
+  });
   featuresGrid.appendChild(dotsContainer);
 
   const nav = document.createElement('div');
@@ -6234,76 +6280,26 @@ function initFeaturesSlider() {
   featuresGrid.appendChild(nav);
 
   prevBtn.addEventListener('click', () => {
-    currentFeatureIndex = (currentFeatureIndex - 1 + features.length) % features.length;
-    goToFeature(currentFeatureIndex);
+    track.scrollBy({ left: -track.clientWidth, behavior: 'smooth' });
   });
   nextBtn.addEventListener('click', () => {
-    currentFeatureIndex = (currentFeatureIndex + 1) % features.length;
-    goToFeature(currentFeatureIndex);
+    track.scrollBy({ left: track.clientWidth, behavior: 'smooth' });
   });
-  featuresGrid.dataset.sliderInitialized = '1';
-  currentFeatureIndex = 0;
-  goToFeature(0);
-  
-  // Auto-play
-  featureSliderInterval = setInterval(() => {
-    currentFeatureIndex = (currentFeatureIndex + 1) % features.length;
-    goToFeature(currentFeatureIndex);
-  }, 2000);
-  
-  // Touch swipe
-  let touchStartX = 0;
-  let touchEndX = 0;
-  
-  slider.addEventListener('touchstart', (e) => {
-    touchStartX = e.changedTouches[0].screenX;
-  });
-  
-  slider.addEventListener('touchend', (e) => {
-    touchEndX = e.changedTouches[0].screenX;
-    handleSwipe();
-  });
-  
-  function handleSwipe() {
-    if (touchEndX < touchStartX - 50) {
-      // Swipe left
-      currentFeatureIndex = (currentFeatureIndex + 1) % features.length;
-      goToFeature(currentFeatureIndex);
-    }
-    if (touchEndX > touchStartX + 50) {
-      // Swipe right
-      currentFeatureIndex = (currentFeatureIndex - 1 + features.length) % features.length;
-      goToFeature(currentFeatureIndex);
-    }
-  }
-}
 
-function goToFeature(index) {
-  const slider = document.querySelector('.features-slider');
-  const dots = document.querySelectorAll('.features-dot');
-  const featuresGrid = document.querySelector('.features-grid');
-  
-  if (slider && featuresGrid) {
-    const total = slider.children.length || 1;
-    const normalizedIndex = ((index % total) + total) % total;
-    slider.style.transform = `translateX(-${normalizedIndex * 100}%)`;
-    index = normalizedIndex;
+  let scrollRaf = 0;
+  function syncDotsFromScroll() {
+    scrollRaf = 0;
+    const width = track.clientWidth || 1;
+    const index = Math.max(0, Math.min(dots.length - 1, Math.round(track.scrollLeft / width)));
+    dots.forEach((dot, i) => dot.classList.toggle('active', i === index));
   }
-  
-  dots.forEach((dot, i) => {
-    dot.classList.toggle('active', i === index);
-  });
-  
-  currentFeatureIndex = index;
-  
-  // Reset auto-play timer
-  if (featureSliderInterval) {
-    clearInterval(featureSliderInterval);
-    featureSliderInterval = setInterval(() => {
-      currentFeatureIndex = (currentFeatureIndex + 1) % dots.length;
-      goToFeature(currentFeatureIndex);
-    }, 2000);
-  }
+  track.addEventListener('scroll', () => {
+    if (scrollRaf) return;
+    scrollRaf = window.requestAnimationFrame(syncDotsFromScroll);
+  }, { passive: true });
+
+  mobileFeaturesState = { track, dots };
+  featuresGrid.dataset.sliderInitialized = '1';
 }
 
 // Initialize on load
@@ -6315,7 +6311,10 @@ window.addEventListener('DOMContentLoaded', () => {
 window.addEventListener('resize', () => {
   if (window.innerWidth <= 768) {
     initFeaturesSlider();
-    goToFeature(currentFeatureIndex);
+    if (mobileFeaturesState?.track) {
+      const idx = Math.round((mobileFeaturesState.track.scrollLeft || 0) / (mobileFeaturesState.track.clientWidth || 1));
+      mobileFeaturesState.track.scrollTo({ left: (mobileFeaturesState.track.clientWidth || 0) * idx, behavior: 'auto' });
+    }
   }
 });
 

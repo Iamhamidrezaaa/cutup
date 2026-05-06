@@ -68,32 +68,33 @@
           </p>
           <div class="download-box hero-download-preview" aria-label="Quick subtitle starter">
             <div class="platform-tabs-container source-selector">
-              <button class="platform-tab active" type="button">
+              <button class="platform-tab hero-platform-tab active" type="button" data-hero-platform="youtube">
                 <span class="platform-icon">📺</span>
                 <span class="platform-name">YouTube</span>
               </button>
-              <button class="platform-tab" type="button">
+              <button class="platform-tab hero-platform-tab" type="button" data-hero-platform="instagram">
                 <span class="platform-icon">📷</span>
                 <span class="platform-name">Instagram</span>
               </button>
-              <button class="platform-tab" type="button">
+              <button class="platform-tab hero-platform-tab" type="button" data-hero-platform="tiktok">
                 <span class="platform-icon">🎵</span>
                 <span class="platform-name">TikTok</span>
               </button>
-              <button class="platform-tab" type="button">
+              <button class="platform-tab hero-platform-tab" type="button" data-hero-platform="audiofile">
                 <span class="platform-icon">📁</span>
                 <span class="platform-name">Upload File</span>
               </button>
             </div>
-            <h2 class="download-title hero-preview-tool-title">Paste a YouTube link</h2>
+            <h2 class="download-title hero-preview-tool-title" id="heroPreviewToolTitle">Paste a YouTube link</h2>
             <div class="download-input-group hero-preview-input-group">
               <input
                 type="text"
                 class="download-input"
+                id="heroPreviewInput"
                 placeholder="https://youtube.com/watch?v=..."
                 aria-label="Sample YouTube URL input"
               >
-              <button class="download-btn-main" type="button">
+              <button class="download-btn-main" type="button" id="heroPreviewPasteBtn">
                 📋 Paste
               </button>
             </div>
