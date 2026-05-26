@@ -76,13 +76,46 @@ function parseFfmpegProgressLines(chunkText) {
   return out;
 }
 
-function buildVideoFilter(assName, enc) {
-  const filters = [];
-  if (enc.maxWidth) {
-    filters.push(`scale='min(${enc.maxWidth},iw)':-2:flags=lanczos`);
-  }
-  filters.push(`subtitles=${assName}:charenc=UTF-8`);
-  return filters.join(',');
+function roundEven(value) {
+  const v = Math.max(2, Math.round(Number(value) || 0));
+  return v % 2 === 0 ? v : v + 1;
+}
+
+export function resolveSubtitleRenderGeometry({
+  sourceWidth,
+  sourceHeight,
+  quality = 'fast',
+  renderHints = {}
+}) {
+  const srcW = roundEven(sourceWidth || 1080);
+  const srcH = roundEven(sourceHeight || 1920);
+  const isVertical = Boolean(renderHints?.isVertical) || srcH > srcW * 1.05;
+  const enc = resolveEncodeProfile(quality, renderHints);
+  // Temporary hard debug pass: disable geometry normalization and scaling filters.
+  const outputWidth = srcW;
+  const outputHeight = srcH;
+  return {
+    enc,
+    isVertical,
+    playResX: outputWidth,
+    playResY: outputHeight,
+    outputWidth,
+    outputHeight,
+    filters: []
+  };
+}
+
+function buildVideoFilter(assName, geometry) {
+  // Temporary hard debug pass: isolate raw libass behavior with no geometry transforms.
+  const filterChain = `subtitles=${assName}`;
+  console.log('[ffmpeg-filter-debug]', {
+    filterChain,
+    playResX: geometry?.playResX || null,
+    playResY: geometry?.playResY || null,
+    outputWidth: geometry?.outputWidth || null,
+    outputHeight: geometry?.outputHeight || null
+  });
+  return filterChain;
 }
 
 async function detectHardwareAcceleration() {
@@ -160,11 +193,17 @@ export async function burnSubtitles(opts) {
   if (!existsSync(inputPath)) return Promise.reject(new Error('INPUT_VIDEO_MISSING'));
   if (!existsSync(assPath)) return Promise.reject(new Error('ASS_FILE_MISSING'));
 
-  const enc = resolveEncodeProfile(quality, renderHints);
+  const geometry = resolveSubtitleRenderGeometry({
+    sourceWidth: renderHints?.sourceWidth,
+    sourceHeight: renderHints?.sourceHeight,
+    quality,
+    renderHints
+  });
+  const enc = geometry.enc;
   const hwAccel = await detectHardwareAcceleration();
   const assDir = dirname(resolve(assPath));
   const assName = basename(assPath);
-  const vf = buildVideoFilter(assName, enc);
+  const vf = buildVideoFilter(assName, geometry);
 
   const args = [
     '-hide_banner',
@@ -221,6 +260,8 @@ export async function burnSubtitles(opts) {
     maxrate: enc.maxrate,
     movflags: enc.movflags,
     vf,
+    playRes: `${geometry.playResX}x${geometry.playResY}`,
+    outputResolution: `${geometry.outputWidth}x${geometry.outputHeight}`,
     hwAccel: hwAccel.enabled ? hwAccel.methods.slice(0, 3) : [],
     cwd: assDir,
     input: basename(inputPath)

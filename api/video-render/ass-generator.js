@@ -277,8 +277,12 @@ function styleLine(name, preset) {
 export function generateAssContent(segments, presetId, dims = {}) {
   const selectedPresetId = resolvePresetIdOrThrow(presetId);
   const basePreset = getStylePreset(selectedPresetId);
-  const playResX = dims.playResX || basePreset.playResX || 1080;
-  const playResY = dims.playResY || basePreset.playResY || 1920;
+  const requestedPlayResX = Number(dims.playResX || basePreset.playResX || 1080);
+  const requestedPlayResY = Number(dims.playResY || basePreset.playResY || 1920);
+  const requestedIsVertical = requestedPlayResY > requestedPlayResX * 1.05;
+  // Hard lock vertical ASS script resolution.
+  const playResX = requestedIsVertical ? 1080 : requestedPlayResX;
+  const playResY = requestedIsVertical ? 1920 : requestedPlayResY;
   const durationSec = dims.durationSec || 0;
   const quality = dims.quality === 'hq' ? 'hq' : 'fast';
   const captionMode = dims.captionMode || dims.qualityMode || 'viral';
@@ -381,7 +385,8 @@ export function generateAssContent(segments, presetId, dims = {}) {
 
   Object.assign(preset, {
     fontSize: tunedFontSize,
-    fontName: layout.fontName,
+    // Temporary debug pass: force a known libass font.
+    fontName: 'DejaVu Sans',
     spacing: layout.spacing,
     scaleY: layout.scaleY,
     outline: tunedOutlineByPreset,
@@ -422,9 +427,11 @@ export function generateAssContent(segments, presetId, dims = {}) {
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text'
   ];
+  const defaultStyleLine = header.find((line) => line.startsWith('Style:,Default,')) || '';
+  const emphasisStyleLine = header.find((line) => line.startsWith('Style:,Emphasis,')) || '';
 
   const disableEmphasis = layout.rtl || captionMode === 'accurate';
-  const typoPrefix = { fontName: layout.fontName, fontSize: layout.fontSize, spacing: layout.spacing, rtl: layout.rtl };
+  const typoPrefix = { fontName: preset.fontName, fontSize: preset.fontSize, spacing: layout.spacing, rtl: layout.rtl };
   let totalLines = 0;
   let wrappedCount = 0;
   let maxLineCount = 1;
@@ -479,6 +486,28 @@ export function generateAssContent(segments, presetId, dims = {}) {
     shadow: preset.shadow,
     glow: preset.glow || 0,
     isVertical: layout.isVertical
+  });
+  console.log('[ass-font-debug]', {
+    fontName: preset.fontName,
+    fontSize: preset.fontSize,
+    outline: preset.outline,
+    shadow: preset.shadow,
+    marginV: preset.marginV,
+    alignment: preset.alignment,
+    playResX,
+    playResY
+  });
+  console.log('[ass-style-debug]', {
+    defaultStyleLine,
+    emphasisStyleLine
+  });
+  console.log('[ass-debug]', {
+    playResX,
+    playResY,
+    fontSize: preset.fontSize,
+    marginV: preset.marginV,
+    alignment: preset.alignment,
+    styleName: 'Default'
   });
 
   return {
