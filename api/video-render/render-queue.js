@@ -6,7 +6,7 @@ import { writeFileSync, copyFileSync, statSync } from 'fs';
 import { getStylePreset } from './style-presets.js';
 import { join } from 'path';
 import { generateAssContent, generateAssFromExportDoc } from './ass-generator.js';
-import { burnSubtitles, probeVideo, checkFfmpegAvailable } from './ffmpeg-renderer.js';
+import { burnSubtitles, probeVideo, checkFfmpegAvailable, resolveSubtitleRenderGeometry } from './ffmpeg-renderer.js';
 import {
   createJobDir,
   downloadVideoFromUrl,
@@ -103,6 +103,7 @@ function summarizeDiagnostics(job, probe, assResult, timings, ffmpegStats) {
     selectedVersion: job.selectedVersion || 'original',
     durationSec: Number((probe?.durationSec || 0).toFixed(3)),
     resolution: `${probe?.width || 0}x${probe?.height || 0}`,
+    outputResolution: String(job.resolution || ''),
     timingsMs: {
       total: timings.totalMs,
       assGeneration: timings.assGenerationMs,
@@ -155,6 +156,33 @@ function formatFileSize(bytes) {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function extractAssDebugInfo(assContent) {
+  const text = String(assContent || '');
+  const playResX = Number((text.match(/^\s*PlayResX:\s*(\d+)/m) || [])[1] || 0);
+  const playResY = Number((text.match(/^\s*PlayResY:\s*(\d+)/m) || [])[1] || 0);
+  const styleLine =
+    text
+      .split(/\r?\n/)
+      .find((line) => line.startsWith('Style:,Default,')) ||
+    text
+      .split(/\r?\n/)
+      .find((line) => line.startsWith('Style: Default,')) ||
+    '';
+  const styleParts = styleLine.split(',');
+  const styleName = styleParts[1] || 'Default';
+  const fontSize = Number(styleParts[3] || 0);
+  const alignment = Number(styleParts[19] || 0);
+  const marginV = Number(styleParts[22] || 0);
+  return {
+    playResX,
+    playResY,
+    fontSize,
+    marginV,
+    alignment,
+    styleName
+  };
 }
 
 export function isJobReady(job) {
@@ -427,6 +455,17 @@ async function runJob(job) {
     const isVertical = probe.height > probe.width * 1.05;
     const hqSafeguards =
       job.quality === 'hq' && (probe.durationSec > 120 || subtitleCount > 220 || rtl || isVertical);
+    const renderGeometry = resolveSubtitleRenderGeometry({
+      sourceWidth: probe.width,
+      sourceHeight: probe.height,
+      quality: job.quality,
+      renderHints: {
+        hqSafeguards,
+        isVertical,
+        sourceWidth: probe.width,
+        sourceHeight: probe.height
+      }
+    });
     job.etaSec = Math.max(10, Math.round(probe.durationSec * (job.quality === 'hq' ? 1.45 : 0.9)));
 
     setStage(job, 'subtitle_layout', {
@@ -436,8 +475,8 @@ async function runJob(job) {
     });
 
     const assOpts = {
-      playResX: probe.width,
-      playResY: probe.height,
+      playResX: renderGeometry.playResX,
+      playResY: renderGeometry.playResY,
       durationSec: probe.durationSec,
       positionMode: job.positionMode,
       captionMode: job.captionMode || 'viral',
@@ -468,6 +507,12 @@ async function runJob(job) {
     setSubStage(job, 'Building cinematic caption layer…', 50);
     job.assPath = join(job.jobDir, 'subtitles.ass');
     writeFileSync(job.assPath, assResult.content, 'utf8');
+    const assDebugPath = join(job.jobDir, 'subtitles.final.ass');
+    writeFileSync(assDebugPath, assResult.content, 'utf8');
+    job.assDebugPath = assDebugPath;
+    const assDebug = extractAssDebugInfo(assResult.content);
+    job.assDebug = assDebug;
+    console.log('[ass-debug]', assDebug);
     job.renderProfile = assResult.renderProfile?.id || null;
     const adaptiveSafeguards = Boolean(assResult.renderProfile?.safeguardsActive);
     job.adaptiveSafeguards = adaptiveSafeguards;
@@ -495,7 +540,8 @@ async function runJob(job) {
         renderHints: {
           hqSafeguards,
           isVertical,
-          sourceWidth: probe.width
+          sourceWidth: probe.width,
+          sourceHeight: probe.height
         },
         durationSec: probe.durationSec,
         signal: job.ffmpegAbort.signal,
@@ -557,7 +603,7 @@ async function runJob(job) {
 
     const fileStat = statSync(outputPath);
     job.fileSizeBytes = fileStat.size;
-    job.resolution = `${probe.width}×${probe.height}`;
+    job.resolution = `${renderGeometry.outputWidth}×${renderGeometry.outputHeight}`;
     job.videoDurationSec = Math.round(probe.durationSec * 10) / 10;
     job.renderDurationSec = Math.max(1, Math.round((Date.now() - job.renderStartedAt) / 1000));
     const assGenerationMs =
@@ -585,6 +631,8 @@ async function runJob(job) {
         samples: { speed: ffmpegStats.speedSamples, fps: ffmpegStats.fpsSamples }
       }
     );
+    diagnostics.assDebug = job.assDebug || null;
+    diagnostics.assDebugPath = job.assDebugPath || null;
     job.diagnostics = diagnostics;
     job.diagnosticsPath = join(job.jobDir, 'render-diagnostics.json');
     writeFileSync(job.diagnosticsPath, JSON.stringify(diagnostics, null, 2), 'utf8');

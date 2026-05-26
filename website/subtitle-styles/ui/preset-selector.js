@@ -82,6 +82,16 @@
         if (typeof onChange === 'function') onChange(id);
       });
     });
+
+    if (!container.dataset.syncBound) {
+      container.dataset.syncBound = '1';
+      global.addEventListener?.('cutup:preset-changed', (event) => {
+        const id = String(event?.detail?.selectedPresetId || event?.detail?.presetId || '').trim();
+        if (!id) return;
+        active = id;
+        paintActiveCards(id);
+      });
+    }
   }
 
   global.CutupPresetSelector = {

@@ -277,8 +277,12 @@ function styleLine(name, preset) {
 export function generateAssContent(segments, presetId, dims = {}) {
   const selectedPresetId = resolvePresetIdOrThrow(presetId);
   const basePreset = getStylePreset(selectedPresetId);
-  const playResX = dims.playResX || basePreset.playResX || 1080;
-  const playResY = dims.playResY || basePreset.playResY || 1920;
+  const requestedPlayResX = Number(dims.playResX || basePreset.playResX || 1080);
+  const requestedPlayResY = Number(dims.playResY || basePreset.playResY || 1920);
+  const requestedIsVertical = requestedPlayResY > requestedPlayResX * 1.05;
+  // Hard lock vertical ASS script resolution.
+  const playResX = requestedIsVertical ? 1080 : requestedPlayResX;
+  const playResY = requestedIsVertical ? 1920 : requestedPlayResY;
   const durationSec = dims.durationSec || 0;
   const quality = dims.quality === 'hq' ? 'hq' : 'fast';
   const captionMode = dims.captionMode || dims.qualityMode || 'viral';
@@ -479,6 +483,14 @@ export function generateAssContent(segments, presetId, dims = {}) {
     shadow: preset.shadow,
     glow: preset.glow || 0,
     isVertical: layout.isVertical
+  });
+  console.log('[ass-debug]', {
+    playResX,
+    playResY,
+    fontSize: preset.fontSize,
+    marginV: preset.marginV,
+    alignment: preset.alignment,
+    styleName: 'Default'
   });
 
   return {

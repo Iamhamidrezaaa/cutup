@@ -76,12 +76,66 @@ function parseFfmpegProgressLines(chunkText) {
   return out;
 }
 
-function buildVideoFilter(assName, enc) {
-  const filters = [];
-  if (enc.maxWidth) {
-    filters.push(`scale='min(${enc.maxWidth},iw)':-2:flags=lanczos`);
+function roundEven(value) {
+  const v = Math.max(2, Math.round(Number(value) || 0));
+  return v % 2 === 0 ? v : v + 1;
+}
+
+export function resolveSubtitleRenderGeometry({
+  sourceWidth,
+  sourceHeight,
+  quality = 'fast',
+  renderHints = {}
+}) {
+  const srcW = roundEven(sourceWidth || 1080);
+  const srcH = roundEven(sourceHeight || 1920);
+  const isVertical = Boolean(renderHints?.isVertical) || srcH > srcW * 1.05;
+  const enc = resolveEncodeProfile(quality, renderHints);
+
+  if (isVertical) {
+    // Hard lock for vertical readability consistency.
+    return {
+      enc,
+      isVertical: true,
+      playResX: 1080,
+      playResY: 1920,
+      outputWidth: 1080,
+      outputHeight: 1920,
+      filters: [
+        'scale=1080:1920:force_original_aspect_ratio=decrease:flags=lanczos',
+        'pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black'
+      ]
+    };
   }
-  filters.push(`subtitles=${assName}:charenc=UTF-8`);
+
+  let outputWidth = srcW;
+  let outputHeight = srcH;
+  if (enc.maxWidth && outputWidth > enc.maxWidth) {
+    outputWidth = roundEven(enc.maxWidth);
+    outputHeight = roundEven((srcH / srcW) * outputWidth);
+  }
+
+  const filters = [];
+  if (outputWidth !== srcW || outputHeight !== srcH) {
+    filters.push(`scale=${outputWidth}:${outputHeight}:flags=lanczos`);
+  }
+
+  return {
+    enc,
+    isVertical: false,
+    playResX: outputWidth,
+    playResY: outputHeight,
+    outputWidth,
+    outputHeight,
+    filters
+  };
+}
+
+function buildVideoFilter(assName, geometry) {
+  const filters = [...(geometry.filters || [])];
+  filters.push(
+    `subtitles=${assName}:charenc=UTF-8:original_size=${geometry.playResX}x${geometry.playResY}`
+  );
   return filters.join(',');
 }
 
@@ -160,11 +214,17 @@ export async function burnSubtitles(opts) {
   if (!existsSync(inputPath)) return Promise.reject(new Error('INPUT_VIDEO_MISSING'));
   if (!existsSync(assPath)) return Promise.reject(new Error('ASS_FILE_MISSING'));
 
-  const enc = resolveEncodeProfile(quality, renderHints);
+  const geometry = resolveSubtitleRenderGeometry({
+    sourceWidth: renderHints?.sourceWidth,
+    sourceHeight: renderHints?.sourceHeight,
+    quality,
+    renderHints
+  });
+  const enc = geometry.enc;
   const hwAccel = await detectHardwareAcceleration();
   const assDir = dirname(resolve(assPath));
   const assName = basename(assPath);
-  const vf = buildVideoFilter(assName, enc);
+  const vf = buildVideoFilter(assName, geometry);
 
   const args = [
     '-hide_banner',
@@ -221,6 +281,8 @@ export async function burnSubtitles(opts) {
     maxrate: enc.maxrate,
     movflags: enc.movflags,
     vf,
+    playRes: `${geometry.playResX}x${geometry.playResY}`,
+    outputResolution: `${geometry.outputWidth}x${geometry.outputHeight}`,
     hwAccel: hwAccel.enabled ? hwAccel.methods.slice(0, 3) : [],
     cwd: assDir,
     input: basename(inputPath)
