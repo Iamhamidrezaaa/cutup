@@ -4,7 +4,8 @@
 import { spawn } from 'child_process';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync, statSync } from 'fs';
+import { createHash } from 'crypto';
 import { dirname, basename, resolve, extname } from 'path';
 
 const execFileAsync = promisify(execFile);
@@ -314,6 +315,21 @@ export async function burnSubtitles(opts) {
     '0:a?',
     outputPath
   ];
+
+  // STEP 1-4: verify exact ASS content that will be used by ffmpeg.
+  const finalAss = readFileSync(assPath, 'utf8');
+  const dialogues = finalAss.split(/\r?\n/).filter((l) => l.startsWith('Dialogue:'));
+  console.log('[ASS PATH FINAL]', assPath);
+  console.log('[FFMPEG ASS INPUT EXISTS]', existsSync(assPath));
+  console.log('[FFMPEG ASS SIZE]', statSync(assPath).size);
+  console.log('[FINAL DIALOGUE COUNT]', dialogues.length);
+  dialogues.forEach((d, i) => {
+    console.log(`[FINAL DIALOGUE ${i}]`, d);
+  });
+  console.log('[HAS HELLO WORLD]', finalAss.includes('hello world'));
+  console.log('[HAS CUTUP]', finalAss.includes('CUTUP DEBUG TEST'));
+  const assMd5 = createHash('md5').update(finalAss).digest('hex');
+  console.log('[ASS MD5]', assMd5);
 
   const ffmpegCommand = formatFfmpegCommand(args, assDir);
   console.log('[ffmpeg-command]', ffmpegCommand);
