@@ -179,9 +179,11 @@ function applyFutureVisualExtensions(cue, _context) {
 const ASS_EVENTS_FORMAT =
   'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text';
 
-/** STEP 4 debug: single hardcoded dialogue — not generated dynamically. */
-const ASS_HARDCODED_DEBUG_DIALOGUE =
-  'Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\fs300\\bord25\\shad20\\c&H0000FF00&\\3c&H00FF00FF&}CUTUP DEBUG TEST';
+/** Final isolation test: exactly two fixed dialogues, no transcript content. */
+const ASS_FIXED_DIALOGUE_FIRST =
+  'Dialogue: 0,0:00:00.00,0:00:04.00,Default,,0,0,0,,{\\fs220\\bord16\\shad10\\c&H0000FF00&}CUTUP FIRST';
+const ASS_FIXED_DIALOGUE_SECOND =
+  'Dialogue: 5,0:00:06.00,0:00:10.00,Default,,0,0,0,,{\\fs180\\bord10\\shad6\\c&H00FFFFFF&}HELLO SECOND';
 
 function verifyAssEventsFormat(eventsFormatLine) {
   const expected = ASS_EVENTS_FORMAT;
@@ -407,10 +409,11 @@ export function generateAssContent(segments, presetId, dims = {}) {
     playResY
   };
 
-  const canonicalSubtitles = buildCanonicalSubtitles(segments);
-  if (!canonicalSubtitles.length) {
-    throw new Error('SUBTITLE_CANONICAL_EMPTY');
-  }
+  // Isolation mode: ignore incoming transcript/exportDoc and use fixed seed cues only.
+  const canonicalSubtitles = buildCanonicalSubtitles([
+    { start: 0, end: 4, text: 'CUTUP FIRST' },
+    { start: 6, end: 10, text: 'HELLO SECOND' }
+  ]);
   const cues = buildVisualCueView(canonicalSubtitles, captionMode);
   const integrityReport = assertCueIntegrity(canonicalSubtitles, cues, {
     maxTimingDriftMs: 0,
@@ -544,90 +547,21 @@ export function generateAssContent(segments, presetId, dims = {}) {
   const defaultStyleLine = header.find((line) => line.startsWith('Style:,Default,')) || '';
   const emphasisStyleLine = header.find((line) => line.startsWith('Style:,Emphasis,')) || '';
 
-  const disableEmphasis = layout.rtl || captionMode === 'accurate';
-  const typoPrefix = { fontName: preset.fontName, fontSize: preset.fontSize, spacing: layout.spacing, rtl: layout.rtl };
-  let totalLines = 0;
-  let wrappedCount = 0;
-  let maxLineCount = 1;
-  let totalChars = 0;
-
-  // Pipeline path — logged only for corruption comparison (not written to final ASS yet).
-  const dynamicDialogues = visibleCues.map((cue) => {
-    const enrichedCue = applyFutureVisualExtensions(cue, {
-      renderProfile,
-      visualFeatureFlags
-    });
-    const lines = buildCueLines(enrichedCue, layout.layout, layout.useUppercase);
-    const lineCount = Math.max(1, lines.length);
-    totalLines += lineCount;
-    maxLineCount = Math.max(maxLineCount, lineCount);
-    if (lineCount > 1) wrappedCount += 1;
-    totalChars += String(enrichedCue.text || '').length;
-
-    const mV = layout.isVertical ? layout.marginV : cueMarginV(layout.marginV, lineCount, layout.lineHeight);
-    const body = linesToAssText(lines, preset, { disableEmphasis, renderProfile });
-    const glowPrefix = preset.glow > 0 ? `{\\blur${Number(preset.glow).toFixed(2)}}` : '';
-    const rtlPrefix = assRtlPrefix(typoPrefix);
-    const text = `${rtlPrefix}${glowPrefix}${body}`;
-    return `Dialogue: 0,${toAssTime(enrichedCue.renderStart)},${toAssTime(enrichedCue.renderEnd)},Default,,0,0,${mV},,${text}`;
-  });
-
-  const firstCue = visibleCues[0];
-  const pipelineSample = dynamicDialogues[0];
-  if (firstCue) {
-    const enrichedCue = applyFutureVisualExtensions(firstCue, { renderProfile, visualFeatureFlags });
-    const lines = buildCueLines(enrichedCue, layout.layout, layout.useUppercase);
-    const pipelineBody = linesToAssText(lines, preset, { disableEmphasis, renderProfile });
-    const pipelineGlow =
-      preset.glow > 0 ? `{\\blur${Number(preset.glow).toFixed(2)}}` : '';
-    const pipelineRtl = assRtlPrefix(typoPrefix);
-    const pipelineText = `${pipelineRtl}${pipelineGlow}${pipelineBody}`;
-
-    logDynamicSubtitleDebug(pipelineBody, null, {
-      label: 'pipeline:linesToAssText-body',
-      pipelineStage: 'after linesToAssText'
-    });
-    inspectAssEscaping('pipeline:body', pipelineBody);
-    logDynamicSubtitleDebug(pipelineGlow, null, {
-      label: 'pipeline:glowPrefix',
-      pipelineStage: 'after glowPrefix'
-    });
-    inspectAssEscaping('pipeline:glow', pipelineGlow);
-    logDynamicSubtitleDebug(pipelineText, pipelineSample, {
-      label: 'pipeline:full-text-field',
-      pipelineStage: 'after rtl+glow+body',
-      compareTo: extractAssDialogueTextField(ASS_HARDCODED_DEBUG_DIALOGUE)
-    });
-    inspectAssEscaping('pipeline:full-text', pipelineText);
-    console.log('[ass-pipeline-dialogue-sample]', pipelineSample);
-    verifyAssDialogueLines([pipelineSample]);
-  }
-
-  // STEP 2: one explicit dynamic line (same override style as hardcoded test).
-  const displayText =
-    (firstCue && (firstCue.text || (firstCue.lines || []).join(' '))) || 'hello world';
-  const explicitDynamicText = buildExplicitDynamicOverrideText(displayText);
-  const dynamicStart = firstCue ? Number(firstCue.renderStart) || 5 : 5;
-  const dynamicEnd = firstCue ? Number(firstCue.renderEnd) || 10 : 10;
-  const explicitDynamicDialogue = buildDynamicDebugDialogue(
-    dynamicStart,
-    dynamicEnd,
-    explicitDynamicText
-  );
-
-  const hardcodedTextField = extractAssDialogueTextField(ASS_HARDCODED_DEBUG_DIALOGUE);
-  logDynamicSubtitleDebug(explicitDynamicText, explicitDynamicDialogue, {
-    label: 'explicit-dynamic-test',
-    compareTo: hardcodedTextField
-  });
-  inspectAssEscaping('explicit-dynamic', explicitDynamicText);
-
-  const dialogues = [ASS_HARDCODED_DEBUG_DIALOGUE, explicitDynamicDialogue];
+  const dialogues = [ASS_FIXED_DIALOGUE_FIRST, ASS_FIXED_DIALOGUE_SECOND];
   verifyAssDialogueLines(dialogues);
+  console.log('[FINAL DIALOGUE COUNT]', dialogues.length);
 
-  const cueCount = dynamicDialogues.length;
-  const avgLines = cueCount > 0 ? totalLines / cueCount : 1;
-  const avgCharsPerCue = cueCount > 0 ? totalChars / cueCount : 0;
+  const cueCount = dialogues.length;
+  const avgLines = 1;
+  const avgCharsPerCue = Number(
+    (
+      dialogues
+        .map((line) => extractAssDialogueTextField(line).replace(/\{[^}]*\}/g, ''))
+        .reduce((sum, text) => sum + text.length, 0) / Math.max(1, dialogues.length)
+    ).toFixed(2)
+  );
+  const maxLineCount = 1;
+  const wrappedCount = 0;
   const maxWidthRatio = (playResX - (layout.marginL + layout.marginR)) / playResX;
   const yAnchor = 1 - layout.marginV / playResY;
 
