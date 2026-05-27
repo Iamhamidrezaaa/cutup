@@ -197,6 +197,16 @@ function verifyAssEventsFormat(eventsFormatLine) {
   return ok;
 }
 
+function extractAssDialogueTextField(dialogueLine) {
+  const prefix = 'Dialogue: ';
+  const body = dialogueLine.startsWith(prefix) ? dialogueLine.slice(prefix.length) : dialogueLine;
+  const commaIdx = [];
+  for (let i = 0; i < body.length; i++) {
+    if (body[i] === ',') commaIdx.push(i);
+  }
+  return commaIdx.length >= 9 ? body.slice(commaIdx[8] + 1) : '';
+}
+
 function verifyAssDialogueLines(dialogueLines) {
   const expectedFields = 10; // Layer..Text (comma-separated, Text may contain commas)
   for (const line of dialogueLines) {
@@ -232,6 +242,52 @@ function verifyAssDialogueLines(dialogueLines) {
 function logAssFullOutput(assContent) {
   console.log('[ASS FULL OUTPUT]');
   console.log(assContent);
+}
+
+/** STEP 3: extreme logging — compare hardcoded vs dynamic text field. */
+function logDynamicSubtitleDebug(dynamicSubtitleText, finalDialogueLine, extra = {}) {
+  console.log('[dynamic-raw]', dynamicSubtitleText);
+  console.log('[dynamic-json]', JSON.stringify(dynamicSubtitleText));
+  console.log('[dynamic-charcodes]', [...dynamicSubtitleText].map((c) => c.charCodeAt(0)));
+  if (extra.label) console.log('[dynamic-debug-label]', extra.label);
+  if (extra.pipelineStage) console.log('[dynamic-pipeline-stage]', extra.pipelineStage);
+  if (finalDialogueLine != null) {
+    console.log('[dialogue-final]', finalDialogueLine);
+    console.log('[dialogue-json]', JSON.stringify(finalDialogueLine));
+  }
+  if (extra.compareTo) {
+    console.log('[dynamic-vs-hardcoded]', {
+      sameLength: dynamicSubtitleText.length === extra.compareTo.length,
+      hardcodedPreview: extra.compareTo.slice(0, 80),
+      dynamicPreview: dynamicSubtitleText.slice(0, 80)
+    });
+  }
+}
+
+function inspectAssEscaping(label, text) {
+  const badDoubleBrace = /\\\\\{/.test(text) || /\\\\\}/.test(text);
+  const badEscapedBrace = /\\\{/.test(text) || /\\\}/.test(text);
+  const badQuadBackslash = /\\\\\\\\/.test(text);
+  const badNewline = /[\r\n]/.test(text);
+  const goodBlur = /\{\\blur[\d.]+\}/.test(text) || /\{\\\\blur/.test(text);
+  console.log('[ass-escape-inspect]', {
+    label,
+    badDoubleBrace,
+    badEscapedBrace,
+    badQuadBackslash,
+    badNewline,
+    hasOverrideBlock: text.includes('{') && text.includes('}'),
+    preview: text.slice(0, 120)
+  });
+}
+
+function buildExplicitDynamicOverrideText(displayText = 'hello world') {
+  const safeText = String(displayText || 'hello world').replace(/[{}\\]/g, '');
+  return `{\\fs180\\bord12\\shad8\\blur2\\c&H00FFFFFF&\\3c&H00000000&}${safeText}`;
+}
+
+function buildDynamicDebugDialogue(startSec, endSec, dynamicSubtitleText) {
+  return `Dialogue: 0,${toAssTime(startSec)},${toAssTime(endSec)},Default,,0,0,0,,${dynamicSubtitleText}`;
 }
 
 export function toAssTime(seconds) {
@@ -495,7 +551,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
   let maxLineCount = 1;
   let totalChars = 0;
 
-  // Dynamic lines kept for diagnostics only — final ASS uses hardcoded test event (STEP 4).
+  // Pipeline path — logged only for corruption comparison (not written to final ASS yet).
   const dynamicDialogues = visibleCues.map((cue) => {
     const enrichedCue = applyFutureVisualExtensions(cue, {
       renderProfile,
@@ -511,15 +567,62 @@ export function generateAssContent(segments, presetId, dims = {}) {
     const mV = layout.isVertical ? layout.marginV : cueMarginV(layout.marginV, lineCount, layout.lineHeight);
     const body = linesToAssText(lines, preset, { disableEmphasis, renderProfile });
     const glowPrefix = preset.glow > 0 ? `{\\blur${Number(preset.glow).toFixed(2)}}` : '';
-    const text = `${assRtlPrefix(typoPrefix)}${glowPrefix}${body}`;
+    const rtlPrefix = assRtlPrefix(typoPrefix);
+    const text = `${rtlPrefix}${glowPrefix}${body}`;
     return `Dialogue: 0,${toAssTime(enrichedCue.renderStart)},${toAssTime(enrichedCue.renderEnd)},Default,,0,0,${mV},,${text}`;
   });
-  if (dynamicDialogues.length > 0) {
-    console.log('[ass-dynamic-dialogue-sample]', dynamicDialogues[0]);
-    verifyAssDialogueLines(dynamicDialogues.slice(0, 3));
+
+  const firstCue = visibleCues[0];
+  const pipelineSample = dynamicDialogues[0];
+  if (firstCue) {
+    const enrichedCue = applyFutureVisualExtensions(firstCue, { renderProfile, visualFeatureFlags });
+    const lines = buildCueLines(enrichedCue, layout.layout, layout.useUppercase);
+    const pipelineBody = linesToAssText(lines, preset, { disableEmphasis, renderProfile });
+    const pipelineGlow =
+      preset.glow > 0 ? `{\\blur${Number(preset.glow).toFixed(2)}}` : '';
+    const pipelineRtl = assRtlPrefix(typoPrefix);
+    const pipelineText = `${pipelineRtl}${pipelineGlow}${pipelineBody}`;
+
+    logDynamicSubtitleDebug(pipelineBody, null, {
+      label: 'pipeline:linesToAssText-body',
+      pipelineStage: 'after linesToAssText'
+    });
+    inspectAssEscaping('pipeline:body', pipelineBody);
+    logDynamicSubtitleDebug(pipelineGlow, null, {
+      label: 'pipeline:glowPrefix',
+      pipelineStage: 'after glowPrefix'
+    });
+    inspectAssEscaping('pipeline:glow', pipelineGlow);
+    logDynamicSubtitleDebug(pipelineText, pipelineSample, {
+      label: 'pipeline:full-text-field',
+      pipelineStage: 'after rtl+glow+body',
+      compareTo: extractAssDialogueTextField(ASS_HARDCODED_DEBUG_DIALOGUE)
+    });
+    inspectAssEscaping('pipeline:full-text', pipelineText);
+    console.log('[ass-pipeline-dialogue-sample]', pipelineSample);
+    verifyAssDialogueLines([pipelineSample]);
   }
 
-  const dialogues = [ASS_HARDCODED_DEBUG_DIALOGUE];
+  // STEP 2: one explicit dynamic line (same override style as hardcoded test).
+  const displayText =
+    (firstCue && (firstCue.text || (firstCue.lines || []).join(' '))) || 'hello world';
+  const explicitDynamicText = buildExplicitDynamicOverrideText(displayText);
+  const dynamicStart = firstCue ? Number(firstCue.renderStart) || 5 : 5;
+  const dynamicEnd = firstCue ? Number(firstCue.renderEnd) || 10 : 10;
+  const explicitDynamicDialogue = buildDynamicDebugDialogue(
+    dynamicStart,
+    dynamicEnd,
+    explicitDynamicText
+  );
+
+  const hardcodedTextField = extractAssDialogueTextField(ASS_HARDCODED_DEBUG_DIALOGUE);
+  logDynamicSubtitleDebug(explicitDynamicText, explicitDynamicDialogue, {
+    label: 'explicit-dynamic-test',
+    compareTo: hardcodedTextField
+  });
+  inspectAssEscaping('explicit-dynamic', explicitDynamicText);
+
+  const dialogues = [ASS_HARDCODED_DEBUG_DIALOGUE, explicitDynamicDialogue];
   verifyAssDialogueLines(dialogues);
 
   const cueCount = dynamicDialogues.length;

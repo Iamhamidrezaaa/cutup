@@ -2,7 +2,7 @@
  * In-process render queue with concurrency limits and progress tracking.
  */
 import { randomBytes } from 'crypto';
-import { writeFileSync, copyFileSync, statSync } from 'fs';
+import { writeFileSync, readFileSync, copyFileSync, statSync } from 'fs';
 import { getStylePreset } from './style-presets.js';
 import { join, extname } from 'path';
 import { generateAssContent, generateAssFromExportDoc } from './ass-generator.js';
@@ -529,8 +529,17 @@ async function runJob(job) {
       byteLength: Buffer.byteLength(assResult.content, 'utf8')
     });
     writeFileSync(job.assPath, assResult.content, 'utf8');
+
+    const assOnDisk = readFileSync(job.assPath, 'utf8');
+    console.log('[ASS FILE FINAL]');
+    console.log(assOnDisk);
+    console.log(
+      '[ASS DIALOGUES]',
+      assOnDisk.split(/\r?\n/).filter((l) => l.startsWith('Dialogue:'))
+    );
+
     const assDebugPath = join(job.jobDir, 'subtitles.final.ass');
-    writeFileSync(assDebugPath, assResult.content, 'utf8');
+    writeFileSync(assDebugPath, assOnDisk, 'utf8');
     job.assDebugPath = assDebugPath;
     const assDebug = extractAssDebugInfo(assResult.content);
     job.assDebug = assDebug;
