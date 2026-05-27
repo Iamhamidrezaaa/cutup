@@ -91,21 +91,61 @@ export function resolveSubtitleRenderGeometry({
   const srcH = roundEven(sourceHeight || 1920);
   const isVertical = Boolean(renderHints?.isVertical) || srcH > srcW * 1.05;
   const enc = resolveEncodeProfile(quality, renderHints);
+<<<<<<< HEAD
   // Temporary hard debug pass: disable geometry normalization and scaling filters.
   const outputWidth = srcW;
   const outputHeight = srcH;
   return {
     enc,
     isVertical,
+=======
+
+  if (isVertical) {
+    // Hard lock for vertical readability consistency.
+    return {
+      enc,
+      isVertical: true,
+      playResX: 1080,
+      playResY: 1920,
+      outputWidth: 1080,
+      outputHeight: 1920,
+      filters: [
+        'scale=1080:1920:force_original_aspect_ratio=decrease:flags=lanczos',
+        'pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black'
+      ]
+    };
+  }
+
+  let outputWidth = srcW;
+  let outputHeight = srcH;
+  if (enc.maxWidth && outputWidth > enc.maxWidth) {
+    outputWidth = roundEven(enc.maxWidth);
+    outputHeight = roundEven((srcH / srcW) * outputWidth);
+  }
+
+  const filters = [];
+  if (outputWidth !== srcW || outputHeight !== srcH) {
+    filters.push(`scale=${outputWidth}:${outputHeight}:flags=lanczos`);
+  }
+
+  return {
+    enc,
+    isVertical: false,
+>>>>>>> 068044fc8c90284a1b744bfeec1d4164d964771b
     playResX: outputWidth,
     playResY: outputHeight,
     outputWidth,
     outputHeight,
+<<<<<<< HEAD
     filters: []
+=======
+    filters
+>>>>>>> 068044fc8c90284a1b744bfeec1d4164d964771b
   };
 }
 
 function buildVideoFilter(assName, geometry) {
+<<<<<<< HEAD
   // Temporary hard debug pass: isolate raw libass behavior with no geometry transforms.
   const filterChain = `subtitles=${assName}`;
   console.log('[ffmpeg-filter-debug]', {
@@ -116,6 +156,13 @@ function buildVideoFilter(assName, geometry) {
     outputHeight: geometry?.outputHeight || null
   });
   return filterChain;
+=======
+  const filters = [...(geometry.filters || [])];
+  filters.push(
+    `subtitles=${assName}:charenc=UTF-8:original_size=${geometry.playResX}x${geometry.playResY}`
+  );
+  return filters.join(',');
+>>>>>>> 068044fc8c90284a1b744bfeec1d4164d964771b
 }
 
 async function detectHardwareAcceleration() {

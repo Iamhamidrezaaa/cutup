@@ -487,6 +487,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
     glow: preset.glow || 0,
     isVertical: layout.isVertical
   });
+<<<<<<< HEAD
   console.log('[ass-font-debug]', {
     fontName: preset.fontName,
     fontSize: preset.fontSize,
@@ -501,6 +502,8 @@ export function generateAssContent(segments, presetId, dims = {}) {
     defaultStyleLine,
     emphasisStyleLine
   });
+=======
+>>>>>>> 068044fc8c90284a1b744bfeec1d4164d964771b
   console.log('[ass-debug]', {
     playResX,
     playResY,
