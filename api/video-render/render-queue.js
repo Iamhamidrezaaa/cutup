@@ -6,7 +6,13 @@ import { writeFileSync, copyFileSync, statSync } from 'fs';
 import { getStylePreset } from './style-presets.js';
 import { join } from 'path';
 import { generateAssContent, generateAssFromExportDoc } from './ass-generator.js';
-import { burnSubtitles, probeVideo, checkFfmpegAvailable, resolveSubtitleRenderGeometry } from './ffmpeg-renderer.js';
+import {
+  burnSubtitles,
+  probeVideo,
+  checkFfmpegAvailable,
+  resolveSubtitleRenderGeometry,
+  logVideoSourceDebug
+} from './ffmpeg-renderer.js';
 import {
   createJobDir,
   downloadVideoFromUrl,
@@ -446,6 +452,7 @@ async function runJob(job) {
 
     setSubStage(job, 'Analyzing video dimensions…', 24);
     const probe = await probeVideo(videoPath);
+    logVideoSourceDebug(probe);
     if (probe.durationSec > MAX_DURATION_SEC) {
       throw new Error(`Video exceeds maximum length (${MAX_DURATION_SEC}s). Trim your clip and try again.`);
     }

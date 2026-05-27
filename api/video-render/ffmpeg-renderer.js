@@ -81,6 +81,7 @@ function roundEven(value) {
   return v % 2 === 0 ? v : v + 1;
 }
 
+/** Debug geometry metadata only — filter chain is built separately. */
 export function resolveSubtitleRenderGeometry({
   sourceWidth,
   sourceHeight,
@@ -91,78 +92,73 @@ export function resolveSubtitleRenderGeometry({
   const srcH = roundEven(sourceHeight || 1920);
   const isVertical = Boolean(renderHints?.isVertical) || srcH > srcW * 1.05;
   const enc = resolveEncodeProfile(quality, renderHints);
-<<<<<<< HEAD
-  // Temporary hard debug pass: disable geometry normalization and scaling filters.
-  const outputWidth = srcW;
-  const outputHeight = srcH;
+
   return {
     enc,
     isVertical,
-=======
-
-  if (isVertical) {
-    // Hard lock for vertical readability consistency.
-    return {
-      enc,
-      isVertical: true,
-      playResX: 1080,
-      playResY: 1920,
-      outputWidth: 1080,
-      outputHeight: 1920,
-      filters: [
-        'scale=1080:1920:force_original_aspect_ratio=decrease:flags=lanczos',
-        'pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black'
-      ]
-    };
-  }
-
-  let outputWidth = srcW;
-  let outputHeight = srcH;
-  if (enc.maxWidth && outputWidth > enc.maxWidth) {
-    outputWidth = roundEven(enc.maxWidth);
-    outputHeight = roundEven((srcH / srcW) * outputWidth);
-  }
-
-  const filters = [];
-  if (outputWidth !== srcW || outputHeight !== srcH) {
-    filters.push(`scale=${outputWidth}:${outputHeight}:flags=lanczos`);
-  }
-
-  return {
-    enc,
-    isVertical: false,
->>>>>>> 068044fc8c90284a1b744bfeec1d4164d964771b
-    playResX: outputWidth,
-    playResY: outputHeight,
-    outputWidth,
-    outputHeight,
-<<<<<<< HEAD
+    playResX: 1080,
+    playResY: 1920,
+    outputWidth: isVertical ? 1080 : srcW,
+    outputHeight: isVertical ? 1920 : srcH,
+    sourceWidth: srcW,
+    sourceHeight: srcH,
     filters: []
-=======
-    filters
->>>>>>> 068044fc8c90284a1b744bfeec1d4164d964771b
   };
 }
 
+/**
+ * STEP 3+4: scale FIRST, subtitles LAST (burn after upscale).
+ */
 function buildVideoFilter(assName, geometry) {
-<<<<<<< HEAD
-  // Temporary hard debug pass: isolate raw libass behavior with no geometry transforms.
-  const filterChain = `subtitles=${assName}`;
+  // STEP 3 debug: scale FIRST, subtitles LAST — fixed 1080x1920 for filter-order test.
+  const filterChain = `scale=1080:1920,subtitles=${assName}`;
+
   console.log('[ffmpeg-filter-debug]', {
     filterChain,
-    playResX: geometry?.playResX || null,
-    playResY: geometry?.playResY || null,
-    outputWidth: geometry?.outputWidth || null,
-    outputHeight: geometry?.outputHeight || null
+    playResX: geometry?.playResX ?? null,
+    playResY: geometry?.playResY ?? null,
+    outputWidth: geometry?.outputWidth ?? null,
+    outputHeight: geometry?.outputHeight ?? null,
+    sourceWidth: geometry?.sourceWidth ?? null,
+    sourceHeight: geometry?.sourceHeight ?? null
   });
+  console.log('[ffmpeg-final-filter]', filterChain);
+
   return filterChain;
-=======
-  const filters = [...(geometry.filters || [])];
-  filters.push(
-    `subtitles=${assName}:charenc=UTF-8:original_size=${geometry.playResX}x${geometry.playResY}`
-  );
-  return filters.join(',');
->>>>>>> 068044fc8c90284a1b744bfeec1d4164d964771b
+}
+
+export function logVideoSourceDebug(probe) {
+  const sourceWidth = Number(probe.width) || 0;
+  const sourceHeight = Number(probe.height) || 0;
+  console.log('[video-source-debug]', {
+    sourceWidth,
+    sourceHeight,
+    aspectRatio: sourceHeight > 0 ? Number((sourceWidth / sourceHeight).toFixed(4)) : 0,
+    rotation: Number(probe.rotation) || 0,
+    duration: Number(probe.durationSec) || 0
+  });
+}
+
+export async function logVideoOutputDebug(outputPath) {
+  try {
+    const out = await probeVideo(outputPath);
+    const outputWidth = Number(out.width) || 0;
+    const outputHeight = Number(out.height) || 0;
+    console.log('[video-output-debug]', {
+      outputWidth,
+      outputHeight,
+      aspectRatio: outputHeight > 0 ? Number((outputWidth / outputHeight).toFixed(4)) : 0
+    });
+    return { outputWidth, outputHeight };
+  } catch (err) {
+    console.log('[video-output-debug]', {
+      outputWidth: null,
+      outputHeight: null,
+      aspectRatio: null,
+      error: String(err?.message || err)
+    });
+    return null;
+  }
 }
 
 async function detectHardwareAcceleration() {
@@ -233,7 +229,6 @@ export function inferAspect({ width, height, rotation }) {
 
 /**
  * Burn ASS subtitles — spawn + stderr progress (avoids silent hangs with no UI updates).
- * @param {{ inputPath: string, assPath: string, outputPath: string, quality?: 'fast'|'hq', durationSec?: number, renderHints?: { hqSafeguards?: boolean, isVertical?: boolean, sourceWidth?: number }, onProgress?: (info: { pct: number, etaSec: number|null, renderedSec: number|null, speed: number|null, fps: number|null, phase: 'rendering'|'muxing'|'finalizing' }) => void, signal?: AbortSignal }} opts
  */
 export async function burnSubtitles(opts) {
   const { inputPath, assPath, outputPath, quality = 'fast', durationSec = 0, renderHints = {}, onProgress, signal } = opts;
@@ -309,6 +304,7 @@ export async function burnSubtitles(opts) {
     vf,
     playRes: `${geometry.playResX}x${geometry.playResY}`,
     outputResolution: `${geometry.outputWidth}x${geometry.outputHeight}`,
+    sourceResolution: `${geometry.sourceWidth}x${geometry.sourceHeight}`,
     hwAccel: hwAccel.enabled ? hwAccel.methods.slice(0, 3) : [],
     cwd: assDir,
     input: basename(inputPath)
@@ -427,7 +423,6 @@ export async function burnSubtitles(opts) {
         phase = 'finalizing';
       }
 
-      // Fallback for ffmpeg builds that don't emit -progress consistently.
       if (!progress.out_time_ms && !progress.out_time_us && !progress.out_time) {
         const t = parseFfmpegTime(text);
         if (t != null && durationSec > 0.5) {
@@ -444,7 +439,7 @@ export async function burnSubtitles(opts) {
       if (!settled) reject(err);
     });
 
-    proc.on('close', (code) => {
+    proc.on('close', async (code) => {
       clearInterval(stallTimer);
       clearTimeout(timer);
       if (signal) signal.removeEventListener('abort', onAbort);
@@ -469,7 +464,11 @@ export async function burnSubtitles(opts) {
         phase: 'finalizing'
       });
       console.log('[video-render] ffmpeg done', { outputPath: basename(outputPath) });
-      resolve({ outputPath, quality, preset: enc });
+      await logVideoOutputDebug(outputPath);
+      if (!settled) {
+        settled = true;
+        resolve({ outputPath, quality, preset: enc });
+      }
     });
   });
 }

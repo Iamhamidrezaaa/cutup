@@ -277,12 +277,9 @@ function styleLine(name, preset) {
 export function generateAssContent(segments, presetId, dims = {}) {
   const selectedPresetId = resolvePresetIdOrThrow(presetId);
   const basePreset = getStylePreset(selectedPresetId);
-  const requestedPlayResX = Number(dims.playResX || basePreset.playResX || 1080);
-  const requestedPlayResY = Number(dims.playResY || basePreset.playResY || 1920);
-  const requestedIsVertical = requestedPlayResY > requestedPlayResX * 1.05;
-  // Hard lock vertical ASS script resolution.
-  const playResX = requestedIsVertical ? 1080 : requestedPlayResX;
-  const playResY = requestedIsVertical ? 1920 : requestedPlayResY;
+  // STEP 6 debug: hardcoded PlayRes for ALL exports (do not derive dynamically).
+  const playResX = 1080;
+  const playResY = 1920;
   const durationSec = dims.durationSec || 0;
   const quality = dims.quality === 'hq' ? 'hq' : 'fast';
   const captionMode = dims.captionMode || dims.qualityMode || 'viral';
@@ -384,7 +381,8 @@ export function generateAssContent(segments, presetId, dims = {}) {
   const glow = Number((basePreset.glow ?? signature.glow).toFixed(2));
 
   Object.assign(preset, {
-    fontSize: tunedFontSize,
+    // STEP 5 debug: absurd font size to isolate libass coordinate system.
+    fontSize: 400,
     // Temporary debug pass: force a known libass font.
     fontName: 'DejaVu Sans',
     spacing: layout.spacing,
@@ -487,7 +485,6 @@ export function generateAssContent(segments, presetId, dims = {}) {
     glow: preset.glow || 0,
     isVertical: layout.isVertical
   });
-<<<<<<< HEAD
   console.log('[ass-font-debug]', {
     fontName: preset.fontName,
     fontSize: preset.fontSize,
@@ -502,8 +499,8 @@ export function generateAssContent(segments, presetId, dims = {}) {
     defaultStyleLine,
     emphasisStyleLine
   });
-=======
->>>>>>> 068044fc8c90284a1b744bfeec1d4164d964771b
+  const scriptInfoEnd = header.findIndex((line) => line === '[V4+ Styles]');
+  console.log('[ass-script-info]', header.slice(0, scriptInfoEnd > 0 ? scriptInfoEnd : 12).join('\n'));
   console.log('[ass-debug]', {
     playResX,
     playResY,
