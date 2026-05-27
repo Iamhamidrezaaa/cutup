@@ -5,7 +5,7 @@ import { spawn } from 'child_process';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { existsSync } from 'fs';
-import { dirname, basename, resolve } from 'path';
+import { dirname, basename, resolve, extname } from 'path';
 
 const execFileAsync = promisify(execFile);
 const RENDER_TIMEOUT_MS = Number(process.env.VIDEO_RENDER_TIMEOUT_MS || 600000);
@@ -109,6 +109,17 @@ export function resolveSubtitleRenderGeometry({
 /**
  * STEP 3+4: scale FIRST, subtitles LAST (burn after upscale).
  */
+function shellQuoteArg(value) {
+  const s = String(value);
+  if (/[\s"'\\]/.test(s)) return `"${s.replace(/"/g, '\\"')}"`;
+  return s;
+}
+
+function formatFfmpegCommand(args, cwd) {
+  const parts = ['ffmpeg', ...args.map(shellQuoteArg)];
+  return cwd ? `(cwd=${cwd}) ${parts.join(' ')}` : parts.join(' ');
+}
+
 function buildVideoFilter(assName, geometry) {
   // STEP 3 debug: scale FIRST, subtitles LAST — fixed 1080x1920 for filter-order test.
   const filterChain = `scale=1080:1920,subtitles=${assName}`;
@@ -235,6 +246,17 @@ export async function burnSubtitles(opts) {
   if (!existsSync(inputPath)) return Promise.reject(new Error('INPUT_VIDEO_MISSING'));
   if (!existsSync(assPath)) return Promise.reject(new Error('ASS_FILE_MISSING'));
 
+  const assExt = extname(assPath).toLowerCase();
+  if (assExt !== '.ass') {
+    console.warn('[ffmpeg-subtitle-file] unexpected extension — expected .ass', {
+      assPath,
+      extension: assExt || '(none)'
+    });
+  }
+  if (assExt === '.srt') {
+    return Promise.reject(new Error('SUBTITLE_FILE_IS_SRT_NOT_ASS'));
+  }
+
   const geometry = resolveSubtitleRenderGeometry({
     sourceWidth: renderHints?.sourceWidth,
     sourceHeight: renderHints?.sourceHeight,
@@ -293,6 +315,17 @@ export async function burnSubtitles(opts) {
     outputPath
   ];
 
+  const ffmpegCommand = formatFfmpegCommand(args, assDir);
+  console.log('[ffmpeg-command]', ffmpegCommand);
+  console.log('[ffmpeg-subtitle-file]', {
+    assPath,
+    assFileName: assName,
+    extension: assExt || '(none)',
+    isAss: assExt === '.ass',
+    isSrt: assExt === '.srt',
+    filterUsesAss: vf.includes(`subtitles=${assName}`) && !vf.includes('.srt'),
+    vf
+  });
   console.log('[video-render] ffmpeg start', {
     quality,
     durationSec,

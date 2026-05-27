@@ -4,7 +4,7 @@
 import { randomBytes } from 'crypto';
 import { writeFileSync, copyFileSync, statSync } from 'fs';
 import { getStylePreset } from './style-presets.js';
-import { join } from 'path';
+import { join, extname } from 'path';
 import { generateAssContent, generateAssFromExportDoc } from './ass-generator.js';
 import {
   burnSubtitles,
@@ -513,6 +513,21 @@ async function runJob(job) {
 
     setSubStage(job, 'Building cinematic caption layer…', 50);
     job.assPath = join(job.jobDir, 'subtitles.ass');
+    const assExt = extname(job.assPath).toLowerCase();
+    const looksLikeSrt =
+      /^\d+\s*\r?\n\d{2}:\d{2}:\d{2}/m.test(assResult.content) &&
+      !assResult.content.includes('[Script Info]');
+    console.log('[ass-file-debug]', {
+      assPath: job.assPath,
+      extension: assExt,
+      isAss: assExt === '.ass',
+      isSrtExtension: assExt === '.srt',
+      hasScriptInfo: assResult.content.includes('[Script Info]'),
+      hasV4Styles: assResult.content.includes('[V4+ Styles]'),
+      hasEvents: assResult.content.includes('[Events]'),
+      looksLikeSrt,
+      byteLength: Buffer.byteLength(assResult.content, 'utf8')
+    });
     writeFileSync(job.assPath, assResult.content, 'utf8');
     const assDebugPath = join(job.jobDir, 'subtitles.final.ass');
     writeFileSync(assDebugPath, assResult.content, 'utf8');

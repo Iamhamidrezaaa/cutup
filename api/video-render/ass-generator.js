@@ -176,6 +176,64 @@ function applyFutureVisualExtensions(cue, _context) {
   return cue;
 }
 
+const ASS_EVENTS_FORMAT =
+  'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text';
+
+/** STEP 4 debug: single hardcoded dialogue — not generated dynamically. */
+const ASS_HARDCODED_DEBUG_DIALOGUE =
+  'Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,{\\fs300\\bord25\\shad20\\c&H0000FF00&\\3c&H00FF00FF&}CUTUP DEBUG TEST';
+
+function verifyAssEventsFormat(eventsFormatLine) {
+  const expected = ASS_EVENTS_FORMAT;
+  const ok = eventsFormatLine === expected;
+  console.log('[ass-events-format]', {
+    expected,
+    actual: eventsFormatLine,
+    matches: ok
+  });
+  if (!ok) {
+    console.warn('[ass-events-format] MISMATCH — libass may ignore styling silently');
+  }
+  return ok;
+}
+
+function verifyAssDialogueLines(dialogueLines) {
+  const expectedFields = 10; // Layer..Text (comma-separated, Text may contain commas)
+  for (const line of dialogueLines) {
+    const prefix = 'Dialogue: ';
+    const body = line.startsWith(prefix) ? line.slice(prefix.length) : line;
+    const commaIdx = [];
+    for (let i = 0; i < body.length; i++) {
+      if (body[i] === ',') commaIdx.push(i);
+    }
+    const fieldCount = commaIdx.length + 1;
+    const textField = fieldCount >= 10 ? body.slice(commaIdx[8] + 1) : '';
+    const hasOpenBrace = textField.includes('{');
+    const hasCloseBrace = textField.includes('}');
+    const hasBackslash = textField.includes('\\');
+    const hasDoubleEscapedBraces =
+      textField.includes('\\{') || textField.includes('\\}');
+    const hasJsonEscapedBackslash = /\\\\fs|\\\\bord|\\\\c/.test(textField);
+    console.log('[ass-dialogue-verify]', {
+      line: line.slice(0, 200),
+      fieldCount,
+      expectedFields,
+      fieldsOk: fieldCount === expectedFields,
+      hasOpenBrace,
+      hasCloseBrace,
+      hasBackslash,
+      hasDoubleEscapedBraces,
+      hasJsonEscapedBackslash,
+      textFieldPreview: textField.slice(0, 160)
+    });
+  }
+}
+
+function logAssFullOutput(assContent) {
+  console.log('[ASS FULL OUTPUT]');
+  console.log(assContent);
+}
+
 export function toAssTime(seconds) {
   const s = Math.max(0, Number(seconds) || 0);
   const h = Math.floor(s / 3600);
@@ -423,8 +481,10 @@ export function generateAssContent(segments, presetId, dims = {}) {
     styleLine('Emphasis', { ...preset, fontSize: Math.round(preset.fontSize * 1.08), bold: true }),
     '',
     '[Events]',
-    'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text'
+    ASS_EVENTS_FORMAT
   ];
+  const eventsFormatLine = ASS_EVENTS_FORMAT;
+  verifyAssEventsFormat(eventsFormatLine);
   const defaultStyleLine = header.find((line) => line.startsWith('Style:,Default,')) || '';
   const emphasisStyleLine = header.find((line) => line.startsWith('Style:,Emphasis,')) || '';
 
@@ -435,7 +495,8 @@ export function generateAssContent(segments, presetId, dims = {}) {
   let maxLineCount = 1;
   let totalChars = 0;
 
-  const dialogues = visibleCues.map((cue) => {
+  // Dynamic lines kept for diagnostics only — final ASS uses hardcoded test event (STEP 4).
+  const dynamicDialogues = visibleCues.map((cue) => {
     const enrichedCue = applyFutureVisualExtensions(cue, {
       renderProfile,
       visualFeatureFlags
@@ -453,8 +514,15 @@ export function generateAssContent(segments, presetId, dims = {}) {
     const text = `${assRtlPrefix(typoPrefix)}${glowPrefix}${body}`;
     return `Dialogue: 0,${toAssTime(enrichedCue.renderStart)},${toAssTime(enrichedCue.renderEnd)},Default,,0,0,${mV},,${text}`;
   });
+  if (dynamicDialogues.length > 0) {
+    console.log('[ass-dynamic-dialogue-sample]', dynamicDialogues[0]);
+    verifyAssDialogueLines(dynamicDialogues.slice(0, 3));
+  }
 
-  const cueCount = dialogues.length;
+  const dialogues = [ASS_HARDCODED_DEBUG_DIALOGUE];
+  verifyAssDialogueLines(dialogues);
+
+  const cueCount = dynamicDialogues.length;
   const avgLines = cueCount > 0 ? totalLines / cueCount : 1;
   const avgCharsPerCue = cueCount > 0 ? totalChars / cueCount : 0;
   const maxWidthRatio = (playResX - (layout.marginL + layout.marginR)) / playResX;
@@ -510,8 +578,11 @@ export function generateAssContent(segments, presetId, dims = {}) {
     styleName: 'Default'
   });
 
+  const assContent = [...header, ...dialogues].join('\n');
+  logAssFullOutput(assContent);
+
   return {
-    content: [...header, ...dialogues].join('\n'),
+    content: assContent,
     cueCount,
     playResX,
     playResY,
