@@ -112,11 +112,30 @@ export function buildTimelineBurnPlan(probe, subtitleCues = [], opts = {}) {
   let assShiftSec = 0;
 
   if (!inputAlreadyNormalized) {
+    const useFramePtsShift =
+      String(process.env.RENDER_USE_FRAME_PTS_SHIFT || '0').toLowerCase() === '1';
     const streamLate = streamOffsetSec > STREAM_OFFSET_WARN_SEC ? streamOffsetSec : 0;
-    const frameLate = framePtsLeadSec > STREAM_OFFSET_WARN_SEC ? framePtsLeadSec : 0;
-    const videoLateSec = preferMinimalCorrection
-      ? Math.max(streamLate, frameLate > 0.35 ? frameLate : 0)
-      : Math.max(streamLate, frameLate);
+    const frameLate =
+      useFramePtsShift && framePtsLeadSec > STREAM_OFFSET_WARN_SEC ? framePtsLeadSec : 0;
+    let videoLateSec = preferMinimalCorrection ? streamLate : Math.max(streamLate, frameLate);
+
+    const firstStart = firstCue ? num(firstCue.start, 0) : null;
+    if (
+      videoLateSec > STREAM_OFFSET_WARN_SEC &&
+      firstStart != null &&
+      firstStart < videoLateSec + 0.2
+    ) {
+      logFfmpegTimelineDebug({
+        firstCueBurnGuard: true,
+        firstCueStart: firstStart,
+        suppressedVideoPtsShiftSec: videoLateSec,
+        framePtsLeadSec,
+        streamOffsetSec,
+        reason:
+          'setpts shift would hide early cues — sync already good from stream metadata only'
+      });
+      videoLateSec = 0;
+    }
 
     if (videoLateSec > STREAM_OFFSET_WARN_SEC) {
       videoPtsShiftSec = videoLateSec;

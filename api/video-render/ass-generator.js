@@ -366,6 +366,14 @@ export function generateAssContent(segments, presetId, dims = {}) {
     maxLeadExtensionSec: renderProfile.styleMode === 'safe' ? 0.22 : 0.16,
     videoDurationSec: durationSec || 0
   });
+  if (visibleCues.length > 0) {
+    const first = visibleCues[0];
+    const srcStart = Number(first.sourceStart ?? first.start);
+    if (srcStart > 0 && srcStart < 0.15) {
+      first.sourceStart = 0;
+      first.start = Math.min(Number(first.start ?? srcStart), 0);
+    }
+  }
   const visibility = validateVisualVisibility(visibleCues, {
     fps: 30,
     minFrames: renderProfile.styleMode === 'safe' ? 5 : 4
