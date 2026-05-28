@@ -53,6 +53,7 @@ export default async function handler(req, res) {
     }
 
     const cleanedUrl = url ? stripTrackingQueryParams(url) : '';
+    const originalUrl = String(url || '');
     let finalVideoId = videoId || (cleanedUrl ? parseYouTubeVideoId(cleanedUrl) : null);
     if (!finalVideoId && cleanedUrl) {
       console.log('[yt-shorts]', { traceId, url: cleanedUrl, parsed: null });
@@ -76,6 +77,12 @@ export default async function handler(req, res) {
     console.log(`YOUTUBE: Extracting audio for video ID: ${finalVideoId}`);
 
     const ytDlpPath = await resolveYtDlpPath();
+    try {
+      const { stdout: yv } = await execAsync(`${ytDlpPath} --version`);
+      console.log('[ytdlp-version-debug]', { version: String(yv || '').trim() || 'unknown', path: ytDlpPath });
+    } catch {
+      console.log('[ytdlp-version-debug]', { version: 'unknown', path: ytDlpPath });
+    }
 
     // Create temporary file path
     const tempDir = tmpdir();
@@ -173,7 +180,16 @@ export default async function handler(req, res) {
         url: youtubeUrl,
         requestKey: userEmail,
         traceId,
-        mode: 'audio_extract'
+        mode: 'audio_extract',
+        formatFallbacks: ['bestaudio', 'best']
+      });
+      console.log('[ytdlp-stream-debug]', {
+        availableFormatsCount: null,
+        selectedFormat: 'bestaudio/best',
+        extractor: 'yt-dlp',
+        playerClient: /\/shorts\//i.test(cleanedUrl) ? 'android' : 'normal',
+        cookiesEnabled: false,
+        urlNormalized: originalUrl !== youtubeUrl
       });
 
       console.log(`YOUTUBE: Download complete, stdout: ${stdout.substring(0, 200)}`);

@@ -71,6 +71,12 @@ export default async function handler(req, res) {
     console.log(`YOUTUBE_FORMATS: Getting formats for video ID: ${finalVideoId}`);
 
     const ytDlpPath = await resolveYtDlpPath();
+    try {
+      const { stdout: yv } = await execAsync(`${ytDlpPath} --version`);
+      console.log('[ytdlp-version-debug]', { version: String(yv || '').trim() || 'unknown', path: ytDlpPath });
+    } catch {
+      console.log('[ytdlp-version-debug]', { version: 'unknown', path: ytDlpPath });
+    }
 
     const youtubeUrl = `https://www.youtube.com/watch?v=${finalVideoId}`;
 
@@ -81,6 +87,14 @@ export default async function handler(req, res) {
         url: youtubeUrl,
         requestKey: userEmail,
         mode: 'formats'
+      });
+      console.log('[ytdlp-stream-debug]', {
+        availableFormatsCount: null,
+        selectedFormat: 'list-formats',
+        extractor: 'yt-dlp',
+        playerClient: /\/shorts\//i.test(cleanedUrl) ? 'android' : 'normal',
+        cookiesEnabled: false,
+        urlNormalized: cleanedUrl !== youtubeUrl
       });
 
       if (stderr) {

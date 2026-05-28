@@ -135,6 +135,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'type must be "audio" or "video"' });
     }
     
+    const originalUrl = String(url || '');
     const cleanedUrl = url ? stripTrackingQueryParams(url) : '';
     let detectedPlatform = platform || detectPlatformFromUrl(cleanedUrl) || 'youtube';
     plog('PLATFORM_DETECTED', { requestedPlatform: platform || null, detectedPlatform, incomingUrl: cleanedUrl || null });
@@ -237,11 +238,18 @@ export default async function handler(req, res) {
     console.log(`[youtube-download] User ${userId} authorized for ${type} download from ${detectedPlatform}, download slot reserved`);
 
     console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: ${type} download for URL: ${finalUrl}, quality: ${quality}`);
+    const isShorts = /youtube\.com\/shorts\//i.test(cleanedUrl);
     plog('DOWNLOAD_START', { detectedPlatform, type, quality });
     console.log('[download-start]', { traceId, platform: detectedPlatform, url: finalUrl?.slice(0, 120) });
 
     // Check runtime dependencies
     const ytDlpPath = await resolveYtDlpPath();
+    try {
+      const { stdout } = await execAsync(`${ytDlpPath} --version`);
+      console.log('[ytdlp-version-debug]', { version: String(stdout || '').trim() || 'unknown', path: ytDlpPath });
+    } catch {
+      console.log('[ytdlp-version-debug]', { version: 'unknown', path: ytDlpPath });
+    }
     traceLog(traceId, 'ffmpeg', { phase: 'dependency_check' });
     try {
       await execAsync('ffmpeg -version');
@@ -297,8 +305,12 @@ export default async function handler(req, res) {
           '--print', 'after_move:filepath',
           '-o', outputTemplate,
         ];
-        if (ytExtractorArgs && detectedPlatform === 'youtube') {
-          baseArgs.push('--extractor-args', ytExtractorArgs);
+        const effectiveExtractorArgs =
+          detectedPlatform === 'youtube' && isShorts
+            ? 'youtube:player_client=android'
+            : ytExtractorArgs;
+        if (effectiveExtractorArgs && detectedPlatform === 'youtube') {
+          baseArgs.push('--extractor-args', effectiveExtractorArgs);
         }
         if (detectedPlatform === 'youtube' && forceCookies) {
           const cookiesPath = resolveCookiesPath();
@@ -364,6 +376,14 @@ export default async function handler(req, res) {
           ytDlpPath,
           argsPreview: args.slice(0, 10),
           hasCookiesFlag: args.includes('--cookies') || args.includes('--cookies-from-browser')
+        });
+        console.log('[ytdlp-stream-debug]', {
+          availableFormatsCount: null,
+          selectedFormat: formatSelector,
+          extractor: 'yt-dlp',
+          playerClient: detectedPlatform === 'youtube' && isShorts ? 'android' : (ytExtractorArgs ? 'custom' : 'normal'),
+          cookiesEnabled: args.includes('--cookies') || args.includes('--cookies-from-browser'),
+          urlNormalized: originalUrl !== finalUrl
         });
 
         const p = spawn(ytDlpPath, args, {
@@ -547,7 +567,8 @@ export default async function handler(req, res) {
           '144p': 'bestvideo[height<=144]+bestaudio/best[height<=144]'
         };
         
-        const formatSelector = videoFormats[quality] || 'bestvideo+bestaudio/best';
+        const preferred = videoFormats[quality] || 'bestvideo+bestaudio';
+        const formatChain = [preferred, 'bestvideo+bestaudio', 'best', 'mp4', 'worst'];
         const clientProfiles = [
           { profile: 'normal', extractorArgs: null, forceCookies: false },
           { profile: 'android', extractorArgs: 'youtube:player_client=android', forceCookies: false },
@@ -555,19 +576,23 @@ export default async function handler(req, res) {
           { profile: 'cookies', extractorArgs: null, forceCookies: true }
         ];
         let lastErr = null;
-        for (const client of clientProfiles) {
-          try {
-            console.log('[ytdlp-debug]', {
-              traceId,
-              extractor: 'yt-dlp',
-              clientProfile: client.profile,
-              retries: 0,
-              cookiesEnabled: client.forceCookies
-            });
-            const result = await runYtdlpOnce(formatSelector, true, client.extractorArgs, client.forceCookies);
-            return result;
-          } catch (err) {
-            lastErr = err;
+        for (const formatSelector of formatChain) {
+          for (const client of clientProfiles) {
+            try {
+              console.log('[ytdlp-debug]', {
+                traceId,
+                extractor: 'yt-dlp',
+                clientProfile: client.profile,
+                retries: 0,
+                cookiesEnabled: client.forceCookies,
+                selectedFormat: formatSelector,
+                urlNormalized: originalUrl !== finalUrl
+              });
+              const result = await runYtdlpOnce(formatSelector, true, client.extractorArgs, client.forceCookies);
+              return result;
+            } catch (err) {
+              lastErr = err;
+            }
           }
         }
         throw lastErr || new Error('Could not extract video stream');

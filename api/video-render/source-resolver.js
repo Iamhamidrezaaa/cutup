@@ -204,6 +204,7 @@ async function runYtDlpWithRetries({ ytDlpPath, strategy, jobDir, traceId }) {
  */
 export async function downloadVideoFromUrl(opts) {
   const { url, userEmail, traceId } = opts;
+  const originalUrl = String(url || '');
   const validation = validateMediaUrl(url);
   if (!validation.ok) {
     throw Object.assign(new Error(validation.reason || 'Invalid URL'), { code: validation.code || 'INVALID_URL' });
@@ -262,7 +263,15 @@ export async function downloadVideoFromUrl(opts) {
     finalSelectedStream: 'bv*+ba/b[ext=mp4]/b'
   });
 
-  return { videoPath: file, jobDir, platform: detectedPlatform, url: finalUrl, downloadSlotConsumed: true };
+  return {
+    videoPath: file,
+    jobDir,
+    platform: detectedPlatform,
+    url: finalUrl,
+    originalUrl,
+    urlNormalized: String(originalUrl) !== String(finalUrl),
+    downloadSlotConsumed: true
+  };
 }
 
 /**

@@ -3,6 +3,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { existsSync } from 'fs';
 import { join } from 'path';
+import { parseYouTubeVideoId, normalizeYouTubeWatchUrl } from './media-url.js';
 
 const execAsync = promisify(exec);
 const YTDLP_TIMEOUT_MS = Math.max(10000, Number(process.env.YTDLP_TIMEOUT_MS || 120000));
@@ -11,6 +12,16 @@ const YTDLP_BURST_WINDOW_MS = Math.max(1000, Number(process.env.YTDLP_BURST_WIND
 const YTDLP_MIN_JITTER_MS = Math.max(50, Number(process.env.YTDLP_MIN_JITTER_MS || 120));
 const YTDLP_MAX_JITTER_MS = Math.max(YTDLP_MIN_JITTER_MS + 50, Number(process.env.YTDLP_MAX_JITTER_MS || 650));
 const extractionBurstState = new Map();
+let cachedYtdlpVersion = null;
+
+function isDebugEnabled() {
+  return String(process.env.YTDLP_DEBUG || '').toLowerCase() === 'true';
+}
+
+function logYtdlp(tag, payload) {
+  if (!isDebugEnabled() && tag !== '[ytdlp-debug]') return;
+  console.log(tag, payload);
+}
 
 export async function resolveYtDlpPath() {
   try {
@@ -65,6 +76,18 @@ export function classifyYtDlpError(stderr = '') {
     return { code: 'YTDLP_AUTH_REQUIRED', message: 'Authentication required', temporary: false };
   }
   if (
+    text.includes('cookies') && text.includes('invalid')
+  ) {
+    return { code: 'YTDLP_COOKIES_INVALID', message: 'Cookies invalid', temporary: false };
+  }
+  if (
+    text.includes('requested format is not available') ||
+    text.includes('no video formats') ||
+    text.includes('no suitable formats')
+  ) {
+    return { code: 'YTDLP_NO_FORMATS', message: 'No formats found', temporary: false };
+  }
+  if (
     text.includes('video unavailable') ||
     text.includes('this video is unavailable') ||
     text.includes('not available in your country') ||
@@ -93,6 +116,53 @@ function buildStrategyArgs(baseArgs, url, cookiesPath) {
     { profile: 'tv_embedded', cookiesEnabled: false, args: [...baseArgs, '--extractor-args', 'youtube:player_client=tv_embedded', url] },
     ...(cookiesPath ? [{ profile: 'cookies', cookiesEnabled: true, args: [...baseArgs, '--cookies', cookiesPath, url] }] : [])
   ];
+}
+
+function normalizeYoutubeUrlIfShorts(url) {
+  const raw = String(url || '');
+  const isShorts = /youtube\.com\/shorts\//i.test(raw);
+  if (!isShorts) return { normalizedUrl: raw, urlNormalized: false, isShorts: false };
+  const id = parseYouTubeVideoId(raw);
+  if (!id) return { normalizedUrl: raw, urlNormalized: false, isShorts: true };
+  return { normalizedUrl: normalizeYouTubeWatchUrl(id) || raw, urlNormalized: true, isShorts: true };
+}
+
+function stripFormatArgs(args = []) {
+  const out = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '-f' || a === '--format') {
+      i += 1;
+      continue;
+    }
+    out.push(a);
+  }
+  return out;
+}
+
+async function resolveYtdlpVersion(ytDlpPath) {
+  if (cachedYtdlpVersion) return cachedYtdlpVersion;
+  try {
+    const { stdout } = await runOne(ytDlpPath, ['--version']);
+    cachedYtdlpVersion = String(stdout || '').trim() || 'unknown';
+  } catch {
+    cachedYtdlpVersion = 'unknown';
+  }
+  return cachedYtdlpVersion;
+}
+
+async function probeFormatsCount(ytDlpPath, url, cwd) {
+  try {
+    const { stdout } = await runOne(ytDlpPath, ['--list-formats', '--no-playlist', url], cwd);
+    const lines = String(stdout || '')
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const formats = lines.filter((l) => /^\d{2,}|\w{2,}\s+\w{2,}/.test(l));
+    return formats.length;
+  } catch {
+    return null;
+  }
 }
 
 async function runOne(ytDlpPath, args, cwd) {
@@ -136,38 +206,68 @@ export async function runYtDlpRobust(opts) {
     requestKey,
     traceId,
     mode = 'extract',
+    formatFallbacks = null,
     proxyProvider = null // future proxy rotation hook
   } = opts;
   void proxyProvider;
+  const normalization = normalizeYoutubeUrlIfShorts(url);
+  const normalizedUrl = normalization.normalizedUrl;
   const cookiesPath = resolveCookiesPath();
-  const strategies = buildStrategyArgs(baseArgs, url, cookiesPath);
+  const baseNoFormat = stripFormatArgs(baseArgs);
+  const resolvedFormatFallbacks =
+    Array.isArray(formatFallbacks) && formatFallbacks.length
+      ? formatFallbacks
+      : ['bestvideo+bestaudio', 'best', 'mp4', 'worst'];
+  const effectiveFormatFallbacks =
+    mode === 'extract' ? resolvedFormatFallbacks : [null];
+  const strategies = buildStrategyArgs(baseNoFormat, normalizedUrl, cookiesPath);
+  if (normalization.isShorts) {
+    strategies.sort((a, b) => (a.profile === 'android' ? -1 : b.profile === 'android' ? 1 : 0));
+  }
   await applyYtdlpBurstDelay(requestKey);
+  const version = await resolveYtdlpVersion(ytDlpPath);
+  logYtdlp('[ytdlp-version-debug]', { version, path: ytDlpPath });
+  const availableFormatsCount = mode === 'extract' ? await probeFormatsCount(ytDlpPath, normalizedUrl, cwd) : null;
 
   let lastErr = null;
-  for (const strategy of strategies) {
-    for (let attempt = 1; attempt <= YTDLP_MAX_RETRIES; attempt++) {
-      console.log('[ytdlp-debug]', {
-        traceId: traceId || null,
-        extractor: 'yt-dlp',
-        clientProfile: strategy.profile,
-        retries: attempt,
-        cookiesEnabled: strategy.cookiesEnabled,
-        mode
-      });
-      try {
-        const result = await runOne(ytDlpPath, strategy.args, cwd);
-        return { ...result, strategy };
-      } catch (err) {
-        const mapped = classifyYtDlpError(err?.stderr || err?.message || '');
-        lastErr = Object.assign(new Error(mapped.message), {
-          code: mapped.code,
-          temporary: mapped.temporary,
-          stdout: err?.stdout || '',
-          stderr: err?.stderr || ''
+  for (const fmt of effectiveFormatFallbacks) {
+    for (const strategy of strategies) {
+      for (let attempt = 1; attempt <= YTDLP_MAX_RETRIES; attempt++) {
+        const args = fmt ? [...strategy.args, '-f', fmt] : [...strategy.args];
+        logYtdlp('[ytdlp-debug]', {
+          traceId: traceId || null,
+          extractor: 'yt-dlp',
+          clientProfile: strategy.profile,
+          retries: attempt,
+          cookiesEnabled: strategy.cookiesEnabled,
+          mode,
+          selectedFormat: fmt || '(n/a)'
         });
-        if (!mapped.temporary || attempt >= YTDLP_MAX_RETRIES) break;
-        const backoffMs = Math.min(4000, 320 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 220);
-        await new Promise((r) => setTimeout(r, backoffMs));
+        try {
+          const result = await runOne(ytDlpPath, args, cwd);
+          logYtdlp('[ytdlp-stream-debug]', {
+            traceId: traceId || null,
+            availableFormatsCount,
+            selectedFormat: fmt || '(n/a)',
+            extractor: 'yt-dlp',
+            playerClient: strategy.profile,
+            cookiesEnabled: strategy.cookiesEnabled,
+            urlNormalized: normalization.urlNormalized
+          });
+          return { ...result, strategy, selectedFormat: fmt || null, normalizedUrl };
+        } catch (err) {
+          const mapped = classifyYtDlpError(err?.stderr || err?.message || '');
+          lastErr = Object.assign(new Error(mapped.message), {
+            code: mapped.code,
+            temporary: mapped.temporary,
+            stdout: err?.stdout || '',
+            stderr: err?.stderr || '',
+            selectedFormat: fmt || null
+          });
+          if (!mapped.temporary || attempt >= YTDLP_MAX_RETRIES) break;
+          const backoffMs = Math.min(4000, 320 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 220);
+          await new Promise((r) => setTimeout(r, backoffMs));
+        }
       }
     }
   }
