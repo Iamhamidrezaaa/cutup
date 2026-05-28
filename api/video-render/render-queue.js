@@ -547,6 +547,12 @@ async function runJob(job) {
     ffmpegStartedAt.at = Date.now();
 
     try {
+      const subtitleCues = (job.segments || []).map((s) => ({
+        start: s.start,
+        end: s.end,
+        text: String(s.text || '')
+      }));
+
       await burnSubtitles({
         inputPath: videoPath,
         assPath: job.assPath,
@@ -559,6 +565,7 @@ async function runJob(job) {
           sourceHeight: probe.height
         },
         durationSec: probe.durationSec,
+        subtitleCues,
         signal: job.ffmpegAbort.signal,
         onProgress: (info) => {
           const pct = Number(info?.pct || 0);

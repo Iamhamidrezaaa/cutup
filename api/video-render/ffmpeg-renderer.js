@@ -6,6 +6,19 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { existsSync } from 'fs';
 import { dirname, basename, resolve, extname } from 'path';
+import {
+  probeMediaTimeline,
+  buildTimelineBurnPlan,
+  buildAlignedVideoFilter,
+  buildFfmpegInputFlags,
+  buildFfmpegOutputSyncFlags,
+  shiftAssFileTimestamps,
+  parseAssDialogueTimes,
+  logFfmpegTimelineDebug,
+  logStreamOffsetDetected,
+  logSubtitleBurnSync,
+  buildSubtitleBurnSyncReport
+} from './ffmpeg-timeline.js';
 
 const execFileAsync = promisify(execFile);
 const RENDER_TIMEOUT_MS = Number(process.env.VIDEO_RENDER_TIMEOUT_MS || 600000);
@@ -106,12 +119,9 @@ export function resolveSubtitleRenderGeometry({
   };
 }
 
-/**
- * STEP 3+4: scale FIRST, subtitles LAST (burn after upscale).
- */
-function buildVideoFilter(assName, geometry) {
-  const filterChain = `scale=1080:1920,subtitles=${assName}`;
-  return filterChain;
+/** @deprecated use buildAlignedVideoFilter via timeline plan */
+function buildVideoFilter(assName) {
+  return `setpts=PTS-STARTPTS,scale=1080:1920,subtitles=${assName}`;
 }
 
 async function detectHardwareAcceleration() {
@@ -184,13 +194,40 @@ export function inferAspect({ width, height, rotation }) {
  * Burn ASS subtitles — spawn + stderr progress (avoids silent hangs with no UI updates).
  */
 export async function burnSubtitles(opts) {
-  const { inputPath, assPath, outputPath, quality = 'fast', durationSec = 0, renderHints = {}, onProgress, signal } = opts;
+  const {
+    inputPath,
+    assPath,
+    outputPath,
+    quality = 'fast',
+    durationSec = 0,
+    renderHints = {},
+    subtitleCues = [],
+    onProgress,
+    signal
+  } = opts;
   if (!existsSync(inputPath)) return Promise.reject(new Error('INPUT_VIDEO_MISSING'));
   if (!existsSync(assPath)) return Promise.reject(new Error('ASS_FILE_MISSING'));
 
   const assExt = extname(assPath).toLowerCase();
   if (assExt === '.srt') {
     return Promise.reject(new Error('SUBTITLE_FILE_IS_SRT_NOT_ASS'));
+  }
+
+  const inputProbe = await probeMediaTimeline(inputPath);
+  const timelinePlan = buildTimelineBurnPlan(inputProbe, subtitleCues);
+  if (timelinePlan.offsetDetected) {
+    logStreamOffsetDetected({
+      streamOffsetSec: timelinePlan.streamOffsetSec,
+      videoStart: timelinePlan.videoStart,
+      audioStart: timelinePlan.audioStart,
+      videoPtsShiftSec: timelinePlan.videoPtsShiftSec,
+      assShiftSec: timelinePlan.assShiftSec
+    });
+  }
+
+  let burnAssPath = assPath;
+  if (Math.abs(timelinePlan.assShiftSec) > 0.001) {
+    burnAssPath = shiftAssFileTimestamps(assPath, timelinePlan.assShiftSec);
   }
 
   const geometry = resolveSubtitleRenderGeometry({
@@ -201,9 +238,11 @@ export async function burnSubtitles(opts) {
   });
   const enc = geometry.enc;
   const hwAccel = await detectHardwareAcceleration();
-  const assDir = dirname(resolve(assPath));
-  const assName = basename(assPath);
-  const vf = buildVideoFilter(assName, geometry);
+  const assDir = dirname(resolve(burnAssPath));
+  const assName = basename(burnAssPath);
+  const vf = buildAlignedVideoFilter(assName, timelinePlan);
+  const syncFlags = buildFfmpegOutputSyncFlags();
+  const inputFlags = buildFfmpegInputFlags();
 
   const args = [
     '-hide_banner',
@@ -211,11 +250,13 @@ export async function burnSubtitles(opts) {
     '-nostats',
     '-progress',
     'pipe:2',
+    ...inputFlags,
     ...(hwAccel.enabled ? ['-hwaccel', 'auto'] : []),
     '-i',
     inputPath,
     '-vf',
     vf,
+    ...syncFlags.audio,
     '-c:v',
     'libx264',
     '-preset',
@@ -244,12 +285,42 @@ export async function burnSubtitles(opts) {
     '2048',
     '-threads',
     '0',
+    ...syncFlags.mux,
     '-map',
     '0:v:0',
     '-map',
     '0:a?',
     outputPath
   ];
+
+  logFfmpegTimelineDebug({
+    videoStreamStartTime: timelinePlan.videoStart,
+    audioStreamStartTime: timelinePlan.audioStart,
+    formatStartTime: timelinePlan.formatStart,
+    subtitleSourceTimingStart: timelinePlan.subtitleSourceStart,
+    subtitleSourceTimingEnd: timelinePlan.subtitleSourceEnd,
+    outputTimelineOffsetSec: timelinePlan.outputTimelineOffsetSec,
+    streamOffsetSec: timelinePlan.streamOffsetSec,
+    videoPtsShiftSec: timelinePlan.videoPtsShiftSec,
+    assShiftSec: timelinePlan.assShiftSec,
+    ffmpegInputOrdering: ['input_flags', 'hwaccel?', 'input', 'vf', 'af', 'maps', 'output'],
+    ffmpegInputFlags: inputFlags,
+    ffmpegFilters: vf,
+    ffmpegAudioFilters: syncFlags.audio,
+    ffmpegMuxFlags: syncFlags.mux,
+    copyts: false,
+    vsync: 'cfr',
+    async: 'disabled',
+    adelay: 'none',
+    asetpts: 'PTS-STARTPTS',
+    setpts: timelinePlan.videoPtsShiftSec > 0 ? `PTS-STARTPTS-${timelinePlan.videoPtsShiftSec}/TB` : 'PTS-STARTPTS',
+    itsoffset: 'none',
+    ignoreEditlist: true,
+    presentationAnchor: timelinePlan.presentationAnchor,
+    cwd: assDir,
+    input: basename(inputPath),
+    assFile: assName
+  });
 
   console.log('[video-render] started', {
     quality,
@@ -265,7 +336,8 @@ export async function burnSubtitles(opts) {
     sourceResolution: `${geometry.sourceWidth}x${geometry.sourceHeight}`,
     hwAccel: hwAccel.enabled ? hwAccel.methods.slice(0, 3) : [],
     cwd: assDir,
-    input: basename(inputPath)
+    input: basename(inputPath),
+    timelinePlan
   });
 
   return new Promise((resolve, reject) => {
@@ -422,9 +494,22 @@ export async function burnSubtitles(opts) {
         phase: 'finalizing'
       });
       console.log('[video-render] ffmpeg completed', { outputPath: basename(outputPath) });
+      try {
+        const outputProbe = await probeMediaTimeline(outputPath);
+        const assDialogues = parseAssDialogueTimes(burnAssPath, 10);
+        const syncReport = buildSubtitleBurnSyncReport({
+          plan: timelinePlan,
+          sourceCues: subtitleCues,
+          assDialogues,
+          outputProbe
+        });
+        logSubtitleBurnSync(syncReport);
+      } catch (syncErr) {
+        console.warn('[subtitle-burn-sync] verification skipped', syncErr?.message || syncErr);
+      }
       if (!settled) {
         settled = true;
-        resolve({ outputPath, quality, preset: enc });
+        resolve({ outputPath, quality, preset: enc, timelinePlan });
       }
     });
   });
