@@ -358,13 +358,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
   const tunedOutline = layout.outline > 0 ? Math.max(1, Math.round(layout.outline * renderProfile.outlineScale)) : 0;
   const tunedShadow = layout.shadow > 0 ? Math.max(1, Math.round(layout.shadow * renderProfile.shadowScale)) : 0;
   const signature = resolvePresetVisualSignature(basePreset.id, layout.isVertical);
-  const verticalScale = playResY / 1920;
-  const minVerticalFs = Math.round(140 * verticalScale);
-  const maxVerticalFs = Math.round(180 * verticalScale);
-  const lockedVerticalFs = clamp(Math.round(156 * verticalScale), minVerticalFs, maxVerticalFs);
-  const tunedFontSize = layout.isVertical
-    ? clamp(lockedVerticalFs + signature.fontOffset, minVerticalFs, maxVerticalFs)
-    : Math.max(36, layout.fontSize + signature.fontOffset);
+  const tunedFontSize = layout.fontSize;
   const tunedOutlineByPreset = Math.max(1, Math.round(tunedOutline * signature.outlineScale));
   const tunedShadowByPreset = Math.max(1, Math.round(tunedShadow * signature.shadowScale));
   const emphasisScalePercent = clamp(
@@ -445,7 +439,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
   const cueCount = dialogues.length;
   const avgLines = cueCount > 0 ? totalLines / cueCount : 1;
   const avgCharsPerCue = cueCount > 0 ? totalChars / cueCount : 0;
-  const maxWidthRatio = (playResX - (layout.marginL + layout.marginR)) / playResX;
+  const maxWidthRatio = layout.maxWidthRatio || (playResX - (layout.marginL + layout.marginR)) / playResX;
   const yAnchor = 1 - layout.marginV / playResY;
 
   // Keep internal metrics for diagnostics payload without verbose logs.

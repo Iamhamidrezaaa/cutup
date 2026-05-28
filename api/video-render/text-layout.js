@@ -22,6 +22,50 @@ function lineLength(wordsInLine) {
   return wordsInLine.join(' ').length;
 }
 
+const WEAK_EDGE_WORDS = new Set([
+  'a', 'an', 'the', 'to', 'of', 'in', 'on', 'at', 'for', 'from', 'with',
+  'and', 'or', 'but', 'so', 'if', 'as', 'by', 'into', 'about', 'over', 'under'
+]);
+
+function normalizeWord(word) {
+  return String(word || '').toLowerCase().replace(/^[^\w]+|[^\w]+$/g, '');
+}
+
+function isWeakEdgeWord(word) {
+  return WEAK_EDGE_WORDS.has(normalizeWord(word));
+}
+
+function endsWithStrongPause(word) {
+  return /[.!?,:;]$/.test(String(word || ''));
+}
+
+function splitSemanticStack(w, minWords, maxWords, maxChars) {
+  const lines = [];
+  let line = [];
+
+  for (let i = 0; i < w.length; i++) {
+    const token = w[i];
+    const next = w[i + 1];
+    const preview = [...line, token];
+    const previewLen = lineLength(preview);
+    const shouldBreakAtPause = preview.length >= minWords && endsWithStrongPause(token);
+    const hitWordCap = preview.length >= maxWords;
+    const hitCharCap = previewLen >= maxChars && preview.length >= minWords;
+    const safeEdge =
+      preview.length >= minWords &&
+      !isWeakEdgeWord(preview[preview.length - 1]) &&
+      (!next || !isWeakEdgeWord(next));
+
+    line.push(token);
+    if ((shouldBreakAtPause || hitWordCap || hitCharCap) && safeEdge) {
+      lines.push(line);
+      line = [];
+    }
+  }
+  if (line.length) lines.push(line);
+  return lines;
+}
+
 function rebalanceTrailingOrphan(lines, minWords, maxWords) {
   if (lines.length < 2) return lines;
   const last = lines[lines.length - 1];
@@ -109,22 +153,7 @@ export function layoutLines(text, layout) {
   }
 
   const rawLines = [];
-  let current = [];
-
-  for (const token of w) {
-    const nextCount = current.length + 1;
-    const nextLen = current.length ? lineLength([...current, token]) : token.length;
-    const hitWordCap = nextCount > max;
-    const hitCharCap = nextLen > maxChars && current.length >= min;
-
-    if ((hitWordCap || hitCharCap) && current.length) {
-      rawLines.push(current);
-      current = [token];
-    } else {
-      current.push(token);
-    }
-  }
-  if (current.length) rawLines.push(current);
+  rawLines.push(...splitSemanticStack(w, min, max, maxChars));
 
   rebalanceTrailingOrphan(rawLines, min, max);
   rebalanceByLength(rawLines, min, max);

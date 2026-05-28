@@ -38,16 +38,27 @@ export function resolveDynamicFontSize({
   playResY,
   isVertical,
   isHorizontal,
-  rtl
+  rtl,
+  presetId
 }) {
   const h = playResY || 1920;
   let size;
 
+  const verticalPresetRanges = {
+    mrBeast: [95, 115],
+    alexHormozi: [85, 105],
+    aliAbdaal: [72, 88],
+    podcast: [68, 82],
+    luxuryMinimal: [80, 96],
+    tiktokNeon: [88, 108],
+    cleanSrt: [74, 90]
+  };
+
   if (isVertical) {
-    // Hard-locked production-safe vertical subtitle scale.
-    const minVertical = Math.round(140 * (h / 1920));
-    const maxVertical = Math.round(180 * (h / 1920));
-    size = Math.round(156 * (h / 1920));
+    const [baseMin, baseMax] = verticalPresetRanges[presetId] || [82, 100];
+    const minVertical = Math.round(baseMin * (h / 1920));
+    const maxVertical = Math.round(baseMax * (h / 1920));
+    size = Math.round(((baseMin + baseMax) / 2) * (h / 1920));
     size = Math.max(minVertical, Math.min(maxVertical, size));
   } else if (isHorizontal) {
     size = Math.round(h * 0.056);
@@ -59,7 +70,7 @@ export function resolveDynamicFontSize({
 
   if (rtl) size = Math.round(size * 1.14);
 
-  const cap = isVertical ? Math.round(180 * (h / 1920)) : Math.round(h * 0.074);
+  const cap = isVertical ? Math.round(120 * (h / 1920)) : Math.round(h * 0.074);
   return Math.min(cap, Math.max(32, size));
 }
 
@@ -95,8 +106,8 @@ export function resolveRenderLayout(dims, cues, preset) {
   if (isVertical) {
     layout.mode = 'stack';
     layout.wordsPerLineMin = 2;
-    layout.wordsPerLineMax = 9;
-    layout.maxCharsPerLine = 30;
+    layout.wordsPerLineMax = 5;
+    layout.maxCharsPerLine = 22;
     layout.maxLines = 2;
   } else if (isHorizontal) {
     layout.mode = 'wide';
@@ -125,8 +136,8 @@ export function resolveRenderLayout(dims, cues, preset) {
 
   let marginV = placement.marginV;
   if (isVertical) {
-    // Fixed anchor for 9:16; no cue-to-cue visual drifting (~62% from top).
-    marginV = Math.round(playResY * 0.38);
+    // Fixed cinematic lower-third safe area.
+    marginV = Math.max(260, Math.min(320, Number(preset.marginV) || 290));
   } else if (isHorizontal) {
     marginV = Math.round(playResY * Math.min(0.18, Math.max(0.12, placement.safeZone || 0.15)));
   }
@@ -135,7 +146,8 @@ export function resolveRenderLayout(dims, cues, preset) {
     playResY,
     isVertical,
     isHorizontal,
-    rtl
+    rtl,
+    presetId: preset.id
   });
 
   const { outline, shadow, borderStyle } = resolveOutlineShadow(fontSize, isVertical);
@@ -146,7 +158,9 @@ export function resolveRenderLayout(dims, cues, preset) {
   );
 
   const lineHeight = Math.round(fontSize * (isVertical ? 1.08 : rtl ? 1.25 : 1.2));
-  const marginL = Math.round(playResX * (isVertical ? 0.09 : 0.07));
+  const maxWidthRatio = isVertical ? 0.74 : 0.84;
+  const sideRatio = (1 - maxWidthRatio) / 2;
+  const marginL = Math.round(playResX * sideRatio);
   const marginR = marginL;
 
   return {
@@ -171,7 +185,8 @@ export function resolveRenderLayout(dims, cues, preset) {
     maxLines,
     wordDensity: Number(density.avgWordsPerCue.toFixed(2)),
     lineHeight,
-    alignment: placement.alignment || 2
+    alignment: 2,
+    maxWidthRatio
   };
 }
 
