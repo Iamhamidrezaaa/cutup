@@ -737,6 +737,71 @@ function copyWithoutPrivate(cues) {
 }
 
 /**
+ * Burn/export: preserve segment start/end exactly as SRT/preview (no rhythm re-chunking).
+ */
+export function buildSourceAlignedSubtitles(rawSegments) {
+  const raw = Array.isArray(rawSegments) ? rawSegments : [];
+  const cues = [];
+  for (let i = 0; i < raw.length; i++) {
+    const seg = raw[i];
+    if (!seg || typeof seg.start !== 'number' || typeof seg.end !== 'number' || seg.end <= seg.start) {
+      continue;
+    }
+    const text = normalizeCueText(seg.text);
+    if (!text) continue;
+    const start = Number(seg.start);
+    const end = Number(seg.end);
+    cues.push({
+      id: `src-${i}`,
+      index: i,
+      start,
+      end,
+      duration: Number((end - start).toFixed(3)),
+      text,
+      words: cueWords(text),
+      sourceStart: start,
+      sourceEnd: end
+    });
+  }
+  return dedupeOverlappingBurnCues(cues);
+}
+
+/**
+ * Remove stacked "growing" captions (common with word-by-word ASR) before ASS burn-in.
+ */
+export function dedupeOverlappingBurnCues(cues) {
+  const sorted = [...(Array.isArray(cues) ? cues : [])].sort((a, b) => a.start - b.start);
+  const out = [];
+  for (const cue of sorted) {
+    const prev = out[out.length - 1];
+    if (!prev) {
+      out.push({ ...cue });
+      continue;
+    }
+    const prevNorm = normalizeForAccumulation(prev.text);
+    const curNorm = normalizeForAccumulation(cue.text);
+    const overlaps = cue.start < prev.end + 0.08;
+    const growing = curNorm.startsWith(prevNorm) && curNorm.length > prevNorm.length;
+    const duplicate = prevNorm === curNorm && overlaps;
+    if (overlaps && (growing || duplicate)) {
+      out[out.length - 1] = {
+        ...prev,
+        text: growing ? cue.text : prev.text,
+        end: Math.max(prev.end, cue.end),
+        sourceEnd: Math.max(prev.sourceEnd ?? prev.end, cue.sourceEnd ?? cue.end),
+        words: cueWords(growing ? cue.text : prev.text)
+      };
+      continue;
+    }
+    if (overlaps && prevNorm.startsWith(curNorm)) {
+      continue;
+    }
+    out.push({ ...cue });
+  }
+  return out;
+}
+
+/**
  * Immutable source-of-truth subtitle layer.
  * Never rewrites transcript semantics.
  */

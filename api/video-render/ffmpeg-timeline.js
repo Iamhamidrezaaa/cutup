@@ -87,9 +87,11 @@ export function computeFramePtsLeadSec(framePtsAtSeek) {
  * @param {object} [opts]
  * @param {object[]} [opts.framePtsAtSeek]
  * @param {boolean} [opts.inputAlreadyNormalized]
+ * @param {boolean} [opts.preferMinimalCorrection] source-aligned ASS — avoid guessed shifts
  */
 export function buildTimelineBurnPlan(probe, subtitleCues = [], opts = {}) {
-  const { framePtsAtSeek = null, inputAlreadyNormalized = false } = opts;
+  const { framePtsAtSeek = null, inputAlreadyNormalized = false, preferMinimalCorrection = false } =
+    opts;
   const videoStart = num(probe?.video?.start_time, 0);
   const audioStart = num(probe?.audio?.start_time, 0);
   const formatStart = num(probe?.format?.start_time, 0);
@@ -110,16 +112,16 @@ export function buildTimelineBurnPlan(probe, subtitleCues = [], opts = {}) {
   let assShiftSec = 0;
 
   if (!inputAlreadyNormalized) {
-    const videoLateSec = Math.max(
-      streamOffsetSec > STREAM_OFFSET_WARN_SEC ? streamOffsetSec : 0,
-      framePtsLeadSec
-    );
+    const streamLate = streamOffsetSec > STREAM_OFFSET_WARN_SEC ? streamOffsetSec : 0;
+    const frameLate = framePtsLeadSec > STREAM_OFFSET_WARN_SEC ? framePtsLeadSec : 0;
+    const videoLateSec = preferMinimalCorrection
+      ? Math.max(streamLate, frameLate > 0.35 ? frameLate : 0)
+      : Math.max(streamLate, frameLate);
+
     if (videoLateSec > STREAM_OFFSET_WARN_SEC) {
-      /** Video filter setpts only — ASS shift in same pass would double-advance cues. */
       videoPtsShiftSec = videoLateSec;
       assShiftSec = 0;
-    } else if (streamOffsetSec < -STREAM_OFFSET_WARN_SEC) {
-      /** Audio starts after video in container — show subtitles later to match audio. */
+    } else if (!preferMinimalCorrection && streamOffsetSec < -STREAM_OFFSET_WARN_SEC) {
       assShiftSec = -streamOffsetSec;
     }
   }
@@ -236,7 +238,9 @@ export function buildAlignedVideoFilter(assName, plan, opts = {}) {
       parts.push('setpts=PTS-STARTPTS');
     }
   }
-  parts.push('scale=1080:1920', `subtitles=${assName}`);
+  const w = Math.max(2, Number(opts.playResX || 1080));
+  const h = Math.max(2, Number(opts.playResY || 1920));
+  parts.push(`scale=${w}:${h}`, `subtitles=${assName}:original_size=${w}x${h}`);
   return parts.join(',');
 }
 

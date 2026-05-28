@@ -6,6 +6,7 @@ import { buildCueLines } from './text-layout.js';
 import { analyzeTextWithEmphasis, shouldEmphasize } from './emphasis-engine.js';
 import {
   buildCanonicalSubtitles,
+  buildSourceAlignedSubtitles,
   buildVisualCueView,
   applyVisualReadabilityWindows,
   validateVisualVisibility,
@@ -299,10 +300,23 @@ export function generateAssContent(segments, presetId, dims = {}) {
     }))
   );
 
-  const canonicalSubtitles = buildCanonicalSubtitles(finalOnlySegments);
+  const useSourceAlignedTimings =
+    String(process.env.RENDER_BURN_USE_SOURCE_TIMINGS ?? '1').toLowerCase() !== '0' ||
+    captionMode === 'accurate';
+  const canonicalSubtitles = useSourceAlignedTimings
+    ? buildSourceAlignedSubtitles(finalOnlySegments)
+    : buildCanonicalSubtitles(finalOnlySegments);
   if (!canonicalSubtitles.length) {
     throw new Error('SUBTITLE_CANONICAL_EMPTY');
   }
+  console.log('[ass-timing-path]', {
+    useSourceAlignedTimings,
+    captionMode,
+    cueCount: canonicalSubtitles.length,
+    note: useSourceAlignedTimings
+      ? 'ASS Dialogue times match input segments (SRT/preview)'
+      : 'ASS uses rhythm blocks from composeRhythmBlocks'
+  });
   console.log(
     '[canonical-caption-blocks]',
     canonicalSubtitles.map((b) => ({

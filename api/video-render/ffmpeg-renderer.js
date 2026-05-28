@@ -243,9 +243,12 @@ export async function burnSubtitles(opts) {
   logBurnInputVerification(timelineTrace, inputPath, framePtsAtSeek, speechAnchor);
 
   const inputProbe = await probeMediaTimeline(inputPath);
+  const preferMinimalCorrection =
+    String(process.env.RENDER_BURN_USE_SOURCE_TIMINGS ?? '1').toLowerCase() !== '0';
   const timelinePlan = buildTimelineBurnPlan(inputProbe, subtitleCues, {
     framePtsAtSeek,
-    inputAlreadyNormalized
+    inputAlreadyNormalized,
+    preferMinimalCorrection
   });
   if (timelinePlan.offsetDetected) {
     logStreamOffsetDetected({
@@ -306,7 +309,11 @@ export async function burnSubtitles(opts) {
   const assDir = dirname(resolve(burnAssPath));
   const assName = basename(burnAssPath);
   const skipTimelineFilters = Boolean(timelinePlan.skipTimelineCorrection);
-  const vf = buildAlignedVideoFilter(assName, timelinePlan, { skipTimelineFilters });
+  const vf = buildAlignedVideoFilter(assName, timelinePlan, {
+    skipTimelineFilters,
+    playResX: geometry.playResX,
+    playResY: geometry.playResY
+  });
   const audioFilters = buildFfmpegAudioFiltersForBurn(timelinePlan, { skipTimelineFilters });
   const syncFlags = buildFfmpegOutputSyncFlags();
   const inputFlags = buildFfmpegInputFlags();

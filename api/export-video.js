@@ -222,7 +222,7 @@ async function handleStart(req, res) {
     quality,
     captionMode,
     styleMode,
-    segments: exportDoc ? null : segments,
+    segments: segments.length ? segments : null,
     exportDoc,
     sourceUrl: sourceUrl && !String(sourceUrl).startsWith('upload://') ? sourceUrl : null,
     uploadBuffer: videoBuffer,
