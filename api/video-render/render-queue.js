@@ -2,17 +2,16 @@
  * In-process render queue with concurrency limits and progress tracking.
  */
 import { randomBytes } from 'crypto';
-import { createHash } from 'crypto';
-import { writeFileSync, readFileSync, copyFileSync, statSync } from 'fs';
+import { writeFileSync, copyFileSync, statSync } from 'fs';
+import { promises as fsp } from 'fs';
 import { getStylePreset } from './style-presets.js';
-import { join, extname } from 'path';
+import { join } from 'path';
 import { generateAssContent, generateAssFromExportDoc } from './ass-generator.js';
 import {
   burnSubtitles,
   probeVideo,
   checkFfmpegAvailable,
-  resolveSubtitleRenderGeometry,
-  logVideoSourceDebug
+  resolveSubtitleRenderGeometry
 } from './ffmpeg-renderer.js';
 import {
   createJobDir,
@@ -178,10 +177,10 @@ function extractAssDebugInfo(assContent) {
       .find((line) => line.startsWith('Style: Default,')) ||
     '';
   const styleParts = styleLine.split(',');
-  const styleName = styleParts[1] || 'Default';
-  const fontSize = Number(styleParts[3] || 0);
-  const alignment = Number(styleParts[19] || 0);
-  const marginV = Number(styleParts[22] || 0);
+  const styleName = String((styleParts[0] || '').replace(/^Style:\s*/, '') || 'Default');
+  const fontSize = Number(styleParts[2] || 0);
+  const alignment = Number(styleParts[18] || 0);
+  const marginV = Number(styleParts[21] || 0);
   return {
     playResX,
     playResY,
@@ -410,10 +409,9 @@ async function runJob(job) {
   job.styleMode = resolveStyleMode(job);
 
   try {
-    console.log('[video-render] metrics start', {
+    console.log('[video-render] started', {
       jobId: job.id,
-      quality: job.quality,
-      mem: memStart
+      quality: job.quality
     });
 
     setStage(job, 'preparing', {
@@ -453,7 +451,6 @@ async function runJob(job) {
 
     setSubStage(job, 'Analyzing video dimensions…', 24);
     const probe = await probeVideo(videoPath);
-    logVideoSourceDebug(probe);
     if (probe.durationSec > MAX_DURATION_SEC) {
       throw new Error(`Video exceeds maximum length (${MAX_DURATION_SEC}s). Trim your clip and try again.`);
     }
@@ -514,63 +511,23 @@ async function runJob(job) {
 
     setSubStage(job, 'Building cinematic caption layer…', 50);
     job.assPath = join(job.jobDir, 'subtitles.ass');
-    const assExt = extname(job.assPath).toLowerCase();
-    const looksLikeSrt =
-      /^\d+\s*\r?\n\d{2}:\d{2}:\d{2}/m.test(assResult.content) &&
-      !assResult.content.includes('[Script Info]');
-    console.log('[ass-file-debug]', {
-      assPath: job.assPath,
-      extension: assExt,
-      isAss: assExt === '.ass',
-      isSrtExtension: assExt === '.srt',
-      hasScriptInfo: assResult.content.includes('[Script Info]'),
-      hasV4Styles: assResult.content.includes('[V4+ Styles]'),
-      hasEvents: assResult.content.includes('[Events]'),
-      looksLikeSrt,
-      byteLength: Buffer.byteLength(assResult.content, 'utf8')
-    });
-    const normalizedAssContent = String(assResult.content || '').replace(/\r\n/g, '\n');
-    const assContentLen = normalizedAssContent.length;
-    const assContentBytes = Buffer.byteLength(normalizedAssContent, 'utf8');
-    const assContentMd5 = createHash('md5').update(normalizedAssContent).digest('hex');
-    console.log('[ass-write-source]', {
-      assPath: job.assPath,
-      length: assContentLen,
-      byteLength: assContentBytes,
-      md5: assContentMd5
-    });
-    writeFileSync(job.assPath, normalizedAssContent, 'utf8');
-
-    const assOnDisk = readFileSync(job.assPath, 'utf8');
-    const writtenLen = assOnDisk.length;
-    const writtenBytes = Buffer.byteLength(assOnDisk, 'utf8');
-    const writtenMd5 = createHash('md5').update(assOnDisk).digest('hex');
-    const matchesSource = assOnDisk === normalizedAssContent;
-    console.log('[ass-write-verify]', {
-      assPath: job.assPath,
-      length: writtenLen,
-      byteLength: writtenBytes,
-      md5: writtenMd5,
-      matchesSource
-    });
-    console.log('[ASS FILE FINAL]');
-    console.log(assOnDisk);
-    console.log(
-      '[ASS DIALOGUES]',
-      assOnDisk.split(/\r?\n/).filter((l) => l.startsWith('Dialogue:'))
-    );
-    const eventsStart = assOnDisk.indexOf('[Events]\n');
-    if (eventsStart >= 0) {
-      console.log('[ASS EVENTS BLOCK]');
-      console.log(assOnDisk.slice(eventsStart).trimEnd());
+    const assContent = String(assResult.content || '').replace(/\r\n/g, '\n');
+    await fsp.writeFile(job.assPath, assContent, 'utf8');
+    const verifyContent = await fsp.readFile(job.assPath, 'utf8');
+    if (verifyContent !== assContent) {
+      throw new Error('ASS write verification failed');
     }
+    const assStat = await fsp.stat(job.assPath);
+    if (assStat.size < 200) {
+      throw new Error('ASS file suspiciously small');
+    }
+    console.log('[ass-write-verified]', { assPath: job.assPath, size: assStat.size });
 
     const assDebugPath = join(job.jobDir, 'subtitles.final.ass');
-    writeFileSync(assDebugPath, assOnDisk, 'utf8');
+    await fsp.writeFile(assDebugPath, verifyContent, 'utf8');
     job.assDebugPath = assDebugPath;
-    const assDebug = extractAssDebugInfo(assOnDisk);
+    const assDebug = extractAssDebugInfo(verifyContent);
     job.assDebug = assDebug;
-    console.log('[ass-debug]', assDebug);
     job.renderProfile = assResult.renderProfile?.id || null;
     const adaptiveSafeguards = Boolean(assResult.renderProfile?.safeguardsActive);
     job.adaptiveSafeguards = adaptiveSafeguards;
@@ -748,10 +705,9 @@ async function runJob(job) {
     } catch {
       /* noop diagnostics failure */
     }
-    console.error('[video-render] metrics failed', {
+    console.error('[video-render] failed', {
       jobId: job.id,
-      message: err?.message || String(err),
-      mem: memorySnapshotMb()
+      message: err?.message || String(err)
     });
     cleanupJobArtifacts(job);
     throw err;

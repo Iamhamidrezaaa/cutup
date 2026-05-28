@@ -179,118 +179,6 @@ function applyFutureVisualExtensions(cue, _context) {
 const ASS_EVENTS_FORMAT =
   'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text';
 
-/** Final isolation test: exactly two fixed dialogues, no transcript content. */
-const ASS_FIXED_DIALOGUE_FIRST =
-  'Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,CUTUP FIRST';
-const ASS_FIXED_DIALOGUE_SECOND =
-  'Dialogue: 0,0:00:05.00,0:00:10.00,Default,,0,0,0,,HELLO SECOND';
-
-function verifyAssEventsFormat(eventsFormatLine) {
-  const expected = ASS_EVENTS_FORMAT;
-  const ok = eventsFormatLine === expected;
-  console.log('[ass-events-format]', {
-    expected,
-    actual: eventsFormatLine,
-    matches: ok
-  });
-  if (!ok) {
-    console.warn('[ass-events-format] MISMATCH — libass may ignore styling silently');
-  }
-  return ok;
-}
-
-function extractAssDialogueTextField(dialogueLine) {
-  const prefix = 'Dialogue: ';
-  const body = dialogueLine.startsWith(prefix) ? dialogueLine.slice(prefix.length) : dialogueLine;
-  const commaIdx = [];
-  for (let i = 0; i < body.length; i++) {
-    if (body[i] === ',') commaIdx.push(i);
-  }
-  return commaIdx.length >= 9 ? body.slice(commaIdx[8] + 1) : '';
-}
-
-function verifyAssDialogueLines(dialogueLines) {
-  const expectedFields = 10; // Layer..Text (comma-separated, Text may contain commas)
-  for (const line of dialogueLines) {
-    const prefix = 'Dialogue: ';
-    const body = line.startsWith(prefix) ? line.slice(prefix.length) : line;
-    const commaIdx = [];
-    for (let i = 0; i < body.length; i++) {
-      if (body[i] === ',') commaIdx.push(i);
-    }
-    const fieldCount = commaIdx.length + 1;
-    const textField = fieldCount >= 10 ? body.slice(commaIdx[8] + 1) : '';
-    const hasOpenBrace = textField.includes('{');
-    const hasCloseBrace = textField.includes('}');
-    const hasBackslash = textField.includes('\\');
-    const hasDoubleEscapedBraces =
-      textField.includes('\\{') || textField.includes('\\}');
-    const hasJsonEscapedBackslash = /\\\\fs|\\\\bord|\\\\c/.test(textField);
-    console.log('[ass-dialogue-verify]', {
-      line: line.slice(0, 200),
-      fieldCount,
-      expectedFields,
-      fieldsOk: fieldCount === expectedFields,
-      hasOpenBrace,
-      hasCloseBrace,
-      hasBackslash,
-      hasDoubleEscapedBraces,
-      hasJsonEscapedBackslash,
-      textFieldPreview: textField.slice(0, 160)
-    });
-  }
-}
-
-function logAssFullOutput(assContent) {
-  console.log('[ASS FULL OUTPUT]');
-  console.log(assContent);
-}
-
-/** STEP 3: extreme logging — compare hardcoded vs dynamic text field. */
-function logDynamicSubtitleDebug(dynamicSubtitleText, finalDialogueLine, extra = {}) {
-  console.log('[dynamic-raw]', dynamicSubtitleText);
-  console.log('[dynamic-json]', JSON.stringify(dynamicSubtitleText));
-  console.log('[dynamic-charcodes]', [...dynamicSubtitleText].map((c) => c.charCodeAt(0)));
-  if (extra.label) console.log('[dynamic-debug-label]', extra.label);
-  if (extra.pipelineStage) console.log('[dynamic-pipeline-stage]', extra.pipelineStage);
-  if (finalDialogueLine != null) {
-    console.log('[dialogue-final]', finalDialogueLine);
-    console.log('[dialogue-json]', JSON.stringify(finalDialogueLine));
-  }
-  if (extra.compareTo) {
-    console.log('[dynamic-vs-hardcoded]', {
-      sameLength: dynamicSubtitleText.length === extra.compareTo.length,
-      hardcodedPreview: extra.compareTo.slice(0, 80),
-      dynamicPreview: dynamicSubtitleText.slice(0, 80)
-    });
-  }
-}
-
-function inspectAssEscaping(label, text) {
-  const badDoubleBrace = /\\\\\{/.test(text) || /\\\\\}/.test(text);
-  const badEscapedBrace = /\\\{/.test(text) || /\\\}/.test(text);
-  const badQuadBackslash = /\\\\\\\\/.test(text);
-  const badNewline = /[\r\n]/.test(text);
-  const goodBlur = /\{\\blur[\d.]+\}/.test(text) || /\{\\\\blur/.test(text);
-  console.log('[ass-escape-inspect]', {
-    label,
-    badDoubleBrace,
-    badEscapedBrace,
-    badQuadBackslash,
-    badNewline,
-    hasOverrideBlock: text.includes('{') && text.includes('}'),
-    preview: text.slice(0, 120)
-  });
-}
-
-function buildExplicitDynamicOverrideText(displayText = 'hello world') {
-  const safeText = String(displayText || 'hello world').replace(/[{}\\]/g, '');
-  return `{\\fs180\\bord12\\shad8\\blur2\\c&H00FFFFFF&\\3c&H00000000&}${safeText}`;
-}
-
-function buildDynamicDebugDialogue(startSec, endSec, dynamicSubtitleText) {
-  return `Dialogue: 0,${toAssTime(startSec)},${toAssTime(endSec)},Default,,0,0,0,,${dynamicSubtitleText}`;
-}
 
 export function toAssTime(seconds) {
   const s = Math.max(0, Number(seconds) || 0);
@@ -392,14 +280,14 @@ function styleLine(name, preset) {
 export function generateAssContent(segments, presetId, dims = {}) {
   const selectedPresetId = resolvePresetIdOrThrow(presetId);
   const basePreset = getStylePreset(selectedPresetId);
-  // STEP 6 debug: hardcoded PlayRes for ALL exports (do not derive dynamically).
-  const playResX = 1080;
-  const playResY = 1920;
+  const requestedPlayResX = Number(dims.playResX || basePreset.playResX || 1080);
+  const requestedPlayResY = Number(dims.playResY || basePreset.playResY || 1920);
+  const requestedIsVertical = requestedPlayResY > requestedPlayResX * 1.05;
+  const playResX = requestedIsVertical ? 1080 : requestedPlayResX;
+  const playResY = requestedIsVertical ? 1920 : requestedPlayResY;
   const durationSec = dims.durationSec || 0;
   const quality = dims.quality === 'hq' ? 'hq' : 'fast';
   const captionMode = dims.captionMode || dims.qualityMode || 'viral';
-  const debugIntegrity =
-    dims.debugSubtitleIntegrity === true || String(process.env.VIDEO_RENDER_SUBTITLE_DEBUG || '0') === '1';
   const visualFeatureFlags = resolveVisualFeatureFlags(dims.renderHints || {});
 
   const preset = {
@@ -408,26 +296,16 @@ export function generateAssContent(segments, presetId, dims = {}) {
     playResY
   };
 
-  // Isolation mode: ignore incoming transcript/exportDoc and use fixed seed cues only.
-  const canonicalSubtitles = buildCanonicalSubtitles([
-    { start: 0, end: 4, text: 'CUTUP FIRST' },
-    { start: 6, end: 10, text: 'HELLO SECOND' }
-  ]);
+  const canonicalSubtitles = buildCanonicalSubtitles(segments);
+  if (!canonicalSubtitles.length) {
+    throw new Error('SUBTITLE_CANONICAL_EMPTY');
+  }
   const cues = buildVisualCueView(canonicalSubtitles, captionMode);
   const integrityReport = assertCueIntegrity(canonicalSubtitles, cues, {
     maxTimingDriftMs: 0,
     maxExtraGapSec: 0.05
   });
   const continuity = continuitySummary(canonicalSubtitles);
-
-  if (debugIntegrity) {
-    console.log('[video-render] subtitle integrity', {
-      cueCount: integrityReport.canonicalCueCount,
-      words: integrityReport.canonicalWordCount,
-      longestGapSec: continuity.longestGapSec,
-      oneWordCueRatio: continuity.oneWordCueRatio
-    });
-  }
 
   const layout = resolveRenderLayout(
     {
@@ -497,10 +375,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
   const glow = Number((basePreset.glow ?? signature.glow).toFixed(2));
 
   Object.assign(preset, {
-    // STEP 5 debug: absurd font size to isolate libass coordinate system.
-    fontSize: 400,
-    // Temporary debug pass: force a known libass font.
-    fontName: 'DejaVu Sans',
+    fontSize: tunedFontSize,
     spacing: layout.spacing,
     scaleY: layout.scaleY,
     outline: tunedOutlineByPreset,
@@ -541,81 +416,40 @@ export function generateAssContent(segments, presetId, dims = {}) {
     '[Events]',
     ASS_EVENTS_FORMAT
   ];
-  const eventsFormatLine = ASS_EVENTS_FORMAT;
-  verifyAssEventsFormat(eventsFormatLine);
-  const defaultStyleLine = header.find((line) => line.startsWith('Style: Default,')) || '';
-  const emphasisStyleLine = header.find((line) => line.startsWith('Style: Emphasis,')) || '';
+  const disableEmphasis = layout.rtl || captionMode === 'accurate';
+  const typoPrefix = { fontName: preset.fontName, fontSize: preset.fontSize, spacing: layout.spacing, rtl: layout.rtl };
+  let totalLines = 0;
+  let wrappedCount = 0;
+  let maxLineCount = 1;
+  let totalChars = 0;
 
-  const dialogues = [ASS_FIXED_DIALOGUE_FIRST, ASS_FIXED_DIALOGUE_SECOND];
-  verifyAssDialogueLines(dialogues);
-  console.log('[FINAL DIALOGUE COUNT]', dialogues.length);
+  const dialogues = visibleCues.map((cue) => {
+    const enrichedCue = applyFutureVisualExtensions(cue, {
+      renderProfile,
+      visualFeatureFlags
+    });
+    const lines = buildCueLines(enrichedCue, layout.layout, layout.useUppercase);
+    const lineCount = Math.max(1, lines.length);
+    totalLines += lineCount;
+    maxLineCount = Math.max(maxLineCount, lineCount);
+    if (lineCount > 1) wrappedCount += 1;
+    totalChars += String(enrichedCue.text || '').length;
+
+    const mV = layout.isVertical ? layout.marginV : cueMarginV(layout.marginV, lineCount, layout.lineHeight);
+    const body = linesToAssText(lines, preset, { disableEmphasis, renderProfile });
+    const glowPrefix = preset.glow > 0 ? `{\\blur${Number(preset.glow).toFixed(2)}}` : '';
+    const text = `${assRtlPrefix(typoPrefix)}${glowPrefix}${body}`;
+    return `Dialogue: 0,${toAssTime(enrichedCue.renderStart)},${toAssTime(enrichedCue.renderEnd)},Default,,0,0,${mV},,${text}`;
+  });
 
   const cueCount = dialogues.length;
-  const avgLines = 1;
-  const avgCharsPerCue = Number(
-    (
-      dialogues
-        .map((line) => extractAssDialogueTextField(line).replace(/\{[^}]*\}/g, ''))
-        .reduce((sum, text) => sum + text.length, 0) / Math.max(1, dialogues.length)
-    ).toFixed(2)
-  );
-  const maxLineCount = 1;
-  const wrappedCount = 0;
+  const avgLines = cueCount > 0 ? totalLines / cueCount : 1;
+  const avgCharsPerCue = cueCount > 0 ? totalChars / cueCount : 0;
   const maxWidthRatio = (playResX - (layout.marginL + layout.marginR)) / playResX;
   const yAnchor = 1 - layout.marginV / playResY;
 
-  console.log('[subtitle-layout]', {
-    mode: renderProfile.styleMode,
-    fontSize: layout.fontSize,
-    lineCount: maxLineCount,
-    yAnchor: Number(yAnchor.toFixed(3)),
-    maxWidth: Number(maxWidthRatio.toFixed(3)),
-    wrapped: wrappedCount > 0
-  });
-  console.log('[subtitle-render]', {
-    preset: preset.id,
-    cueCount,
-    avgCharsPerCue: Number(avgCharsPerCue.toFixed(2)),
-    avgLines: Number(avgLines.toFixed(2)),
-    viewport: `${playResX}x${playResY}`
-  });
-  console.log('[render-style]', {
-    preset: preset.id,
-    fontSize: preset.fontSize,
-    marginV: preset.marginV,
-    alignment: preset.alignment,
-    outline: preset.outline,
-    shadow: preset.shadow,
-    glow: preset.glow || 0,
-    isVertical: layout.isVertical
-  });
-  console.log('[ass-font-debug]', {
-    fontName: preset.fontName,
-    fontSize: preset.fontSize,
-    outline: preset.outline,
-    shadow: preset.shadow,
-    marginV: preset.marginV,
-    alignment: preset.alignment,
-    playResX,
-    playResY
-  });
-  console.log('[ass-style-debug]', {
-    defaultStyleLine,
-    emphasisStyleLine
-  });
-  const scriptInfoEnd = header.findIndex((line) => line === '[V4+ Styles]');
-  console.log('[ass-script-info]', header.slice(0, scriptInfoEnd > 0 ? scriptInfoEnd : 12).join('\n'));
-  console.log('[ass-debug]', {
-    playResX,
-    playResY,
-    fontSize: preset.fontSize,
-    marginV: preset.marginV,
-    alignment: preset.alignment,
-    styleName: 'Default'
-  });
-
-  const assContent = [...header, ...dialogues].join('\n');
-  logAssFullOutput(assContent);
+  // Keep internal metrics for diagnostics payload without verbose logs.
+  const assContent = [...header, ...dialogues].join('\n').replace(/\r\n/g, '\n');
 
   return {
     content: assContent,

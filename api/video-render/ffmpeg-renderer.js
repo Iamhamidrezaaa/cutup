@@ -4,8 +4,7 @@
 import { spawn } from 'child_process';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { existsSync, readFileSync, statSync } from 'fs';
-import { createHash } from 'crypto';
+import { existsSync } from 'fs';
 import { dirname, basename, resolve, extname } from 'path';
 
 const execFileAsync = promisify(execFile);
@@ -110,67 +109,9 @@ export function resolveSubtitleRenderGeometry({
 /**
  * STEP 3+4: scale FIRST, subtitles LAST (burn after upscale).
  */
-function shellQuoteArg(value) {
-  const s = String(value);
-  if (/[\s"'\\]/.test(s)) return `"${s.replace(/"/g, '\\"')}"`;
-  return s;
-}
-
-function formatFfmpegCommand(args, cwd) {
-  const parts = ['ffmpeg', ...args.map(shellQuoteArg)];
-  return cwd ? `(cwd=${cwd}) ${parts.join(' ')}` : parts.join(' ');
-}
-
 function buildVideoFilter(assName, geometry) {
-  // STEP 3 debug: scale FIRST, subtitles LAST — fixed 1080x1920 for filter-order test.
   const filterChain = `scale=1080:1920,subtitles=${assName}`;
-
-  console.log('[ffmpeg-filter-debug]', {
-    filterChain,
-    playResX: geometry?.playResX ?? null,
-    playResY: geometry?.playResY ?? null,
-    outputWidth: geometry?.outputWidth ?? null,
-    outputHeight: geometry?.outputHeight ?? null,
-    sourceWidth: geometry?.sourceWidth ?? null,
-    sourceHeight: geometry?.sourceHeight ?? null
-  });
-  console.log('[ffmpeg-final-filter]', filterChain);
-
   return filterChain;
-}
-
-export function logVideoSourceDebug(probe) {
-  const sourceWidth = Number(probe.width) || 0;
-  const sourceHeight = Number(probe.height) || 0;
-  console.log('[video-source-debug]', {
-    sourceWidth,
-    sourceHeight,
-    aspectRatio: sourceHeight > 0 ? Number((sourceWidth / sourceHeight).toFixed(4)) : 0,
-    rotation: Number(probe.rotation) || 0,
-    duration: Number(probe.durationSec) || 0
-  });
-}
-
-export async function logVideoOutputDebug(outputPath) {
-  try {
-    const out = await probeVideo(outputPath);
-    const outputWidth = Number(out.width) || 0;
-    const outputHeight = Number(out.height) || 0;
-    console.log('[video-output-debug]', {
-      outputWidth,
-      outputHeight,
-      aspectRatio: outputHeight > 0 ? Number((outputWidth / outputHeight).toFixed(4)) : 0
-    });
-    return { outputWidth, outputHeight };
-  } catch (err) {
-    console.log('[video-output-debug]', {
-      outputWidth: null,
-      outputHeight: null,
-      aspectRatio: null,
-      error: String(err?.message || err)
-    });
-    return null;
-  }
 }
 
 async function detectHardwareAcceleration() {
@@ -248,12 +189,6 @@ export async function burnSubtitles(opts) {
   if (!existsSync(assPath)) return Promise.reject(new Error('ASS_FILE_MISSING'));
 
   const assExt = extname(assPath).toLowerCase();
-  if (assExt !== '.ass') {
-    console.warn('[ffmpeg-subtitle-file] unexpected extension — expected .ass', {
-      assPath,
-      extension: assExt || '(none)'
-    });
-  }
   if (assExt === '.srt') {
     return Promise.reject(new Error('SUBTITLE_FILE_IS_SRT_NOT_ASS'));
   }
@@ -316,33 +251,7 @@ export async function burnSubtitles(opts) {
     outputPath
   ];
 
-  // STEP 1-4: verify exact ASS content that will be used by ffmpeg.
-  const finalAss = readFileSync(assPath, 'utf8');
-  const dialogues = finalAss.split(/\r?\n/).filter((l) => l.startsWith('Dialogue:'));
-  console.log('[ASS PATH FINAL]', assPath);
-  console.log('[FFMPEG ASS INPUT EXISTS]', existsSync(assPath));
-  console.log('[FFMPEG ASS SIZE]', statSync(assPath).size);
-  console.log('[FINAL DIALOGUE COUNT]', dialogues.length);
-  dialogues.forEach((d, i) => {
-    console.log(`[FINAL DIALOGUE ${i}]`, d);
-  });
-  console.log('[HAS HELLO WORLD]', finalAss.includes('hello world'));
-  console.log('[HAS CUTUP]', finalAss.includes('CUTUP DEBUG TEST'));
-  const assMd5 = createHash('md5').update(finalAss).digest('hex');
-  console.log('[ASS MD5]', assMd5);
-
-  const ffmpegCommand = formatFfmpegCommand(args, assDir);
-  console.log('[ffmpeg-command]', ffmpegCommand);
-  console.log('[ffmpeg-subtitle-file]', {
-    assPath,
-    assFileName: assName,
-    extension: assExt || '(none)',
-    isAss: assExt === '.ass',
-    isSrt: assExt === '.srt',
-    filterUsesAss: vf.includes(`subtitles=${assName}`) && !vf.includes('.srt'),
-    vf
-  });
-  console.log('[video-render] ffmpeg start', {
+  console.log('[video-render] started', {
     quality,
     durationSec,
     encodePreset: enc.preset,
@@ -496,7 +405,7 @@ export async function burnSubtitles(opts) {
 
       if (code !== 0) {
         const tail = stderr.trim().split('\n').slice(-8).join('\n');
-        console.error('[video-render] ffmpeg failed', { code, tail });
+        console.error('[video-render] failed', { code, tail });
         if (!settled) reject(new Error(tail || `FFmpeg exited with code ${code}`));
         return;
       }
@@ -512,8 +421,7 @@ export async function burnSubtitles(opts) {
         fps: ffFps,
         phase: 'finalizing'
       });
-      console.log('[video-render] ffmpeg done', { outputPath: basename(outputPath) });
-      await logVideoOutputDebug(outputPath);
+      console.log('[video-render] ffmpeg completed', { outputPath: basename(outputPath) });
       if (!settled) {
         settled = true;
         resolve({ outputPath, quality, preset: enc });
