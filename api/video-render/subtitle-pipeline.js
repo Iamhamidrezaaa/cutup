@@ -58,6 +58,79 @@ function detectEmphasisWords(text) {
   return top;
 }
 
+function normalizeWordTimeline(rawSegments) {
+  const minWordDur = 0.06;
+  const overlapGuard = 0.01;
+  const tinyGap = 0.04;
+  const out = [];
+
+  for (const seg of Array.isArray(rawSegments) ? rawSegments : []) {
+    if (!seg || typeof seg.start !== 'number' || typeof seg.end !== 'number' || seg.end <= seg.start) continue;
+    const segStart = Number(seg.start);
+    const segEnd = Number(seg.end);
+    const sourceWords = Array.isArray(seg.words) && seg.words.length ? seg.words : null;
+
+    if (sourceWords) {
+      for (const w of sourceWords) {
+        const word = String(w.word || w.text || '').trim();
+        if (!word) continue;
+        let ws = Number(w.start);
+        let we = Number(w.end);
+        if (!Number.isFinite(ws)) ws = segStart;
+        if (!Number.isFinite(we)) we = ws + minWordDur;
+        ws = Math.max(segStart, ws);
+        we = Math.min(segEnd, Math.max(ws + minWordDur, we));
+        out.push({
+          word,
+          cleanWord: normalizeWord(word),
+          start: ws,
+          end: we,
+          duration: Number((we - ws).toFixed(3)),
+          confidence: Number.isFinite(Number(w.confidence)) ? Number(w.confidence) : null
+        });
+      }
+      continue;
+    }
+
+    const tokens = cueWords(seg.text || '');
+    if (!tokens.length) continue;
+    const dur = Math.max(minWordDur * tokens.length, segEnd - segStart);
+    const per = dur / tokens.length;
+    for (let i = 0; i < tokens.length; i++) {
+      const ws = segStart + i * per;
+      const we = Math.min(segEnd, Math.max(ws + minWordDur, segStart + (i + 1) * per));
+      out.push({
+        word: tokens[i],
+        cleanWord: normalizeWord(tokens[i]),
+        start: ws,
+        end: we,
+        duration: Number((we - ws).toFixed(3)),
+        confidence: null
+      });
+    }
+  }
+
+  out.sort((a, b) => a.start - b.start);
+  for (let i = 0; i < out.length; i++) {
+    const cur = out[i];
+    const prev = out[i - 1];
+    if (prev && cur.start < prev.end - overlapGuard) {
+      cur.start = prev.end - overlapGuard;
+    }
+    if (prev) {
+      const gap = cur.start - prev.end;
+      if (gap >= 0 && gap < tinyGap) {
+        const mid = prev.end + gap / 2;
+        prev.end = mid;
+        cur.start = mid;
+      }
+    }
+    cur.end = Math.max(cur.start + minWordDur, cur.end);
+    cur.duration = Number((cur.end - cur.start).toFixed(3));
+  }
+  return out;
+}
+
 function toCanonicalCue(seg, index) {
   if (!seg || typeof seg.start !== 'number' || typeof seg.end !== 'number' || seg.end <= seg.start) return null;
   const text = normalizeCueText(seg.text || '');
@@ -99,32 +172,49 @@ function composeRhythmBlocks(rawSegments, opts = {}) {
   const minDurationSec = Math.max(0.4, Number(opts.minDurationSec ?? 0.7));
   const maxDurationSec = Math.max(minDurationSec, Number(opts.maxDurationSec ?? 2.6));
   const overlapGuardSec = Math.max(0, Number(opts.overlapGuardSec ?? 0.04));
-  const source = Array.isArray(rawSegments) ? rawSegments : [];
+  const timeline = normalizeWordTimeline(rawSegments);
   const blocks = [];
-
-  for (const seg of source) {
-    if (!seg || typeof seg.start !== 'number' || typeof seg.end !== 'number' || seg.end <= seg.start) continue;
-    const text = normalizeCueText(seg.text || '');
-    if (!text) continue;
-    const wordsList = cueWords(text);
-    if (!wordsList.length) continue;
-
-    const speechRate = wordsList.length / Math.max(0.01, Number(seg.end) - Number(seg.start));
-    const dynamicMaxWords = speechRate > 3.8 ? 3 : speechRate > 2.7 ? 4 : baseMaxWords;
-    const chunks = splitPhraseToWordChunks(wordsList, dynamicMaxWords);
-    const span = Math.max(0.01, Number(seg.end) - Number(seg.start));
-    const chunkDur = span / Math.max(1, chunks.length);
-
-    for (let i = 0; i < chunks.length; i++) {
-      const cStart = Number(seg.start) + i * chunkDur;
-      const cEnd = i === chunks.length - 1 ? Number(seg.end) : Number(seg.start) + (i + 1) * chunkDur;
-      blocks.push({
-        text: chunks[i],
-        start: cStart,
-        end: cEnd,
-        words: cueWords(chunks[i])
-      });
+  let i = 0;
+  while (i < timeline.length) {
+    const first = timeline[i];
+    const chunkWords = [first.word];
+    const chunkMeta = [first];
+    let j = i + 1;
+    while (j < timeline.length) {
+      const next = timeline[j];
+      const speechRate = chunkMeta.length / Math.max(0.01, chunkMeta[chunkMeta.length - 1].end - first.start);
+      const dynamicMaxWords = speechRate > 3.8 ? 3 : speechRate > 2.7 ? 4 : baseMaxWords;
+      const gap = next.start - chunkMeta[chunkMeta.length - 1].end;
+      if (chunkWords.length >= dynamicMaxWords) break;
+      if (gap > 0.33) break;
+      chunkWords.push(next.word);
+      chunkMeta.push(next);
+      if (/[.!?]$/.test(next.word) && chunkWords.length >= 2) {
+        j += 1;
+        break;
+      }
+      j += 1;
     }
+
+    const firstWordStart = chunkMeta[0].start;
+    const lastWordEnd = chunkMeta[chunkMeta.length - 1].end;
+    const adjustedStart = Math.max(0, firstWordStart - 0.06);
+    const adjustedEnd = lastWordEnd + 0.08;
+    const speechRate = chunkMeta.length / Math.max(0.01, lastWordEnd - firstWordStart);
+    const text = normalizeCueText(chunkWords.join(' '));
+    blocks.push({
+      text,
+      start: adjustedStart,
+      end: adjustedEnd,
+      words: cueWords(text),
+      wordTimeline: chunkMeta,
+      firstWordStart,
+      lastWordEnd,
+      adjustedStart,
+      adjustedEnd,
+      speechRate
+    });
+    i = j;
   }
 
   // Remove progressive accumulation patterns by replacing previous growing text.
@@ -143,6 +233,9 @@ function composeRhythmBlocks(rawSegments, opts = {}) {
       prev.text = b.text;
       prev.words = b.words;
       prev.end = Math.max(prev.end, b.end);
+      prev.wordTimeline = [...(prev.wordTimeline || []), ...(b.wordTimeline || [])];
+      prev.lastWordEnd = b.lastWordEnd ?? prev.lastWordEnd;
+      prev.adjustedEnd = b.adjustedEnd ?? prev.adjustedEnd;
       continue;
     }
     collapsed.push({ ...b });
@@ -167,7 +260,13 @@ function composeRhythmBlocks(rawSegments, opts = {}) {
         text: w.join(' ') || b.text,
         start,
         end,
-        words: cueWords(w.join(' ') || b.text)
+        words: cueWords(w.join(' ') || b.text),
+        wordTimeline: (b.wordTimeline || []).filter((x) => x.start >= start - 0.001 && x.end <= end + 0.001),
+        firstWordStart: start,
+        lastWordEnd: end,
+        adjustedStart: start,
+        adjustedEnd: end,
+        speechRate: b.speechRate
       });
     }
   }
@@ -211,6 +310,11 @@ function composeRhythmBlocks(rawSegments, opts = {}) {
     text: normalizeCueText(b.text),
     words: b.words,
     emphasisWords: detectEmphasisWords(b.text),
+    firstWordStart: Number(b.firstWordStart ?? b.start),
+    lastWordEnd: Number(b.lastWordEnd ?? b.end),
+    adjustedStart: Number(b.adjustedStart ?? b.start),
+    adjustedEnd: Number(b.adjustedEnd ?? b.end),
+    speechRate: Number((b.speechRate || 0).toFixed(3)),
     _words: b.words
   }));
   for (let i = 1; i < out.length; i++) {
@@ -219,6 +323,18 @@ function composeRhythmBlocks(rawSegments, opts = {}) {
     if (!prev.emphasisWords?.length || !cur.emphasisWords?.length) continue;
     cur.emphasisWords = cur.emphasisWords.filter((w) => !prev.emphasisWords.includes(w)).slice(0, 2);
   }
+  console.log(
+    '[word-timing-debug]',
+    out.map((c) => ({
+      words: c.words,
+      firstWordStart: c.firstWordStart,
+      lastWordEnd: c.lastWordEnd,
+      adjustedStart: c.adjustedStart,
+      adjustedEnd: c.adjustedEnd,
+      speechRate: c.speechRate,
+      chunkWordCount: Array.isArray(c.words) ? c.words.length : 0
+    }))
+  );
   return out;
 }
 
