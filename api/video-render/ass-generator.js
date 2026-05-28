@@ -358,8 +358,7 @@ function styleLine(name, preset) {
   const borderStyle = preset.borderStyle ?? 1;
   const scaleY = preset.scaleY ?? 100;
   return [
-    'Style:',
-    name,
+    `Style: ${name}`,
     preset.fontName,
     preset.fontSize,
     preset.primaryColor,
@@ -544,8 +543,8 @@ export function generateAssContent(segments, presetId, dims = {}) {
   ];
   const eventsFormatLine = ASS_EVENTS_FORMAT;
   verifyAssEventsFormat(eventsFormatLine);
-  const defaultStyleLine = header.find((line) => line.startsWith('Style:,Default,')) || '';
-  const emphasisStyleLine = header.find((line) => line.startsWith('Style:,Emphasis,')) || '';
+  const defaultStyleLine = header.find((line) => line.startsWith('Style: Default,')) || '';
+  const emphasisStyleLine = header.find((line) => line.startsWith('Style: Emphasis,')) || '';
 
   const dialogues = [ASS_FIXED_DIALOGUE_FIRST, ASS_FIXED_DIALOGUE_SECOND];
   verifyAssDialogueLines(dialogues);

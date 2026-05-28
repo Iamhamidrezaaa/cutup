@@ -528,7 +528,8 @@ async function runJob(job) {
       looksLikeSrt,
       byteLength: Buffer.byteLength(assResult.content, 'utf8')
     });
-    writeFileSync(job.assPath, assResult.content, 'utf8');
+    const normalizedAssContent = String(assResult.content || '').replace(/\r\n/g, '\n');
+    writeFileSync(job.assPath, normalizedAssContent, 'utf8');
 
     const assOnDisk = readFileSync(job.assPath, 'utf8');
     console.log('[ASS FILE FINAL]');
@@ -537,11 +538,16 @@ async function runJob(job) {
       '[ASS DIALOGUES]',
       assOnDisk.split(/\r?\n/).filter((l) => l.startsWith('Dialogue:'))
     );
+    const eventsStart = assOnDisk.indexOf('[Events]\n');
+    if (eventsStart >= 0) {
+      console.log('[ASS EVENTS BLOCK]');
+      console.log(assOnDisk.slice(eventsStart).trimEnd());
+    }
 
     const assDebugPath = join(job.jobDir, 'subtitles.final.ass');
     writeFileSync(assDebugPath, assOnDisk, 'utf8');
     job.assDebugPath = assDebugPath;
-    const assDebug = extractAssDebugInfo(assResult.content);
+    const assDebug = extractAssDebugInfo(assOnDisk);
     job.assDebug = assDebug;
     console.log('[ass-debug]', assDebug);
     job.renderProfile = assResult.renderProfile?.id || null;
