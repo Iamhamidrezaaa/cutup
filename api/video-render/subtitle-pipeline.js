@@ -15,6 +15,21 @@ const FILLER = new Set([
   'so', 'if', 'as', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'it', 'this', 'that'
 ]);
 const DRAMATIC = new Set(['never', 'stop', 'now', 'insane', 'wait', 'you', 'this', 'crazy', 'secret']);
+const PHONETIC_CONFUSIONS = {
+  think: ['sink'],
+  sink: ['think'],
+  three: ['tree'],
+  tree: ['three'],
+  then: ['den'],
+  den: ['then'],
+  this: ['dis'],
+  dis: ['this']
+};
+const CONTEXTUAL_PHRASES = [
+  { context: ['pull', 'up'], from: 'sink', to: 'ups' },
+  { context: ['right', 'now'], from: 'den', to: 'then' },
+  { context: ['is', 'the'], from: 'tree', to: 'three' }
+];
 
 function normalizeCueText(text) {
   return String(text || '')
@@ -29,6 +44,112 @@ function cueWords(text) {
 
 function normalizeWord(w) {
   return String(w || '').toLowerCase().replace(/[^\p{L}\p{M}\p{N}$%]/gu, '');
+}
+
+function phoneticKey(word) {
+  return normalizeWord(word)
+    .replace(/th/g, 't')
+    .replace(/[aeiou]/g, '')
+    .replace(/ck/g, 'k')
+    .replace(/ph/g, 'f')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function levenshtein(a, b) {
+  const s = String(a || '');
+  const t = String(b || '');
+  const m = s.length;
+  const n = t.length;
+  const d = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) d[i][0] = i;
+  for (let j = 0; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = s[i - 1] === t[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+    }
+  }
+  return d[m][n];
+}
+
+function applyModelVoting(wordObj, opts) {
+  if (!opts.enableModelVoting) return wordObj;
+  const candidates = Array.isArray(wordObj.candidates) ? wordObj.candidates : [];
+  if (!candidates.length) return wordObj;
+  const ranked = candidates
+    .map((c) => ({
+      word: String(c.word || c.text || '').trim(),
+      confidence: Number.isFinite(Number(c.confidence)) ? Number(c.confidence) : -1
+    }))
+    .filter((c) => c.word)
+    .sort((a, b) => b.confidence - a.confidence);
+  if (!ranked.length) return wordObj;
+  return {
+    ...wordObj,
+    word: ranked[0].word,
+    cleanWord: normalizeWord(ranked[0].word),
+    confidence: ranked[0].confidence >= 0 ? ranked[0].confidence : wordObj.confidence,
+    correctionReason: ranked[0].word !== wordObj.word ? 'model_voting' : wordObj.correctionReason
+  };
+}
+
+function applyPhoneticAndContextCorrection(wordsTimeline, opts) {
+  const out = wordsTimeline.map((w) => ({ ...w }));
+  const logs = [];
+  const confThreshold = opts.lowConfidenceThreshold;
+
+  for (let i = 0; i < out.length; i++) {
+    let cur = out[i];
+    cur = applyModelVoting(cur, opts);
+    const originalWord = cur.word;
+    const clean = normalizeWord(cur.word);
+    const lowConf = cur.confidence != null && cur.confidence < confThreshold;
+    let corrected = clean;
+    let correctionReason = null;
+    let phoneticMatch = null;
+
+    if (lowConf) {
+      const candidates = PHONETIC_CONFUSIONS[clean] || [];
+      for (const cand of candidates) {
+        const dist = levenshtein(phoneticKey(clean), phoneticKey(cand));
+        if (dist <= 1) {
+          corrected = cand;
+          correctionReason = 'phonetic_low_conf';
+          phoneticMatch = cand;
+          break;
+        }
+      }
+      const prev = normalizeWord(out[i - 1]?.word);
+      const next = normalizeWord(out[i + 1]?.word);
+      for (const rule of CONTEXTUAL_PHRASES) {
+        if (rule.from !== corrected) continue;
+        if ((rule.context[0] === prev && rule.context[1] === next) || (rule.context[0] === prev)) {
+          corrected = rule.to;
+          correctionReason = 'contextual_phrase';
+          break;
+        }
+      }
+    }
+
+    out[i] = {
+      ...cur,
+      suspicious: lowConf,
+      word: corrected || cur.word,
+      cleanWord: normalizeWord(corrected || cur.word)
+    };
+    if (lowConf || correctionReason) {
+      logs.push({
+        originalWord,
+        correctedWord: out[i].word,
+        confidence: cur.confidence,
+        correctionReason: correctionReason || 'low_confidence_only',
+        phoneticMatch,
+        neighboringWords: [out[i - 1]?.word || null, out[i + 1]?.word || null]
+      });
+    }
+  }
+
+  return { words: out, logs };
 }
 
 function detectEmphasisWords(text) {
@@ -58,7 +179,7 @@ function detectEmphasisWords(text) {
   return top;
 }
 
-function normalizeWordTimeline(rawSegments) {
+function normalizeWordTimeline(rawSegments, opts = {}) {
   const minWordDur = 0.06;
   const overlapGuard = 0.01;
   const tinyGap = 0.04;
@@ -128,7 +249,29 @@ function normalizeWordTimeline(rawSegments) {
     cur.end = Math.max(cur.start + minWordDur, cur.end);
     cur.duration = Number((cur.end - cur.start).toFixed(3));
   }
-  return out;
+
+  const corrected = applyPhoneticAndContextCorrection(out, {
+    lowConfidenceThreshold: Number(opts.lowConfidenceThreshold ?? 0.62),
+    enableModelVoting: Boolean(opts.enableModelVoting)
+  });
+
+  // Timing smoothing for suspicious/low-confidence words.
+  for (let i = 0; i < corrected.words.length; i++) {
+    const cur = corrected.words[i];
+    if (!cur.suspicious) continue;
+    const prev = corrected.words[i - 1];
+    const next = corrected.words[i + 1];
+    if (prev && prev.confidence != null && prev.confidence >= 0.7) {
+      cur.start = Math.max(cur.start, prev.end - 0.02);
+    }
+    if (next && next.confidence != null && next.confidence >= 0.7) {
+      cur.end = Math.min(cur.end, next.start + 0.02);
+    }
+    cur.end = Math.max(cur.start + minWordDur, cur.end);
+    cur.duration = Number((cur.end - cur.start).toFixed(3));
+  }
+
+  return corrected;
 }
 
 function toCanonicalCue(seg, index) {
@@ -172,7 +315,8 @@ function composeRhythmBlocks(rawSegments, opts = {}) {
   const minDurationSec = Math.max(0.4, Number(opts.minDurationSec ?? 0.7));
   const maxDurationSec = Math.max(minDurationSec, Number(opts.maxDurationSec ?? 2.6));
   const overlapGuardSec = Math.max(0, Number(opts.overlapGuardSec ?? 0.04));
-  const timeline = normalizeWordTimeline(rawSegments);
+  const timelineResult = normalizeWordTimeline(rawSegments, opts);
+  const timeline = timelineResult.words;
   const blocks = [];
   let i = 0;
   while (i < timeline.length) {
@@ -324,6 +468,10 @@ function composeRhythmBlocks(rawSegments, opts = {}) {
     cur.emphasisWords = cur.emphasisWords.filter((w) => !prev.emphasisWords.includes(w)).slice(0, 2);
   }
   console.log(
+    '[asr-stabilization-debug]',
+    timelineResult.logs
+  );
+  console.log(
     '[word-timing-debug]',
     out.map((c) => ({
       words: c.words,
@@ -381,7 +529,10 @@ export function buildCanonicalSubtitles(rawSegments) {
     maxWordsPerBlock: 5,
     minDurationSec: 0.7,
     maxDurationSec: 2.6,
-    overlapGuardSec: 0.04
+    overlapGuardSec: 0.04,
+    lowConfidenceThreshold: Number(process.env.ASR_LOW_CONF_THRESHOLD || 0.62),
+    enableModelVoting: String(process.env.ASR_ENABLE_MODEL_VOTING || '0') === '1',
+    languageHint: String(process.env.ASR_LANGUAGE_HINT || 'auto')
   });
 }
 
