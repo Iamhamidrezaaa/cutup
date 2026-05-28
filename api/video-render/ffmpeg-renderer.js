@@ -10,6 +10,7 @@ import {
   probeMediaTimeline,
   buildTimelineBurnPlan,
   buildAlignedVideoFilter,
+  buildFfmpegAudioFiltersForBurn,
   buildFfmpegInputFlags,
   buildFfmpegOutputSyncFlags,
   shiftAssFileTimestamps,
@@ -242,19 +243,26 @@ export async function burnSubtitles(opts) {
   logBurnInputVerification(timelineTrace, inputPath, framePtsAtSeek, speechAnchor);
 
   const inputProbe = await probeMediaTimeline(inputPath);
-  const timelinePlan = buildTimelineBurnPlan(inputProbe, subtitleCues);
+  const timelinePlan = buildTimelineBurnPlan(inputProbe, subtitleCues, {
+    framePtsAtSeek,
+    inputAlreadyNormalized
+  });
   if (timelinePlan.offsetDetected) {
     logStreamOffsetDetected({
       streamOffsetSec: timelinePlan.streamOffsetSec,
+      framePtsLeadSec: timelinePlan.framePtsLeadSec,
       videoStart: timelinePlan.videoStart,
       audioStart: timelinePlan.audioStart,
       videoPtsShiftSec: timelinePlan.videoPtsShiftSec,
-      assShiftSec: timelinePlan.assShiftSec
+      assShiftSec: timelinePlan.assShiftSec,
+      skipTimelineCorrection: timelinePlan.skipTimelineCorrection
     });
     traceRenderTimeline(timelineTrace, 'stream_offset_at_burn_input', {
       streamOffsetSec: timelinePlan.streamOffsetSec,
+      framePtsLeadSec: timelinePlan.framePtsLeadSec,
       videoStart: timelinePlan.videoStart,
-      audioStart: timelinePlan.audioStart
+      audioStart: timelinePlan.audioStart,
+      inputAlreadyNormalized
     });
   }
 
@@ -267,7 +275,10 @@ export async function burnSubtitles(opts) {
       diagnostic:
         'If subtitle still appears ~4s late in output, delay is in video timeline not ASS cue times'
     });
-  } else if (Math.abs(timelinePlan.assShiftSec) > 0.001) {
+  } else if (
+    !timelinePlan.skipTimelineCorrection &&
+    Math.abs(timelinePlan.assShiftSec) > 0.001
+  ) {
     burnAssPath = shiftAssFileTimestamps(assPath, timelinePlan.assShiftSec);
     traceRenderTimeline(timelineTrace, 'ass_timeline_shift_export_only', {
       from: assPath,
@@ -289,10 +300,14 @@ export async function burnSubtitles(opts) {
     renderHints
   });
   const enc = geometry.enc;
-  const hwAccel = await detectHardwareAcceleration();
+  const burnHwAccel =
+    String(process.env.VIDEO_RENDER_HWACCEL_ON_BURN || '0').toLowerCase() === '1';
+  const hwAccel = burnHwAccel ? await detectHardwareAcceleration() : { enabled: false };
   const assDir = dirname(resolve(burnAssPath));
   const assName = basename(burnAssPath);
-  const vf = buildAlignedVideoFilter(assName, timelinePlan);
+  const skipTimelineFilters = Boolean(timelinePlan.skipTimelineCorrection);
+  const vf = buildAlignedVideoFilter(assName, timelinePlan, { skipTimelineFilters });
+  const audioFilters = buildFfmpegAudioFiltersForBurn(timelinePlan, { skipTimelineFilters });
   const syncFlags = buildFfmpegOutputSyncFlags();
   const inputFlags = buildFfmpegInputFlags();
 
@@ -308,7 +323,7 @@ export async function burnSubtitles(opts) {
     inputPath,
     '-vf',
     vf,
-    ...syncFlags.audio,
+    ...audioFilters,
     '-c:v',
     'libx264',
     '-preset',
@@ -338,6 +353,8 @@ export async function burnSubtitles(opts) {
     '-threads',
     '0',
     ...syncFlags.mux,
+    '-r',
+    String(Math.max(15, Math.min(60, Number(process.env.RENDER_NORMALIZE_CFR_FPS || 30)))),
     '-map',
     '0:v:0',
     '-map',
@@ -351,7 +368,7 @@ export async function burnSubtitles(opts) {
     inputs: [{ index: 0, path: inputPath, type: 'video+audio' }],
     maps: ['0:v:0', '0:a?'],
     videoFilter: vf,
-    audioFilters: syncFlags.audio,
+    audioFilters,
     muxFlags: syncFlags.mux,
     inputFlags,
     subtitleInputSource: `subtitles=${assName} (file: ${burnAssPath}, cwd-relative basename)`,
@@ -379,7 +396,7 @@ export async function burnSubtitles(opts) {
     ffmpegInputOrdering: ['input_flags', 'hwaccel?', 'input', 'vf', 'af', 'maps', 'output'],
     ffmpegInputFlags: inputFlags,
     ffmpegFilters: vf,
-    ffmpegAudioFilters: syncFlags.audio,
+    ffmpegAudioFilters: audioFilters,
     ffmpegMuxFlags: syncFlags.mux,
     copyts: false,
     vsync: 'cfr',

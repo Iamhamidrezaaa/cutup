@@ -57,30 +57,79 @@ export async function probeMediaTimeline(inputPath) {
 }
 
 /**
+ * First-frame / seek PTS lead (edit list often hidden from stream start_time).
+ * @param {import('./render-timeline-trace.js').probeVideoFramePtsAtSeconds extends Function ? Awaited<ReturnType<...>> : any[]} framePtsAtSeek
+ */
+export function computeFramePtsLeadSec(framePtsAtSeek) {
+  if (!Array.isArray(framePtsAtSeek) || !framePtsAtSeek.length) return 0;
+  const atZero = framePtsAtSeek.find((f) => f.seekSec === 0);
+  const zeroPts = num(
+    atZero?.bestEffortTimestampTime,
+    atZero?.pktPtsTime,
+    null
+  );
+  if (zeroPts != null && zeroPts > STREAM_OFFSET_WARN_SEC) {
+    return Number(zeroPts.toFixed(4));
+  }
+  const deltas = framePtsAtSeek
+    .map((f) => num(f.deltaFromSeek, null))
+    .filter((d) => d != null && d > STREAM_OFFSET_WARN_SEC);
+  if (!deltas.length) return 0;
+  deltas.sort((a, b) => a - b);
+  const median = deltas[Math.floor(deltas.length / 2)];
+  return Number(median.toFixed(4));
+}
+
+/**
  * Build burn plan: zero-base PTS + optional corrective shifts (audio-anchored subtitles).
  * @param {Awaited<ReturnType<typeof probeMediaTimeline>>} probe
+ * @param {object[]} subtitleCues
+ * @param {object} [opts]
+ * @param {object[]} [opts.framePtsAtSeek]
+ * @param {boolean} [opts.inputAlreadyNormalized]
  */
-export function buildTimelineBurnPlan(probe, subtitleCues = []) {
+export function buildTimelineBurnPlan(probe, subtitleCues = [], opts = {}) {
+  const { framePtsAtSeek = null, inputAlreadyNormalized = false } = opts;
   const videoStart = num(probe?.video?.start_time, 0);
   const audioStart = num(probe?.audio?.start_time, 0);
   const formatStart = num(probe?.format?.start_time, 0);
   const streamOffsetSec = videoStart - audioStart;
   const absOffset = Math.abs(streamOffsetSec);
-  const offsetDetected = absOffset > STREAM_OFFSET_WARN_SEC;
+  const framePtsLeadSec = computeFramePtsLeadSec(framePtsAtSeek);
+  const offsetDetected =
+    absOffset > STREAM_OFFSET_WARN_SEC || framePtsLeadSec > STREAM_OFFSET_WARN_SEC;
 
   const firstCue = subtitleCues[0];
   const lastCue = subtitleCues[subtitleCues.length - 1];
 
-  /** Pull video PTS earlier when video track starts after audio (common YouTube edit list). */
-  const videoPtsShiftSec = streamOffsetSec > STREAM_OFFSET_WARN_SEC ? streamOffsetSec : 0;
-  /** Fallback: shift ASS earlier when video normalization alone is insufficient. */
-  const assShiftSec = streamOffsetSec > STREAM_OFFSET_WARN_SEC ? -streamOffsetSec : 0;
+  /**
+   * Video late vs audio (positive stream offset OR positive frame PTS at t=0):
+   * advance video timeline and/or pull ASS earlier.
+   */
+  let videoPtsShiftSec = 0;
+  let assShiftSec = 0;
+
+  if (!inputAlreadyNormalized) {
+    const videoLateSec = Math.max(
+      streamOffsetSec > STREAM_OFFSET_WARN_SEC ? streamOffsetSec : 0,
+      framePtsLeadSec
+    );
+    if (videoLateSec > STREAM_OFFSET_WARN_SEC) {
+      /** Video filter setpts only — ASS shift in same pass would double-advance cues. */
+      videoPtsShiftSec = videoLateSec;
+      assShiftSec = 0;
+    } else if (streamOffsetSec < -STREAM_OFFSET_WARN_SEC) {
+      /** Audio starts after video in container — show subtitles later to match audio. */
+      assShiftSec = -streamOffsetSec;
+    }
+  }
 
   return {
     videoStart,
     audioStart,
     formatStart,
     streamOffsetSec: Number(streamOffsetSec.toFixed(4)),
+    framePtsLeadSec: Number(framePtsLeadSec.toFixed(4)),
     absStreamOffsetSec: Number(absOffset.toFixed(4)),
     offsetDetected,
     videoPtsShiftSec: Number(videoPtsShiftSec.toFixed(4)),
@@ -88,7 +137,10 @@ export function buildTimelineBurnPlan(probe, subtitleCues = []) {
     subtitleSourceStart: firstCue ? num(firstCue.start, 0) : null,
     subtitleSourceEnd: lastCue ? num(lastCue.end, 0) : null,
     presentationAnchor: 'audio_zero',
-    outputTimelineOffsetSec: 0
+    outputTimelineOffsetSec: 0,
+    inputAlreadyNormalized: Boolean(inputAlreadyNormalized),
+    skipTimelineCorrection: Boolean(inputAlreadyNormalized),
+    correctionsSkippedBecauseNormalized: Boolean(inputAlreadyNormalized)
   };
 }
 
@@ -171,16 +223,27 @@ export function parseAssDialogueTimes(assPath, limit = 10) {
 /**
  * @param {object} plan from buildTimelineBurnPlan
  * @param {string} assName basename for subtitles filter
+ * @param {object} [opts]
+ * @param {boolean} [opts.skipTimelineFilters] normalized CFR input — no setpts (avoids double reset)
  */
-export function buildAlignedVideoFilter(assName, plan) {
+export function buildAlignedVideoFilter(assName, plan, opts = {}) {
   const parts = [];
-  if (plan?.videoPtsShiftSec > 0.001) {
-    parts.push(`setpts=PTS-STARTPTS-${plan.videoPtsShiftSec}/TB`);
-  } else {
-    parts.push('setpts=PTS-STARTPTS');
+  const skipPts = opts.skipTimelineFilters || plan?.skipTimelineCorrection;
+  if (!skipPts) {
+    if (plan?.videoPtsShiftSec > 0.001) {
+      parts.push(`setpts=PTS-STARTPTS-${plan.videoPtsShiftSec}/TB`);
+    } else {
+      parts.push('setpts=PTS-STARTPTS');
+    }
   }
   parts.push('scale=1080:1920', `subtitles=${assName}`);
   return parts.join(',');
+}
+
+export function buildFfmpegAudioFiltersForBurn(plan, opts = {}) {
+  const skip = opts.skipTimelineFilters || plan?.skipTimelineCorrection;
+  if (skip) return [];
+  return ['-af', 'asetpts=PTS-STARTPTS'];
 }
 
 export function buildFfmpegInputFlags() {

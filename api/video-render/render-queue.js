@@ -627,41 +627,61 @@ async function runJob(job) {
         text: String(s.text || '')
       }));
 
-      await recordFileStage(timelineTrace, videoPath, 'pre_normalize_source');
-      setSubStage(job, 'Normalizing video timeline (CFR)…', 51);
-      traceRenderTimeline(timelineTrace, 'normalize_cfr_start', {
-        rawSource: videoPath,
-        normalizedTarget: normalizedPath,
-        note: 'Subtitles must never burn on raw YouTube/VFR source'
-      });
-
-      const normResult = await normalizeVideoForBurn({
-        inputPath: videoPath,
-        outputPath: normalizedPath,
-        signal: job.ffmpegAbort.signal,
-        onProgress: (info) => {
-          bumpProgress(job, Math.min(51, 48 + Math.round((info?.renderedSec || 0) * 0.3)));
-        }
-      });
+      const singlePassExport =
+        String(process.env.RENDER_SINGLE_PASS ?? '1').toLowerCase() !== '0';
 
       job.rawVideoPath = videoPath;
-      job.normalizedVideoPath = normResult.skipped ? videoPath : normalizedPath;
-      const burnInputPath = normResult.skipped ? videoPath : normalizedPath;
+      let burnInputPath = videoPath;
+      let burnDurationSec = probe.durationSec;
+      let inputAlreadyNormalized = false;
+      let normResult = { skipped: true, sourceTiming: null, normalizedTiming: null };
 
-      if (!normResult.skipped) {
-        await recordFileStage(timelineTrace, normalizedPath, 'normalized_cfr_mp4');
-        await verifyNormalizedBurnSync(subtitleCues, burnInputPath);
+      await recordFileStage(timelineTrace, videoPath, 'pre_burn_source');
+
+      if (singlePassExport) {
+        setSubStage(job, 'Encoding with synced subtitles…', 51);
+        traceRenderTimeline(timelineTrace, 'single_pass_export', {
+          burnInputPath: videoPath,
+          note:
+            'One ffmpeg pass: timeline correction + CFR + burn (avoids double setpts desync)'
+        });
+      } else {
+        setSubStage(job, 'Normalizing video timeline (CFR)…', 51);
+        traceRenderTimeline(timelineTrace, 'normalize_cfr_start', {
+          rawSource: videoPath,
+          normalizedTarget: normalizedPath,
+          note: 'Two-pass mode: normalize then burn without re-applying setpts'
+        });
+
+        normResult = await normalizeVideoForBurn({
+          inputPath: videoPath,
+          outputPath: normalizedPath,
+          signal: job.ffmpegAbort.signal,
+          onProgress: (info) => {
+            bumpProgress(job, Math.min(51, 48 + Math.round((info?.renderedSec || 0) * 0.3)));
+          }
+        });
+
+        job.normalizedVideoPath = normResult.skipped ? videoPath : normalizedPath;
+        burnInputPath = normResult.skipped ? videoPath : normalizedPath;
+        burnDurationSec = normResult.normalizedTiming?.formatDuration || probe.durationSec;
+        inputAlreadyNormalized = !normResult.skipped;
+
+        if (!normResult.skipped) {
+          await recordFileStage(timelineTrace, normalizedPath, 'normalized_cfr_mp4');
+          await verifyNormalizedBurnSync(subtitleCues, burnInputPath);
+        }
+
+        traceRenderTimeline(timelineTrace, 'normalize_cfr_complete', {
+          skipped: normResult.skipped,
+          burnInputPath,
+          sourceIsVfr: normResult.sourceTiming?.isVfr,
+          durationDeltaSec: normResult.durationDeltaSec,
+          cfrFps: normResult.cfrFps
+        });
       }
 
-      traceRenderTimeline(timelineTrace, 'normalize_cfr_complete', {
-        skipped: normResult.skipped,
-        burnInputPath,
-        sourceIsVfr: normResult.sourceTiming?.isVfr,
-        durationDeltaSec: normResult.durationDeltaSec,
-        cfrFps: normResult.cfrFps
-      });
-
-      const preBurnProbe = await recordFileStage(timelineTrace, burnInputPath, 'pre_burn_normalized_input');
+      const preBurnProbe = await recordFileStage(timelineTrace, burnInputPath, 'pre_burn_input');
       logSubtitleBurnTarget(timelineTrace, {
         subtitleSource: {
           type: 'job.segments -> generateAssContent (unchanged at burn)',
@@ -671,10 +691,11 @@ async function runJob(job) {
         },
         burnTarget: {
           rawSourcePath: videoPath,
-          normalizedPath: normResult.skipped ? null : normalizedPath,
+          normalizedPath: singlePassExport ? null : normResult.skipped ? null : normalizedPath,
           burnInputPath,
           outputPath,
-          burnsOnlyOnNormalized: !normResult.skipped,
+          singlePassExport,
+          burnsOnlyOnNormalized: inputAlreadyNormalized,
           preBurnStreamOffsetSec: preBurnProbe?.streamOffsetSec
         }
       });
@@ -692,9 +713,9 @@ async function runJob(job) {
           sourceWidth: probe.width,
           sourceHeight: probe.height
         },
-        durationSec: normResult.normalizedTiming?.formatDuration || probe.durationSec,
+        durationSec: burnDurationSec,
         subtitleCues,
-        inputAlreadyNormalized: !normResult.skipped,
+        inputAlreadyNormalized,
         signal: job.ffmpegAbort.signal,
         onProgress: (info) => {
           const pct = Number(info?.pct || 0);
