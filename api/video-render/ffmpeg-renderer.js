@@ -19,6 +19,16 @@ import {
   logSubtitleBurnSync,
   buildSubtitleBurnSyncReport
 } from './ffmpeg-timeline.js';
+import {
+  isHardSyncTestEnabled,
+  writeHardSyncTestAss,
+  probeVideoFramePtsAtSeconds,
+  detectFirstSpeechSec,
+  auditFfmpegInvocation,
+  logBurnInputVerification,
+  traceRenderTimeline,
+  emitFinalRenderSyncReport
+} from './render-timeline-trace.js';
 
 const execFileAsync = promisify(execFile);
 const RENDER_TIMEOUT_MS = Number(process.env.VIDEO_RENDER_TIMEOUT_MS || 600000);
@@ -202,6 +212,8 @@ export async function burnSubtitles(opts) {
     durationSec = 0,
     renderHints = {},
     subtitleCues = [],
+    timelineTrace = null,
+    jobDir = null,
     onProgress,
     signal
   } = opts;
@@ -213,6 +225,17 @@ export async function burnSubtitles(opts) {
     return Promise.reject(new Error('SUBTITLE_FILE_IS_SRT_NOT_ASS'));
   }
 
+  traceRenderTimeline(timelineTrace, 'burn_stage_enter', {
+    burnStageInputFile: inputPath,
+    burnStageOutputFile: outputPath,
+    assSourceFile: assPath,
+    durationSec
+  });
+
+  const framePtsAtSeek = await probeVideoFramePtsAtSeconds(inputPath, [0, 1, 2, 3, 4]);
+  const speechAnchor = await detectFirstSpeechSec(inputPath);
+  logBurnInputVerification(timelineTrace, inputPath, framePtsAtSeek, speechAnchor);
+
   const inputProbe = await probeMediaTimeline(inputPath);
   const timelinePlan = buildTimelineBurnPlan(inputProbe, subtitleCues);
   if (timelinePlan.offsetDetected) {
@@ -223,12 +246,36 @@ export async function burnSubtitles(opts) {
       videoPtsShiftSec: timelinePlan.videoPtsShiftSec,
       assShiftSec: timelinePlan.assShiftSec
     });
+    traceRenderTimeline(timelineTrace, 'stream_offset_at_burn_input', {
+      streamOffsetSec: timelinePlan.streamOffsetSec,
+      videoStart: timelinePlan.videoStart,
+      audioStart: timelinePlan.audioStart
+    });
   }
 
   let burnAssPath = assPath;
-  if (Math.abs(timelinePlan.assShiftSec) > 0.001) {
+  if (isHardSyncTestEnabled() && jobDir) {
+    burnAssPath = writeHardSyncTestAss(assPath, jobDir);
+    traceRenderTimeline(timelineTrace, 'hard_sync_test_mode', {
+      burnAssPath,
+      firstDialogueStart: '0:00:00.00',
+      diagnostic:
+        'If subtitle still appears ~4s late in output, delay is in video timeline not ASS cue times'
+    });
+  } else if (Math.abs(timelinePlan.assShiftSec) > 0.001) {
     burnAssPath = shiftAssFileTimestamps(assPath, timelinePlan.assShiftSec);
+    traceRenderTimeline(timelineTrace, 'ass_timeline_shift_export_only', {
+      from: assPath,
+      to: burnAssPath,
+      assShiftSec: timelinePlan.assShiftSec
+    });
   }
+
+  traceRenderTimeline(timelineTrace, 'burn_ass_target_exact', {
+    exactFileReceivingSubtitles: burnAssPath,
+    generatorAssPath: assPath,
+    subtitlesAppliedViaFilter: `subtitles=${basename(burnAssPath)}`
+  });
 
   const geometry = resolveSubtitleRenderGeometry({
     sourceWidth: renderHints?.sourceWidth,
@@ -292,6 +339,27 @@ export async function burnSubtitles(opts) {
     '0:a?',
     outputPath
   ];
+
+  auditFfmpegInvocation(timelineTrace, {
+    purpose: 'subtitle_burn_export',
+    inputIndex: 0,
+    inputs: [{ index: 0, path: inputPath, type: 'video+audio' }],
+    maps: ['0:v:0', '0:a?'],
+    videoFilter: vf,
+    audioFilters: syncFlags.audio,
+    muxFlags: syncFlags.mux,
+    inputFlags,
+    subtitleInputSource: `subtitles=${assName} (file: ${burnAssPath}, cwd-relative basename)`,
+    filterComplex: null,
+    copyts: false,
+    itsoffset: 'none',
+    vsync: 'cfr',
+    setpts: timelinePlan.videoPtsShiftSec > 0 ? `PTS-STARTPTS-${timelinePlan.videoPtsShiftSec}/TB` : 'PTS-STARTPTS',
+    asetpts: 'PTS-STARTPTS',
+    scaleStage: 'scale=1080:1920 before subtitles filter',
+    burnStageInputFile: inputPath,
+    burnStageOutputFile: outputPath
+  });
 
   logFfmpegTimelineDebug({
     videoStreamStartTime: timelinePlan.videoStart,
@@ -504,12 +572,54 @@ export async function burnSubtitles(opts) {
           outputProbe
         });
         logSubtitleBurnSync(syncReport);
+
+        const firstCue = subtitleCues[0];
+        const firstAss = assDialogues[0];
+        const finalRenderSyncReport = emitFinalRenderSyncReport(timelineTrace, {
+          sourceSpeechStart: speechAnchor?.firstSpeechSec ?? null,
+          speechAnchorMethod: speechAnchor?.method || null,
+          subtitleFirstCueStart: firstCue?.start ?? firstAss?.start ?? null,
+          subtitleFirstAssBurnStart: firstAss?.start ?? null,
+          burnTargetVideoStart: timelinePlan.videoStart,
+          burnTargetAudioStart: timelinePlan.audioStart,
+          effectiveRenderOffsetSec: Number(
+            (timelinePlan.videoPtsShiftSec + timelinePlan.assShiftSec).toFixed(4)
+          ),
+          streamOffsetAtBurnInput: timelinePlan.streamOffsetSec,
+          intermediateFileOffsets: timelineTrace?.intermediateOffsets || [],
+          framePtsAtSeekBeforeBurn: framePtsAtSeek,
+          hardSyncTestEnabled: isHardSyncTestEnabled(),
+          hardSyncInterpretation: isHardSyncTestEnabled()
+            ? 'First ASS forced to 0:00:00.00 — if output still ~4s late, video PTS/editlist is the cause'
+            : null,
+          burnInputAlreadyDelayed:
+            framePtsAtSeek?.some((f) => f.deltaFromSeek != null && Math.abs(f.deltaFromSeek) > 0.5) ||
+            Math.abs(timelinePlan.streamOffsetSec) > 0.1,
+          outputStreamOffsetSec: Number(
+            (
+              Number(outputProbe?.video?.start_time || 0) - Number(outputProbe?.audio?.start_time || 0)
+            ).toFixed(4)
+          ),
+          subtitleBurnSync: syncReport
+        });
+
+        if (!settled) {
+          settled = true;
+          resolve({
+            outputPath,
+            quality,
+            preset: enc,
+            timelinePlan,
+            finalRenderSyncReport
+          });
+        }
+        return;
       } catch (syncErr) {
         console.warn('[subtitle-burn-sync] verification skipped', syncErr?.message || syncErr);
       }
       if (!settled) {
         settled = true;
-        resolve({ outputPath, quality, preset: enc, timelinePlan });
+        resolve({ outputPath, quality, preset: enc, timelinePlan, finalRenderSyncReport: null });
       }
     });
   });
