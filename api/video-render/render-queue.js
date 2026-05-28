@@ -11,7 +11,9 @@ import {
   burnSubtitles,
   probeVideo,
   checkFfmpegAvailable,
-  resolveSubtitleRenderGeometry
+  resolveSubtitleRenderGeometry,
+  normalizeVideoForBurn,
+  verifyNormalizedBurnSync
 } from './ffmpeg-renderer.js';
 import {
   createJobDir,
@@ -613,6 +615,7 @@ async function runJob(job) {
     });
 
     const outputPath = join(job.jobDir, 'export.mp4');
+    const normalizedPath = join(job.jobDir, 'normalized.cfr.mp4');
     job.ffmpegAbort = new AbortController();
     startRenderHeartbeat(job, probe.durationSec);
     ffmpegStartedAt.at = Date.now();
@@ -624,7 +627,41 @@ async function runJob(job) {
         text: String(s.text || '')
       }));
 
-      const preBurnProbe = await recordFileStage(timelineTrace, videoPath, 'pre_burn_input');
+      await recordFileStage(timelineTrace, videoPath, 'pre_normalize_source');
+      setSubStage(job, 'Normalizing video timeline (CFR)…', 51);
+      traceRenderTimeline(timelineTrace, 'normalize_cfr_start', {
+        rawSource: videoPath,
+        normalizedTarget: normalizedPath,
+        note: 'Subtitles must never burn on raw YouTube/VFR source'
+      });
+
+      const normResult = await normalizeVideoForBurn({
+        inputPath: videoPath,
+        outputPath: normalizedPath,
+        signal: job.ffmpegAbort.signal,
+        onProgress: (info) => {
+          bumpProgress(job, Math.min(51, 48 + Math.round((info?.renderedSec || 0) * 0.3)));
+        }
+      });
+
+      job.rawVideoPath = videoPath;
+      job.normalizedVideoPath = normResult.skipped ? videoPath : normalizedPath;
+      const burnInputPath = normResult.skipped ? videoPath : normalizedPath;
+
+      if (!normResult.skipped) {
+        await recordFileStage(timelineTrace, normalizedPath, 'normalized_cfr_mp4');
+        await verifyNormalizedBurnSync(subtitleCues, burnInputPath);
+      }
+
+      traceRenderTimeline(timelineTrace, 'normalize_cfr_complete', {
+        skipped: normResult.skipped,
+        burnInputPath,
+        sourceIsVfr: normResult.sourceTiming?.isVfr,
+        durationDeltaSec: normResult.durationDeltaSec,
+        cfrFps: normResult.cfrFps
+      });
+
+      const preBurnProbe = await recordFileStage(timelineTrace, burnInputPath, 'pre_burn_normalized_input');
       logSubtitleBurnTarget(timelineTrace, {
         subtitleSource: {
           type: 'job.segments -> generateAssContent (unchanged at burn)',
@@ -633,15 +670,17 @@ async function runJob(job) {
           assFirstDialogue: parseAssDialogueTimes(job.assPath, 1)[0] || null
         },
         burnTarget: {
-          videoPath,
+          rawSourcePath: videoPath,
+          normalizedPath: normResult.skipped ? null : normalizedPath,
+          burnInputPath,
           outputPath,
-          sameFileAsStagedSource: videoPath.endsWith('source.mp4'),
+          burnsOnlyOnNormalized: !normResult.skipped,
           preBurnStreamOffsetSec: preBurnProbe?.streamOffsetSec
         }
       });
 
       const burnResult = await burnSubtitles({
-        inputPath: videoPath,
+        inputPath: burnInputPath,
         assPath: job.assPath,
         outputPath,
         quality: job.quality,
@@ -653,8 +692,9 @@ async function runJob(job) {
           sourceWidth: probe.width,
           sourceHeight: probe.height
         },
-        durationSec: probe.durationSec,
+        durationSec: normResult.normalizedTiming?.formatDuration || probe.durationSec,
         subtitleCues,
+        inputAlreadyNormalized: !normResult.skipped,
         signal: job.ffmpegAbort.signal,
         onProgress: (info) => {
           const pct = Number(info?.pct || 0);
@@ -698,6 +738,7 @@ async function runJob(job) {
       });
       job.timelinePlan = burnResult?.timelinePlan || null;
       job.finalRenderSyncReport = burnResult?.finalRenderSyncReport || null;
+      job.normalizeResult = normResult;
     } finally {
       stopRenderHeartbeat(job);
       job.ffmpegAbort = null;
@@ -752,7 +793,15 @@ async function runJob(job) {
       stageCount: timelineTrace.stages.length,
       files: Object.keys(timelineTrace.files),
       finalRenderSyncReport: job.finalRenderSyncReport || null,
-      timelinePlan: job.timelinePlan || null
+      timelinePlan: job.timelinePlan || null,
+      normalizeResult: job.normalizeResult
+        ? {
+            skipped: job.normalizeResult.skipped,
+            cfrFps: job.normalizeResult.cfrFps,
+            durationDeltaSec: job.normalizeResult.durationDeltaSec,
+            sourceIsVfr: job.normalizeResult.sourceTiming?.isVfr
+          }
+        : null
     };
     job.diagnostics = diagnostics;
     job.diagnosticsPath = join(job.jobDir, 'render-diagnostics.json');

@@ -214,6 +214,7 @@ export async function burnSubtitles(opts) {
     subtitleCues = [],
     timelineTrace = null,
     jobDir = null,
+    inputAlreadyNormalized = false,
     onProgress,
     signal
   } = opts;
@@ -229,7 +230,11 @@ export async function burnSubtitles(opts) {
     burnStageInputFile: inputPath,
     burnStageOutputFile: outputPath,
     assSourceFile: assPath,
-    durationSec
+    durationSec,
+    inputAlreadyNormalized,
+    note: inputAlreadyNormalized
+      ? 'Burn targets normalized.cfr.mp4 only'
+      : 'WARNING: burning non-normalized source'
   });
 
   const framePtsAtSeek = await probeVideoFramePtsAtSeconds(inputPath, [0, 1, 2, 3, 4]);
@@ -624,6 +629,8 @@ export async function burnSubtitles(opts) {
     });
   });
 }
+
+export { normalizeVideoForBurn, probeSourceVideoTiming, verifyNormalizedBurnSync } from './normalize-timeline.js';
 
 export async function checkFfmpegAvailable() {
   try {
