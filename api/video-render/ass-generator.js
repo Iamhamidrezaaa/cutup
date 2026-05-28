@@ -181,9 +181,9 @@ const ASS_EVENTS_FORMAT =
 
 /** Final isolation test: exactly two fixed dialogues, no transcript content. */
 const ASS_FIXED_DIALOGUE_FIRST =
-  'Dialogue: 0,0:00:00.00,0:00:04.00,Default,,0,0,0,,{\\fs220\\bord16\\shad10\\c&H0000FF00&}CUTUP FIRST';
+  'Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,CUTUP FIRST';
 const ASS_FIXED_DIALOGUE_SECOND =
-  'Dialogue: 0,0:00:06.00,0:00:10.00,Default,,0,0,0,,{\\fs180\\bord10\\shad6\\c&H00FFFFFF&}HELLO SECOND';
+  'Dialogue: 0,0:00:05.00,0:00:10.00,Default,,0,0,0,,HELLO SECOND';
 
 function verifyAssEventsFormat(eventsFormatLine) {
   const expected = ASS_EVENTS_FORMAT;
