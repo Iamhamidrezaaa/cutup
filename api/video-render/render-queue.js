@@ -2,6 +2,7 @@
  * In-process render queue with concurrency limits and progress tracking.
  */
 import { randomBytes } from 'crypto';
+import { createHash } from 'crypto';
 import { writeFileSync, readFileSync, copyFileSync, statSync } from 'fs';
 import { getStylePreset } from './style-presets.js';
 import { join, extname } from 'path';
@@ -529,9 +530,29 @@ async function runJob(job) {
       byteLength: Buffer.byteLength(assResult.content, 'utf8')
     });
     const normalizedAssContent = String(assResult.content || '').replace(/\r\n/g, '\n');
+    const assContentLen = normalizedAssContent.length;
+    const assContentBytes = Buffer.byteLength(normalizedAssContent, 'utf8');
+    const assContentMd5 = createHash('md5').update(normalizedAssContent).digest('hex');
+    console.log('[ass-write-source]', {
+      assPath: job.assPath,
+      length: assContentLen,
+      byteLength: assContentBytes,
+      md5: assContentMd5
+    });
     writeFileSync(job.assPath, normalizedAssContent, 'utf8');
 
     const assOnDisk = readFileSync(job.assPath, 'utf8');
+    const writtenLen = assOnDisk.length;
+    const writtenBytes = Buffer.byteLength(assOnDisk, 'utf8');
+    const writtenMd5 = createHash('md5').update(assOnDisk).digest('hex');
+    const matchesSource = assOnDisk === normalizedAssContent;
+    console.log('[ass-write-verify]', {
+      assPath: job.assPath,
+      length: writtenLen,
+      byteLength: writtenBytes,
+      md5: writtenMd5,
+      matchesSource
+    });
     console.log('[ASS FILE FINAL]');
     console.log(assOnDisk);
     console.log(
