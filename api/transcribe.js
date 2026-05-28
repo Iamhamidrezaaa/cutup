@@ -28,6 +28,13 @@ import { transcribeAudioPayload, messageForAllProvidersFailed } from './transcri
 import { ensureTranscriptionProvidersInit, getTranscriptionProviderRegistry } from './transcription/init.js';
 import { AllProvidersFailedError, TranscriptionProviderError } from './transcription/errors.js';
 import { logProviderTimeout } from './provider-health.js';
+import {
+  runQueuedTranscribe,
+  getCachedExtraction,
+  setCachedExtraction,
+  dedupeKeyForUrl
+} from './infrastructure/guards.js';
+import { transcribeDebug } from './infrastructure/observability.js';
 
 export default async function handler(req, res) {
   const requestId = req.headers['x-request-id'] || `req_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -227,6 +234,20 @@ export default async function handler(req, res) {
     pipelineLog('INPUT_READY', { bytes: audioBuffer.length, mimeType });
     traceLog(traceId, 'normalize', { bytes: audioBuffer.length, mimeType });
     console.log('[transcript-download]', { traceId, bytes: audioBuffer.length, mimeType });
+    transcribeDebug(traceId, { phase: 'input_ready', bytes: audioBuffer.length, mimeType });
+
+    const cacheUrl =
+      requestMetadata.sourceUrl ||
+      requestMetadata.youtubeUrl ||
+      (typeof req.body?.sourceUrl === 'string' ? req.body.sourceUrl : null);
+    let transcriptFromCache = null;
+    if (cacheUrl && typeof cacheUrl === 'string' && !cacheUrl.startsWith('data:')) {
+      const cached = getCachedExtraction(cacheUrl, traceId);
+      if (cached?.transcript?.text) {
+        transcriptFromCache = cached.transcript;
+        transcribeDebug(traceId, { phase: 'cache_hit', normalizedUrl: cached.key });
+      }
+    }
 
     const preMinutes = estimateTranscriptionMinutesFromBytes(audioBuffer.length);
 
@@ -257,26 +278,38 @@ export default async function handler(req, res) {
     let transcript;
 
     try {
-    if (audioBuffer.length > 25 * 1024 * 1024) {
-      console.log(`TRANSCRIBE: File is ${(audioBuffer.length / 1024 / 1024).toFixed(2)}MB, using chunk processor`);
-        const chunkResult = await transcribeLargeFile(audioBuffer, mimeType, extension, transcribeOne);
-        transcript = {
-          text: chunkResult.text,
-          segments: chunkResult.segments,
-          language: chunkResult.language
-        };
-        console.log('TRANSCRIBE: Chunk processing completed, text length:', transcript.text?.length || 0);
-        traceLog(traceId, 'transcription', { phase: 'chunk_transcribe_ok', chars: transcript.text?.length || 0 });
+      if (transcriptFromCache) {
+        transcript = transcriptFromCache;
+        traceLog(traceId, 'transcription', { phase: 'cache_transcribe_skip', chars: transcript.text?.length || 0 });
       } else {
-        transcript = await transcribeOne(audioBuffer, mimeType, extension);
-        pipelineLog('TRANSCRIPTION_ROUTER_OK', {
-          mimeType,
-          bytes: audioBuffer.length,
-          language: transcript?.language || null
-        });
-        traceLog(traceId, 'transcription', {
-          phase: 'single_transcribe_ok',
-          segmentCount: transcript?.segments?.length ?? 0
+        transcript = await runQueuedTranscribe({
+          userEmail,
+          traceId,
+          durationSec: requestMetadata.duration || requestMetadata.durationSeconds || null,
+          dedupeKey: cacheUrl ? dedupeKeyForUrl(cacheUrl) : null,
+          fn: async () => {
+            if (audioBuffer.length > 25 * 1024 * 1024) {
+              console.log(`TRANSCRIBE: File is ${(audioBuffer.length / 1024 / 1024).toFixed(2)}MB, using chunk processor`);
+              const chunkResult = await transcribeLargeFile(audioBuffer, mimeType, extension, transcribeOne);
+              transcribeDebug(traceId, { phase: 'chunk_complete', chars: chunkResult.text?.length || 0 });
+              return {
+                text: chunkResult.text,
+                segments: chunkResult.segments,
+                language: chunkResult.language
+              };
+            }
+            const single = await transcribeOne(audioBuffer, mimeType, extension);
+            pipelineLog('TRANSCRIPTION_ROUTER_OK', {
+              mimeType,
+              bytes: audioBuffer.length,
+              language: single?.language || null
+            });
+            traceLog(traceId, 'transcription', {
+              phase: 'single_transcribe_ok',
+              segmentCount: single?.segments?.length ?? 0
+            });
+            return single;
+          }
         });
       }
     } catch (routerErr) {
@@ -479,6 +512,24 @@ export default async function handler(req, res) {
     if (respondConsumeFailure(res, consumed, req)) {
       console.log('[transcript-failed]', { traceId, reason: 'quota_consume_denied', consumed });
       return;
+    }
+
+    if (cacheUrl && !transcriptFromCache && typeof cacheUrl === 'string' && !cacheUrl.startsWith('data:')) {
+      setCachedExtraction(
+        cacheUrl,
+        {
+          stage: 'full',
+          transcript: {
+            text: correctedText,
+            segments: validSegments,
+            language: transcript.language || 'unknown'
+          },
+          subtitleBlocks: validSegments,
+          metadata: requestMetadata,
+          reusedAssets: ['transcript']
+        },
+        traceId
+      );
     }
 
     return sendTranscriptSuccess(res, traceId, {

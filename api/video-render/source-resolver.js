@@ -16,6 +16,12 @@ import {
   normalizeInstagramUrl
 } from '../media-url.js';
 import { consumeDownloadSlotAtomic } from '../billing-repository.js';
+import {
+  runQueuedDownload,
+  getCachedExtraction,
+  setCachedExtraction
+} from '../infrastructure/guards.js';
+import { extractionDebug } from '../infrastructure/observability.js';
 
 const execAsync = promisify(exec);
 const YTDLP_TIMEOUT_MS = Number(process.env.YTDLP_TIMEOUT_MS || 120000);
@@ -199,10 +205,10 @@ async function runYtDlpWithRetries({ ytDlpPath, strategy, jobDir, traceId }) {
 }
 
 /**
- * Download video via yt-dlp into jobDir.
+ * Download video via yt-dlp into jobDir (internal; use downloadVideoFromUrl).
  * @param {{ url: string, userEmail: string, traceId?: string }} opts
  */
-export async function downloadVideoFromUrl(opts) {
+async function downloadVideoFromUrlCore(opts) {
   const { url, userEmail, traceId } = opts;
   const originalUrl = String(url || '');
   const validation = validateMediaUrl(url);
@@ -272,6 +278,50 @@ export async function downloadVideoFromUrl(opts) {
     urlNormalized: String(originalUrl) !== String(finalUrl),
     downloadSlotConsumed: true
   };
+}
+
+/**
+ * Download video via yt-dlp into jobDir (queued + URL cache).
+ * @param {{ url: string, userEmail: string, traceId?: string }} opts
+ */
+export async function downloadVideoFromUrl(opts) {
+  const { url, traceId } = opts;
+  const cached = getCachedExtraction(url, traceId);
+  if (cached?.videoPath && existsSync(cached.videoPath)) {
+    extractionDebug(traceId, {
+      phase: 'cache_hit',
+      cacheStage: 'video',
+      normalizedUrl: cached.key,
+      reusedAssets: ['videoPath']
+    });
+    return {
+      videoPath: cached.videoPath,
+      jobDir: cached.jobDir,
+      platform: cached.metadata?.platform || null,
+      url: cached.key || url,
+      originalUrl: url,
+      urlNormalized: true,
+      downloadSlotConsumed: false,
+      fromCache: true
+    };
+  }
+
+  return runQueuedDownload({
+    url,
+    userEmail: opts.userEmail,
+    traceId,
+    fn: async () => {
+      const result = await downloadVideoFromUrlCore(opts);
+      setCachedExtraction(result.url || url, {
+        stage: 'video',
+        videoPath: result.videoPath,
+        jobDir: result.jobDir,
+        metadata: { platform: result.platform },
+        reusedAssets: ['videoPath']
+      }, traceId);
+      return result;
+    }
+  });
 }
 
 /**

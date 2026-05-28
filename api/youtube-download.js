@@ -31,6 +31,8 @@ import {
   classifyYtDlpError,
   applyYtdlpBurstDelay
 } from './ytdlp-robust.js';
+import { runQueuedDownload } from './infrastructure/guards.js';
+import { extractionDebug } from './infrastructure/observability.js';
 
 // Import subscription functions for atomic check + record
 // We'll need to access these functions - for now, we'll duplicate the logic
@@ -600,30 +602,39 @@ export default async function handler(req, res) {
     }
     
     try {
-      traceLog(traceId, 'yt-dlp', { phase: 'invoke', platform: detectedPlatform });
-      await applyYtdlpBurstDelay(userId);
-      let invokeResult = null;
-      let invokeError = null;
-      for (let attempt = 1; attempt <= YTDLP_MAX_RETRIES; attempt++) {
-        try {
-          console.log('[ytdlp-debug]', {
-            traceId,
-            extractor: 'yt-dlp',
-            clientProfile: 'fallback_chain',
-            retries: attempt,
-            cookiesEnabled: Boolean(resolveCookiesPath())
-          });
-          invokeResult = await runYtdlpWithFallback();
-          break;
-        } catch (err) {
-          invokeError = err;
-          const mapped = classifyYtDlpError(err?.stderr || err?.message || '');
-          if (!mapped.temporary || attempt >= YTDLP_MAX_RETRIES) break;
-          const backoffMs = Math.min(4000, 320 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 240);
-          await new Promise((r) => setTimeout(r, backoffMs));
+      extractionDebug(traceId, { phase: 'download_enqueue', url: finalUrl, platform: detectedPlatform });
+      const invokeResult = await runQueuedDownload({
+        url: finalUrl,
+        userEmail: userId,
+        traceId,
+        fn: async () => {
+          traceLog(traceId, 'yt-dlp', { phase: 'invoke', platform: detectedPlatform });
+          await applyYtdlpBurstDelay(userId);
+          let result = null;
+          let invokeError = null;
+          for (let attempt = 1; attempt <= YTDLP_MAX_RETRIES; attempt++) {
+            try {
+              console.log('[ytdlp-debug]', {
+                traceId,
+                extractor: 'yt-dlp',
+                clientProfile: 'fallback_chain',
+                retries: attempt,
+                cookiesEnabled: Boolean(resolveCookiesPath())
+              });
+              result = await runYtdlpWithFallback();
+              break;
+            } catch (err) {
+              invokeError = err;
+              const mapped = classifyYtDlpError(err?.stderr || err?.message || '');
+              if (!mapped.temporary || attempt >= YTDLP_MAX_RETRIES) break;
+              const backoffMs = Math.min(4000, 320 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 240);
+              await new Promise((r) => setTimeout(r, backoffMs));
+            }
+          }
+          if (!result) throw invokeError || new Error('Could not extract video stream');
+          return result;
         }
-      }
-      if (!invokeResult) throw invokeError || new Error('Could not extract video stream');
+      });
       const { filepath, stdout, stderr } = invokeResult;
       
       const outputFile = filepath;

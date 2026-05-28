@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawnWithTimeout } from './infrastructure/gpu-guard.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { existsSync } from 'fs';
@@ -143,7 +143,7 @@ function stripFormatArgs(args = []) {
 async function resolveYtdlpVersion(ytDlpPath) {
   if (cachedYtdlpVersion) return cachedYtdlpVersion;
   try {
-    const { stdout } = await runOne(ytDlpPath, ['--version']);
+    const { stdout } = await runOne(ytDlpPath, ['--version'], process.cwd(), null);
     cachedYtdlpVersion = String(stdout || '').trim() || 'unknown';
   } catch {
     cachedYtdlpVersion = 'unknown';
@@ -153,7 +153,7 @@ async function resolveYtdlpVersion(ytDlpPath) {
 
 async function probeFormatsCount(ytDlpPath, url, cwd) {
   try {
-    const { stdout } = await runOne(ytDlpPath, ['--list-formats', '--no-playlist', url], cwd);
+    const { stdout } = await runOne(ytDlpPath, ['--list-formats', '--no-playlist', url], cwd, null);
     const lines = String(stdout || '')
       .split(/\r?\n/)
       .map((l) => l.trim())
@@ -165,35 +165,12 @@ async function probeFormatsCount(ytDlpPath, url, cwd) {
   }
 }
 
-async function runOne(ytDlpPath, args, cwd) {
-  return await new Promise((resolve, reject) => {
-    const p = spawn(ytDlpPath, args, { cwd: cwd || process.cwd(), stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '';
-    let stderr = '';
-    const timer = setTimeout(() => {
-      try {
-        p.kill('SIGKILL');
-      } catch {
-        /* noop */
-      }
-      reject(Object.assign(new Error('yt-dlp timeout'), { code: 'YTDLP_TIMEOUT', stdout, stderr }));
-    }, YTDLP_TIMEOUT_MS);
-
-    p.stdout.on('data', (d) => {
-      stdout += d.toString();
-    });
-    p.stderr.on('data', (d) => {
-      stderr += d.toString();
-    });
-    p.on('error', (err) => {
-      clearTimeout(timer);
-      reject(Object.assign(err, { stdout, stderr }));
-    });
-    p.on('close', (code) => {
-      clearTimeout(timer);
-      if (code === 0) resolve({ stdout, stderr });
-      else reject(Object.assign(new Error(stderr.slice(-600) || `yt-dlp exit ${code}`), { code: 'YTDLP_FAILED', stdout, stderr }));
-    });
+async function runOne(ytDlpPath, args, cwd, traceId = null) {
+  return spawnWithTimeout(ytDlpPath, args, {
+    cwd,
+    timeoutMs: YTDLP_TIMEOUT_MS,
+    traceId,
+    label: 'yt-dlp'
   });
 }
 
@@ -244,7 +221,7 @@ export async function runYtDlpRobust(opts) {
           selectedFormat: fmt || '(n/a)'
         });
         try {
-          const result = await runOne(ytDlpPath, args, cwd);
+          const result = await runOne(ytDlpPath, args, cwd, traceId);
           logYtdlp('[ytdlp-stream-debug]', {
             traceId: traceId || null,
             availableFormatsCount,

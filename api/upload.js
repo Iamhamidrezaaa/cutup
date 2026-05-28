@@ -24,6 +24,8 @@ import {
 } from './transcript-errors.js';
 import { transcribeAudioPayload, messageForAllProvidersFailed } from './transcription/transcription-router.js';
 import { ensureTranscriptionProvidersInit, getTranscriptionProviderRegistry } from './transcription/init.js';
+import { runQueuedTranscribe } from './infrastructure/guards.js';
+import { transcribeDebug } from './infrastructure/observability.js';
 
 export default async function handler(req, res) {
   // Log immediately to verify this endpoint is being called
@@ -181,6 +183,7 @@ export default async function handler(req, res) {
     else if (mimeType.includes('webm')) extension = 'webm';
 
     let transcript;
+    transcribeDebug(traceId, { phase: 'input_ready', bytes: audioBuffer.length, route: 'upload' });
 
     try {
       const transcribeOne = async (buf, mt, ext) =>
@@ -193,18 +196,24 @@ export default async function handler(req, res) {
           languageHint: null
         });
 
-      if (audioBuffer.length > 25 * 1024 * 1024) {
-        console.log('UPLOAD: File is larger than 25MB, using chunk processor + router...');
-        const chunkResult = await transcribeLargeFile(audioBuffer, mimeType, extension, transcribeOne);
-        transcript = {
-          text: chunkResult.text,
-          segments: chunkResult.segments,
-          language: chunkResult.language
-        };
-      } else {
-        console.log('UPLOAD: Transcription router (single request)...');
-        transcript = await transcribeOne(audioBuffer, mimeType, extension);
-      }
+      transcript = await runQueuedTranscribe({
+        userEmail,
+        traceId,
+        durationSec: null,
+        fn: async () => {
+          if (audioBuffer.length > 25 * 1024 * 1024) {
+            console.log('UPLOAD: File is larger than 25MB, using chunk processor + router...');
+            const chunkResult = await transcribeLargeFile(audioBuffer, mimeType, extension, transcribeOne);
+            return {
+              text: chunkResult.text,
+              segments: chunkResult.segments,
+              language: chunkResult.language
+            };
+          }
+          console.log('UPLOAD: Transcription router (single request)...');
+          return transcribeOne(audioBuffer, mimeType, extension);
+        }
+      });
     } catch (routerErr) {
       console.error('UPLOAD: Transcription router error:', routerErr);
       setCORSHeaders(res);

@@ -104,6 +104,9 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
+const { extractionRateLimitMiddleware } = await import('./api/infrastructure/guards.js');
+const rateLimit = extractionRateLimitMiddleware;
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -362,14 +365,14 @@ async function loadRoutes() {
 }
 
 // API Routes
-app.post('/api/upload', async (req, res) => {
+app.post('/api/upload', rateLimit('/api/upload'), async (req, res) => {
   if (!uploadHandler) {
     return res.status(500).json({ error: 'Upload handler not loaded' });
   }
   return uploadHandler(req, res);
 });
 
-app.post('/api/transcribe', async (req, res) => {
+app.post('/api/transcribe', rateLimit('/api/transcribe'), async (req, res) => {
   if (!transcribeHandler) {
     return res.status(500).json({ error: 'Transcribe handler not loaded' });
   }
@@ -383,7 +386,7 @@ app.post('/api/summarize', async (req, res) => {
   return summarizeHandler(req, res);
 });
 
-app.post('/api/youtube', async (req, res) => {
+app.post('/api/youtube', rateLimit('/api/youtube'), async (req, res) => {
   if (!youtubeHandler) {
     return res.status(500).json({ error: 'YouTube handler not loaded' });
   }
@@ -446,14 +449,14 @@ app.post('/api/oauth/google/start', async (req, res) => {
 });
 
 // YouTube Download routes
-app.post('/api/youtube-download', async (req, res) => {
+app.post('/api/youtube-download', rateLimit('/api/youtube-download'), async (req, res) => {
   if (!youtubeDownloadHandler) {
     return res.status(500).json({ error: 'YouTube Download handler not loaded' });
   }
   return youtubeDownloadHandler(req, res);
 });
 
-app.post('/api/youtube-formats', async (req, res) => {
+app.post('/api/youtube-formats', rateLimit('/api/youtube-formats'), async (req, res) => {
   if (!youtubeFormatsHandler) {
     return res.status(500).json({ error: 'YouTube Formats handler not loaded' });
   }
@@ -488,7 +491,7 @@ app.post('/api/generate-docx', async (req, res) => {
   }
 });
 
-app.all('/api/export-video', async (req, res) => {
+app.all('/api/export-video', rateLimit('/api/export-video'), async (req, res) => {
   if (!exportVideoHandler) {
     return res.status(503).json({
       error: 'Service unavailable',

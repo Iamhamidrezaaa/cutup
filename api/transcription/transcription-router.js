@@ -19,6 +19,8 @@ import { transcribeOpenAi, OPENAI_PROVIDER_ID } from './providers/openai-provide
 import { transcribeGroq, GROQ_PROVIDER_ID } from './providers/groq-provider.js';
 import { transcribeDeepgram, DEEPGRAM_PROVIDER_ID } from './providers/deepgram-provider.js';
 import { transcribeLocalWhisper, LOCAL_WHISPER_PROVIDER_ID } from './providers/local-whisper-provider.js';
+import { assertGpuOrCpuFallback } from '../infrastructure/gpu-guard.js';
+import { transcribeDebug } from '../infrastructure/observability.js';
 import { ensureTranscriptionProvidersInit } from './init.js';
 import {
   TRANSCRIPTION_PROVIDER_ORDER,
@@ -49,8 +51,18 @@ async function invokeProviderById(id, ctx) {
         return await transcribeGroq(ctx);
       case DEEPGRAM_PROVIDER_ID:
         return await transcribeDeepgram(ctx);
-      case LOCAL_WHISPER_PROVIDER_ID:
+      case LOCAL_WHISPER_PROVIDER_ID: {
+        const gpu = await assertGpuOrCpuFallback(ctx.traceId, { allowCpuFallback: true });
+        if (gpu.forceCpu) {
+          transcribeDebug(ctx.traceId, {
+            phase: 'gpu_skip_local_whisper',
+            reason: gpu.reason || 'gpu_busy',
+            forceCpu: true
+          });
+          return null;
+        }
         return await transcribeLocalWhisper(ctx);
+      }
       default:
         console.warn('[transcription-router] unknown_provider', { id, traceId: ctx.traceId });
         return null;

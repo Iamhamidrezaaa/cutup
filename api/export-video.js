@@ -22,6 +22,8 @@ import {
   isJobReady
 } from './video-render/render-queue.js';
 import { listStylePresets } from './video-render/style-presets.js';
+import { getQueueMetrics } from './infrastructure/guards.js';
+import { extractionDebug } from './infrastructure/observability.js';
 
 const MAX_UPLOAD_BYTES = Number(process.env.VIDEO_RENDER_MAX_UPLOAD_BYTES || 100 * 1024 * 1024);
 
@@ -205,6 +207,13 @@ async function handleStart(req, res) {
     renderQuality: quality
   });
 
+  extractionDebug(traceId, {
+    phase: 'export_start',
+    sourceUrl: sourceUrl || 'upload',
+    presetId,
+    quality
+  });
+
   const result = createRenderJob({
     userEmail: email,
     sessionId,
@@ -226,7 +235,8 @@ async function handleStart(req, res) {
     success: true,
     ...result,
     traceId,
-    queue: getQueueStats()
+    queue: getQueueStats(),
+    infrastructure: getQueueMetrics()
   });
 }
 

@@ -8,6 +8,9 @@ import { promisify } from 'util';
 import { requireSessionEmail } from './processing-enforcement.js';
 import { parseYouTubeVideoId, normalizeYouTubeWatchUrl, stripTrackingQueryParams } from './media-url.js';
 import { resolveYtDlpPath, runYtDlpRobust } from './ytdlp-robust.js';
+import { runQueuedDownload } from './infrastructure/guards.js';
+import { extractionDebug } from './infrastructure/observability.js';
+import { resolveTraceId } from './transcript-errors.js';
 
 const execAsync = promisify(exec);
 
@@ -22,6 +25,8 @@ export default async function handler(req, res) {
 
   const userEmail = requireSessionEmail(req, res);
   if (!userEmail) return;
+
+  const traceId = resolveTraceId(req);
 
   try {
     const { videoId, url, platform } = req.body;
@@ -81,12 +86,20 @@ export default async function handler(req, res) {
     const youtubeUrl = `https://www.youtube.com/watch?v=${finalVideoId}`;
 
     try {
-      const { stdout, stderr } = await runYtDlpRobust({
-        ytDlpPath,
-        baseArgs: ['--list-formats', '--no-playlist'],
+      extractionDebug(traceId, { phase: 'formats_enqueue', url: youtubeUrl });
+      const { stdout, stderr } = await runQueuedDownload({
         url: youtubeUrl,
-        requestKey: userEmail,
-        mode: 'formats'
+        userEmail,
+        traceId,
+        fn: () =>
+          runYtDlpRobust({
+            ytDlpPath,
+            baseArgs: ['--list-formats', '--no-playlist'],
+            url: youtubeUrl,
+            requestKey: userEmail,
+            traceId,
+            mode: 'formats'
+          })
       });
       console.log('[ytdlp-stream-debug]', {
         availableFormatsCount: null,

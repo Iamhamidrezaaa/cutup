@@ -20,6 +20,12 @@ import {
 } from './transcript-errors.js';
 import { parseYouTubeVideoId, normalizeYouTubeWatchUrl, stripTrackingQueryParams } from './media-url.js';
 import { resolveYtDlpPath, runYtDlpRobust, classifyYtDlpError } from './ytdlp-robust.js';
+import {
+  runQueuedDownload,
+  getCachedExtraction,
+  setCachedExtraction
+} from './infrastructure/guards.js';
+import { extractionDebug } from './infrastructure/observability.js';
 
 const execAsync = promisify(exec);
 
@@ -76,6 +82,13 @@ export default async function handler(req, res) {
     console.log('[transcript-download]', { traceId, videoId: finalVideoId });
     console.log(`YOUTUBE: Extracting audio for video ID: ${finalVideoId}`);
 
+    const youtubeUrl = `https://www.youtube.com/watch?v=${finalVideoId}`;
+    const cached = getCachedExtraction(youtubeUrl, traceId);
+    if (cached?.routePayload?.youtubeSuccess) {
+      extractionDebug(traceId, { phase: 'cache_hit', normalizedUrl: youtubeUrl });
+      return sendTranscriptSuccess(res, traceId, cached.routePayload.youtubeSuccess);
+    }
+
     const ytDlpPath = await resolveYtDlpPath();
     try {
       const { stdout: yv } = await execAsync(`${ytDlpPath} --version`);
@@ -89,11 +102,12 @@ export default async function handler(req, res) {
     const audioFilePath = join(tempDir, `youtube_${finalVideoId}_${Date.now()}.mp3`);
 
     try {
-      // Extract audio using yt-dlp
-      // Format: bestaudio/best - best audio quality available
-      // Extract audio and convert to mp3
-      const youtubeUrl = `https://www.youtube.com/watch?v=${finalVideoId}`;
-      
+      const successPayload = await runQueuedDownload({
+        url: youtubeUrl,
+        userEmail,
+        traceId,
+        durationSec: null,
+        fn: async () => {
       console.log(`YOUTUBE: Downloading audio from: ${youtubeUrl}`);
       
       // First, get video metadata to detect language and available subtitles
@@ -331,11 +345,10 @@ export default async function handler(req, res) {
         console.warn('YOUTUBE: Error processing subtitles:', subtitleErr.message);
       }
 
-      // Log title before returning
       console.log(`YOUTUBE: Returning title in response: ${videoTitle || 'null'}`);
       console.log(`YOUTUBE: Returning duration in response: ${videoDuration || 'null'}`);
 
-      return sendTranscriptSuccess(res, traceId, {
+      const youtubeSuccess = {
         audioUrl: `data:${mimeType};base64,${base64Audio}`,
         videoId: finalVideoId,
         format: 'mp3',
@@ -348,7 +361,22 @@ export default async function handler(req, res) {
           : Object.keys(availableSubtitles),
         title: videoTitle || null,
         duration: videoDuration || null
+      };
+
+      if (audioBuffer.length <= 8 * 1024 * 1024) {
+        setCachedExtraction(youtubeUrl, {
+          stage: 'youtube_audio',
+          routePayload: { youtubeSuccess },
+          metadata: { title: videoTitle, duration: videoDuration, language: detectedLanguage },
+          reusedAssets: ['youtubeSuccess']
+        }, traceId);
+      }
+
+      return youtubeSuccess;
+        }
       });
+
+      return sendTranscriptSuccess(res, traceId, successPayload);
 
     } catch (downloadError) {
       // Clean up on error
