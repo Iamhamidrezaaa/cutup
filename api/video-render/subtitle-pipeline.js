@@ -2,6 +2,7 @@
  * Subtitle pipeline with strict source-of-truth preservation.
  * Styling layers must never mutate transcript semantics.
  */
+import { decodeSubtitleTextEntities } from '../subtitle-text-entities.js';
 
 export const CAPTION_QUALITY_MODES = Object.freeze({
   ACCURATE: 'accurate',
@@ -32,10 +33,11 @@ const CONTEXTUAL_PHRASES = [
 ];
 
 function normalizeCueText(text) {
-  return String(text || '')
-    .replace(/\r?\n+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return decodeSubtitleTextEntities(
+    String(text || '')
+      .replace(/\r?\n+/g, ' ')
+      .replace(/\s+/g, ' ')
+  );
 }
 
 function cueWords(text) {

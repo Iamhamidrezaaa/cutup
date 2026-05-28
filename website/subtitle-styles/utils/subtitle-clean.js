@@ -96,12 +96,35 @@
     return prepareSegmentsForMode(segments, 'viral');
   }
 
+  /** Strip HTML entities (&gt;, @gt;, etc.) from cue text. */
+  function decodeSubtitleTextEntities(text) {
+    let t = String(text || '');
+    if (!t) return '';
+    t = t.replace(
+      /\d{1,2}:\d{2}:\d{2}[,.]\d{3}\s*--(?:>|&gt;|@gt;)\s*\d{1,2}:\d{2}:\d{2}[,.]\d{3}/gi,
+      ' '
+    );
+    t = t.replace(/&amp;/gi, '&');
+    t = t.replace(/&quot;/gi, '"');
+    t = t.replace(/&#0*39;/gi, "'");
+    t = t.replace(/&gt;/gi, '>');
+    t = t.replace(/&lt;/gi, '<');
+    t = t.replace(/@gt;/gi, '>');
+    t = t.replace(/@lt;/gi, '<');
+    t = t.replace(/@amp;/gi, '&');
+    t = t.replace(/(?:>>\s*){2,}/g, ' ');
+    t = t.replace(/^\s*>>\s*|\s*>>\s*$/g, '');
+    return t.replace(/\s+/g, ' ').trim();
+  }
+
+  global.decodeSubtitleTextEntities = decodeSubtitleTextEntities;
   global.CutupSubtitleClean = {
     MODES,
     clean,
     isGarbage,
     prepareSegments,
     prepareSegmentsForMode,
-    prepareAccurate
+    prepareAccurate,
+    decodeSubtitleTextEntities
   };
 })(typeof window !== 'undefined' ? window : globalThis);

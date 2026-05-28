@@ -5275,7 +5275,10 @@ function parseSRTToSegments(srtContent) {
     const timeLine = lines[1];
     const textLines = lines.slice(2);
     
-    const timeMatch = timeLine.match(/(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})/);
+    const timeMatch = timeLine
+      .replace(/--&gt;/gi, '-->')
+      .replace(/--@gt;/gi, '-->')
+      .match(/(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})/);
     if (!timeMatch) continue;
     
     const startTime = parseSRTTimeToSeconds(timeMatch[1], timeMatch[2], timeMatch[3], timeMatch[4]);
@@ -5285,6 +5288,9 @@ function parseSRTToSegments(srtContent) {
     // Clean up text: remove any remaining HTML tags and inline timestamps
     text = text.replace(/<[^>]+>/g, ''); // Remove HTML tags
     text = text.replace(/<\d{2}:\d{2}:\d{2}[,\.]\d{3}>/g, ''); // Remove inline timestamps
+    text = (typeof decodeSubtitleTextEntities === 'function'
+      ? decodeSubtitleTextEntities
+      : window.CutupSubtitleClean?.decodeSubtitleTextEntities)?.(text) ?? text;
     text = text.replace(/\s+/g, ' ').trim(); // Normalize whitespace
     
     if (text.length > 0) {
@@ -6239,11 +6245,15 @@ function generateSRT(segments) {
 
 /** Immutable Whisper/source segments — never pass through viral-only cleaning for SRT export. */
 function cloneSourceSegments(segments) {
+  const decode =
+    typeof decodeSubtitleTextEntities === 'function'
+      ? decodeSubtitleTextEntities
+      : window.CutupSubtitleClean?.decodeSubtitleTextEntities;
   return (segments || [])
     .map((s) => ({
       start: Number(s.start),
       end: Number(s.end),
-      text: String(s.text || '').trim()
+      text: decode ? decode(String(s.text || '')) : String(s.text || '').trim()
     }))
     .filter((s) => s.text && Number.isFinite(s.start) && Number.isFinite(s.end) && s.end > s.start);
 }

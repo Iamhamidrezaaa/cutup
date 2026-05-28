@@ -22,6 +22,7 @@ import {
   isJobReady
 } from './video-render/render-queue.js';
 import { listStylePresets } from './video-render/style-presets.js';
+import { decodeSubtitleTextEntities } from './subtitle-text-entities.js';
 import { getQueueMetrics } from './infrastructure/guards.js';
 import { extractionDebug } from './infrastructure/observability.js';
 
@@ -111,7 +112,7 @@ function normalizeSegments(raw) {
     .map((s) => ({
       start: s.start,
       end: s.end,
-      text: String(s.text).trim()
+      text: decodeSubtitleTextEntities(String(s.text).trim())
     }));
 }
 
