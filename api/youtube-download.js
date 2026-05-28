@@ -25,6 +25,12 @@ import {
   stripTrackingQueryParams,
   normalizeInstagramUrl
 } from './media-url.js';
+import {
+  resolveYtDlpPath,
+  resolveCookiesPath,
+  classifyYtDlpError,
+  applyYtdlpBurstDelay
+} from './ytdlp-robust.js';
 
 // Import subscription functions for atomic check + record
 // We'll need to access these functions - for now, we'll duplicate the logic
@@ -32,6 +38,7 @@ import {
 
 const execAsync = promisify(exec);
 const YTDLP_TIMEOUT_MS = Number(process.env.YTDLP_TIMEOUT_MS || 120000);
+const YTDLP_MAX_RETRIES = Math.max(1, Number(process.env.YTDLP_MAX_RETRIES || 3));
 
 
 // Helper to get userId from session - use email as userId (consistent with subscription.js)
@@ -234,22 +241,7 @@ export default async function handler(req, res) {
     console.log('[download-start]', { traceId, platform: detectedPlatform, url: finalUrl?.slice(0, 120) });
 
     // Check runtime dependencies
-    let ytDlpPath = 'yt-dlp';
-    try {
-      const { stdout } = await execAsync('which yt-dlp');
-      if (stdout.trim()) {
-        ytDlpPath = stdout.trim();
-      }
-    } catch (err) {
-      try {
-        const { stdout } = await execAsync('where yt-dlp');
-        if (stdout.trim()) {
-          ytDlpPath = stdout.split(/\r?\n/).find(Boolean)?.trim() || ytDlpPath;
-        }
-      } catch (_err2) {
-        plog('DEPENDENCY_CHECK_FAILED', { dependency: 'yt-dlp', error: String(err?.message || err) });
-      }
-    }
+    const ytDlpPath = await resolveYtDlpPath();
     traceLog(traceId, 'ffmpeg', { phase: 'dependency_check' });
     try {
       await execAsync('ffmpeg -version');
@@ -295,7 +287,7 @@ export default async function handler(req, res) {
     const outputTemplate = join(jobDir, 'out.%(ext)s');
     
     // Function to run yt-dlp once with a specific format selector
-    async function runYtdlpOnce(formatSelector, useMerge = true) {
+    async function runYtdlpOnce(formatSelector, useMerge = true, ytExtractorArgs = null, forceCookies = false) {
       return new Promise((resolve, reject) => {
         const baseArgs = [
           '--no-playlist',
@@ -305,6 +297,15 @@ export default async function handler(req, res) {
           '--print', 'after_move:filepath',
           '-o', outputTemplate,
         ];
+        if (ytExtractorArgs && detectedPlatform === 'youtube') {
+          baseArgs.push('--extractor-args', ytExtractorArgs);
+        }
+        if (detectedPlatform === 'youtube' && forceCookies) {
+          const cookiesPath = resolveCookiesPath();
+          if (cookiesPath) {
+            baseArgs.push('--cookies', cookiesPath);
+          }
+        }
         
         // Add Instagram-specific options
         if (detectedPlatform === 'instagram') {
@@ -547,13 +548,58 @@ export default async function handler(req, res) {
         };
         
         const formatSelector = videoFormats[quality] || 'bestvideo+bestaudio/best';
-        return await runYtdlpOnce(formatSelector, true);
+        const clientProfiles = [
+          { profile: 'normal', extractorArgs: null, forceCookies: false },
+          { profile: 'android', extractorArgs: 'youtube:player_client=android', forceCookies: false },
+          { profile: 'tv_embedded', extractorArgs: 'youtube:player_client=tv_embedded', forceCookies: false },
+          { profile: 'cookies', extractorArgs: null, forceCookies: true }
+        ];
+        let lastErr = null;
+        for (const client of clientProfiles) {
+          try {
+            console.log('[ytdlp-debug]', {
+              traceId,
+              extractor: 'yt-dlp',
+              clientProfile: client.profile,
+              retries: 0,
+              cookiesEnabled: client.forceCookies
+            });
+            const result = await runYtdlpOnce(formatSelector, true, client.extractorArgs, client.forceCookies);
+            return result;
+          } catch (err) {
+            lastErr = err;
+          }
+        }
+        throw lastErr || new Error('Could not extract video stream');
       }
     }
     
     try {
       traceLog(traceId, 'yt-dlp', { phase: 'invoke', platform: detectedPlatform });
-      const { filepath, stdout, stderr } = await runYtdlpWithFallback();
+      await applyYtdlpBurstDelay(userId);
+      let invokeResult = null;
+      let invokeError = null;
+      for (let attempt = 1; attempt <= YTDLP_MAX_RETRIES; attempt++) {
+        try {
+          console.log('[ytdlp-debug]', {
+            traceId,
+            extractor: 'yt-dlp',
+            clientProfile: 'fallback_chain',
+            retries: attempt,
+            cookiesEnabled: Boolean(resolveCookiesPath())
+          });
+          invokeResult = await runYtdlpWithFallback();
+          break;
+        } catch (err) {
+          invokeError = err;
+          const mapped = classifyYtDlpError(err?.stderr || err?.message || '');
+          if (!mapped.temporary || attempt >= YTDLP_MAX_RETRIES) break;
+          const backoffMs = Math.min(4000, 320 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 240);
+          await new Promise((r) => setTimeout(r, backoffMs));
+        }
+      }
+      if (!invokeResult) throw invokeError || new Error('Could not extract video stream');
+      const { filepath, stdout, stderr } = invokeResult;
       
       const outputFile = filepath;
       
@@ -712,6 +758,7 @@ export default async function handler(req, res) {
 
     const stderrText = String(error.stderr || '').toLowerCase();
     const stdoutText = String(error.stdout || '').toLowerCase();
+    const ytdlpClass = classifyYtDlpError(error.stderr || error.message || '');
     let legacyCode = 'DOWNLOAD_ERROR';
     if (String(error.code || '') === 'YTDLP_TIMEOUT' || stderrText.includes('timed out') || stderrText.includes('timeout')) {
       legacyCode = 'YTDLP_TIMEOUT';
@@ -732,6 +779,10 @@ export default async function handler(req, res) {
       legacyCode = 'TIKTOK_EXTRACTION_FAILED';
     }
 
+    if (ytdlpClass.code === 'YTDLP_TEMP_BLOCK') legacyCode = 'YTDLP_TIMEOUT';
+    if (ytdlpClass.code === 'YTDLP_AUTH_REQUIRED') legacyCode = 'SOCIAL_LOGIN_REQUIRED';
+    if (ytdlpClass.code === 'YTDLP_VIDEO_UNAVAILABLE') legacyCode = 'MEDIA_UNAVAILABLE';
+
     const mapped = mapLegacyDownloadError(legacyCode, { message: error.message, platform: detectedPlatform });
     plog('DOWNLOAD_FAILED', {
       detectedPlatform,
@@ -742,7 +793,7 @@ export default async function handler(req, res) {
     return sendTranscriptError(res, {
       statusCode: mapped.errorCode === 'VIDEO_UNAVAILABLE' ? 422 : 500,
       errorCode: mapped.errorCode,
-      message: mapped.message,
+      message: ytdlpClass.message || mapped.message,
       retryable: mapped.retryable !== false,
       traceId,
       stage: 'youtube-download'

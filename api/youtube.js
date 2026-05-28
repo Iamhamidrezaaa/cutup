@@ -19,6 +19,7 @@ import {
   userMessageForCode
 } from './transcript-errors.js';
 import { parseYouTubeVideoId, normalizeYouTubeWatchUrl, stripTrackingQueryParams } from './media-url.js';
+import { resolveYtDlpPath, runYtDlpRobust, classifyYtDlpError } from './ytdlp-robust.js';
 
 const execAsync = promisify(exec);
 
@@ -74,44 +75,7 @@ export default async function handler(req, res) {
     console.log('[transcript-download]', { traceId, videoId: finalVideoId });
     console.log(`YOUTUBE: Extracting audio for video ID: ${finalVideoId}`);
 
-    // Check if yt-dlp is installed
-    let ytDlpPath = 'yt-dlp';
-    try {
-      // Try to find yt-dlp in PATH
-      const { stdout } = await execAsync('which yt-dlp');
-      ytDlpPath = stdout.trim() || 'yt-dlp';
-      console.log(`YOUTUBE: Found yt-dlp at: ${ytDlpPath}`);
-    } catch (err) {
-      // Try common installation paths
-      const commonPaths = [
-        '/usr/local/bin/yt-dlp',
-        '/usr/bin/yt-dlp',
-        'yt-dlp'
-      ];
-      
-      let found = false;
-      for (const path of commonPaths) {
-        try {
-          await execAsync(`test -f ${path} || command -v ${path}`);
-          ytDlpPath = path;
-          found = true;
-          console.log(`YOUTUBE: Found yt-dlp at: ${ytDlpPath}`);
-          break;
-        } catch (e) {
-          // Continue to next path
-        }
-      }
-      
-      if (!found) {
-        console.error('YOUTUBE_ERROR: yt-dlp not found in any common path');
-        return sendTranscriptErrorFromLegacy(res, {
-          statusCode: 503,
-          legacyCode: 'YTDLP_SPAWN_FAILED',
-          traceId,
-          stage: 'youtube-download'
-        });
-      }
-    }
+    const ytDlpPath = await resolveYtDlpPath();
 
     // Create temporary file path
     const tempDir = tmpdir();
@@ -134,11 +98,13 @@ export default async function handler(req, res) {
       let videoDuration = null;
       
       try {
-        const metadataCommand = `${ytDlpPath} --no-playlist --dump-json --no-download "${youtubeUrl}"`;
-        console.log(`YOUTUBE: Executing metadata command: ${metadataCommand}`);
-        const { stdout: metadataStdout, stderr: metadataStderr } = await execAsync(metadataCommand, {
-          timeout: 30000, // 30 seconds
-          maxBuffer: 5 * 1024 * 1024 // 5MB buffer
+        const { stdout: metadataStdout, stderr: metadataStderr } = await runYtDlpRobust({
+          ytDlpPath,
+          baseArgs: ['--no-playlist', '--dump-json', '--no-download'],
+          url: youtubeUrl,
+          requestKey: userEmail,
+          traceId,
+          mode: 'metadata'
         });
         
         if (metadataStderr) {
@@ -201,13 +167,13 @@ export default async function handler(req, res) {
       // -x: extract audio only
       // --audio-format mp3: convert to mp3
       // -o: output file
-      const command = `${ytDlpPath} --no-playlist --no-warnings -x --audio-format mp3 --audio-quality 0 -o "${audioFilePath}" "${youtubeUrl}"`;
-      
-      console.log(`YOUTUBE: Executing command: ${command}`);
-      
-      const { stdout, stderr } = await execAsync(command, {
-        timeout: 300000, // 5 minutes timeout
-        maxBuffer: 10 * 1024 * 1024 // 10MB buffer
+      const { stdout, stderr } = await runYtDlpRobust({
+        ytDlpPath,
+        baseArgs: ['--no-playlist', '--no-warnings', '-x', '--audio-format', 'mp3', '--audio-quality', '0', '-o', audioFilePath],
+        url: youtubeUrl,
+        requestKey: userEmail,
+        traceId,
+        mode: 'audio_extract'
       });
 
       console.log(`YOUTUBE: Download complete, stdout: ${stdout.substring(0, 200)}`);
@@ -312,12 +278,14 @@ export default async function handler(req, res) {
           console.log(`YOUTUBE: Downloading subtitles in language: ${subtitleLanguage}`);
           
           // Download subtitle file
-          const subtitleCommand = `${ytDlpPath} --no-playlist --write-auto-sub --sub-lang ${subtitleLanguage} --skip-download --sub-format vtt -o "${tempDir}/youtube_${finalVideoId}_subtitle" "${youtubeUrl}"`;
-          
           try {
-            await execAsync(subtitleCommand, {
-              timeout: 20000, // Reduced from 30s to 20s for faster failure detection
-              maxBuffer: 5 * 1024 * 1024
+            await runYtDlpRobust({
+              ytDlpPath,
+              baseArgs: ['--no-playlist', '--write-auto-sub', '--sub-lang', subtitleLanguage, '--skip-download', '--sub-format', 'vtt', '-o', `${tempDir}/youtube_${finalVideoId}_subtitle`],
+              url: youtubeUrl,
+              requestKey: userEmail,
+              traceId,
+              mode: 'subtitle_fetch'
             });
             
             // Find the subtitle file
@@ -379,12 +347,19 @@ export default async function handler(req, res) {
 
       console.error('YOUTUBE_ERROR: Download failed:', downloadError);
       
-      const msg = String(downloadError.message || '').toLowerCase();
-      const legacy = msg.includes('private') || msg.includes('unavailable') ? 'VIDEO_UNAVAILABLE' : 'YOUTUBE_ERROR';
+      const mapped = classifyYtDlpError(downloadError?.stderr || downloadError?.message || '');
+      const legacy =
+        mapped.code === 'YTDLP_VIDEO_UNAVAILABLE'
+          ? 'VIDEO_UNAVAILABLE'
+          : mapped.code === 'YTDLP_AUTH_REQUIRED'
+            ? 'SOCIAL_LOGIN_REQUIRED'
+            : mapped.code === 'YTDLP_TEMP_BLOCK'
+              ? 'YTDLP_TIMEOUT'
+              : 'YOUTUBE_ERROR';
       return sendTranscriptErrorFromLegacy(res, {
-        statusCode: 500,
+        statusCode: legacy === 'VIDEO_UNAVAILABLE' ? 422 : legacy === 'SOCIAL_LOGIN_REQUIRED' ? 401 : 500,
         legacyCode: legacy,
-        message: downloadError.message,
+        message: mapped.message,
         traceId,
         stage: 'youtube-download'
       });

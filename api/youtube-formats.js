@@ -7,6 +7,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { requireSessionEmail } from './processing-enforcement.js';
 import { parseYouTubeVideoId, normalizeYouTubeWatchUrl, stripTrackingQueryParams } from './media-url.js';
+import { resolveYtDlpPath, runYtDlpRobust } from './ytdlp-robust.js';
 
 const execAsync = promisify(exec);
 
@@ -69,28 +70,17 @@ export default async function handler(req, res) {
 
     console.log(`YOUTUBE_FORMATS: Getting formats for video ID: ${finalVideoId}`);
 
-    // Check if yt-dlp is installed
-    let ytDlpPath = 'yt-dlp';
-    try {
-      const { stdout } = await execAsync('which yt-dlp');
-      if (stdout.trim()) {
-        ytDlpPath = stdout.trim();
-      }
-    } catch (err) {
-      console.warn('YOUTUBE_FORMATS: yt-dlp not found in PATH, trying default');
-    }
+    const ytDlpPath = await resolveYtDlpPath();
 
     const youtubeUrl = `https://www.youtube.com/watch?v=${finalVideoId}`;
 
-    // Get available formats
-    const formatsCommand = `${ytDlpPath} --list-formats --no-playlist "${youtubeUrl}"`;
-    
-    console.log(`YOUTUBE_FORMATS: Executing: ${formatsCommand}`);
-    
     try {
-      const { stdout, stderr } = await execAsync(formatsCommand, {
-        timeout: 30000, // 30 seconds
-        maxBuffer: 5 * 1024 * 1024 // 5MB buffer
+      const { stdout, stderr } = await runYtDlpRobust({
+        ytDlpPath,
+        baseArgs: ['--list-formats', '--no-playlist'],
+        url: youtubeUrl,
+        requestKey: userEmail,
+        mode: 'formats'
       });
 
       if (stderr) {
