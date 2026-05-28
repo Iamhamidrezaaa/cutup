@@ -316,6 +316,16 @@ export function generateAssContent(segments, presetId, dims = {}) {
   if (!canonicalSubtitles.length) {
     throw new Error('SUBTITLE_CANONICAL_EMPTY');
   }
+  console.log(
+    '[canonical-caption-blocks]',
+    canonicalSubtitles.map((b) => ({
+      text: b.text,
+      wordCount: Array.isArray(b.words) ? b.words.length : String(b.text || '').split(/\s+/).filter(Boolean).length,
+      start: Number(b.start) || 0,
+      end: Number(b.end) || 0,
+      duration: Number(b.duration != null ? b.duration : (Number(b.end) - Number(b.start)).toFixed(3))
+    }))
+  );
   const cues = buildVisualCueView(canonicalSubtitles, captionMode);
   const integrityReport = assertCueIntegrity(canonicalSubtitles, cues, {
     maxTimingDriftMs: 0,

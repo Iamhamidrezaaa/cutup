@@ -36,6 +36,121 @@ function toCanonicalCue(seg, index) {
   };
 }
 
+function splitPhraseToWordChunks(wordsList, maxWords = 5) {
+  const chunks = [];
+  let bucket = [];
+  for (const w of wordsList) {
+    bucket.push(w);
+    if (bucket.length >= maxWords || /[.!?,:;]$/.test(w)) {
+      chunks.push(bucket.join(' '));
+      bucket = [];
+    }
+  }
+  if (bucket.length) chunks.push(bucket.join(' '));
+  return chunks;
+}
+
+function normalizeForAccumulation(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{M}\p{N}\s'’-]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function composeRhythmBlocks(rawSegments, opts = {}) {
+  const maxWords = Math.max(3, Math.min(5, Number(opts.maxWordsPerBlock ?? 5)));
+  const minDurationSec = Math.max(0.2, Number(opts.minDurationSec ?? 0.35));
+  const overlapGuardSec = Math.max(0, Number(opts.overlapGuardSec ?? 0.04));
+  const source = Array.isArray(rawSegments) ? rawSegments : [];
+  const blocks = [];
+
+  for (const seg of source) {
+    if (!seg || typeof seg.start !== 'number' || typeof seg.end !== 'number' || seg.end <= seg.start) continue;
+    const text = normalizeCueText(seg.text || '');
+    if (!text) continue;
+    const wordsList = cueWords(text);
+    if (!wordsList.length) continue;
+
+    const chunks = splitPhraseToWordChunks(wordsList, maxWords);
+    const span = Math.max(0.01, Number(seg.end) - Number(seg.start));
+    const chunkDur = span / Math.max(1, chunks.length);
+
+    for (let i = 0; i < chunks.length; i++) {
+      const cStart = Number(seg.start) + i * chunkDur;
+      const cEnd = i === chunks.length - 1 ? Number(seg.end) : Number(seg.start) + (i + 1) * chunkDur;
+      blocks.push({
+        text: chunks[i],
+        start: cStart,
+        end: cEnd,
+        words: cueWords(chunks[i])
+      });
+    }
+  }
+
+  // Remove progressive accumulation patterns by replacing previous growing text.
+  const collapsed = [];
+  for (const b of blocks) {
+    const prev = collapsed[collapsed.length - 1];
+    if (!prev) {
+      collapsed.push({ ...b });
+      continue;
+    }
+    const prevNorm = normalizeForAccumulation(prev.text);
+    const nextNorm = normalizeForAccumulation(b.text);
+    const growing = nextNorm.startsWith(prevNorm) && nextNorm.length > prevNorm.length;
+    const near = b.start <= prev.end + 0.25;
+    if (growing && near) {
+      prev.text = b.text;
+      prev.words = b.words;
+      prev.end = Math.max(prev.end, b.end);
+      continue;
+    }
+    collapsed.push({ ...b });
+  }
+
+  // Anti-flicker + overlap smoothing
+  const smoothed = [];
+  for (const block of collapsed) {
+    const cur = { ...block };
+    const prev = smoothed[smoothed.length - 1];
+    if (prev && cur.start < prev.end - overlapGuardSec) {
+      cur.start = prev.end - overlapGuardSec;
+    }
+    if (prev) {
+      const prevDur = prev.end - prev.start;
+      if (prevDur < minDurationSec) {
+        prev.text = `${prev.text} ${cur.text}`.trim();
+        prev.words = cueWords(prev.text);
+        prev.end = Math.max(prev.end, cur.end);
+        continue;
+      }
+    }
+    smoothed.push(cur);
+  }
+  if (smoothed.length > 1) {
+    const last = smoothed[smoothed.length - 1];
+    const prev = smoothed[smoothed.length - 2];
+    if (last.end - last.start < minDurationSec) {
+      prev.text = `${prev.text} ${last.text}`.trim();
+      prev.words = cueWords(prev.text);
+      prev.end = Math.max(prev.end, last.end);
+      smoothed.pop();
+    }
+  }
+
+  return smoothed.map((b, i) => ({
+    id: `cue_${i}`,
+    index: i,
+    start: Number(b.start),
+    end: Number(b.end),
+    duration: Number((b.end - b.start).toFixed(3)),
+    text: normalizeCueText(b.text),
+    words: b.words,
+    _words: b.words
+  }));
+}
+
 function cloneCue(cue) {
   return {
     id: cue.id,
@@ -72,12 +187,11 @@ function copyWithoutPrivate(cues) {
  */
 export function buildCanonicalSubtitles(rawSegments) {
   const raw = Array.isArray(rawSegments) ? rawSegments : [];
-  const canonical = [];
-  for (let i = 0; i < raw.length; i++) {
-    const cue = toCanonicalCue(raw[i], i);
-    if (cue) canonical.push(cue);
-  }
-  return canonical;
+  return composeRhythmBlocks(raw, {
+    maxWordsPerBlock: 5,
+    minDurationSec: 0.35,
+    overlapGuardSec: 0.04
+  });
 }
 
 /**
