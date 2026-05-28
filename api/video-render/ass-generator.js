@@ -451,7 +451,9 @@ export function generateAssContent(segments, presetId, dims = {}) {
       emphasisWords: Array.isArray(cue.emphasisWords) ? cue.emphasisWords : bodyResult.emphasisWords,
       finalStyledAssText: text
     });
-    return `Dialogue: 0,${toAssTime(enrichedCue.renderStart)},${toAssTime(enrichedCue.renderEnd)},Default,,0,0,${mV},,${text}`;
+    const syncStart = Number(enrichedCue.sourceStart ?? enrichedCue.start ?? enrichedCue.renderStart);
+    const syncEnd = Number(enrichedCue.sourceEnd ?? enrichedCue.end ?? enrichedCue.renderEnd);
+    return `Dialogue: 0,${toAssTime(syncStart)},${toAssTime(syncEnd)},Default,,0,0,${mV},,${text}`;
   });
 
   const cueCount = dialogues.length;

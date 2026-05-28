@@ -310,54 +310,288 @@ function normalizeForAccumulation(text) {
     .trim();
 }
 
+/** Speech-rate helpers (words per second). */
+function wordsPerSecond(wordCount, spanSec) {
+  return wordCount / Math.max(0.05, spanSec);
+}
+
+function globalSpeechRateWps(timeline) {
+  if (!timeline?.length) return 3;
+  if (timeline.length === 1) return 3;
+  return wordsPerSecond(timeline.length, timeline[timeline.length - 1].end - timeline[0].start);
+}
+
+function silenceGapThresholdSec(speechRate) {
+  if (speechRate > 3.5) return 0.12;
+  if (speechRate < 2.2) return 0.26;
+  return 0.18;
+}
+
+const SYNC_PREROLL_MAX_SEC = 0.025;
+const SYNC_TAIL_MAX_SEC = 0.04;
+const SYNC_OVERLAP_GAP_SEC = 0.015;
+const SYNC_MIN_FLASH_SEC = 0.25;
+const SYNC_MAX_CAPTION_SEC = 4;
+const SYNC_HIGH_CONF = 0.55;
+
+function adaptivePaddingFromSpeechRate(speechRate) {
+  const fast = speechRate > 3.5;
+  const slow = speechRate < 2.2;
+  const preroll = fast ? 0.008 : slow ? 0.022 : 0.014;
+  const tail = fast ? 0.012 : slow ? 0.034 : 0.02;
+  return {
+    preroll: Math.min(SYNC_PREROLL_MAX_SEC, preroll),
+    tail: Math.min(SYNC_TAIL_MAX_SEC, tail)
+  };
+}
+
+/** High-confidence words anchor caption boundaries (low-confidence excluded when possible). */
+function speechAnchorStart(chunkMeta) {
+  const sorted = [...chunkMeta].sort((a, b) => a.start - b.start);
+  const backbone = sorted.filter((w) => w.confidence == null || w.confidence >= SYNC_HIGH_CONF);
+  const pool = backbone.length ? backbone : sorted;
+  return pool[0].start;
+}
+
+function speechAnchorEnd(chunkMeta) {
+  const sorted = [...chunkMeta].sort((a, b) => a.end - b.end);
+  const backbone = sorted.filter((w) => w.confidence == null || w.confidence >= SYNC_HIGH_CONF);
+  const pool = backbone.length ? backbone : sorted;
+  return pool[pool.length - 1].end;
+}
+
+function reanchorBlockTiming(block) {
+  const meta = block.wordTimeline || [];
+  if (!meta.length) return block;
+  const firstWordStart = speechAnchorStart(meta);
+  const lastWordEnd = speechAnchorEnd(meta);
+  const speechRate = wordsPerSecond(meta.length, lastWordEnd - firstWordStart);
+  const pad = adaptivePaddingFromSpeechRate(speechRate);
+  return {
+    ...block,
+    firstWordStart,
+    lastWordEnd,
+    speechRate,
+    adjustedStart: Math.max(0, firstWordStart - pad.preroll),
+    adjustedEnd: lastWordEnd + pad.tail,
+    start: Math.max(0, firstWordStart - pad.preroll),
+    end: lastWordEnd + pad.tail
+  };
+}
+
+function shouldForceCaptionBoundary(prevWord, nextWord, gapSec, speechRate, chunkLen, maxWords) {
+  const thresh = silenceGapThresholdSec(speechRate);
+  if (gapSec >= thresh) return { break: true, reason: 'silence_gap' };
+  const prevText = String(prevWord?.word || '');
+  if (/[.!?…]["']?$/.test(prevText)) return { break: true, reason: 'punctuation' };
+  if (/[,;:]["']?$/.test(prevText) && chunkLen >= 2) return { break: true, reason: 'punctuation_soft' };
+  if (gapSec >= thresh * 0.55 && chunkLen >= 3) return { break: true, reason: 'phonetic_pause' };
+  if (chunkLen >= maxWords) return { break: true, reason: 'max_words' };
+  return { break: false, reason: null };
+}
+
+function eliminateCaptionOverlaps(blocks, minGapSec = SYNC_OVERLAP_GAP_SEC) {
+  const list = Array.isArray(blocks) ? blocks : [];
+  for (let i = 0; i < list.length - 1; i++) {
+    const cur = list[i];
+    const next = list[i + 1];
+    const maxEnd = next.start - minGapSec;
+    if (cur.end > maxEnd) {
+      cur.end = Math.max(cur.start + 0.08, maxEnd);
+      cur.adjustedEnd = cur.end;
+    }
+  }
+  return list;
+}
+
+function detectAndCorrectDrift(blocks) {
+  let rollingDrift = 0;
+  for (const b of blocks) {
+    b.driftCorrectionApplied = 0;
+    const meta = b.wordTimeline || [];
+    if (!meta.length) continue;
+    const pad = adaptivePaddingFromSpeechRate(b.speechRate || 3);
+    const expectedStart = speechAnchorStart(meta) - pad.preroll;
+    const expectedEnd = speechAnchorEnd(meta) + pad.tail;
+    const startErr = b.start - expectedStart;
+    const endErr = b.end - expectedEnd;
+    rollingDrift += startErr * 0.5 + endErr * 0.5;
+    if (Math.abs(rollingDrift) > 0.1) {
+      const correction = -rollingDrift * 0.55;
+      b.start = Math.max(0, b.start + correction);
+      b.end = Math.max(b.start + 0.08, b.end + correction);
+      b.adjustedStart = b.start;
+      b.adjustedEnd = b.end;
+      b.driftCorrectionApplied = Number(correction.toFixed(4));
+      rollingDrift *= 0.25;
+    }
+  }
+  return blocks;
+}
+
+function applySpeechRatePersistence(blocks) {
+  for (const b of blocks) {
+    const sr = b.speechRate || 3;
+    const pad = adaptivePaddingFromSpeechRate(sr);
+    const anchorDur = Math.max(0.05, b.lastWordEnd - b.firstWordStart);
+    if (sr > 3.5) {
+      b.end = Math.min(b.end, b.lastWordEnd + Math.min(pad.tail, 0.018));
+    } else if (sr < 2.2) {
+      b.end = Math.min(b.end, b.lastWordEnd + pad.tail);
+    }
+    b.end = Math.max(b.start + anchorDur * 0.85, b.end);
+    if (b.end - b.start > SYNC_MAX_CAPTION_SEC) {
+      b.end = b.start + SYNC_MAX_CAPTION_SEC;
+    }
+    b.adjustedEnd = b.end;
+  }
+  return blocks;
+}
+
+function splitLongBlockOnWordBoundaries(block, maxDurationSec) {
+  const meta = block.wordTimeline || [];
+  if (!meta.length || block.end - block.start <= maxDurationSec) return [block];
+  const parts = [];
+  let chunk = [];
+  for (let i = 0; i < meta.length; i++) {
+    chunk.push(meta[i]);
+    const span = chunk[chunk.length - 1].end - chunk[0].start;
+    const atEnd = i === meta.length - 1;
+    const next = meta[i + 1];
+    const gap = next ? next.start - meta[i].end : 0;
+    const boundary =
+      atEnd ||
+      span >= maxDurationSec ||
+      (gap >= silenceGapThresholdSec(block.speechRate || 3) && chunk.length >= 2);
+    if (boundary) {
+      const text = chunk.map((w) => w.word).join(' ');
+      parts.push(
+        reanchorBlockTiming({
+          ...block,
+          text: normalizeCueText(text),
+          words: cueWords(text),
+          wordTimeline: [...chunk]
+        })
+      );
+      chunk = [];
+    }
+  }
+  return parts.length ? parts : [block];
+}
+
+function logCaptionSyncDebug(captions) {
+  console.log(
+    '[caption-sync-debug]',
+    captions.map((c) => {
+      const meta = c.wordTimeline || [];
+      const first = meta[0];
+      const last = meta[meta.length - 1];
+      return {
+        text: c.text,
+        firstWord: first?.word ?? null,
+        lastWord: last?.word ?? null,
+        firstWordStart: c.firstWordStart,
+        lastWordEnd: c.lastWordEnd,
+        finalCaptionStart: c.start,
+        finalCaptionEnd: c.end,
+        speechRate: c.speechRate,
+        detectedGap: c.boundaryGap ?? null,
+        boundaryReason: c.boundaryReason ?? null,
+        driftCorrectionApplied: c.driftCorrectionApplied ?? 0
+      };
+    })
+  );
+}
+
+/**
+ * Export-time sanity checks before ASS generation (auto-fix where possible).
+ * @param {object[]} captions
+ */
+export function validateAndFixCaptionTimingForExport(captions) {
+  const list = (Array.isArray(captions) ? captions : []).map((c) => ({ ...c }));
+  const report = { fixed: [], warnings: [] };
+
+  for (let i = 0; i < list.length; i++) {
+    const c = list[i];
+    if (c.end <= c.start) {
+      c.end = c.start + SYNC_MIN_FLASH_SEC;
+      report.fixed.push(`negative_duration_${i}`);
+    }
+    const dur = c.end - c.start;
+    if (dur < SYNC_MIN_FLASH_SEC) {
+      const next = list[i + 1];
+      const room = next ? Math.max(0, next.start - SYNC_OVERLAP_GAP_SEC - c.start) : SYNC_MIN_FLASH_SEC;
+      const target = Math.min(SYNC_MIN_FLASH_SEC, room > 0.08 ? room : SYNC_MIN_FLASH_SEC);
+      c.end = c.start + target;
+      report.fixed.push(`short_flash_${i}`);
+    }
+    if (dur > SYNC_MAX_CAPTION_SEC) {
+      c.end = c.start + SYNC_MAX_CAPTION_SEC;
+      report.fixed.push(`long_caption_${i}`);
+    }
+  }
+
+  eliminateCaptionOverlaps(list, SYNC_OVERLAP_GAP_SEC);
+
+  for (let i = 0; i < list.length - 1; i++) {
+    if (list[i].end > list[i + 1].start - SYNC_OVERLAP_GAP_SEC) {
+      report.warnings.push(`overlap_residual_${i}`);
+    }
+  }
+
+  if (report.fixed.length || report.warnings.length) {
+    console.log('[caption-sync-validation]', report);
+  }
+  return list;
+}
+
 function composeRhythmBlocks(rawSegments, opts = {}) {
   const baseMaxWords = Math.max(3, Math.min(5, Number(opts.maxWordsPerBlock ?? 5)));
   const minDurationSec = Math.max(0.4, Number(opts.minDurationSec ?? 0.7));
   const maxDurationSec = Math.max(minDurationSec, Number(opts.maxDurationSec ?? 2.6));
-  const overlapGuardSec = Math.max(0, Number(opts.overlapGuardSec ?? 0.04));
+  const overlapGuardSec = Math.max(0, Number(opts.overlapGuardSec ?? SYNC_OVERLAP_GAP_SEC));
   const timelineResult = normalizeWordTimeline(rawSegments, opts);
   const timeline = timelineResult.words;
+  const globalRate = globalSpeechRateWps(timeline);
   const blocks = [];
   let i = 0;
   while (i < timeline.length) {
-    const first = timeline[i];
-    const chunkWords = [first.word];
-    const chunkMeta = [first];
+    const chunkMeta = [timeline[i]];
     let j = i + 1;
+    let boundaryReason = null;
+    let boundaryGap = null;
+
     while (j < timeline.length) {
+      const prev = chunkMeta[chunkMeta.length - 1];
       const next = timeline[j];
-      const speechRate = chunkMeta.length / Math.max(0.01, chunkMeta[chunkMeta.length - 1].end - first.start);
-      const dynamicMaxWords = speechRate > 3.8 ? 3 : speechRate > 2.7 ? 4 : baseMaxWords;
-      const gap = next.start - chunkMeta[chunkMeta.length - 1].end;
-      if (chunkWords.length >= dynamicMaxWords) break;
-      if (gap > 0.33) break;
-      chunkWords.push(next.word);
+      const gap = next.start - prev.end;
+      const localRate = wordsPerSecond(chunkMeta.length, prev.end - chunkMeta[0].start);
+      const dynamicMaxWords = localRate > 3.8 ? 3 : localRate > 2.7 ? 4 : baseMaxWords;
+      const decision = shouldForceCaptionBoundary(prev, next, gap, globalRate, chunkMeta.length, dynamicMaxWords);
+      boundaryGap = gap;
+      if (decision.break) {
+        boundaryReason = decision.reason;
+        break;
+      }
       chunkMeta.push(next);
-      if (/[.!?]$/.test(next.word) && chunkWords.length >= 2) {
+      if (/[.!?]$/.test(String(next.word)) && chunkMeta.length >= 2) {
+        boundaryReason = 'punctuation';
         j += 1;
         break;
       }
       j += 1;
     }
 
-    const firstWordStart = chunkMeta[0].start;
-    const lastWordEnd = chunkMeta[chunkMeta.length - 1].end;
-    const adjustedStart = Math.max(0, firstWordStart - 0.06);
-    const adjustedEnd = lastWordEnd + 0.08;
-    const speechRate = chunkMeta.length / Math.max(0.01, lastWordEnd - firstWordStart);
-    const text = normalizeCueText(chunkWords.join(' '));
-    blocks.push({
-      text,
-      start: adjustedStart,
-      end: adjustedEnd,
-      words: cueWords(text),
-      wordTimeline: chunkMeta,
-      firstWordStart,
-      lastWordEnd,
-      adjustedStart,
-      adjustedEnd,
-      speechRate
-    });
+    const text = normalizeCueText(chunkMeta.map((w) => w.word).join(' '));
+    blocks.push(
+      reanchorBlockTiming({
+        text,
+        words: cueWords(text),
+        wordTimeline: chunkMeta,
+        boundaryReason,
+        boundaryGap: boundaryGap != null ? Number(boundaryGap.toFixed(4)) : null
+      })
+    );
     i = j;
   }
 
@@ -376,59 +610,31 @@ function composeRhythmBlocks(rawSegments, opts = {}) {
     if (growing && near) {
       prev.text = b.text;
       prev.words = b.words;
-      prev.end = Math.max(prev.end, b.end);
       prev.wordTimeline = [...(prev.wordTimeline || []), ...(b.wordTimeline || [])];
-      prev.lastWordEnd = b.lastWordEnd ?? prev.lastWordEnd;
-      prev.adjustedEnd = b.adjustedEnd ?? prev.adjustedEnd;
+      const merged = reanchorBlockTiming(prev);
+      Object.assign(prev, merged);
       continue;
     }
     collapsed.push({ ...b });
   }
 
-  // Split overly long blocks before anti-flicker merge.
   const bounded = [];
   for (const b of collapsed) {
-    const dur = b.end - b.start;
-    if (dur <= maxDurationSec) {
-      bounded.push(b);
-      continue;
-    }
-    const parts = Math.ceil(dur / maxDurationSec);
-    const per = dur / parts;
-    const wordsPerPart = Math.max(2, Math.ceil((b.words || []).length / parts));
-    for (let i = 0; i < parts; i++) {
-      const start = b.start + i * per;
-      const end = i === parts - 1 ? b.end : b.start + (i + 1) * per;
-      const w = (b.words || []).slice(i * wordsPerPart, (i + 1) * wordsPerPart);
-      bounded.push({
-        text: w.join(' ') || b.text,
-        start,
-        end,
-        words: cueWords(w.join(' ') || b.text),
-        wordTimeline: (b.wordTimeline || []).filter((x) => x.start >= start - 0.001 && x.end <= end + 0.001),
-        firstWordStart: start,
-        lastWordEnd: end,
-        adjustedStart: start,
-        adjustedEnd: end,
-        speechRate: b.speechRate
-      });
-    }
+    const splits = splitLongBlockOnWordBoundaries(b, maxDurationSec);
+    bounded.push(...splits);
   }
 
-  // Anti-flicker + overlap smoothing
   const smoothed = [];
   for (const block of bounded) {
-    const cur = { ...block };
+    const cur = reanchorBlockTiming({ ...block });
     const prev = smoothed[smoothed.length - 1];
-    if (prev && cur.start < prev.end - overlapGuardSec) {
-      cur.start = prev.end - overlapGuardSec;
-    }
     if (prev) {
       const prevDur = prev.end - prev.start;
       if (prevDur < minDurationSec) {
         prev.text = `${prev.text} ${cur.text}`.trim();
         prev.words = cueWords(prev.text);
-        prev.end = Math.max(prev.end, cur.end);
+        prev.wordTimeline = [...(prev.wordTimeline || []), ...(cur.wordTimeline || [])];
+        Object.assign(prev, reanchorBlockTiming(prev));
         continue;
       }
     }
@@ -440,10 +646,16 @@ function composeRhythmBlocks(rawSegments, opts = {}) {
     if (last.end - last.start < minDurationSec) {
       prev.text = `${prev.text} ${last.text}`.trim();
       prev.words = cueWords(prev.text);
-      prev.end = Math.max(prev.end, last.end);
+      prev.wordTimeline = [...(prev.wordTimeline || []), ...(last.wordTimeline || [])];
+      Object.assign(prev, reanchorBlockTiming(prev));
       smoothed.pop();
     }
   }
+
+  eliminateCaptionOverlaps(smoothed, SYNC_OVERLAP_GAP_SEC);
+  detectAndCorrectDrift(smoothed);
+  applySpeechRatePersistence(smoothed);
+  eliminateCaptionOverlaps(smoothed, SYNC_OVERLAP_GAP_SEC);
 
   const out = smoothed.map((b, i) => ({
     id: `cue_${i}`,
@@ -459,8 +671,13 @@ function composeRhythmBlocks(rawSegments, opts = {}) {
     adjustedStart: Number(b.adjustedStart ?? b.start),
     adjustedEnd: Number(b.adjustedEnd ?? b.end),
     speechRate: Number((b.speechRate || 0).toFixed(3)),
+    wordTimeline: b.wordTimeline,
+    boundaryReason: b.boundaryReason ?? null,
+    boundaryGap: b.boundaryGap ?? null,
+    driftCorrectionApplied: b.driftCorrectionApplied ?? 0,
     _words: b.words
   }));
+  logCaptionSyncDebug(out);
   for (let i = 1; i < out.length; i++) {
     const prev = out[i - 1];
     const cur = out[i];
@@ -525,15 +742,16 @@ function copyWithoutPrivate(cues) {
  */
 export function buildCanonicalSubtitles(rawSegments) {
   const raw = Array.isArray(rawSegments) ? rawSegments : [];
-  return composeRhythmBlocks(raw, {
+  const composed = composeRhythmBlocks(raw, {
     maxWordsPerBlock: 5,
     minDurationSec: 0.7,
     maxDurationSec: 2.6,
-    overlapGuardSec: 0.04,
+    overlapGuardSec: SYNC_OVERLAP_GAP_SEC,
     lowConfidenceThreshold: Number(process.env.ASR_LOW_CONF_THRESHOLD || 0.62),
     enableModelVoting: String(process.env.ASR_ENABLE_MODEL_VOTING || '0') === '1',
     languageHint: String(process.env.ASR_LANGUAGE_HINT || 'auto')
   });
+  return validateAndFixCaptionTimingForExport(composed);
 }
 
 /**
