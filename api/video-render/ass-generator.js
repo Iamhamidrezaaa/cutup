@@ -296,7 +296,23 @@ export function generateAssContent(segments, presetId, dims = {}) {
     playResY
   };
 
-  const canonicalSubtitles = buildCanonicalSubtitles(segments);
+  const rawSegments = Array.isArray(segments) ? segments : [];
+  const finalOnlySegments = rawSegments.filter((seg) => {
+    if (!seg || typeof seg !== 'object') return false;
+    if (seg.isFinal === false) return false;
+    return true;
+  });
+  console.log(
+    '[caption-final-blocks]',
+    finalOnlySegments.map((seg, index) => ({
+      index,
+      start: Number(seg.start) || 0,
+      end: Number(seg.end) || 0,
+      text: String(seg.text || '').trim()
+    }))
+  );
+
+  const canonicalSubtitles = buildCanonicalSubtitles(finalOnlySegments);
   if (!canonicalSubtitles.length) {
     throw new Error('SUBTITLE_CANONICAL_EMPTY');
   }
