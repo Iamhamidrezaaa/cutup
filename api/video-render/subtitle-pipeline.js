@@ -738,8 +738,57 @@ function copyWithoutPrivate(cues) {
   }));
 }
 
+/** Min visible duration for libass/ffmpeg burn (~4 frames @ 30fps). */
+export const MIN_BURN_CUE_VISIBLE_SEC = 0.13;
+
 /**
- * Burn/export: preserve segment start/end exactly as SRT/preview (no rhythm re-chunking).
+ * Drop rolling/intermediate YouTube-style cues (next cue extends same text).
+ */
+export function collapseRollingCaptionCues(segments) {
+  const sorted = [...(Array.isArray(segments) ? segments : [])].sort((a, b) => a.start - b.start);
+  const out = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const cur = sorted[i];
+    const next = sorted[i + 1];
+    if (next && next.start <= cur.end + 0.12) {
+      const a = normalizeCueText(cur.text);
+      const b = normalizeCueText(next.text);
+      if (b.startsWith(a) && b.length > a.length) continue;
+      if (a === b) continue;
+    }
+    out.push({ ...cur });
+  }
+  return out;
+}
+
+/**
+ * Extend ultra-short cues so libass actually renders them on export.
+ */
+export function ensureBurnCueDurations(cues, minDurSec = MIN_BURN_CUE_VISIBLE_SEC) {
+  const minDur = Math.max(0.08, Number(minDurSec) || MIN_BURN_CUE_VISIBLE_SEC);
+  const sorted = [...(Array.isArray(cues) ? cues : [])].sort((a, b) => a.start - b.start);
+  return sorted.map((cue, i) => {
+    const next = sorted[i + 1];
+    const start = Number(cue.start);
+    let end = Number(cue.end);
+    end = Math.max(end, start + minDur);
+    if (next) {
+      end = Math.min(end, Number(next.start) - 0.02);
+    }
+    end = Math.max(start + 0.04, end);
+    return {
+      ...cue,
+      start,
+      end,
+      sourceStart: start,
+      sourceEnd: end,
+      duration: Number((end - start).toFixed(3))
+    };
+  });
+}
+
+/**
+ * Burn/export: preserve segment start/end (collapse rolling SRT + min visible duration).
  */
 export function buildSourceAlignedSubtitles(rawSegments) {
   const raw = Array.isArray(rawSegments) ? rawSegments : [];
@@ -765,7 +814,18 @@ export function buildSourceAlignedSubtitles(rawSegments) {
       sourceEnd: end
     });
   }
-  return dedupeOverlappingBurnCues(cues);
+  const collapsed = collapseRollingCaptionCues(cues);
+  const withDuration = ensureBurnCueDurations(collapsed);
+  if (raw.length > withDuration.length) {
+    console.log('[burn-caption-collapse]', {
+      inputCues: raw.length,
+      afterRollingCollapse: collapsed.length,
+      afterMinDuration: withDuration.length,
+      droppedRollingIntermediate: raw.length - collapsed.length,
+      note: 'Micro-duration SRT cues expanded for libass visibility'
+    });
+  }
+  return withDuration;
 }
 
 /**

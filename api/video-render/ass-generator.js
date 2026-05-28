@@ -474,7 +474,10 @@ export function generateAssContent(segments, presetId, dims = {}) {
       finalStyledAssText: text
     });
     const syncStart = Number(enrichedCue.sourceStart ?? enrichedCue.start ?? enrichedCue.renderStart);
-    const syncEnd = Number(enrichedCue.sourceEnd ?? enrichedCue.end ?? enrichedCue.renderEnd);
+    let syncEnd = Number(enrichedCue.sourceEnd ?? enrichedCue.end ?? enrichedCue.renderEnd);
+    if (useSourceAlignedTimings) {
+      syncEnd = Math.max(syncEnd, Number(enrichedCue.renderEnd ?? syncEnd));
+    }
     return `Dialogue: 0,${toAssTime(syncStart)},${toAssTime(syncEnd)},Default,,0,0,${mV},,${text}`;
   });
 
