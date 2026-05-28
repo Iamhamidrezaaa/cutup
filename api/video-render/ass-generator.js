@@ -192,36 +192,22 @@ export function toAssTime(seconds) {
 
 function buildInlineEmphasis(token, preset, renderProfile) {
   const handler = preset.emphasis?.handler || 'default';
-  const scalePct = preset.emphasis?.scalePercent || renderProfile.emphasisScalePercent || 115;
-  const hiFs = Math.round(preset.fontSize * (scalePct / 100));
-  const kinetic =
-    renderProfile.allowKinetic &&
-    preset.motion?.kinetic &&
-    (handler === 'hormozi' || handler === 'mrbeast');
-
-  if (kinetic) {
-    const pulse = Math.max(104, Math.min(116, scalePct - 6));
-    const t1 = Math.round(90 * (renderProfile.animationIntensity || 1));
-    return `{\\c${preset.secondaryColor}\\b1\\fs${hiFs}\\t(0,${t1},\\fscx${pulse}\\fscy${pulse})}${escapeAssText(token.text)}{\\r}`;
-  }
-
-  if (renderProfile.simplifyTags) {
-    return `{\\c${preset.secondaryColor}\\b1}${escapeAssText(token.text)}{\\r}`;
-  }
-  return `{\\c${preset.secondaryColor}\\b1\\fs${hiFs}}${escapeAssText(token.text)}{\\r}`;
+  const weight = handler === 'minimal' || handler === 'luxury' ? '\\b0' : '\\b1';
+  return `{\\c${preset.secondaryColor}${weight}}${escapeAssText(token.text)}{\\r}`;
 }
 
 function linesToAssText(lines, preset, { disableEmphasis = false, renderProfile } = {}) {
   if (disableEmphasis) {
-    return lines.map((line) => escapeAssText(line)).join('\\N');
+    return { text: lines.map((line) => escapeAssText(line)).join('\\N'), emphasisWords: [] };
   }
 
   const handler = preset.emphasis?.handler || 'default';
-  const profileInline = Math.max(1, renderProfile?.maxInlineEmphasisPerCue || 2);
+  const profileInline = Math.max(1, Math.min(2, renderProfile?.maxInlineEmphasisPerCue || 2));
   const presetInline = Number(preset.emphasis?.maxPerLine || 0);
-  const maxInline = clamp(Math.max(profileInline, presetInline), 1, 6);
+  const maxInline = clamp(Math.max(profileInline, presetInline), 1, 2);
   let emphasized = 0;
   const parts = [];
+  const emphasisWords = [];
 
   for (let li = 0; li < lines.length; li++) {
     if (li > 0) parts.push('\\N');
@@ -233,13 +219,14 @@ function linesToAssText(lines, preset, { disableEmphasis = false, renderProfile 
       }
       if (emphasized < maxInline && shouldEmphasize(token, handler)) {
         parts.push(buildInlineEmphasis(token, preset, renderProfile));
+        emphasisWords.push(String(token.clean || token.text || '').toLowerCase());
         emphasized += 1;
       } else {
         parts.push(escapeAssText(token.text));
       }
     }
   }
-  return parts.join('');
+  return { text: parts.join(''), emphasisWords: [...new Set(emphasisWords)] };
 }
 
 function styleLine(name, preset) {
@@ -456,9 +443,14 @@ export function generateAssContent(segments, presetId, dims = {}) {
     totalChars += String(enrichedCue.text || '').length;
 
     const mV = layout.isVertical ? layout.marginV : cueMarginV(layout.marginV, lineCount, layout.lineHeight);
-    const body = linesToAssText(lines, preset, { disableEmphasis, renderProfile });
+    const bodyResult = linesToAssText(lines, preset, { disableEmphasis, renderProfile });
     const glowPrefix = preset.glow > 0 ? `{\\blur${Number(preset.glow).toFixed(2)}}` : '';
-    const text = `${assRtlPrefix(typoPrefix)}${glowPrefix}${body}`;
+    const text = `${assRtlPrefix(typoPrefix)}${glowPrefix}${bodyResult.text}`;
+    console.log('[caption-emphasis-debug]', {
+      originalText: enrichedCue.text,
+      emphasisWords: Array.isArray(cue.emphasisWords) ? cue.emphasisWords : bodyResult.emphasisWords,
+      finalStyledAssText: text
+    });
     return `Dialogue: 0,${toAssTime(enrichedCue.renderStart)},${toAssTime(enrichedCue.renderEnd)},Default,,0,0,${mV},,${text}`;
   });
 

@@ -10,6 +10,11 @@ export const CAPTION_QUALITY_MODES = Object.freeze({
 });
 
 const TOKEN_RE = /[\p{L}\p{M}\p{N}]+(?:['’\-][\p{L}\p{M}\p{N}]+)*/gu;
+const FILLER = new Set([
+  'a', 'an', 'the', 'to', 'of', 'in', 'on', 'at', 'for', 'from', 'with', 'and', 'or', 'but',
+  'so', 'if', 'as', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'it', 'this', 'that'
+]);
+const DRAMATIC = new Set(['never', 'stop', 'now', 'insane', 'wait', 'you', 'this', 'crazy', 'secret']);
 
 function normalizeCueText(text) {
   return String(text || '')
@@ -20,6 +25,37 @@ function normalizeCueText(text) {
 
 function cueWords(text) {
   return String(text || '').match(TOKEN_RE) || [];
+}
+
+function normalizeWord(w) {
+  return String(w || '').toLowerCase().replace(/[^\p{L}\p{M}\p{N}$%]/gu, '');
+}
+
+function detectEmphasisWords(text) {
+  const wordsList = cueWords(text);
+  const ranked = wordsList
+    .map((w, i) => {
+      const n = normalizeWord(w);
+      if (!n || FILLER.has(n)) return null;
+      let score = 0;
+      if (DRAMATIC.has(n)) score += 4;
+      if (/\d/.test(n)) score += 3;
+      if (/^\$|%$/.test(n)) score += 3;
+      if (n.length <= 4) score += 1.2;
+      if (/ed$|ing$/.test(n)) score += 1.1; // rough verb bias
+      if (/^[A-Z]/.test(w)) score += 0.7; // names/proper nouns
+      if (i === 0) score += 0.5;
+      return { raw: w, norm: n, score };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.score - a.score);
+  const top = [];
+  for (const r of ranked) {
+    if (top.length >= 2) break;
+    if (r.score < 2.2) break;
+    if (!top.includes(r.norm)) top.push(r.norm);
+  }
+  return top;
 }
 
 function toCanonicalCue(seg, index) {
@@ -59,8 +95,9 @@ function normalizeForAccumulation(text) {
 }
 
 function composeRhythmBlocks(rawSegments, opts = {}) {
-  const maxWords = Math.max(3, Math.min(5, Number(opts.maxWordsPerBlock ?? 5)));
-  const minDurationSec = Math.max(0.2, Number(opts.minDurationSec ?? 0.35));
+  const baseMaxWords = Math.max(3, Math.min(5, Number(opts.maxWordsPerBlock ?? 5)));
+  const minDurationSec = Math.max(0.4, Number(opts.minDurationSec ?? 0.7));
+  const maxDurationSec = Math.max(minDurationSec, Number(opts.maxDurationSec ?? 2.6));
   const overlapGuardSec = Math.max(0, Number(opts.overlapGuardSec ?? 0.04));
   const source = Array.isArray(rawSegments) ? rawSegments : [];
   const blocks = [];
@@ -72,7 +109,9 @@ function composeRhythmBlocks(rawSegments, opts = {}) {
     const wordsList = cueWords(text);
     if (!wordsList.length) continue;
 
-    const chunks = splitPhraseToWordChunks(wordsList, maxWords);
+    const speechRate = wordsList.length / Math.max(0.01, Number(seg.end) - Number(seg.start));
+    const dynamicMaxWords = speechRate > 3.8 ? 3 : speechRate > 2.7 ? 4 : baseMaxWords;
+    const chunks = splitPhraseToWordChunks(wordsList, dynamicMaxWords);
     const span = Math.max(0.01, Number(seg.end) - Number(seg.start));
     const chunkDur = span / Math.max(1, chunks.length);
 
@@ -109,9 +148,33 @@ function composeRhythmBlocks(rawSegments, opts = {}) {
     collapsed.push({ ...b });
   }
 
+  // Split overly long blocks before anti-flicker merge.
+  const bounded = [];
+  for (const b of collapsed) {
+    const dur = b.end - b.start;
+    if (dur <= maxDurationSec) {
+      bounded.push(b);
+      continue;
+    }
+    const parts = Math.ceil(dur / maxDurationSec);
+    const per = dur / parts;
+    const wordsPerPart = Math.max(2, Math.ceil((b.words || []).length / parts));
+    for (let i = 0; i < parts; i++) {
+      const start = b.start + i * per;
+      const end = i === parts - 1 ? b.end : b.start + (i + 1) * per;
+      const w = (b.words || []).slice(i * wordsPerPart, (i + 1) * wordsPerPart);
+      bounded.push({
+        text: w.join(' ') || b.text,
+        start,
+        end,
+        words: cueWords(w.join(' ') || b.text)
+      });
+    }
+  }
+
   // Anti-flicker + overlap smoothing
   const smoothed = [];
-  for (const block of collapsed) {
+  for (const block of bounded) {
     const cur = { ...block };
     const prev = smoothed[smoothed.length - 1];
     if (prev && cur.start < prev.end - overlapGuardSec) {
@@ -139,7 +202,7 @@ function composeRhythmBlocks(rawSegments, opts = {}) {
     }
   }
 
-  return smoothed.map((b, i) => ({
+  const out = smoothed.map((b, i) => ({
     id: `cue_${i}`,
     index: i,
     start: Number(b.start),
@@ -147,8 +210,16 @@ function composeRhythmBlocks(rawSegments, opts = {}) {
     duration: Number((b.end - b.start).toFixed(3)),
     text: normalizeCueText(b.text),
     words: b.words,
+    emphasisWords: detectEmphasisWords(b.text),
     _words: b.words
   }));
+  for (let i = 1; i < out.length; i++) {
+    const prev = out[i - 1];
+    const cur = out[i];
+    if (!prev.emphasisWords?.length || !cur.emphasisWords?.length) continue;
+    cur.emphasisWords = cur.emphasisWords.filter((w) => !prev.emphasisWords.includes(w)).slice(0, 2);
+  }
+  return out;
 }
 
 function cloneCue(cue) {
@@ -157,7 +228,10 @@ function cloneCue(cue) {
     index: cue.index,
     start: cue.start,
     end: cue.end,
-    text: cue.text
+    text: cue.text,
+    words: cue.words,
+    duration: cue.duration,
+    emphasisWords: cue.emphasisWords
   };
 }
 
@@ -189,7 +263,8 @@ export function buildCanonicalSubtitles(rawSegments) {
   const raw = Array.isArray(rawSegments) ? rawSegments : [];
   return composeRhythmBlocks(raw, {
     maxWordsPerBlock: 5,
-    minDurationSec: 0.35,
+    minDurationSec: 0.7,
+    maxDurationSec: 2.6,
     overlapGuardSec: 0.04
   });
 }
