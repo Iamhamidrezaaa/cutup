@@ -16,7 +16,11 @@ import {
   assertCueIntegrity,
   continuitySummary
 } from './subtitle-pipeline.js';
-import { resolveRenderLayout, cueMarginV } from './layout-engine.js';
+import {
+  resolveRenderLayout,
+  orderAssLinesBottomFirst,
+  buildAssBottomAnchorTag
+} from './layout-engine.js';
 import { assRtlPrefix } from './rtl-text.js';
 
 function escapeAssText(text) {
@@ -462,10 +466,12 @@ export function generateAssContent(segments, presetId, dims = {}) {
     if (lineCount > 1) wrappedCount += 1;
     totalChars += String(enrichedCue.text || '').length;
 
-    const mV = layout.isVertical ? layout.marginV : cueMarginV(layout.marginV, lineCount, layout.lineHeight);
-    const bodyResult = linesToAssText(lines, preset, { disableEmphasis, renderProfile });
+    const assLines = orderAssLinesBottomFirst(lines);
+    const bodyResult = linesToAssText(assLines, preset, { disableEmphasis, renderProfile });
+    const bottomAnchor = buildAssBottomAnchorTag(playResX, playResY, layout.marginV);
     const glowPrefix = preset.glow > 0 ? `{\\blur${Number(preset.glow).toFixed(2)}}` : '';
-    const text = `${assRtlPrefix(typoPrefix)}${glowPrefix}${bodyResult.text}`;
+    const text = `${assRtlPrefix(typoPrefix)}${bottomAnchor}${glowPrefix}${bodyResult.text}`;
+    const mV = layout.marginV;
     console.log('[caption-emphasis-debug]', {
       originalText: enrichedCue.text,
       emphasisWords: Array.isArray(cue.emphasisWords) ? cue.emphasisWords : bodyResult.emphasisWords,

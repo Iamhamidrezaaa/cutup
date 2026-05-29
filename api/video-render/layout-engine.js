@@ -134,13 +134,7 @@ export function resolveRenderLayout(dims, cues, preset) {
   const maxLines = estimateMaxCueLines(cues, layout, useUppercase);
   const density = estimateWordDensity(cues);
 
-  let marginV = placement.marginV;
-  if (isVertical) {
-    // Fixed cinematic lower-third safe area.
-    marginV = Math.max(260, Math.min(320, Number(preset.marginV) || 290));
-  } else if (isHorizontal) {
-    marginV = Math.round(playResY * Math.min(0.18, Math.max(0.12, placement.safeZone || 0.15)));
-  }
+  const marginV = resolveBurnBottomMarginV(playResY, isVertical);
 
   const fontSize = resolveDynamicFontSize({
     playResY,
@@ -190,8 +184,37 @@ export function resolveRenderLayout(dims, cues, preset) {
   };
 }
 
-/** Per-cue bottom margin (lift multi-line blocks). */
-export function cueMarginV(baseMarginV, lineCount, lineHeight) {
-  const lines = Math.max(1, lineCount);
-  return baseMarginV + Math.max(0, lines - 1) * lineHeight;
+/**
+ * Bottom-center anchor (Alignment=2): MarginV is distance from the bottom edge.
+ * Must stay constant per resolution — never increase for multi-line cues.
+ */
+export function resolveBurnBottomMarginV(playResY, isVertical) {
+  const h = Math.max(2, Number(playResY) || 1920);
+  const ratio = Number(
+    process.env.RENDER_SUBTITLE_BOTTOM_MARGIN_RATIO ||
+      (isVertical ? 0.152 : 0.15)
+  );
+  return Math.round(h * Math.min(0.22, Math.max(0.08, ratio)));
+}
+
+/** @deprecated use resolveBurnBottomMarginV — kept for callers; ignores line count. */
+export function cueMarginV(baseMarginV, _lineCount, _lineHeight) {
+  return baseMarginV;
+}
+
+/**
+ * ASS stacks lines from the alignment edge outward. For bottom alignment the first
+ * line in the event sits on the bottom — reverse so reading order is top → bottom.
+ */
+export function orderAssLinesBottomFirst(lines) {
+  const list = Array.isArray(lines) ? lines.filter(Boolean) : [];
+  if (list.length <= 1) return list;
+  return [...list].reverse();
+}
+
+/** Pin bottom-center of the cue block to a fixed pixel Y (libass). */
+export function buildAssBottomAnchorTag(playResX, playResY, marginV) {
+  const x = Math.round((Number(playResX) || 1080) / 2);
+  const y = Math.round((Number(playResY) || 1920) - (Number(marginV) || 0));
+  return `{\\an2\\pos(${x},${y})}`;
 }
