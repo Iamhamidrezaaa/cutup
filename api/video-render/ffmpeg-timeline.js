@@ -135,10 +135,14 @@ export function buildTimelineBurnPlan(probe, subtitleCues = [], opts = {}) {
 
     if (speechLeadSec > 0.25 && speechLeadSec < 10) {
       const speechDelta = speech - cueStart;
-      const anchorBlend = Math.max(
+      const lateBlend = Math.max(
         0.25,
         Math.min(1, Number(process.env.RENDER_BURN_SPEECH_ANCHOR_BLEND || 0.55))
       );
+      const anchorBlend =
+        speechDelta < 0
+          ? Math.max(0.85, Math.min(1, Number(process.env.RENDER_BURN_SPEECH_ANCHOR_BLEND_EARLY || 1)))
+          : lateBlend;
       videoPtsShiftSec = 0;
       assShiftSec = Number((speechDelta * anchorBlend).toFixed(4));
       logFfmpegTimelineDebug({
@@ -148,7 +152,10 @@ export function buildTimelineBurnPlan(probe, subtitleCues = [], opts = {}) {
         speechDeltaSec: Number(speechDelta.toFixed(4)),
         anchorBlend,
         assShiftSec,
-        reason: 'Partial speech anchor — avoid pulling all cues too early'
+        reason:
+          speechDelta < 0
+            ? 'Full early pull when first cue is late vs speech'
+            : 'Partial speech anchor when cue leads speech'
       });
     } else if (videoLateSec > STREAM_OFFSET_WARN_SEC) {
       if (preferMinimalCorrection) {
@@ -236,8 +243,10 @@ export function shiftAssContentTimestamps(content, shiftSec) {
       const start = parseAssTime(parts[1]);
       const end = parseAssTime(parts[2]);
       if (start == null || end == null) return line;
-      parts[1] = formatAssTime(start + shift);
-      parts[2] = formatAssTime(end + shift);
+      const newStart = Math.max(0, start + shift);
+      const newEnd = Math.max(newStart + 0.05, end + shift);
+      parts[1] = formatAssTime(newStart);
+      parts[2] = formatAssTime(newEnd);
       return parts.join(',');
     })
     .join('\n');
