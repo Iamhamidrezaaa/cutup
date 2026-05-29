@@ -543,6 +543,8 @@ export function generateAssContent(segments, presetId, dims = {}) {
   const forensicAfterLinesToAssText = [];
   const forensicBeforeRtlDialogue = [];
   const forensicFinalDialogue = [];
+  let rtlMultilineLineOrderLogs = 0;
+  const RTL_MULTILINE_FORENSIC_MAX = 5;
 
   const dialogues = visibleCues.map((cue, segmentIndex) => {
     const enrichedCue = applyFutureVisualExtensions(cue, {
@@ -563,8 +565,24 @@ export function generateAssContent(segments, presetId, dims = {}) {
     if (lineCount > 1) wrappedCount += 1;
     totalChars += String(enrichedCue.text || '').length;
 
-    const assLines = orderAssLinesBottomFirst(lines);
     const cueRtl = isRtlText(enrichedCue.text);
+    const assLines = cueRtl ? lines : orderAssLinesBottomFirst(lines);
+    if (
+      cueRtl &&
+      lines.length > 1 &&
+      rtlMultilineLineOrderLogs < RTL_MULTILINE_FORENSIC_MAX
+    ) {
+      rtlMultilineLineOrderLogs += 1;
+      console.log(
+        JSON.stringify({
+          tag: 'rtl-multiline-line-order',
+          cueId: cueKey,
+          cueRtl: true,
+          originalLines: [...lines],
+          finalAssLines: [...assLines]
+        })
+      );
+    }
     const bodyResult = linesToAssText(assLines, preset, {
       disableEmphasis: disableEmphasis || cueRtl,
       renderProfile,
