@@ -24,6 +24,7 @@ import {
   retryableForCode
 } from './transcript-errors.js';
 import { traceLog } from './pipeline-trace.js';
+import { logSubtitleTextForensicStage } from './video-render/subtitle-text-forensics.js';
 import { transcribeAudioPayload, messageForAllProvidersFailed } from './transcription/transcription-router.js';
 import { ensureTranscriptionProvidersInit, getTranscriptionProviderRegistry } from './transcription/init.js';
 import { AllProvidersFailedError, TranscriptionProviderError } from './transcription/errors.js';
@@ -370,6 +371,15 @@ export default async function handler(req, res) {
     console.log('TRANSCRIBE: Success, text length:', transcript.text?.length || 0);
     console.log('TRANSCRIBE V4.0: Segments count:', transcript.segments?.length || 0);
 
+    logSubtitleTextForensicStage(
+      'whisper_raw',
+      (transcript.segments || []).map((seg, i) => ({
+        id: `whisper-${i}`,
+        text: String(seg?.text || '')
+      })),
+      { traceId }
+    );
+
     // GPT "correction" was Persian-only prompts but ran for all languages → wrong-language output.
     // Only run for confirmed Persian (Whisper lang + Arabic script ratio).
     const whisperLang = String(transcript.language || '').toLowerCase();
@@ -458,6 +468,15 @@ export default async function handler(req, res) {
       s.text.trim().length > 0
     );
     
+    logSubtitleTextForensicStage(
+      'whisper_final',
+      validSegments.map((seg, i) => ({
+        id: `whisper-final-${i}`,
+        text: String(seg?.text || '')
+      })),
+      { traceId, note: 'after_optional_gpt_correction' }
+    );
+
     // Log segment information for debugging
     console.log('TRANSCRIBE: Final segments count:', validSegments.length);
     if (validSegments.length > 0) {

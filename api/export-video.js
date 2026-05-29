@@ -23,6 +23,7 @@ import {
 } from './video-render/render-queue.js';
 import { listStylePresets } from './video-render/style-presets.js';
 import { decodeSubtitleTextEntities } from './subtitle-text-entities.js';
+import { logSubtitleTextForensicStage } from './video-render/subtitle-text-forensics.js';
 import { getQueueMetrics } from './infrastructure/guards.js';
 import { extractionDebug } from './infrastructure/observability.js';
 
@@ -174,6 +175,17 @@ async function handleStart(req, res) {
   const sourceUrl = body.sourceUrl || body.url || null;
   const segments = normalizeSegments(body.segments);
   const exportDoc = body.exportDoc && body.exportDoc.format === 'cutup-style-v1' ? body.exportDoc : null;
+
+  logSubtitleTextForensicStage(
+    'render_export_request_segments',
+    segments.map((seg, i) => ({
+      id: `export-seg-${i}`,
+      start: seg.start,
+      end: seg.end,
+      text: String(seg.text || '')
+    })),
+    { traceId, selectedVersion, captionMode }
+  );
 
   if (!exportDoc && !segments.length) {
     setCORSHeaders(res);

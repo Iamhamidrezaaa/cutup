@@ -22,6 +22,11 @@ import {
   buildAssBottomAnchorTag
 } from './layout-engine.js';
 import { isRtlText, resolveRtlFontName } from './rtl-text.js';
+import {
+  isSubtitleTextForensicEnabled,
+  logSubtitleTextForensicStage,
+  forensicMaxCues
+} from './subtitle-text-forensics.js';
 
 function escapeAssText(text) {
   return String(text || '')
@@ -318,7 +323,19 @@ export function generateAssContent(segments, presetId, dims = {}) {
     playResY
   };
 
+  const forensicCtx = dims.forensicCtx && typeof dims.forensicCtx === 'object' ? dims.forensicCtx : {};
   const rawSegments = Array.isArray(segments) ? segments : [];
+  const forensicSample = rawSegments.map((s) => s?.text).find(Boolean) || '';
+  if (isSubtitleTextForensicEnabled(forensicSample)) {
+    logSubtitleTextForensicStage(
+      'render_input_segments',
+      rawSegments.map((seg, i) => ({
+        id: seg?.id ?? `seg-${i}`,
+        text: String(seg?.text || '')
+      })),
+      forensicCtx
+    );
+  }
   const finalOnlySegments = rawSegments.filter((seg) => {
     if (!seg || typeof seg !== 'object') return false;
     if (seg.isFinal === false) return false;
@@ -340,6 +357,16 @@ export function generateAssContent(segments, presetId, dims = {}) {
   const canonicalSubtitles = useSourceAlignedTimings
     ? buildSourceAlignedSubtitles(finalOnlySegments)
     : buildCanonicalSubtitles(finalOnlySegments);
+  if (isSubtitleTextForensicEnabled(forensicSample)) {
+    logSubtitleTextForensicStage(
+      'after_subtitle_pipeline_normalization',
+      canonicalSubtitles.map((cue, i) => ({
+        id: cue?.id ?? `cue-${i}`,
+        text: String(cue?.text || '')
+      })),
+      forensicCtx
+    );
+  }
   if (!canonicalSubtitles.length) {
     throw new Error('SUBTITLE_CANONICAL_EMPTY');
   }
@@ -499,12 +526,37 @@ export function generateAssContent(segments, presetId, dims = {}) {
   let maxLineCount = 1;
   let totalChars = 0;
 
+  const forensicOn = isSubtitleTextForensicEnabled(forensicSample);
+  const forensicCueCap = forensicMaxCues();
+  if (forensicOn) {
+    logSubtitleTextForensicStage(
+      'before_buildCueLines',
+      visibleCues.slice(0, forensicCueCap).map((cue, i) => ({
+        id: cue?.id ?? `cue-${i}`,
+        text: String(cue?.text || '')
+      })),
+      forensicCtx
+    );
+  }
+
+  const forensicAfterBuildCueLines = [];
+  const forensicAfterLinesToAssText = [];
+  const forensicBeforeRtlDialogue = [];
+  const forensicFinalDialogue = [];
+
   const dialogues = visibleCues.map((cue, segmentIndex) => {
     const enrichedCue = applyFutureVisualExtensions(cue, {
       renderProfile,
       visualFeatureFlags
     });
     const lines = buildCueLines(enrichedCue, layout.layout, layout.useUppercase);
+    const cueKey = enrichedCue?.id ?? `cue-${segmentIndex}`;
+    if (forensicOn && segmentIndex < forensicCueCap) {
+      forensicAfterBuildCueLines.push({
+        id: cueKey,
+        text: (Array.isArray(lines) ? lines : []).join('\n')
+      });
+    }
     const lineCount = Math.max(1, lines.length);
     totalLines += lineCount;
     maxLineCount = Math.max(maxLineCount, lineCount);
@@ -519,12 +571,18 @@ export function generateAssContent(segments, presetId, dims = {}) {
       cue: enrichedCue,
       segmentIndex
     });
+    if (forensicOn && segmentIndex < forensicCueCap) {
+      forensicAfterLinesToAssText.push({ id: cueKey, text: bodyResult.text });
+    }
 
     let text;
     let styleName = 'Default';
     let dialogueMarginV = layout.marginV;
 
     if (cueRtl) {
+      if (forensicOn && segmentIndex < forensicCueCap) {
+        forensicBeforeRtlDialogue.push({ id: cueKey, text: bodyResult.text });
+      }
       text = buildRtlDialogueText(bodyResult.text);
       styleName = 'RTL_Default';
       dialogueMarginV = 0;
@@ -534,6 +592,9 @@ export function generateAssContent(segments, presetId, dims = {}) {
       text = `${bottomAnchor}${glowPrefix}${bodyResult.text}`;
     }
 
+    if (forensicOn && segmentIndex < forensicCueCap) {
+      forensicFinalDialogue.push({ id: cueKey, text, styleName });
+    }
     console.log('[caption-emphasis-debug]', {
       originalText: enrichedCue.text,
       cueRtl,
@@ -555,6 +616,13 @@ export function generateAssContent(segments, presetId, dims = {}) {
     );
     return `Dialogue: 0,${toAssTime(syncStart)},${toAssTime(syncEnd)},${styleName},,0,0,${dialogueMarginV},,${text}`;
   });
+
+  if (forensicOn) {
+    logSubtitleTextForensicStage('after_buildCueLines', forensicAfterBuildCueLines, forensicCtx);
+    logSubtitleTextForensicStage('after_linesToAssText', forensicAfterLinesToAssText, forensicCtx);
+    logSubtitleTextForensicStage('before_buildRtlDialogueText', forensicBeforeRtlDialogue, forensicCtx);
+    logSubtitleTextForensicStage('final_ass_dialogue_text', forensicFinalDialogue, forensicCtx);
+  }
 
   const cueCount = dialogues.length;
   const avgLines = cueCount > 0 ? totalLines / cueCount : 1;

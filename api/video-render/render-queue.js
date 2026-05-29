@@ -34,6 +34,7 @@ import {
   isHardSyncTestEnabled
 } from './render-timeline-trace.js';
 import { parseAssDialogueTimes } from './ffmpeg-timeline.js';
+import { logProductionAssDialogueDump } from './subtitle-text-forensics.js';
 
 const MAX_CONCURRENT = Math.max(1, Math.min(3, Number(process.env.VIDEO_RENDER_CONCURRENCY || 1)));
 const JOB_TTL_MS = Number(process.env.VIDEO_RENDER_JOB_TTL_MS || 30 * 60 * 1000);
@@ -553,6 +554,10 @@ async function runJob(job) {
       renderHints: {
         forceSafeguards: hqSafeguards,
         styleMode: job.styleMode
+      },
+      forensicCtx: {
+        jobId: job.id,
+        traceId: job.traceId || null
       }
     };
 
@@ -586,6 +591,11 @@ async function runJob(job) {
       throw new Error('ASS file suspiciously small');
     }
     console.log('[ass-write-verified]', { assPath: job.assPath, size: assStat.size });
+
+    logProductionAssDialogueDump(verifyContent, {
+      jobId: job.id,
+      traceId: job.traceId || null
+    });
 
     const assDialoguesPreview = parseAssDialogueTimes(job.assPath, 3);
     traceRenderTimeline(timelineTrace, 'ass_written', {

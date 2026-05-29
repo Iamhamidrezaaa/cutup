@@ -13,6 +13,7 @@ import { traceLog } from './pipeline-trace.js';
 import { classifyOpenAiTranscriptionFailure } from './transcription-provider.js';
 import { logProviderQuota } from './provider-health.js';
 import { decodeSubtitleTextEntities } from './subtitle-text-entities.js';
+import { logSubtitleTextForensicStage } from './video-render/subtitle-text-forensics.js';
 
 /** Approximate output expansion vs English subtitle chars for max_tokens budgeting */
 const LANG_OUTPUT_EXPANSION = {
@@ -177,6 +178,23 @@ export default async function handler(req, res) {
     traceLog(traceId, 'translate-response', { batchesDone: true, cues: translatedSegments.length });
 
     validateTranslationVsOriginal(segments, translatedSegments, sourceLanguage, targetLanguage);
+
+    logSubtitleTextForensicStage(
+      'after_translation',
+      translatedSegments.map((seg, i) => ({
+        id: `tr-${i}`,
+        text: String(seg?.text || '')
+      })),
+      { traceId, targetLanguage, sourceLanguage }
+    );
+    logSubtitleTextForensicStage(
+      'before_translation',
+      segments.map((seg, i) => ({
+        id: `src-${i}`,
+        text: String(seg?.text || '')
+      })),
+      { traceId, targetLanguage, sourceLanguage }
+    );
 
     const translatedSRT = generateSRT(translatedSegments);
     traceLog(traceId, 'translate-parse', { outChars: translatedSRT.length });
