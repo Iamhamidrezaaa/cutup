@@ -1,0 +1,33 @@
+{
+  "playResX": 1080,
+  "playResY": 1920,
+  "exportRtlFlag": true,
+  "fontsInStyles": [
+    {
+      "styleName": "Default",
+      "fontName": "Vazirmatn"
+    },
+    {
+      "styleName": "Emphasis",
+      "fontName": "Vazirmatn"
+    },
+    {
+      "styleName": "RTL_Default",
+      "fontName": "Vazirmatn"
+    }
+  ],
+  "dialogueLineCount": 2,
+  "first20DialogueLines": [
+    "Dialogue: 0,0:00:00.59,0:00:03.57,RTL_Default,,0,0,0,,{\\an2\\fn Vazirmatn}‫برای اولین بار در باشگاه ورزشی",
+    "Dialogue: 0,0:00:03.58,0:00:06.20,RTL_Default,,0,0,0,,{\\an2\\fn Vazirmatn}‫من آماده هستم"
+  ],
+  "fullStyleSection": "[Script Info]\nTitle: Cutup Viral Export\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nScaledBorderAndShadow: yes\nWrapStyle: 0\n; RenderQuality: fast\n; RenderProfile: fast\n; StyleMode: cinematic\n; AdaptiveSafeguards: on\n; RtlFont: Vazirmatn\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Vazirmatn,72,&H00FFFFFF&,&H00FFFFFF&,&H00000000&,&H00000000&,0,0,0,0,100,112,2,0,1,2,0,2,140,140,292,1\nStyle: Emphasis,Vazirmatn,78,&H00FFFFFF&,&H00FFFFFF&,&H00000000&,&H00000000&,-1,0,0,0,100,112,2,0,1,2,0,2,140,140,292,1\nStyle: RTL_Default,Vazirmatn,72,&H00FFFFFF&,&H00FFFFFF&,&H00000000&,&H00000000&,0,0,0,0,100,112,2,0,1,2,0,2,140,140,292,1",
+  "cutupSubtitleFilterString": "scale=1080:1920,subtitles=subtitles.ass:original_size=1080x1920",
+  "cutupFfmpegCommand": "ffmpeg -hide_banner -y -i INPUT.mp4 -vf \"scale=1080:1920,subtitles=subtitles.ass:original_size=1080x1920\" -c:v libx264 -preset fast -crf 23 -c:a aac OUT_cutup_ass.mp4",
+  "srtFfmpegCommand": "ffmpeg -hide_banner -y -i INPUT.mp4 -vf \"subtitles=sample-source.srt:force_style='Fontname=Vazirmatn,Alignment=2'\" -c:v libx264 -preset fast -crf 23 -c:a aac OUT_srt_direct.mp4",
+  "timelinePlan": {
+    "assShiftSec": 0,
+    "videoPtsShiftSec": 0,
+    "skipTimelineCorrection": true
+  }
+}

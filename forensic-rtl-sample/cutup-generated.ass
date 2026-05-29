@@ -1,0 +1,23 @@
+[Script Info]
+Title: Cutup Viral Export
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+ScaledBorderAndShadow: yes
+WrapStyle: 0
+; RenderQuality: fast
+; RenderProfile: fast
+; StyleMode: cinematic
+; AdaptiveSafeguards: on
+; RtlFont: Vazirmatn
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Vazirmatn,72,&H00FFFFFF&,&H00FFFFFF&,&H00000000&,&H00000000&,0,0,0,0,100,112,2,0,1,2,0,2,140,140,292,1
+Style: Emphasis,Vazirmatn,78,&H00FFFFFF&,&H00FFFFFF&,&H00000000&,&H00000000&,-1,0,0,0,100,112,2,0,1,2,0,2,140,140,292,1
+Style: RTL_Default,Vazirmatn,72,&H00FFFFFF&,&H00FFFFFF&,&H00000000&,&H00000000&,0,0,0,0,100,112,2,0,1,2,0,2,140,140,292,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.59,0:00:03.57,RTL_Default,,0,0,0,,{\an2\fn Vazirmatn}‫برای اولین بار در باشگاه ورزشی
+Dialogue: 0,0:00:03.58,0:00:06.20,RTL_Default,,0,0,0,,{\an2\fn Vazirmatn}‫من آماده هستم
