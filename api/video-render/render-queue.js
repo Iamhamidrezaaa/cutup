@@ -5,7 +5,7 @@ import { randomBytes } from 'crypto';
 import { writeFileSync, copyFileSync, statSync } from 'fs';
 import { promises as fsp } from 'fs';
 import { getStylePreset } from './style-presets.js';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { generateAssContent, generateAssFromExportDoc } from './ass-generator.js';
 import {
   burnSubtitles,
@@ -770,6 +770,21 @@ async function runJob(job) {
       job.timelinePlan = burnResult?.timelinePlan || null;
       job.finalRenderSyncReport = burnResult?.finalRenderSyncReport || null;
       job.normalizeResult = normResult;
+      job.burnAssPath = burnResult?.burnAssPath || resolve(job.assPath);
+      job.ffmpegCommandExact = burnResult?.ffmpegCommandExact || null;
+      job.ffmpegCwd = burnResult?.ffmpegCwd || null;
+
+      const exportAssPath = join(job.jobDir, 'export.ass');
+      copyFileSync(job.burnAssPath, exportAssPath);
+      job.exportAssPath = resolve(exportAssPath);
+      console.log('[export-ass-preserved]', {
+        exportMp4: resolve(outputPath),
+        exportAss: job.exportAssPath,
+        burnAssPath: job.burnAssPath,
+        generatorAssPath: resolve(job.assPath),
+        ffmpegCwd: job.ffmpegCwd,
+        ffmpegCommand: job.ffmpegCommandExact
+      });
     } finally {
       stopRenderHeartbeat(job);
       job.ffmpegAbort = null;
@@ -820,6 +835,11 @@ async function runJob(job) {
     );
     diagnostics.assDebug = job.assDebug || null;
     diagnostics.assDebugPath = job.assDebugPath || null;
+    diagnostics.exportAssPath = job.exportAssPath || null;
+    diagnostics.burnAssPath = job.burnAssPath || null;
+    diagnostics.generatorAssPath = job.assPath ? resolve(job.assPath) : null;
+    diagnostics.ffmpegCommandExact = job.ffmpegCommandExact || null;
+    diagnostics.ffmpegCwd = job.ffmpegCwd || null;
     diagnostics.timelineTrace = {
       stageCount: timelineTrace.stages.length,
       files: Object.keys(timelineTrace.files),
@@ -895,7 +915,6 @@ async function runJob(job) {
       jobId: job.id,
       message: err?.message || String(err)
     });
-    cleanupJobArtifacts(job);
     throw err;
   }
 }

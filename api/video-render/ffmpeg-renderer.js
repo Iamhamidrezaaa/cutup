@@ -420,6 +420,21 @@ export async function burnSubtitles(opts) {
     assFile: assName
   });
 
+  const burnAssAbsolute = resolve(burnAssPath);
+  const ffmpegCommandExact = ['ffmpeg', ...args]
+    .map((part) => {
+      const s = String(part);
+      return /[\s"]/.test(s) ? `"${s.replace(/"/g, '\\"')}"` : s;
+    })
+    .join(' ');
+
+  console.log('[video-render] ffmpeg-burn-ass-path', { burnAssAbsolute });
+  console.log('[video-render] ffmpeg-command-exact', {
+    cwd: resolve(assDir),
+    burnAssAbsolute,
+    command: ffmpegCommandExact
+  });
+
   console.log('[video-render] started', {
     quality,
     durationSec,
@@ -640,7 +655,10 @@ export async function burnSubtitles(opts) {
             quality,
             preset: enc,
             timelinePlan,
-            finalRenderSyncReport
+            finalRenderSyncReport,
+            burnAssPath: burnAssAbsolute,
+            ffmpegCommandExact,
+            ffmpegCwd: resolve(assDir)
           });
         }
         return;
@@ -649,7 +667,16 @@ export async function burnSubtitles(opts) {
       }
       if (!settled) {
         settled = true;
-        resolve({ outputPath, quality, preset: enc, timelinePlan, finalRenderSyncReport: null });
+        resolve({
+          outputPath,
+          quality,
+          preset: enc,
+          timelinePlan,
+          finalRenderSyncReport: null,
+          burnAssPath: burnAssAbsolute,
+          ffmpegCommandExact,
+          ffmpegCwd: resolve(assDir)
+        });
       }
     });
   });
