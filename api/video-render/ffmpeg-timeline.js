@@ -134,14 +134,21 @@ export function buildTimelineBurnPlan(probe, subtitleCues = [], opts = {}) {
         : 0;
 
     if (speechLeadSec > 0.25 && speechLeadSec < 10) {
+      const speechDelta = speech - cueStart;
+      const anchorBlend = Math.max(
+        0.25,
+        Math.min(1, Number(process.env.RENDER_BURN_SPEECH_ANCHOR_BLEND || 0.55))
+      );
       videoPtsShiftSec = 0;
-      assShiftSec = Number((speech - cueStart).toFixed(4));
+      assShiftSec = Number((speechDelta * anchorBlend).toFixed(4));
       logFfmpegTimelineDebug({
         speechAnchoredAssShift: true,
         firstSpeechSec: speech,
         firstCueStart: cueStart,
+        speechDeltaSec: Number(speechDelta.toFixed(4)),
+        anchorBlend,
         assShiftSec,
-        reason: 'First cue starts after detected speech — align ASS to audio (no video setpts)'
+        reason: 'Partial speech anchor — avoid pulling all cues too early'
       });
     } else if (videoLateSec > STREAM_OFFSET_WARN_SEC) {
       if (preferMinimalCorrection) {

@@ -744,6 +744,12 @@ export const MIN_BURN_CUE_VISIBLE_SEC = 0.13;
 /** Min on-screen time for a readable phrase on export. */
 export const MIN_BURN_PHRASE_READ_SEC = Number(process.env.RENDER_BURN_MIN_READ_SEC || 0.72);
 
+/** Hold after last word so subs do not vanish before speech ends. */
+export const BURN_TAIL_PAD_SEC = Number(process.env.RENDER_BURN_TAIL_PAD_SEC || 0.2);
+
+/** Slight delay before each phrase appears (reduces "next line too early"). */
+export const BURN_LEAD_DELAY_SEC = Number(process.env.RENDER_BURN_LEAD_DELAY_SEC || 0.09);
+
 const ROLLING_CHAIN_GAP_SEC = 0.18;
 
 /**
@@ -795,6 +801,9 @@ export function mergeRollingCaptionChains(segments) {
       continue;
     }
 
+    if (chain && gap > ROLLING_CHAIN_GAP_SEC && gap < 1.2) {
+      chain.end = Math.max(chain.end, start - 0.03);
+    }
     flush();
     chain = { start, end, text };
   }
@@ -849,24 +858,31 @@ export function collapseRollingCaptionCues(segments) {
 export function stabilizeBurnCueTiming(cues, opts = {}) {
   const minVisibleSec = Math.max(0.08, Number(opts.minVisibleSec ?? MIN_BURN_CUE_VISIBLE_SEC));
   const minReadSec = Math.max(minVisibleSec, Number(opts.minReadSec ?? MIN_BURN_PHRASE_READ_SEC));
-  const interCueGapSec = Math.max(0.02, Number(opts.interCueGapSec ?? 0.04));
+  const tailPadSec = Math.max(0, Number(opts.tailPadSec ?? BURN_TAIL_PAD_SEC));
+  const leadDelaySec = Math.max(0, Number(opts.leadDelaySec ?? BURN_LEAD_DELAY_SEC));
+  const interCueGapSec = Math.max(0.01, Number(opts.interCueGapSec ?? 0.02));
 
   const sorted = [...(Array.isArray(cues) ? cues : [])].sort((a, b) => a.start - b.start);
 
   return sorted.map((cue, i) => {
     const next = sorted[i + 1];
-    const start = Number(cue.start);
+    const rawStart = Number(cue.start);
     const naturalEnd = Number(cue.end);
+    const start = rawStart + leadDelaySec;
     const text = normalizeCueText(cue.text);
     const wordCount = cueWords(text).length;
     const minByWords = Math.min(5.5, Math.max(minReadSec, wordCount * 0.22));
 
-    let end = Math.max(naturalEnd, start + minByWords, start + minVisibleSec);
+    let end = naturalEnd + tailPadSec;
+    end = Math.max(end, start + minByWords, start + minVisibleSec);
 
     if (next) {
-      const nextStart = Number(next.start);
-      if (end > nextStart - interCueGapSec) {
-        end = Math.max(naturalEnd, nextStart - interCueGapSec);
+      const nextStart = Number(next.start) + leadDelaySec;
+      const pauseGap = nextStart - (naturalEnd + tailPadSec);
+      if (pauseGap > 0.12) {
+        end = Math.min(naturalEnd + tailPadSec + pauseGap * 0.4, nextStart - interCueGapSec);
+      } else if (end > nextStart - interCueGapSec) {
+        end = Math.max(naturalEnd + tailPadSec * 0.5, nextStart - interCueGapSec);
       }
     }
 
