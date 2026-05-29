@@ -22,6 +22,7 @@ import {
   buildAssBottomAnchorTag
 } from './layout-engine.js';
 import { isRtlText, resolveRtlFontFallbackChain } from './rtl-text.js';
+import { reshapeAssRtlText } from './rtl-reshaper.js';
 
 function escapeAssText(text) {
   return String(text || '')
@@ -517,8 +518,8 @@ export function generateAssContent(segments, presetId, dims = {}) {
     let dialogueMarginV = layout.marginV;
 
     if (cueRtl) {
-      // Clean text only — libass fribidi fails when override tags precede RTL script.
-      text = bodyResult.text;
+      // Clean reshaped text — no inline tags; libass shapes poorly without arabic_reshaper.
+      text = reshapeAssRtlText(bodyResult.text);
       styleName = 'RTL_Default';
       dialogueMarginV = 0;
     } else {
