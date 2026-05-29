@@ -21,7 +21,7 @@ import {
   orderAssLinesBottomFirst,
   buildAssBottomAnchorTag
 } from './layout-engine.js';
-import { assRtlPrefix, resolveRtlFontFallbackChain } from './rtl-text.js';
+import { isRtlText, resolveRtlFontFallbackChain } from './rtl-text.js';
 
 function escapeAssText(text) {
   return String(text || '')
@@ -252,6 +252,41 @@ function styleLine(name, preset) {
 }
 
 /**
+ * RTL burn style — no inline \\pos (libass BiDi breaks after override blocks).
+ * Position via Alignment=2 + MarginV; Encoding=1 for Arabic/Persian shaping.
+ */
+function buildRtlStyleLine(name, preset, marginV) {
+  const marginL = preset.marginL ?? Math.round((preset.playResX || 1080) * 0.08);
+  const marginR = preset.marginR ?? marginL;
+  const borderStyle = preset.borderStyle ?? 1;
+  return [
+    `Style: ${name}`,
+    preset.fontName,
+    preset.fontSize,
+    preset.primaryColor,
+    preset.secondaryColor,
+    preset.outlineColor,
+    preset.backColor,
+    0,
+    0,
+    0,
+    0,
+    100,
+    preset.scaleY ?? 100,
+    preset.spacing ?? 0,
+    0,
+    borderStyle,
+    preset.outline ?? 4,
+    preset.shadow ?? 3,
+    2,
+    marginL,
+    marginR,
+    marginV,
+    1
+  ].join(',');
+}
+
+/**
  * @param {{ start: number, end: number, text: string }[]} segments
  * @param {string} presetId
  * @param {{ playResX?: number, playResY?: number, durationSec?: number, positionMode?: string, captionMode?: string, qualityMode?: string, quality?: 'fast'|'hq', renderHints?: { forceSafeguards?: boolean } }} [dims]
@@ -443,17 +478,14 @@ export function generateAssContent(segments, presetId, dims = {}) {
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
     styleLine('Default', preset),
     styleLine('Emphasis', { ...preset, fontSize: Math.round(preset.fontSize * 1.08), bold: true }),
+    ...(layout.rtl || visibleCues.some((c) => isRtlText(c.text))
+      ? [buildRtlStyleLine('RTL_Default', preset, layout.marginV)]
+      : []),
     '',
     '[Events]',
     ASS_EVENTS_FORMAT
   ];
   const disableEmphasis = layout.rtl || captionMode === 'accurate';
-  const typoPrefix = {
-    fontName: layout.fontName || preset.fontName,
-    fontSize: preset.fontSize,
-    spacing: layout.spacing,
-    rtl: layout.rtl
-  };
   let totalLines = 0;
   let wrappedCount = 0;
   let maxLineCount = 1;
@@ -472,18 +504,32 @@ export function generateAssContent(segments, presetId, dims = {}) {
     totalChars += String(enrichedCue.text || '').length;
 
     const assLines = orderAssLinesBottomFirst(lines);
+    const cueRtl = isRtlText(enrichedCue.text);
     const bodyResult = linesToAssText(assLines, preset, {
-      disableEmphasis,
+      disableEmphasis: disableEmphasis || cueRtl,
       renderProfile,
       cue: enrichedCue,
       segmentIndex
     });
-    const bottomAnchor = buildAssBottomAnchorTag(playResX, playResY, layout.marginV);
-    const glowPrefix = preset.glow > 0 ? `{\\blur${Number(preset.glow).toFixed(2)}}` : '';
-    const text = `${assRtlPrefix(typoPrefix)}${bottomAnchor}${glowPrefix}${bodyResult.text}`;
-    const mV = layout.marginV;
+
+    let text;
+    let styleName = 'Default';
+    let dialogueMarginV = layout.marginV;
+
+    if (cueRtl) {
+      // Clean text only — libass fribidi fails when override tags precede RTL script.
+      text = bodyResult.text;
+      styleName = 'RTL_Default';
+      dialogueMarginV = 0;
+    } else {
+      const bottomAnchor = buildAssBottomAnchorTag(playResX, playResY, layout.marginV);
+      const glowPrefix = preset.glow > 0 ? `{\\blur${Number(preset.glow).toFixed(2)}}` : '';
+      text = `${bottomAnchor}${glowPrefix}${bodyResult.text}`;
+    }
+
     console.log('[caption-emphasis-debug]', {
       originalText: enrichedCue.text,
+      cueRtl,
       emphasisWords: Array.isArray(cue.emphasisWords) ? cue.emphasisWords : bodyResult.emphasisWords,
       finalStyledAssText: text
     });
@@ -500,7 +546,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
             Number(enrichedCue.renderEnd ?? enrichedCue.end)
           )
     );
-    return `Dialogue: 0,${toAssTime(syncStart)},${toAssTime(syncEnd)},Default,,0,0,${mV},,${text}`;
+    return `Dialogue: 0,${toAssTime(syncStart)},${toAssTime(syncEnd)},${styleName},,0,0,${dialogueMarginV},,${text}`;
   });
 
   const cueCount = dialogues.length;
