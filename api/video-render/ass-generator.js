@@ -359,13 +359,19 @@ export function generateAssContent(segments, presetId, dims = {}) {
       : renderProfile.styleMode === 'cinematic'
         ? 0.84
         : 0.74;
-  const visibleCues = applyVisualReadabilityWindows(cues, {
-    minCueDurationSec: minReadableCueSec,
-    minGapSec: 0.035,
-    maxTailExtensionSec: renderProfile.styleMode === 'safe' ? 0.62 : 0.48,
-    maxLeadExtensionSec: renderProfile.styleMode === 'safe' ? 0.22 : 0.16,
-    videoDurationSec: durationSec || 0
-  });
+  const visibleCues = useSourceAlignedTimings
+    ? cues.map((cue) => ({
+        ...cue,
+        renderStart: Number(cue.sourceStart ?? cue.start),
+        renderEnd: Number(cue.sourceEnd ?? cue.end)
+      }))
+    : applyVisualReadabilityWindows(cues, {
+        minCueDurationSec: minReadableCueSec,
+        minGapSec: 0.035,
+        maxTailExtensionSec: renderProfile.styleMode === 'safe' ? 0.62 : 0.48,
+        maxLeadExtensionSec: renderProfile.styleMode === 'safe' ? 0.22 : 0.16,
+        videoDurationSec: durationSec || 0
+      });
   const visibility = validateVisualVisibility(visibleCues, {
     fps: 30,
     minFrames: renderProfile.styleMode === 'safe' ? 5 : 4
@@ -465,11 +471,19 @@ export function generateAssContent(segments, presetId, dims = {}) {
       emphasisWords: Array.isArray(cue.emphasisWords) ? cue.emphasisWords : bodyResult.emphasisWords,
       finalStyledAssText: text
     });
-    const syncStart = Number(enrichedCue.sourceStart ?? enrichedCue.start ?? enrichedCue.renderStart);
-    let syncEnd = Number(enrichedCue.sourceEnd ?? enrichedCue.end ?? enrichedCue.renderEnd);
-    if (useSourceAlignedTimings) {
-      syncEnd = Math.max(syncEnd, Number(enrichedCue.renderEnd ?? syncEnd));
-    }
+    const syncStart = Number(
+      useSourceAlignedTimings
+        ? enrichedCue.sourceStart ?? enrichedCue.start
+        : enrichedCue.sourceStart ?? enrichedCue.start ?? enrichedCue.renderStart
+    );
+    const syncEnd = Number(
+      useSourceAlignedTimings
+        ? enrichedCue.sourceEnd ?? enrichedCue.end
+        : Math.max(
+            Number(enrichedCue.sourceEnd ?? enrichedCue.end),
+            Number(enrichedCue.renderEnd ?? enrichedCue.end)
+          )
+    );
     return `Dialogue: 0,${toAssTime(syncStart)},${toAssTime(syncEnd)},Default,,0,0,${mV},,${text}`;
   });
 

@@ -738,46 +738,144 @@ function copyWithoutPrivate(cues) {
   }));
 }
 
-/** Min visible duration for libass/ffmpeg burn (~4 frames @ 30fps). */
+/** Min libass frame visibility (~4 frames @ 30fps). */
 export const MIN_BURN_CUE_VISIBLE_SEC = 0.13;
 
+/** Min on-screen time for a readable phrase on export. */
+export const MIN_BURN_PHRASE_READ_SEC = Number(process.env.RENDER_BURN_MIN_READ_SEC || 0.72);
+
+const ROLLING_CHAIN_GAP_SEC = 0.18;
+
 /**
- * Drop rolling/intermediate YouTube-style cues (next cue extends same text).
+ * Merge YouTube rolling captions into one phrase per utterance (first start → last end).
  */
-export function collapseRollingCaptionCues(segments) {
-  const sorted = [...(Array.isArray(segments) ? segments : [])].sort((a, b) => a.start - b.start);
+export function mergeRollingCaptionChains(segments) {
+  const sorted = [...(Array.isArray(segments) ? segments : [])]
+    .filter((s) => s && typeof s.start === 'number' && typeof s.end === 'number' && s.end > s.start)
+    .sort((a, b) => a.start - b.start);
+
+  const chains = [];
+  let chain = null;
+
+  const flush = () => {
+    if (!chain) return;
+    const text = normalizeCueText(chain.text);
+    if (!text) {
+      chain = null;
+      return;
+    }
+    chains.push({
+      start: chain.start,
+      end: chain.end,
+      text,
+      words: cueWords(text)
+    });
+    chain = null;
+  };
+
+  for (const seg of sorted) {
+    const text = normalizeCueText(seg.text);
+    if (!text) continue;
+    const start = Number(seg.start);
+    const end = Number(seg.end);
+
+    if (!chain) {
+      chain = { start, end, text };
+      continue;
+    }
+
+    const gap = start - chain.end;
+    const prev = chain.text;
+    const growing = text.startsWith(prev) && text.length > prev.length;
+    const same = text === prev;
+
+    if (gap <= ROLLING_CHAIN_GAP_SEC && (growing || same)) {
+      chain.end = Math.max(chain.end, end);
+      if (text.length > prev.length) chain.text = text;
+      continue;
+    }
+
+    flush();
+    chain = { start, end, text };
+  }
+  flush();
+  return chains;
+}
+
+/**
+ * Drop blink-length orphans; glue tiny tail words into the next phrase.
+ */
+export function coalesceBurnPhrases(cues) {
+  const sorted = [...(Array.isArray(cues) ? cues : [])].sort((a, b) => a.start - b.start);
   const out = [];
+
   for (let i = 0; i < sorted.length; i++) {
     const cur = sorted[i];
     const next = sorted[i + 1];
-    if (next && next.start <= cur.end + 0.12) {
-      const a = normalizeCueText(cur.text);
-      const b = normalizeCueText(next.text);
-      if (b.startsWith(a) && b.length > a.length) continue;
-      if (a === b) continue;
+    const dur = cur.end - cur.start;
+    const text = normalizeCueText(cur.text);
+    if (!text) continue;
+
+    if (
+      next &&
+      dur < 0.4 &&
+      next.start - cur.start < 0.35 &&
+      next.text.length > text.length
+    ) {
+      continue;
     }
-    out.push({ ...cur });
+
+    const prev = out[out.length - 1];
+    if (prev && cur.start - prev.end < 0.14 && dur < 0.55) {
+      prev.text = normalizeCueText(`${prev.text} ${text}`);
+      prev.words = cueWords(prev.text);
+      prev.end = Math.max(prev.end, cur.end);
+      continue;
+    }
+
+    out.push({ start: cur.start, end: cur.end, text, words: cueWords(text) });
   }
   return out;
 }
 
+/** @deprecated use mergeRollingCaptionChains */
+export function collapseRollingCaptionCues(segments) {
+  return mergeRollingCaptionChains(segments);
+}
+
 /**
- * Extend ultra-short cues so libass actually renders them on export.
+ * Keep natural speech end times; only extend short cues (never chop to a blink).
  */
-export function ensureBurnCueDurations(cues, minDurSec = MIN_BURN_CUE_VISIBLE_SEC) {
-  const minDur = Math.max(0.08, Number(minDurSec) || MIN_BURN_CUE_VISIBLE_SEC);
+export function stabilizeBurnCueTiming(cues, opts = {}) {
+  const minVisibleSec = Math.max(0.08, Number(opts.minVisibleSec ?? MIN_BURN_CUE_VISIBLE_SEC));
+  const minReadSec = Math.max(minVisibleSec, Number(opts.minReadSec ?? MIN_BURN_PHRASE_READ_SEC));
+  const interCueGapSec = Math.max(0.02, Number(opts.interCueGapSec ?? 0.04));
+
   const sorted = [...(Array.isArray(cues) ? cues : [])].sort((a, b) => a.start - b.start);
+
   return sorted.map((cue, i) => {
     const next = sorted[i + 1];
     const start = Number(cue.start);
-    let end = Number(cue.end);
-    end = Math.max(end, start + minDur);
+    const naturalEnd = Number(cue.end);
+    const text = normalizeCueText(cue.text);
+    const wordCount = cueWords(text).length;
+    const minByWords = Math.min(5.5, Math.max(minReadSec, wordCount * 0.22));
+
+    let end = Math.max(naturalEnd, start + minByWords, start + minVisibleSec);
+
     if (next) {
-      end = Math.min(end, Number(next.start) - 0.02);
+      const nextStart = Number(next.start);
+      if (end > nextStart - interCueGapSec) {
+        end = Math.max(naturalEnd, nextStart - interCueGapSec);
+      }
     }
-    end = Math.max(start + 0.04, end);
+
+    end = Math.max(start + minVisibleSec, end);
+
     return {
       ...cue,
+      text,
+      words: cueWords(text),
       start,
       end,
       sourceStart: start,
@@ -785,6 +883,11 @@ export function ensureBurnCueDurations(cues, minDurSec = MIN_BURN_CUE_VISIBLE_SE
       duration: Number((end - start).toFixed(3))
     };
   });
+}
+
+/** @deprecated use stabilizeBurnCueTiming */
+export function ensureBurnCueDurations(cues, minDurSec = MIN_BURN_CUE_VISIBLE_SEC) {
+  return stabilizeBurnCueTiming(cues, { minVisibleSec: minDurSec, minReadSec: minDurSec });
 }
 
 /**
@@ -814,18 +917,28 @@ export function buildSourceAlignedSubtitles(rawSegments) {
       sourceEnd: end
     });
   }
-  const collapsed = collapseRollingCaptionCues(cues);
-  const withDuration = ensureBurnCueDurations(collapsed);
-  if (raw.length > withDuration.length) {
+  const merged = mergeRollingCaptionChains(cues);
+  const coalesced = coalesceBurnPhrases(merged);
+  const stabilized = stabilizeBurnCueTiming(coalesced);
+  if (raw.length !== stabilized.length) {
     console.log('[burn-caption-collapse]', {
       inputCues: raw.length,
-      afterRollingCollapse: collapsed.length,
-      afterMinDuration: withDuration.length,
-      droppedRollingIntermediate: raw.length - collapsed.length,
-      note: 'Micro-duration SRT cues expanded for libass visibility'
+      afterRollingMerge: merged.length,
+      afterStabilize: stabilized.length,
+      mergedChains: raw.length - merged.length,
+      sample: stabilized.slice(0, 3).map((c) => ({
+        start: c.start,
+        end: c.end,
+        dur: Number((c.end - c.start).toFixed(2)),
+        text: String(c.text).slice(0, 50)
+      }))
     });
   }
-  return withDuration;
+  return stabilized.map((cue, i) => ({
+    id: `src-${i}`,
+    index: i,
+    ...cue
+  }));
 }
 
 /**
