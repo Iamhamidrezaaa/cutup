@@ -248,7 +248,8 @@ export async function burnSubtitles(opts) {
   const timelinePlan = buildTimelineBurnPlan(inputProbe, subtitleCues, {
     framePtsAtSeek,
     inputAlreadyNormalized,
-    preferMinimalCorrection
+    preferMinimalCorrection,
+    firstSpeechSec: speechAnchor?.firstSpeechSec ?? null
   });
   if (timelinePlan.offsetDetected) {
     logStreamOffsetDetected({

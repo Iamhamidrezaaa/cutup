@@ -88,10 +88,15 @@ export function computeFramePtsLeadSec(framePtsAtSeek) {
  * @param {object[]} [opts.framePtsAtSeek]
  * @param {boolean} [opts.inputAlreadyNormalized]
  * @param {boolean} [opts.preferMinimalCorrection] source-aligned ASS — avoid guessed shifts
+ * @param {number|null} [opts.firstSpeechSec] silencedetect anchor for ASS-only correction
  */
 export function buildTimelineBurnPlan(probe, subtitleCues = [], opts = {}) {
-  const { framePtsAtSeek = null, inputAlreadyNormalized = false, preferMinimalCorrection = false } =
-    opts;
+  const {
+    framePtsAtSeek = null,
+    inputAlreadyNormalized = false,
+    preferMinimalCorrection = false,
+    firstSpeechSec = null
+  } = opts;
   const videoStart = num(probe?.video?.start_time, 0);
   const audioStart = num(probe?.audio?.start_time, 0);
   const formatStart = num(probe?.format?.start_time, 0);
@@ -117,29 +122,35 @@ export function buildTimelineBurnPlan(probe, subtitleCues = [], opts = {}) {
     const streamLate = streamOffsetSec > STREAM_OFFSET_WARN_SEC ? streamOffsetSec : 0;
     const frameLate =
       useFramePtsShift && framePtsLeadSec > STREAM_OFFSET_WARN_SEC ? framePtsLeadSec : 0;
-    let videoLateSec = preferMinimalCorrection ? streamLate : Math.max(streamLate, frameLate);
+    const videoLateSec = preferMinimalCorrection
+      ? streamLate
+      : Math.max(streamLate, frameLate);
 
-    const firstStart = firstCue ? num(firstCue.start, 0) : null;
-    if (
-      videoLateSec > STREAM_OFFSET_WARN_SEC &&
-      firstStart != null &&
-      firstStart < videoLateSec + 0.2
-    ) {
+    const cueStart = firstCue ? num(firstCue.start, null) : null;
+    const speech = num(firstSpeechSec, null);
+    const speechLeadSec =
+      cueStart != null && speech != null && speech >= 0 && cueStart - speech > 0.25
+        ? Number((cueStart - speech).toFixed(4))
+        : 0;
+
+    if (speechLeadSec > 0.25 && speechLeadSec < 10) {
+      videoPtsShiftSec = 0;
+      assShiftSec = Number((speech - cueStart).toFixed(4));
       logFfmpegTimelineDebug({
-        firstCueBurnGuard: true,
-        firstCueStart: firstStart,
-        suppressedVideoPtsShiftSec: videoLateSec,
-        framePtsLeadSec,
-        streamOffsetSec,
-        reason:
-          'setpts shift would hide early cues — sync already good from stream metadata only'
+        speechAnchoredAssShift: true,
+        firstSpeechSec: speech,
+        firstCueStart: cueStart,
+        assShiftSec,
+        reason: 'First cue starts after detected speech — align ASS to audio (no video setpts)'
       });
-      videoLateSec = 0;
-    }
-
-    if (videoLateSec > STREAM_OFFSET_WARN_SEC) {
-      videoPtsShiftSec = videoLateSec;
-      assShiftSec = 0;
+    } else if (videoLateSec > STREAM_OFFSET_WARN_SEC) {
+      if (preferMinimalCorrection) {
+        videoPtsShiftSec = 0;
+        assShiftSec = -videoLateSec;
+      } else {
+        videoPtsShiftSec = videoLateSec;
+        assShiftSec = 0;
+      }
     } else if (!preferMinimalCorrection && streamOffsetSec < -STREAM_OFFSET_WARN_SEC) {
       assShiftSec = -streamOffsetSec;
     }
