@@ -21,7 +21,7 @@ import {
   orderAssLinesBottomFirst,
   buildAssBottomAnchorTag
 } from './layout-engine.js';
-import { assRtlPrefix } from './rtl-text.js';
+import { assRtlPrefix, resolveRtlFontFallbackChain } from './rtl-text.js';
 
 function escapeAssText(text) {
   return String(text || '')
@@ -400,7 +400,11 @@ export function generateAssContent(segments, presetId, dims = {}) {
   );
   const glow = Number((basePreset.glow ?? signature.glow).toFixed(2));
 
+  const rtlBurnFont = layout.rtl ? resolveRtlFontFallbackChain()[0] : null;
+  const burnFontName = rtlBurnFont || layout.fontName || basePreset.fontName || 'Arial';
+
   Object.assign(preset, {
+    fontName: burnFontName,
     fontSize: tunedFontSize,
     spacing: layout.spacing,
     scaleY: layout.scaleY,
@@ -433,6 +437,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
     `; RenderProfile: ${renderProfile.id}`,
     `; StyleMode: ${renderProfile.styleMode}`,
     `; AdaptiveSafeguards: ${renderProfile.safeguardsActive ? 'on' : 'off'}`,
+    layout.rtl ? `; RtlFont: ${burnFontName}` : '',
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
@@ -443,7 +448,12 @@ export function generateAssContent(segments, presetId, dims = {}) {
     ASS_EVENTS_FORMAT
   ];
   const disableEmphasis = layout.rtl || captionMode === 'accurate';
-  const typoPrefix = { fontName: preset.fontName, fontSize: preset.fontSize, spacing: layout.spacing, rtl: layout.rtl };
+  const typoPrefix = {
+    fontName: layout.fontName || preset.fontName,
+    fontSize: preset.fontSize,
+    spacing: layout.spacing,
+    rtl: layout.rtl
+  };
   let totalLines = 0;
   let wrappedCount = 0;
   let maxLineCount = 1;

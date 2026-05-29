@@ -5,6 +5,7 @@ import { promisify } from 'util';
 import { getPool, isBillingDbConfigured } from './db/pool.js';
 import { ensureOffersSchema, getOffersSchemaIntrospection, getOffersSchemaStatus } from './offers-bootstrap.js';
 import { checkFfmpegHealth, checkYtDlpHealth } from './media-tool-health.js';
+import { checkRtlSubtitleFontsHealth } from './video-render/rtl-font-health.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -55,6 +56,11 @@ export default async function handler(req, res) {
     ...ffmpegTelemetry
   };
   const tmp = checkTmpWritable();
+  const rtlFontsTelemetry = await checkRtlSubtitleFontsHealth();
+  const rtlSubtitleFonts = {
+    ok: rtlFontsTelemetry.ok,
+    ...rtlFontsTelemetry
+  };
 
   const checks = {
     db,
@@ -62,9 +68,16 @@ export default async function handler(req, res) {
     offersSchemaIntrospection,
     ytDlp,
     ffmpeg,
+    rtlSubtitleFonts,
     tempDir: tmp
   };
-  const ok = db.ok && offersEnsure.ok && ytDlp.ok && ffmpeg.ok && tmp.ok;
+  const ok =
+    db.ok &&
+    offersEnsure.ok &&
+    ytDlp.ok &&
+    ffmpeg.ok &&
+    tmp.ok &&
+    (rtlSubtitleFonts.status === 'operational' || rtlSubtitleFonts.status === 'unknown');
   const status = ok ? 200 : 503;
   return res.status(status).json({
     ok,

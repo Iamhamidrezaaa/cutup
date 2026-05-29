@@ -23,11 +23,27 @@ export function cuesAreMostlyRtl(cues) {
 }
 
 export function resolveRtlFontName() {
-  return 'Vazirmatn';
+  return 'Noto Naskh Arabic';
 }
 
 export function resolveArabicFallbackFontName() {
   return 'Noto Sans Arabic';
+}
+
+/**
+ * Ordered font fallback list for RTL scripts.
+ * FFmpeg/libass uses the first font it can find on the system.
+ */
+export function resolveRtlFontFallbackChain() {
+  return [
+    'Noto Naskh Arabic',
+    'Noto Sans Arabic',
+    'Noto Kufi Arabic',
+    'DejaVu Sans',
+    'FreeSans',
+    'Arial Unicode MS',
+    'sans-serif'
+  ];
 }
 
 /**
@@ -59,5 +75,5 @@ export function resolveCaptionTypography(preset, playResY, rtl) {
 /** ASS override prefix for a dialogue line. */
 export function assRtlPrefix(typography) {
   if (!typography.rtl) return '';
-  return `{\\fn${typography.fontName}\\fs${typography.fontSize}\\fsp${typography.spacing}\\rtl1}`;
+  return `{\\fn${typography.fontName}\\fs${typography.fontSize}\\fsp${typography.spacing}}`;
 }
