@@ -22,6 +22,8 @@ import {
   buildAssBottomAnchorTag
 } from './layout-engine.js';
 import { isRtlText, resolveRtlFontFallbackChain } from './rtl-text.js';
+/** Unicode RIGHT-TO-LEFT EMBEDDING — libass logical-order RTL cues */
+const RTL_RLE = '\u202B';
 
 function escapeAssText(text) {
   return String(text || '')
@@ -287,6 +289,18 @@ function buildRtlStyleLine(name, preset, marginV) {
 }
 
 /**
+ * RTL Dialogue payload: font override + RLE per line (logical order, no python reshape).
+ * @param {string} assBodyText escaped ASS body (may contain \\N)
+ * @param {string} fontName
+ */
+function buildRtlDialogueText(assBodyText, fontName) {
+  const rtlFont = fontName || resolveRtlFontFallbackChain()[0];
+  const rtlTag = `{\\an2\\fn ${rtlFont}}`;
+  const lines = String(assBodyText || '').split('\\N');
+  return rtlTag + RTL_RLE + lines.join(`\\N${RTL_RLE}`);
+}
+
+/**
  * @param {{ start: number, end: number, text: string }[]} segments
  * @param {string} presetId
  * @param {{ playResX?: number, playResY?: number, durationSec?: number, positionMode?: string, captionMode?: string, qualityMode?: string, quality?: 'fast'|'hq', renderHints?: { forceSafeguards?: boolean } }} [dims]
@@ -517,8 +531,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
     let dialogueMarginV = layout.marginV;
 
     if (cueRtl) {
-      // Clean text only — libass fribidi fails when override tags precede RTL script.
-      text = bodyResult.text;
+      text = buildRtlDialogueText(bodyResult.text, preset.fontName);
       styleName = 'RTL_Default';
       dialogueMarginV = 0;
     } else {
