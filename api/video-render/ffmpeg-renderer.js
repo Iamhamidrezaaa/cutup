@@ -132,7 +132,7 @@ export function resolveSubtitleRenderGeometry({
 
 /** @deprecated use buildAlignedVideoFilter via timeline plan */
 function buildVideoFilter(assName) {
-  return `setpts=PTS-STARTPTS,scale=1080:1920,subtitles=${assName}`;
+  return `setpts=PTS-STARTPTS,scale=1080:1920,ass=${assName}`;
 }
 
 async function detectHardwareAcceleration() {
@@ -294,7 +294,7 @@ export async function burnSubtitles(opts) {
   traceRenderTimeline(timelineTrace, 'burn_ass_target_exact', {
     exactFileReceivingSubtitles: burnAssPath,
     generatorAssPath: assPath,
-    subtitlesAppliedViaFilter: `subtitles=${basename(burnAssPath)}`
+    subtitlesAppliedViaFilter: `ass=${basename(burnAssPath)}`
   });
 
   const geometry = resolveSubtitleRenderGeometry({
@@ -379,14 +379,14 @@ export async function burnSubtitles(opts) {
     audioFilters,
     muxFlags: syncFlags.mux,
     inputFlags,
-    subtitleInputSource: `subtitles=${assName} (file: ${burnAssPath}, cwd-relative basename)`,
+    subtitleInputSource: `ass=${assName} (file: ${burnAssPath}, cwd-relative basename)`,
     filterComplex: null,
     copyts: false,
     itsoffset: 'none',
     vsync: 'cfr',
     setpts: timelinePlan.videoPtsShiftSec > 0 ? `PTS-STARTPTS-${timelinePlan.videoPtsShiftSec}/TB` : 'PTS-STARTPTS',
     asetpts: 'PTS-STARTPTS',
-    scaleStage: 'scale=1080:1920 before subtitles filter',
+    scaleStage: 'scale=1080:1920 before ass filter (PlayRes in ASS handles layout)',
     burnStageInputFile: inputPath,
     burnStageOutputFile: outputPath
   });

@@ -261,7 +261,7 @@ export function parseAssDialogueTimes(assPath, limit = 10) {
 
 /**
  * @param {object} plan from buildTimelineBurnPlan
- * @param {string} assName basename for subtitles filter
+ * @param {string} assName basename for ass filter (cwd-relative; enables libass complex/HarfBuzz shaper)
  * @param {object} [opts]
  * @param {boolean} [opts.skipTimelineFilters] normalized CFR input — no setpts (avoids double reset)
  */
@@ -277,7 +277,7 @@ export function buildAlignedVideoFilter(assName, plan, opts = {}) {
   }
   const w = Math.max(2, Number(opts.playResX || 1080));
   const h = Math.max(2, Number(opts.playResY || 1920));
-  parts.push(`scale=${w}:${h}`, `subtitles=${assName}:original_size=${w}x${h}`);
+  parts.push(`scale=${w}:${h}`, `ass=${assName}`);
   return parts.join(',');
 }
 
