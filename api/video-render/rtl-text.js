@@ -23,7 +23,7 @@ export function cuesAreMostlyRtl(cues) {
 }
 
 export function resolveRtlFontName() {
-  return 'Noto Naskh Arabic';
+  return 'Vazirmatn';
 }
 
 export function resolveArabicFallbackFontName() {
@@ -36,6 +36,7 @@ export function resolveArabicFallbackFontName() {
  */
 export function resolveRtlFontFallbackChain() {
   return [
+    'Vazirmatn',
     'Noto Naskh Arabic',
     'Noto Sans Arabic',
     'Noto Kufi Arabic',

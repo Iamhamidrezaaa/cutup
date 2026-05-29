@@ -22,12 +22,9 @@ import {
   buildAssBottomAnchorTag
 } from './layout-engine.js';
 import { isRtlText, resolveRtlFontName } from './rtl-text.js';
-<<<<<<< HEAD
+
 /** Unicode RIGHT-TO-LEFT EMBEDDING — libass logical-order RTL cues */
 const RTL_RLE = '\u202B';
-=======
-import { reshapeAssRtlText } from './rtl-reshaper.js';
->>>>>>> 8e76486589f01d10b7740df8b9f5ed27727579e3
 
 function escapeAssText(text) {
   return String(text || '')
@@ -453,7 +450,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
   );
   const glow = Number((basePreset.glow ?? signature.glow).toFixed(2));
 
-  const rtlBurnFont = layout.rtl ? resolveRtlFontFallbackChain()[0] : null;
+  const rtlBurnFont = layout.rtl ? resolveRtlFontName() : null;
   const burnFontName = rtlBurnFont || layout.fontName || basePreset.fontName || 'Arial';
 
   Object.assign(preset, {
@@ -535,12 +532,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
     let dialogueMarginV = layout.marginV;
 
     if (cueRtl) {
-<<<<<<< HEAD
       text = buildRtlDialogueText(bodyResult.text, preset.fontName);
-=======
-      // Clean reshaped text — no inline tags; libass shapes poorly without arabic_reshaper.
-      text = reshapeAssRtlText(bodyResult.text);
->>>>>>> 8e76486589f01d10b7740df8b9f5ed27727579e3
       styleName = 'RTL_Default';
       dialogueMarginV = 0;
     } else {
