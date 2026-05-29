@@ -135,15 +135,9 @@ export function resolveRenderLayout(dims, cues, preset) {
   const density = estimateWordDensity(cues);
 
   let marginV = placement.marginV;
-  let alignment = 2;
   if (isVertical) {
-    // One fixed band for every style: top-anchored so 1-line vs 2-line cues do not jump.
-    const topRatio = Math.min(
-      0.74,
-      Math.max(0.66, Number(process.env.RENDER_SUBTITLE_FIXED_TOP_RATIO || 0.7))
-    );
-    marginV = Math.round(playResY * topRatio);
-    alignment = 8;
+    // Fixed cinematic lower-third safe area.
+    marginV = Math.max(260, Math.min(320, Number(preset.marginV) || 290));
   } else if (isHorizontal) {
     marginV = Math.round(playResY * Math.min(0.18, Math.max(0.12, placement.safeZone || 0.15)));
   }
@@ -191,9 +185,8 @@ export function resolveRenderLayout(dims, cues, preset) {
     maxLines,
     wordDensity: Number(density.avgWordsPerCue.toFixed(2)),
     lineHeight,
-    alignment,
-    maxWidthRatio,
-    fixedVerticalAnchor: isVertical
+    alignment: 2,
+    maxWidthRatio
   };
 }
 

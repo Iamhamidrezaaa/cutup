@@ -868,7 +868,7 @@ export function stabilizeBurnCueTiming(cues, opts = {}) {
     const next = sorted[i + 1];
     const rawStart = Number(cue.start);
     const naturalEnd = Number(cue.end);
-    const start = rawStart + (i === 0 ? 0 : leadDelaySec);
+    const start = rawStart + leadDelaySec;
     const text = normalizeCueText(cue.text);
     const wordCount = cueWords(text).length;
     const minByWords = Math.min(5.5, Math.max(minReadSec, wordCount * 0.22));
@@ -935,22 +935,7 @@ export function buildSourceAlignedSubtitles(rawSegments) {
   }
   const merged = mergeRollingCaptionChains(cues);
   const coalesced = coalesceBurnPhrases(merged);
-  const firstRawStart = coalesced[0] ? Number(coalesced[0].start) : null;
   const stabilized = stabilizeBurnCueTiming(coalesced);
-  if (stabilized[0] && firstRawStart != null && firstRawStart < 3) {
-    const earlyStart = Math.max(0, Math.min(stabilized[0].start, firstRawStart));
-    if (earlyStart < stabilized[0].start - 0.001) {
-      const end = Number(stabilized[0].end);
-      stabilized[0] = {
-        ...stabilized[0],
-        start: earlyStart,
-        sourceStart: earlyStart,
-        end,
-        sourceEnd: end,
-        duration: Number(Math.max(0.08, end - earlyStart).toFixed(3))
-      };
-    }
-  }
   if (raw.length !== stabilized.length) {
     console.log('[burn-caption-collapse]', {
       inputCues: raw.length,

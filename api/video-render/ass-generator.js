@@ -462,9 +462,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
     if (lineCount > 1) wrappedCount += 1;
     totalChars += String(enrichedCue.text || '').length;
 
-    const mV = layout.fixedVerticalAnchor
-      ? layout.marginV
-      : cueMarginV(layout.marginV, lineCount, layout.lineHeight);
+    const mV = layout.isVertical ? layout.marginV : cueMarginV(layout.marginV, lineCount, layout.lineHeight);
     const bodyResult = linesToAssText(lines, preset, { disableEmphasis, renderProfile });
     const glowPrefix = preset.glow > 0 ? `{\\blur${Number(preset.glow).toFixed(2)}}` : '';
     const text = `${assRtlPrefix(typoPrefix)}${glowPrefix}${bodyResult.text}`;
@@ -493,9 +491,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
   const avgLines = cueCount > 0 ? totalLines / cueCount : 1;
   const avgCharsPerCue = cueCount > 0 ? totalChars / cueCount : 0;
   const maxWidthRatio = layout.maxWidthRatio || (playResX - (layout.marginL + layout.marginR)) / playResX;
-  const yAnchor = layout.fixedVerticalAnchor
-    ? layout.marginV / playResY
-    : 1 - layout.marginV / playResY;
+  const yAnchor = 1 - layout.marginV / playResY;
 
   // Keep internal metrics for diagnostics payload without verbose logs.
   const assContent = [...header, ...dialogues].join('\n').replace(/\r\n/g, '\n');
