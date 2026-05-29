@@ -19,12 +19,10 @@
   const HANDLERS = {
     hormozi(token) {
       if (!token.emphasize) return '';
-      if (token.types.includes('power') || token.score >= 3) return 'cutup-em cutup-em--hormozi-power';
       return 'cutup-em cutup-em--hormozi';
     },
     mrbeast(token) {
       if (!token.emphasize) return '';
-      if (token.types.includes('emotional') || token.types.includes('caps')) return 'cutup-em cutup-em--mrbeast-burst';
       return 'cutup-em cutup-em--mrbeast';
     },
     neon(token) {
@@ -35,9 +33,7 @@
       if (!token.emphasize) return '';
       return 'cutup-em cutup-em--luxury';
     },
-    minimal(token) {
-      if (!token.emphasize) return '';
-      if (token.types.includes('number')) return 'cutup-em cutup-em--soft';
+    minimal() {
       return '';
     },
     default(token) {
@@ -45,20 +41,55 @@
     }
   };
 
-  function renderTokenSpan(token, handlerId) {
+  function renderTokenSpan(token, handlerId, preset, wordIndex, segmentIndex) {
     if (token.isSpace) return escapeHtml(token.text);
+
+    const mode = preset.emphasis?.mode || 'score';
+
+    if (handlerId === 'mrbeast' && mode === 'cycleWords') {
+      const cycle = preset.colors.wordCycle || ['#ff4444', '#ffe500', '#44ff88', '#44aaff'];
+      const color = cycle[wordIndex % cycle.length];
+      return `<span class="cutup-word cutup-word--mrbeast" style="color:${color}">${escapeHtml(token.text)}</span>`;
+    }
+
+    if (handlerId === 'hormozi' && token.spoken) {
+      return `<span class="cutup-word cutup-word--spoken cutup-em cutup-em--hormozi">${escapeHtml(token.text)}</span>`;
+    }
+
+    if (handlerId === 'neon' && token.spoken) {
+      const neon =
+        (preset.colors.neonColors || ['#00ffff', '#ff00ff'])[segmentIndex % 2] || '#00ffff';
+      return `<span class="cutup-word cutup-word--spoken cutup-em cutup-em--neon" style="--cutup-neon:${neon}">${escapeHtml(token.text)}</span>`;
+    }
+
     const fn = HANDLERS[handlerId] || HANDLERS.default;
     const cls = fn(token);
     const inner = escapeHtml(token.text);
-    return cls ? `<span class="${cls}">${inner}</span>` : inner;
+    return cls ? `<span class="${cls}">${inner}</span>` : `<span class="cutup-word">${inner}</span>`;
   }
 
-  function renderLineHtml(line, preset) {
+  function renderLineHtml(line, preset, seg, segmentIndex) {
     const handlerId = preset.emphasis.handler;
-    const tokens = Emphasis().analyzeTextWithEmphasis
+    const mode = preset.emphasis.mode || 'score';
+    let tokens = Emphasis().analyzeTextWithEmphasis
       ? Emphasis().analyzeTextWithEmphasis(line, handlerId)
       : Emphasis().analyzeText(line);
-    return tokens.map((t) => renderTokenSpan(t, handlerId)).join('');
+
+    if (mode === 'spokenWord' && seg && Emphasis().markSpokenWord) {
+      tokens = Emphasis().markSpokenWord(tokens, seg.words, seg.start, seg.end);
+    }
+
+    let wordIndex = 0;
+    return tokens
+      .map((t) => {
+        if (!t.isSpace) {
+          const html = renderTokenSpan(t, handlerId, preset, wordIndex, segmentIndex);
+          wordIndex += 1;
+          return html;
+        }
+        return escapeHtml(t.text);
+      })
+      .join('');
   }
 
   function formatClock(seconds) {
@@ -92,30 +123,35 @@
 
   /**
    * @param {HTMLElement} container
-   * @param {{ start, end, text }[]} segments
+   * @param {{ start, end, text, words? }[]} segments
    * @param {string} presetId
    */
   function render(container, segments, presetId) {
     if (!container) return;
     const preset = Presets().getPreset(presetId);
-    let list = Array.isArray(segments) ? segments.filter((s) => s && s.text) : [];
-    const selectedPresetId = global.cutupSelectedPresetId || presetId;
-    const previewMode = selectedPresetId === 'clean-srt' ? 'accurate' : global.cutupRenderCaptionMode || 'viral';
-    if (global.CutupSubtitleClean?.prepareSegmentsForMode) {
-      list = global.CutupSubtitleClean.prepareSegmentsForMode(list, previewMode);
-    } else if (global.CutupSubtitleClean?.prepareSegments) {
-      list = global.CutupSubtitleClean.prepareSegments(list);
-    }
-    const previewLimit = 24;
-    const slice = list.slice(0, previewLimit);
+    const list = (Array.isArray(segments) ? segments : []).slice(0, 12);
+    const rtl = list.some((s) => /[\u0600-\u06FF]/.test(String(s.text || '')));
 
-    const cuesHtml = slice
+    container.classList.add('cutup-subtitle-stage--updating');
+    container.setAttribute('data-preset', presetId);
+    container.toggleAttribute('data-rtl', rtl);
+    container.style.cssText = cssVarsFromPreset(preset);
+    if (rtl) {
+      container.style.setProperty('--cutup-font', "'Vazirmatn', 'Noto Sans Arabic', sans-serif");
+      container.style.setProperty('--cutup-size', 'clamp(1.05rem, 4.2vw, 1.35rem)');
+      container.style.setProperty('--cutup-lh', '1.55');
+      container.style.direction = 'rtl';
+    } else {
+      container.style.removeProperty('direction');
+    }
+
+    const cuesHtml = list
       .map((seg, i) => {
         const lines = Layout().layoutLines(seg.text, preset.layout);
         const linesHtml = lines
           .map(
             (line, li) =>
-              `<div class="cutup-cue-line cutup-cue-line--${li}" data-motion="${escapeHtml(preset.motion.cueEnter)}">${renderLineHtml(line, preset)}</div>`
+              `<div class="cutup-cue-line cutup-cue-line--${li}" data-motion="${escapeHtml(preset.motion.cueEnter)}">${renderLineHtml(line, preset, seg, i)}</div>`
           )
           .join('');
         return `
@@ -127,23 +163,10 @@
       .join('');
 
     const more =
-      list.length > previewLimit
-        ? `<p class="cutup-style-more">+ ${list.length - previewLimit} more cues in export</p>`
+      segments.length > list.length
+        ? `<p class="cutup-style-more">+${segments.length - list.length} more cues in export</p>`
         : '';
 
-    const rtl = list.some((s) => /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/.test(String(s.text || '')));
-    container.classList.add('cutup-subtitle-stage--updating');
-    container.setAttribute('data-preset', preset.id);
-    container.toggleAttribute('data-rtl', rtl);
-    container.style.cssText = cssVarsFromPreset(preset);
-    if (rtl) {
-      container.style.setProperty('--cutup-font', "'Vazirmatn', 'Noto Sans Arabic', sans-serif");
-      container.style.setProperty('--cutup-size', 'clamp(1.05rem, 4.2vw, 1.35rem)');
-      container.style.setProperty('--cutup-lh', '1.55');
-      container.style.direction = 'rtl';
-    } else {
-      container.style.removeProperty('direction');
-    }
     container.innerHTML = `
       <div class="cutup-subtitle-stage__inner">
         ${cuesHtml || '<p class="cutup-style-empty">No subtitle cues to preview.</p>'}

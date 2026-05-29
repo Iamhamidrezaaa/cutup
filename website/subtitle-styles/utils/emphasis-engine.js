@@ -51,6 +51,54 @@
     return tokenize(text).map((t, i) => analyzeToken(t, i));
   }
 
+  function normalizeWordKey(word) {
+    return String(word || '')
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]/gu, '');
+  }
+
+  function pickSpokenWordKey(words, cueStart, cueEnd, fallbackTokens) {
+    const start = Number(cueStart);
+    const end = Number(cueEnd);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+
+    if (Array.isArray(words) && words.length) {
+      const mid = (start + end) / 2;
+      let bestKey = null;
+      let bestDist = Infinity;
+      for (let i = 0; i < words.length; i++) {
+        const w = words[i];
+        const ws = Number(w.start);
+        const we = Number(w.end ?? w.start);
+        if (!Number.isFinite(ws)) continue;
+        const key = normalizeWordKey(w.word ?? w.text);
+        if (!key) continue;
+        if (mid >= ws - 0.04 && mid <= we + 0.04) return key;
+        const dist = Math.min(Math.abs(mid - ws), Math.abs(mid - we));
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestKey = key;
+        }
+      }
+      if (bestKey) return bestKey;
+    }
+
+    const content = (fallbackTokens || []).filter((t) => !t.isSpace && t.clean);
+    if (!content.length) return null;
+    const ranked = [...content].sort((a, b) => b.score - a.score);
+    return normalizeWordKey(ranked[0]?.clean);
+  }
+
+  function markSpokenWord(tokens, words, cueStart, cueEnd) {
+    const spokenKey = pickSpokenWordKey(words, cueStart, cueEnd, tokens);
+    if (!spokenKey) return tokens;
+    return tokens.map((t) => ({
+      ...t,
+      spoken: !t.isSpace && t.clean && normalizeWordKey(t.clean) === spokenKey,
+      emphasize: !t.isSpace && t.clean && normalizeWordKey(t.clean) === spokenKey
+    }));
+  }
+
   function analyzeTextWithEmphasis(text, handler) {
     const tokens = analyzeText(text);
     const content = tokens.filter((t) => !t.isSpace && t.clean);
@@ -71,6 +119,8 @@
   global.CutupEmphasisEngine = {
     analyzeText,
     analyzeTextWithEmphasis,
+    markSpokenWord,
+    pickSpokenWordKey,
     tokenize
   };
 })(typeof window !== 'undefined' ? window : globalThis);

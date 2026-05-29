@@ -41,8 +41,8 @@ export function resolveCaptionTypography(preset, playResY, rtl) {
     return {
       fontName: preset.fontName || 'Arial',
       fontSize: baseSize,
-      spacing: 0,
-      scaleY: 100,
+      spacing: preset.useFixedTypography ? Number(preset.spacing) || 0 : 0,
+      scaleY: preset.useFixedTypography ? Number(preset.scaleY) || 100 : 100,
       rtl: false
     };
   }

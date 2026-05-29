@@ -921,6 +921,12 @@ export function buildSourceAlignedSubtitles(rawSegments) {
     if (!text) continue;
     const start = Number(seg.start);
     const end = Number(seg.end);
+    const timedWords =
+      Array.isArray(seg.words) &&
+      seg.words.length &&
+      seg.words.some((w) => w && Number.isFinite(Number(w.start)))
+        ? seg.words
+        : cueWords(text);
     cues.push({
       id: `src-${i}`,
       index: i,
@@ -928,7 +934,7 @@ export function buildSourceAlignedSubtitles(rawSegments) {
       end,
       duration: Number((end - start).toFixed(3)),
       text,
-      words: cueWords(text),
+      words: timedWords,
       sourceStart: start,
       sourceEnd: end
     });

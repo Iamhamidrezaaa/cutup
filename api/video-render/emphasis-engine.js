@@ -101,10 +101,61 @@ export function analyzeTextWithEmphasis(text, handler) {
 }
 
 export function shouldEmphasize(token, handler) {
+  if (token.spoken) return true;
   if (token.emphasize != null) return token.emphasize;
   if (!token.emphasis) return false;
   if (handler === 'minimal' || handler === 'luxury') {
     return token.types.includes('number') || token.score >= 3.5;
   }
   return token.score >= minScoreForHandler(handler);
+}
+
+function normalizeWordKey(word) {
+  return String(word || '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]/gu, '');
+}
+
+/**
+ * Pick the word active near the temporal center of a cue (Whisper word timestamps when present).
+ */
+export function pickSpokenWordKey(words, cueStart, cueEnd, fallbackTokens = []) {
+  const start = Number(cueStart);
+  const end = Number(cueEnd);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+
+  if (Array.isArray(words) && words.length) {
+    const mid = (start + end) / 2;
+    let bestKey = null;
+    let bestDist = Infinity;
+    for (const w of words) {
+      const ws = Number(w.start);
+      const we = Number(w.end ?? w.start);
+      if (!Number.isFinite(ws)) continue;
+      const key = normalizeWordKey(w.word ?? w.text);
+      if (!key) continue;
+      if (mid >= ws - 0.04 && mid <= we + 0.04) return key;
+      const dist = Math.min(Math.abs(mid - ws), Math.abs(mid - we));
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestKey = key;
+      }
+    }
+    if (bestKey) return bestKey;
+  }
+
+  const content = (fallbackTokens || []).filter((t) => !t.isSpace && t.clean);
+  if (!content.length) return null;
+  const ranked = [...content].sort((a, b) => b.score - a.score);
+  return normalizeWordKey(ranked[0]?.clean);
+}
+
+export function markSpokenWord(tokens, words, cueStart, cueEnd) {
+  const spokenKey = pickSpokenWordKey(words, cueStart, cueEnd, tokens);
+  if (!spokenKey) return tokens;
+  return tokens.map((t) => ({
+    ...t,
+    spoken: !t.isSpace && t.clean && normalizeWordKey(t.clean) === spokenKey,
+    emphasize: !t.isSpace && t.clean && normalizeWordKey(t.clean) === spokenKey
+  }));
 }

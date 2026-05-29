@@ -3,7 +3,7 @@
  */
 import { getStylePreset, resolvePresetIdOrThrow } from './style-presets.js';
 import { buildCueLines } from './text-layout.js';
-import { analyzeTextWithEmphasis, shouldEmphasize } from './emphasis-engine.js';
+import { analyzeTextWithEmphasis, shouldEmphasize, markSpokenWord } from './emphasis-engine.js';
 import {
   buildCanonicalSubtitles,
   buildSourceAlignedSubtitles,
@@ -35,8 +35,19 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function resolvePresetVisualSignature(presetId, isVertical) {
-  const base = {
+function resolvePresetVisualSignature(preset) {
+  if (preset?.useFixedTypography) {
+    return {
+      fontOffset: 0,
+      outlineScale: 1,
+      shadowScale: 1,
+      glow: Number(preset.glow) || 0,
+      emphasisBoost: 1,
+      inlineEmphasisBonus: 0,
+      forceBold: preset.bold ? true : false
+    };
+  }
+  return {
     fontOffset: 0,
     outlineScale: 1,
     shadowScale: 1,
@@ -44,75 +55,6 @@ function resolvePresetVisualSignature(presetId, isVertical) {
     emphasisBoost: 1,
     inlineEmphasisBonus: 0,
     forceBold: null
-  };
-  const byPreset = {
-    tiktokNeon: {
-      fontOffset: isVertical ? 14 : 4,
-      outlineScale: 1.34,
-      shadowScale: 1.38,
-      glow: 2.8,
-      emphasisBoost: 1.22,
-      inlineEmphasisBonus: 1,
-      forceBold: true
-    },
-    mrBeast: {
-      fontOffset: isVertical ? 10 : 3,
-      outlineScale: 1.22,
-      shadowScale: 1.24,
-      glow: 1.2,
-      emphasisBoost: 1.18,
-      inlineEmphasisBonus: 1,
-      forceBold: true
-    },
-    aliAbdaal: {
-      fontOffset: isVertical ? -10 : -2,
-      outlineScale: 0.62,
-      shadowScale: 0.55,
-      glow: 0.2,
-      emphasisBoost: 0.92,
-      inlineEmphasisBonus: -1,
-      forceBold: false
-    },
-    podcast: {
-      fontOffset: isVertical ? -8 : -2,
-      outlineScale: 0.8,
-      shadowScale: 0.75,
-      glow: 0.35,
-      emphasisBoost: 0.96,
-      inlineEmphasisBonus: -1,
-      forceBold: false
-    },
-    luxuryMinimal: {
-      fontOffset: isVertical ? -4 : 0,
-      outlineScale: 0.92,
-      shadowScale: 0.86,
-      glow: 0.55,
-      emphasisBoost: 0.98,
-      inlineEmphasisBonus: 0,
-      forceBold: false
-    },
-    cleanSrt: {
-      fontOffset: isVertical ? -12 : -3,
-      outlineScale: 0.56,
-      shadowScale: 0.5,
-      glow: 0,
-      emphasisBoost: 0.88,
-      inlineEmphasisBonus: -2,
-      forceBold: true
-    },
-    alexHormozi: {
-      fontOffset: isVertical ? 8 : 2,
-      outlineScale: 1.14,
-      shadowScale: 1.12,
-      glow: 0.75,
-      emphasisBoost: 1.12,
-      inlineEmphasisBonus: 1,
-      forceBold: true
-    }
-  };
-  return {
-    ...base,
-    ...(byPreset[presetId] || null)
   };
 }
 
@@ -195,39 +137,84 @@ export function toAssTime(seconds) {
   return `${h}:${String(m).padStart(2, '0')}:${String(wholeSec).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
 }
 
-function buildInlineEmphasis(token, preset, renderProfile) {
+function buildInlineEmphasis(token, preset, { wordIndex = 0, segmentIndex = 0 } = {}) {
   const handler = preset.emphasis?.handler || 'default';
+  const text = escapeAssText(token.text);
+
+  if (handler === 'mrbeast') {
+    const colors = preset.emphasis?.wordColors || [
+      '&H004444FF&',
+      '&H0000E5FF&',
+      '&H0088FF44&',
+      '&H00FFAA44&'
+    ];
+    const color = colors[wordIndex % colors.length];
+    return `{\\c${color}\\b1}${text}{\\r}`;
+  }
+
+  if (handler === 'hormozi' && token.spoken) {
+    const color = preset.emphasis?.highlightColor || '&H0000E5FF&';
+    return `{\\c${color}\\b1}${text}{\\r}`;
+  }
+
+  if (handler === 'neon' && token.spoken) {
+    const palette = preset.emphasis?.neonColors || ['&H00FFFF00&', '&H00FF00FF&'];
+    const color = palette[segmentIndex % palette.length];
+    return `{\\c${color}\\b1\\blur3\\3c${color}}${text}{\\r}`;
+  }
+
+  if (handler === 'minimal' || handler === 'luxury') {
+    return text;
+  }
+
   const weight = handler === 'minimal' || handler === 'luxury' ? '\\b0' : '\\b1';
-  return `{\\c${preset.secondaryColor}${weight}}${escapeAssText(token.text)}{\\r}`;
+  return `{\\c${preset.secondaryColor}${weight}}${text}{\\r}`;
 }
 
-function linesToAssText(lines, preset, { disableEmphasis = false, renderProfile } = {}) {
+function linesToAssText(lines, preset, { disableEmphasis = false, renderProfile, cue, segmentIndex = 0 } = {}) {
   if (disableEmphasis) {
     return { text: lines.map((line) => escapeAssText(line)).join('\\N'), emphasisWords: [] };
   }
 
   const handler = preset.emphasis?.handler || 'default';
+  const mode = preset.emphasis?.mode || 'score';
   const profileInline = Math.max(1, Math.min(2, renderProfile?.maxInlineEmphasisPerCue || 2));
   const presetInline = Number(preset.emphasis?.maxPerLine || 0);
-  const maxInline = clamp(Math.max(profileInline, presetInline), 1, 2);
+  const maxInline =
+    mode === 'spokenWord' ? 1 : mode === 'cycleWords' ? 99 : clamp(Math.max(profileInline, presetInline), 1, 2);
   let emphasized = 0;
+  let wordIndex = 0;
   const parts = [];
   const emphasisWords = [];
 
   for (let li = 0; li < lines.length; li++) {
     if (li > 0) parts.push('\\N');
-    const tokens = analyzeTextWithEmphasis(lines[li], handler);
+    let tokens = analyzeTextWithEmphasis(lines[li], handler);
+    if (mode === 'spokenWord' && cue) {
+      tokens = markSpokenWord(tokens, cue.words, cue.start, cue.end);
+    }
+
     for (const token of tokens) {
       if (token.isSpace) {
         parts.push(token.text);
         continue;
       }
+
+      if (handler === 'mrbeast' && mode === 'cycleWords') {
+        parts.push(buildInlineEmphasis(token, preset, { wordIndex, segmentIndex }));
+        emphasisWords.push(String(token.clean || token.text || '').toLowerCase());
+        wordIndex += 1;
+        continue;
+      }
+
       if (emphasized < maxInline && shouldEmphasize(token, handler)) {
-        parts.push(buildInlineEmphasis(token, preset, renderProfile));
+        parts.push(buildInlineEmphasis(token, preset, { wordIndex, segmentIndex }));
         emphasisWords.push(String(token.clean || token.text || '').toLowerCase());
         emphasized += 1;
+        wordIndex += 1;
       } else {
         parts.push(escapeAssText(token.text));
+        wordIndex += 1;
       }
     }
   }
@@ -392,12 +379,20 @@ export function generateAssContent(segments, presetId, dims = {}) {
 
   const density = subtitleDensityMetrics(canonicalSubtitles, durationSec || continuity.cueCount || 1);
   const readability = readabilityScore(density, continuity, visibility);
-  const tunedOutline = layout.outline > 0 ? Math.max(1, Math.round(layout.outline * renderProfile.outlineScale)) : 0;
-  const tunedShadow = layout.shadow > 0 ? Math.max(1, Math.round(layout.shadow * renderProfile.shadowScale)) : 0;
-  const signature = resolvePresetVisualSignature(basePreset.id, layout.isVertical);
+  const signature = resolvePresetVisualSignature(basePreset);
   const tunedFontSize = layout.fontSize;
-  const tunedOutlineByPreset = Math.max(1, Math.round(tunedOutline * signature.outlineScale));
-  const tunedShadowByPreset = Math.max(1, Math.round(tunedShadow * signature.shadowScale));
+  const tunedOutline = layout.outline > 0 ? layout.outline : 0;
+  const tunedShadow = layout.shadow > 0 ? layout.shadow : 0;
+  const tunedOutlineByPreset = basePreset.useFixedTypography
+    ? tunedOutline
+    : tunedOutline > 0
+      ? Math.max(1, Math.round(tunedOutline * renderProfile.outlineScale * signature.outlineScale))
+      : 0;
+  const tunedShadowByPreset = basePreset.useFixedTypography
+    ? tunedShadow
+    : tunedShadow > 0
+      ? Math.max(1, Math.round(tunedShadow * renderProfile.shadowScale * signature.shadowScale))
+      : 0;
   const emphasisScalePercent = clamp(
     Math.round((basePreset.emphasis?.scalePercent || 112) * signature.emphasisBoost),
     100,
@@ -417,7 +412,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
     marginR: layout.marginR,
     alignment: layout.alignment,
     layout: layout.layout,
-    bold: layout.isVertical ? true : signature.forceBold == null ? Boolean(basePreset.bold) : Boolean(signature.forceBold),
+    bold: signature.forceBold == null ? Boolean(basePreset.bold) : Boolean(signature.forceBold),
     glow,
     emphasis: {
       ...(basePreset.emphasis || {}),
@@ -454,7 +449,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
   let maxLineCount = 1;
   let totalChars = 0;
 
-  const dialogues = visibleCues.map((cue) => {
+  const dialogues = visibleCues.map((cue, segmentIndex) => {
     const enrichedCue = applyFutureVisualExtensions(cue, {
       renderProfile,
       visualFeatureFlags
@@ -467,7 +462,12 @@ export function generateAssContent(segments, presetId, dims = {}) {
     totalChars += String(enrichedCue.text || '').length;
 
     const assLines = orderAssLinesBottomFirst(lines);
-    const bodyResult = linesToAssText(assLines, preset, { disableEmphasis, renderProfile });
+    const bodyResult = linesToAssText(assLines, preset, {
+      disableEmphasis,
+      renderProfile,
+      cue: enrichedCue,
+      segmentIndex
+    });
     const bottomAnchor = buildAssBottomAnchorTag(playResX, playResY, layout.marginV);
     const glowPrefix = preset.glow > 0 ? `{\\blur${Number(preset.glow).toFixed(2)}}` : '';
     const text = `${assRtlPrefix(typoPrefix)}${bottomAnchor}${glowPrefix}${bodyResult.text}`;

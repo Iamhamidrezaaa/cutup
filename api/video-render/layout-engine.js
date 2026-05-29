@@ -39,9 +39,15 @@ export function resolveDynamicFontSize({
   isVertical,
   isHorizontal,
   rtl,
-  presetId
+  presetId,
+  preset
 }) {
   const h = playResY || 1920;
+  if (preset?.useFixedTypography && Number(preset.fontSize) > 0) {
+    let size = Math.round(preset.fontSize * (h / 1920));
+    if (rtl) size = Math.round(size * 1.08);
+    return Math.max(28, size);
+  }
   let size;
 
   const verticalPresetRanges = {
@@ -74,7 +80,14 @@ export function resolveDynamicFontSize({
   return Math.min(cap, Math.max(32, size));
 }
 
-export function resolveOutlineShadow(fontSize, isVertical) {
+export function resolveOutlineShadow(fontSize, isVertical, preset) {
+  if (preset?.useFixedTypography) {
+    return {
+      outline: Math.max(0, Number(preset.outline) || 0),
+      shadow: Math.max(0, Number(preset.shadow) || 0),
+      borderStyle: preset.borderStyle ?? 1
+    };
+  }
   if (isVertical) {
     return {
       outline: Math.max(8, Math.round(fontSize * 0.13)),
@@ -101,7 +114,6 @@ export function resolveRenderLayout(dims, cues, preset) {
   const isVertical = playResY > playResX * 1.05;
   const isHorizontal = playResX > playResY * 1.15;
 
-  // Shared readability layer — independent from creator visual presets.
   const layout = {};
   if (isVertical) {
     layout.mode = 'stack';
@@ -123,6 +135,13 @@ export function resolveRenderLayout(dims, cues, preset) {
     layout.maxLines = 3;
   }
 
+  const presetLayout = preset.layout || {};
+  if (presetLayout.mode) layout.mode = presetLayout.mode;
+  if (presetLayout.wordsPerLineMin != null) layout.wordsPerLineMin = presetLayout.wordsPerLineMin;
+  if (presetLayout.wordsPerLineMax != null) layout.wordsPerLineMax = presetLayout.wordsPerLineMax;
+  if (presetLayout.maxCharsPerLine != null) layout.maxCharsPerLine = presetLayout.maxCharsPerLine;
+  if (presetLayout.maxLines != null) layout.maxLines = presetLayout.maxLines;
+
   const placement = resolveSubtitlePlacement(
     { width: playResX, height: playResY, durationSec: dims.durationSec || 0 },
     cues,
@@ -141,18 +160,31 @@ export function resolveRenderLayout(dims, cues, preset) {
     isVertical,
     isHorizontal,
     rtl,
-    presetId: preset.id
+    presetId: preset.id,
+    preset
   });
 
-  const { outline, shadow, borderStyle } = resolveOutlineShadow(fontSize, isVertical);
+  const { outline, shadow, borderStyle } = resolveOutlineShadow(fontSize, isVertical, preset);
   const typo = resolveCaptionTypography(
     { ...preset, fontSize, outline, shadow },
     playResY,
     rtl
   );
 
-  const lineHeight = Math.round(fontSize * (isVertical ? 1.08 : rtl ? 1.25 : 1.2));
-  const maxWidthRatio = isVertical ? 0.74 : 0.84;
+  const lineHeightRatio = preset.useFixedTypography && preset.scaleY
+    ? Number(preset.scaleY) / 100
+    : isVertical
+      ? 1.08
+      : rtl
+        ? 1.25
+        : 1.2;
+  const lineHeight = Math.round(fontSize * lineHeightRatio);
+  const maxWidthRatio =
+    presetLayout.maxWidthRatio != null
+      ? presetLayout.maxWidthRatio
+      : isVertical
+        ? 0.74
+        : 0.84;
   const sideRatio = (1 - maxWidthRatio) / 2;
   const marginL = Math.round(playResX * sideRatio);
   const marginR = marginL;
