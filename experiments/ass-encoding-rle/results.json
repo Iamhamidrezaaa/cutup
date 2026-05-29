@@ -1,0 +1,11 @@
+{
+  "ok": false,
+  "error": "ffmpeg not found on PATH",
+  "hint": "Run on render server: node experiments/ass-encoding-rle/run-burn-tests.mjs",
+  "generatedAss": [
+    "test-a.ass",
+    "test-b.ass",
+    "test-c.ass",
+    "test-d.ass"
+  ]
+}

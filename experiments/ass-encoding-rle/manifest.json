@@ -1,0 +1,85 @@
+{
+  "sentence": "من آماده هستم",
+  "variants": [
+    {
+      "variant": "A",
+      "file": "test-a.ass",
+      "mp4": "test-a.mp4",
+      "label": "Encoding=1",
+      "styleEncoding": 1,
+      "rlePrefix": false,
+      "dialogueTextLogical": "من آماده هستم",
+      "dialogueTextInFile": "من آماده هستم",
+      "bidiMarkersInDialogue": [],
+      "firstCodepoints": [
+        "U+645",
+        "U+646",
+        "U+20",
+        "U+622",
+        "U+645",
+        "U+627"
+      ]
+    },
+    {
+      "variant": "B",
+      "file": "test-b.ass",
+      "mp4": "test-b.mp4",
+      "label": "Encoding=0",
+      "styleEncoding": 0,
+      "rlePrefix": false,
+      "dialogueTextLogical": "من آماده هستم",
+      "dialogueTextInFile": "من آماده هستم",
+      "bidiMarkersInDialogue": [],
+      "firstCodepoints": [
+        "U+645",
+        "U+646",
+        "U+20",
+        "U+622",
+        "U+645",
+        "U+627"
+      ]
+    },
+    {
+      "variant": "C",
+      "file": "test-c.ass",
+      "mp4": "test-c.mp4",
+      "label": "Encoding=1 + RLE",
+      "styleEncoding": 1,
+      "rlePrefix": true,
+      "dialogueTextLogical": "من آماده هستم",
+      "dialogueTextInFile": "‫من آماده هستم",
+      "bidiMarkersInDialogue": [
+        "U+202B"
+      ],
+      "firstCodepoints": [
+        "U+202B",
+        "U+645",
+        "U+646",
+        "U+20",
+        "U+622",
+        "U+645"
+      ]
+    },
+    {
+      "variant": "D",
+      "file": "test-d.ass",
+      "mp4": "test-d.mp4",
+      "label": "Encoding=0 + RLE",
+      "styleEncoding": 0,
+      "rlePrefix": true,
+      "dialogueTextLogical": "من آماده هستم",
+      "dialogueTextInFile": "‫من آماده هستم",
+      "bidiMarkersInDialogue": [
+        "U+202B"
+      ],
+      "firstCodepoints": [
+        "U+202B",
+        "U+645",
+        "U+646",
+        "U+20",
+        "U+622",
+        "U+645"
+      ]
+    }
+  ]
+}
