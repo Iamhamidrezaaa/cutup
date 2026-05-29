@@ -19,5 +19,5 @@ Style: RTL_Default,Vazirmatn,72,&H00FFFFFF&,&H00FFFFFF&,&H00000000&,&H00000000&,
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-Dialogue: 0,0:00:00.59,0:00:03.57,RTL_Default,,0,0,0,,{\an2\fn Vazirmatn}‫برای اولین بار در باشگاه ورزشی
-Dialogue: 0,0:00:03.58,0:00:06.20,RTL_Default,,0,0,0,,{\an2\fn Vazirmatn}‫من آماده هستم
+Dialogue: 0,0:00:00.59,0:00:03.57,RTL_Default,,0,0,0,,برای اولین بار در باشگاه ورزشی
+Dialogue: 0,0:00:03.58,0:00:06.20,RTL_Default,,0,0,0,,من آماده هستم

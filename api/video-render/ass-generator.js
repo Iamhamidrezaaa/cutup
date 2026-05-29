@@ -23,9 +23,6 @@ import {
 } from './layout-engine.js';
 import { isRtlText, resolveRtlFontName } from './rtl-text.js';
 
-/** Unicode RIGHT-TO-LEFT EMBEDDING — libass logical-order RTL cues */
-const RTL_RLE = '\u202B';
-
 function escapeAssText(text) {
   return String(text || '')
     .replace(/\\/g, '\\\\')
@@ -290,15 +287,11 @@ function buildRtlStyleLine(name, preset, marginV) {
 }
 
 /**
- * RTL Dialogue payload: font override + RLE per line (logical order, no python reshape).
+ * RTL Dialogue payload: plain escaped text only (RTL_Default style handles font/alignment/margin).
  * @param {string} assBodyText escaped ASS body (may contain \\N)
- * @param {string} fontName
  */
-function buildRtlDialogueText(assBodyText, fontName) {
-  const rtlFont = fontName || resolveRtlFontName();
-  const rtlTag = `{\\an2\\fn ${rtlFont}}`;
-  const lines = String(assBodyText || '').split('\\N');
-  return rtlTag + RTL_RLE + lines.join(`\\N${RTL_RLE}`);
+function buildRtlDialogueText(assBodyText) {
+  return String(assBodyText || '');
 }
 
 /**
@@ -532,7 +525,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
     let dialogueMarginV = layout.marginV;
 
     if (cueRtl) {
-      text = buildRtlDialogueText(bodyResult.text, preset.fontName);
+      text = buildRtlDialogueText(bodyResult.text);
       styleName = 'RTL_Default';
       dialogueMarginV = 0;
     } else {
