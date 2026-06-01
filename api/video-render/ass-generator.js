@@ -18,6 +18,7 @@ import {
 } from './subtitle-pipeline.js';
 import {
   resolveRenderLayout,
+  resolveCueLineLayout,
   orderAssLinesBottomFirst,
   buildAssBottomAnchorTag
 } from './layout-engine.js';
@@ -568,13 +569,32 @@ export function generateAssContent(segments, presetId, dims = {}) {
   const forensicFinalDialogue = [];
   let rtlMultilineLineOrderLogs = 0;
   const RTL_MULTILINE_FORENSIC_MAX = 5;
+  let rtlLayoutDebugLogged = false;
 
   const dialogues = visibleCues.map((cue, segmentIndex) => {
     const enrichedCue = applyFutureVisualExtensions(cue, {
       renderProfile,
       visualFeatureFlags
     });
-    const lines = buildCueLines(enrichedCue, layout.layout, layout.useUppercase);
+    const cueText = String(enrichedCue.text || '');
+    const cueRtl = isRtlText(cueText);
+    const layoutModeBefore = layout.layout?.mode;
+    const cueLineLayout = resolveCueLineLayout(layout.layout, cueText);
+    const lines = buildCueLines(
+      enrichedCue,
+      cueLineLayout,
+      layout.useUppercase && !cueRtl
+    );
+    if (cueRtl && !rtlLayoutDebugLogged) {
+      rtlLayoutDebugLogged = true;
+      console.log('[rtl-layout-debug]', {
+        text: cueText,
+        isRtlText: true,
+        layoutModeBefore,
+        layoutModeAfter: cueLineLayout.mode,
+        generatedLines: [...lines]
+      });
+    }
     const cueKey = enrichedCue?.id ?? `cue-${segmentIndex}`;
     if (forensicOn && segmentIndex < forensicCueCap) {
       forensicAfterBuildCueLines.push({
@@ -588,7 +608,6 @@ export function generateAssContent(segments, presetId, dims = {}) {
     if (lineCount > 1) wrappedCount += 1;
     totalChars += String(enrichedCue.text || '').length;
 
-    const cueRtl = isRtlText(enrichedCue.text);
     const assLines = cueRtl ? lines : orderAssLinesBottomFirst(lines);
     if (
       cueRtl &&

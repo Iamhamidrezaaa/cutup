@@ -3,12 +3,28 @@
  */
 import { resolveSubtitlePlacement } from './placement.js';
 import { buildCueLines } from './text-layout.js';
-import { cuesAreMostlyRtl, resolveCaptionTypography } from './rtl-text.js';
+import { cuesAreMostlyRtl, isRtlText, resolveCaptionTypography } from './rtl-text.js';
+
+/**
+ * Per-cue ASS line layout. RTL cues always single-line (never splitSemanticStack).
+ * @param {object} baseLayout from resolveRenderLayout().layout
+ * @param {string} cueText
+ */
+export function resolveCueLineLayout(baseLayout, cueText) {
+  const layout = { ...(baseLayout || {}) };
+  if (!isRtlText(cueText)) return layout;
+  layout.mode = 'single';
+  layout.maxLines = 1;
+  layout.maxCharsPerLine = Math.max(Number(layout.maxCharsPerLine) || 36, 72);
+  return layout;
+}
 
 function estimateMaxCueLines(cues, layout, uppercase) {
   let maxLines = 1;
   for (const cue of cues || []) {
-    const lines = buildCueLines(cue, layout, uppercase);
+    const cueLayout = resolveCueLineLayout(layout, cue?.text);
+    const cueUppercase = uppercase && !isRtlText(cue?.text);
+    const lines = buildCueLines(cue, cueLayout, cueUppercase);
     maxLines = Math.max(maxLines, lines.length || 1);
   }
   return maxLines;
