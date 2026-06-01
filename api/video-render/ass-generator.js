@@ -22,12 +22,7 @@ import {
   orderAssLinesBottomFirst,
   buildAssBottomAnchorTag
 } from './layout-engine.js';
-import {
-  anchorRtlPunctuation,
-  isRtlText,
-  resolveRtlFontName,
-  rtlPunctuationTailSample
-} from './rtl-text.js';
+import { isRtlText, resolveRtlFontName } from './rtl-text.js';
 import { isTimingForensicEnabled, logTimingForensics } from './timing-forensics.js';
 import {
   isSubtitleTextForensicEnabled,
@@ -266,8 +261,48 @@ function styleLine(name, preset, encoding = ASS_STYLE_ENCODING_UNICODE) {
   ].join(',');
 }
 
+/** ASS style name for RTL cues — separate from LTR Default (libass Encoding=0 + Vazirmatn). */
+function resolveRtlPresetStyleName(presetId) {
+  const safe = String(presetId || 'Default').replace(/[^a-zA-Z0-9_]/g, '_');
+  return `RTL_${safe}`;
+}
+
 /**
- * RTL dialogue body: escaped ASS from linesToAssText (preset Default style applies visuals).
+ * RTL-safe style row: preset colors/outline/shadow/size; Vazirmatn + Encoding=0 + no stretch (proven burn).
+ * Visual preset values come from `preset`; RTL-safe differs only in font + encoding + scaleY/spacing for libass.
+ */
+function buildRtlPresetStyleLine(styleName, preset, marginV) {
+  const marginL = preset.marginL ?? Math.round((preset.playResX || 1080) * 0.08);
+  const marginR = preset.marginR ?? marginL;
+  return [
+    `Style: ${styleName}`,
+    resolveRtlFontName(),
+    preset.fontSize,
+    preset.primaryColor,
+    preset.secondaryColor,
+    preset.outlineColor,
+    preset.backColor,
+    preset.bold ? -1 : 0,
+    0,
+    0,
+    0,
+    100,
+    100,
+    0,
+    0,
+    preset.borderStyle ?? 1,
+    preset.outline,
+    preset.shadow,
+    preset.alignment ?? 2,
+    marginL,
+    marginR,
+    marginV,
+    ASS_STYLE_ENCODING_UNICODE
+  ].join(',');
+}
+
+/**
+ * RTL Dialogue: plain escaped text only (no inline emphasis / pos overrides — style row handles look).
  * @param {string} assBodyText
  */
 function buildRtlDialogueText(assBodyText) {
@@ -446,9 +481,9 @@ export function generateAssContent(segments, presetId, dims = {}) {
   const glow = Number((basePreset.glow ?? signature.glow).toFixed(2));
 
   const hasRtlCues = visibleCues.some((c) => isRtlText(c.text));
-  const burnFontName = hasRtlCues
-    ? resolveRtlFontName()
-    : layout.fontName || basePreset.fontName || 'Arial';
+  const rtlPresetStyleName = resolveRtlPresetStyleName(selectedPresetId);
+  const rtlBurnFont = layout.rtl ? resolveRtlFontName() : null;
+  const burnFontName = rtlBurnFont || layout.fontName || basePreset.fontName || 'Arial';
 
   Object.assign(preset, {
     fontName: burnFontName,
@@ -475,7 +510,8 @@ export function generateAssContent(segments, presetId, dims = {}) {
   console.log('[preset-style-debug]', {
     requestedPreset: selectedPresetId,
     resolvedPreset: preset.id || selectedPresetId,
-    styleName: 'Default',
+    ltrStyleName: 'Default',
+    rtlStyleName: hasRtlCues ? rtlPresetStyleName : null,
     fontName: preset.fontName,
     fontSize: preset.fontSize,
     outline: preset.outline,
@@ -486,10 +522,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
     primaryColor: preset.primaryColor,
     bold: preset.bold,
     hasRtlCues,
-    assEncoding: hasRtlCues ? ASS_STYLE_ENCODING_UNICODE : 1,
-    note: hasRtlCues
-      ? 'RTL cues use Default style (preset colours); not RTL_Default'
-      : 'LTR job'
+    note: 'RTL cues use RTL_* style (Encoding=0, Vazirmatn); LTR cues use Default'
   });
 
   const header = layout.rtl
@@ -524,17 +557,18 @@ export function generateAssContent(segments, presetId, dims = {}) {
   const assHeader = headerWithRtlNote.concat(
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    styleLine('Default', preset, hasRtlCues ? ASS_STYLE_ENCODING_UNICODE : 1),
+    styleLine('Default', preset, layout.rtl ? ASS_STYLE_ENCODING_UNICODE : 1),
     styleLine(
       'Emphasis',
       { ...preset, fontSize: Math.round(preset.fontSize * 1.08), bold: true },
-      hasRtlCues ? ASS_STYLE_ENCODING_UNICODE : 1
+      layout.rtl ? ASS_STYLE_ENCODING_UNICODE : 1
     ),
+    ...(hasRtlCues ? [buildRtlPresetStyleLine(rtlPresetStyleName, preset, layout.marginV)] : []),
     '',
     '[Events]',
     ASS_EVENTS_FORMAT
   );
-  const disableEmphasis = captionMode === 'accurate';
+  const disableEmphasis = layout.rtl || captionMode === 'accurate';
   let totalLines = 0;
   let wrappedCount = 0;
   let maxLineCount = 1;
@@ -560,7 +594,6 @@ export function generateAssContent(segments, presetId, dims = {}) {
   let rtlMultilineLineOrderLogs = 0;
   const RTL_MULTILINE_FORENSIC_MAX = 5;
   let rtlLayoutDebugLogged = false;
-  let rtlPunctuationDebugLogged = false;
   const timingAuditRows = [];
 
   const dialogues = visibleCues.map((cue, segmentIndex) => {
@@ -568,12 +601,8 @@ export function generateAssContent(segments, presetId, dims = {}) {
       renderProfile,
       visualFeatureFlags
     });
-    const originalText = String(enrichedCue.text || '');
-    const cueRtl = isRtlText(originalText);
-    const cueText = cueRtl ? anchorRtlPunctuation(originalText) : originalText;
-    if (cueRtl && cueText !== originalText) {
-      enrichedCue.text = cueText;
-    }
+    const cueText = String(enrichedCue.text || '');
+    const cueRtl = isRtlText(cueText);
     const layoutModeBefore = layout.layout?.mode;
     const cueLineLayout = resolveCueLineLayout(layout.layout, cueText);
     const lines = buildCueLines(
@@ -622,7 +651,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
       );
     }
     const bodyResult = linesToAssText(assLines, preset, {
-      disableEmphasis,
+      disableEmphasis: disableEmphasis || cueRtl,
       renderProfile,
       cue: enrichedCue,
       segmentIndex
@@ -640,16 +669,8 @@ export function generateAssContent(segments, presetId, dims = {}) {
         forensicBeforeRtlDialogue.push({ id: cueKey, text: bodyResult.text });
       }
       text = buildRtlDialogueText(bodyResult.text);
-      styleName = 'Default';
-      if (!rtlPunctuationDebugLogged) {
-        rtlPunctuationDebugLogged = true;
-        console.log('[rtl-punctuation-debug]', {
-          originalText,
-          punctuatedText: cueText,
-          finalDialogueText: text,
-          unicodeCodepoints: rtlPunctuationTailSample(text.replace(/\{[^}]*\}/g, ''))
-        });
-      }
+      styleName = rtlPresetStyleName;
+      dialogueMarginV = 0;
     } else {
       const bottomAnchor = buildAssBottomAnchorTag(playResX, playResY, layout.marginV);
       const glowPrefix = preset.glow > 0 ? `{\\blur${Number(preset.glow).toFixed(2)}}` : '';

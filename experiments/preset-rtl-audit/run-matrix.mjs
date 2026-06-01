@@ -40,6 +40,10 @@ function parseDialogue(ass) {
   return m ? { start: m[1], end: m[2], styleName: m[3] } : null;
 }
 
+function expectedRtlStyleName(presetId) {
+  return `RTL_${String(presetId).replace(/[^a-zA-Z0-9_]/g, '_')}`;
+}
+
 const rows = [];
 for (const { id, name } of listStylePresets()) {
   const base = getStylePreset(id);
@@ -50,29 +54,35 @@ for (const { id, name } of listStylePresets()) {
       { playResX: 1080, playResY: 1920, captionMode: id === 'cleanSrt' ? 'accurate' : 'viral' }
     );
     const def = parseStyleLine(r.content, 'Default');
+    const rtlStyleName = expectedRtlStyleName(id);
+    const rtlStyle = parseStyleLine(r.content, rtlStyleName);
     const dlg = parseDialogue(r.content);
-    const hasRtlDefault = r.content.includes('RTL_Default');
+    const isRtlLang = lang === 'fa' || lang === 'ar';
     rows.push({
       preset: id,
       presetName: name,
       language: lang,
       dialogueStyle: dlg?.styleName,
-      hasRtlDefaultStyle: hasRtlDefault,
-      font: def?.font,
-      fontSize: def?.fontSize,
-      outline: def?.outline,
-      shadow: def?.shadow,
-      spacing: def?.spacing,
-      scaleY: def?.scaleY,
-      encoding: def?.encoding,
+      rtlStyleRow: rtlStyleName,
+      rtlStyleFont: rtlStyle?.font,
+      rtlEncoding: rtlStyle?.encoding,
+      ltrFont: def?.font,
+      fontSize: isRtlLang ? rtlStyle?.fontSize : def?.fontSize,
+      outline: isRtlLang ? rtlStyle?.outline : def?.outline,
+      shadow: isRtlLang ? rtlStyle?.shadow : def?.shadow,
       emphasisInDialogue: /\{\\c/.test(r.content),
       basePresetFont: base.fontName,
       baseOutline: base.outline,
       baseShadow: base.shadow,
       pass:
-        !hasRtlDefault &&
-        dlg?.styleName === 'Default' &&
-        (lang === 'en' ? def?.font !== 'Vazirmatn' : def?.font === 'Vazirmatn')
+        (lang === 'en'
+          ? dlg?.styleName === 'Default' && def?.font !== 'Vazirmatn'
+          : dlg?.styleName === rtlStyleName &&
+            rtlStyle?.font === 'Vazirmatn' &&
+            rtlStyle?.encoding === '0' &&
+            rtlStyle?.outline === base.outline &&
+            rtlStyle?.shadow === base.shadow) &&
+        !/\{\\N/.test(r.content.split('Dialogue:')[1] || '')
     });
   }
 }
