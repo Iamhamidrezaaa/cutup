@@ -1,0 +1,33 @@
+{
+  "at": "2026-06-01T15:01:02.938Z",
+  "purpose": "hormozi_style_vs_test_fa_style",
+  "inputAss": "E:\\Machine Learning\\cutup\\experiments\\export-encoding-ab\\export.ass",
+  "outDir": "E:\\Machine Learning\\cutup\\experiments\\export-style-ab",
+  "files": {
+    "exportOriginalAss": "E:\\Machine Learning\\cutup\\experiments\\export-style-ab\\export-original.ass",
+    "exportStyleSimpleAss": "E:\\Machine Learning\\cutup\\experiments\\export-style-ab\\export-style-simple.ass",
+    "exportOriginalMp4": "E:\\Machine Learning\\cutup\\experiments\\export-style-ab\\export-original.mp4",
+    "exportStyleSimpleMp4": "E:\\Machine Learning\\cutup\\experiments\\export-style-ab\\export-style-simple.mp4"
+  },
+  "testFaStyleFields": "Vazirmatn,72,&H00FFFFFF&,&H00FFFFFF&,&H00000000&,&H00000000&,0,0,0,0,100,100,0,0,1,2,0,2,140,140,292,1",
+  "styleNamesReplaced": [
+    "Default",
+    "Emphasis",
+    "RTL_Default"
+  ],
+  "originalStyles": [
+    "Style: Default,Vazirmatn,82,&H00FFFFFF&,&H0000E5FF&,&H00000000&,&H00000000&,-1,0,0,0,100,112,2,0,1,4,3,2,140,140,292,1",
+    "Style: Emphasis,Vazirmatn,89,&H00FFFFFF&,&H0000E5FF&,&H00000000&,&H00000000&,-1,0,0,0,100,112,2,0,1,4,3,2,140,140,292,1",
+    "Style: RTL_Default,Vazirmatn,82,&H00FFFFFF&,&H0000E5FF&,&H00000000&,&H00000000&,0,0,0,0,100,112,2,0,1,4,3,2,140,140,292,1"
+  ],
+  "simpleStyles": [
+    "Style: Default,Vazirmatn,72,&H00FFFFFF&,&H00FFFFFF&,&H00000000&,&H00000000&,0,0,0,0,100,100,0,0,1,2,0,2,140,140,292,1",
+    "Style: Emphasis,Vazirmatn,72,&H00FFFFFF&,&H00FFFFFF&,&H00000000&,&H00000000&,0,0,0,0,100,100,0,0,1,2,0,2,140,140,292,1",
+    "Style: RTL_Default,Vazirmatn,72,&H00FFFFFF&,&H00FFFFFF&,&H00000000&,&H00000000&,0,0,0,0,100,100,0,0,1,2,0,2,140,140,292,1"
+  ],
+  "dialogueLineCount": 3,
+  "dialoguesUnchanged": true,
+  "ffmpegFilter": "scale=1080:1920,ass=<basename.ass>",
+  "ok": false,
+  "burnSkipped": "ffmpeg not on PATH — run on Linux server"
+}
