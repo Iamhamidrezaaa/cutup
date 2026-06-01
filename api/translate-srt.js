@@ -19,6 +19,7 @@ import {
   isTranslationForensicEnabled,
   logTranslationForensics
 } from './translation-forensics.js';
+import { postProcessTranslatedSegments } from './subtitle-translation-pipeline.js';
 
 /** Approximate output expansion vs English subtitle chars for max_tokens budgeting */
 const LANG_OUTPUT_EXPANSION = {
@@ -192,6 +193,16 @@ export default async function handler(req, res) {
 
     validateTranslationVsOriginal(segments, translatedSegments, sourceLanguage, targetLanguage);
 
+    const translatedOneToOne = translatedSegments.map((s) => ({ ...s }));
+    const postProcessed = await postProcessTranslatedSegments({
+      originalSegments: segments,
+      translatedSegments,
+      targetLanguage,
+      traceId,
+      runLlmBatch: completeSubtitleTextBatch
+    });
+    translatedSegments = postProcessed.segments;
+
     if (isTranslationForensicEnabled() || translationForensicMeta) {
       logTranslationForensics(
         buildTranslationForensicReport(segments, translatedSegments, {
@@ -203,7 +214,16 @@ export default async function handler(req, res) {
           modelUsed: translationForensicMeta?.modelUsed || null,
           temperature: translationForensicMeta?.temperature ?? 0.25,
           provider: translationForensicMeta?.provider || null,
-          batchSize: 20
+          batchSize: 20,
+          postProcessingSteps: [
+            'stripForeignScripts',
+            'validatePersianCueScripts',
+            'persianFluencyPass (PERSIAN_FLUENCY_PASS=1)',
+            'mergeFragmentedSubtitleCues',
+            'subtitle-timing-integrity log'
+          ],
+          timingReport: postProcessed.timingReport,
+          pipelineTraceSample: postProcessed.pipelineStages
         })
       );
     }
@@ -229,12 +249,20 @@ export default async function handler(req, res) {
     traceLog(traceId, 'translate-parse', { outChars: translatedSRT.length });
 
     const roundTrip = parseSRT(translatedSRT);
-    if (roundTrip.length !== segments.length) {
-      return translateFail(res, traceId, 500, 'TRANSLATION_MALFORMED', 'Translated file cue count does not match original.', true, 'translate-parse');
+    if (roundTrip.length !== translatedSegments.length) {
+      return translateFail(
+        res,
+        traceId,
+        500,
+        'TRANSLATION_MALFORMED',
+        'Translated file cue count mismatch after post-processing.',
+        true,
+        'translate-parse'
+      );
     }
-    for (let i = 0; i < segments.length; i++) {
-      const dtStart = Math.abs((roundTrip[i]?.start ?? 0) - segments[i].start);
-      const dtEnd = Math.abs((roundTrip[i]?.end ?? 0) - segments[i].end);
+    for (let i = 0; i < translatedSegments.length; i++) {
+      const dtStart = Math.abs((roundTrip[i]?.start ?? 0) - translatedSegments[i].start);
+      const dtEnd = Math.abs((roundTrip[i]?.end ?? 0) - translatedSegments[i].end);
       if (dtStart > 0.06 || dtEnd > 0.06) {
         return translateFail(res, traceId, 500, 'TRANSLATION_TIMESTAMP_MISMATCH', 'Translated subtitles lost timing alignment.', true, 'translate-parse');
       }
@@ -455,7 +483,7 @@ function buildTranslationPrompts(batch, targetLanguage, sourceLanguage, { groqHa
   const tgt = String(targetLanguage || '').toLowerCase().slice(0, 2);
   const nativeSubtitleRules =
     tgt === 'fa'
-      ? ' For Persian (Farsi): write natural conversational subtitle Persian for social video — not literal word-for-word, not formal literary Persian, not machine/Google-translate tone. Preserve speaker intent, tone, and humor. Keep each segment short enough to read on screen in one glance.'
+      ? ' For Persian (Farsi): write natural conversational subtitle Persian for social video — not literal word-for-word, not formal literary Persian, not machine/Google-translate tone. Preserve speaker intent, tone, and humor. Use ONLY Persian (Farsi) in Arabic script. NEVER output Devanagari, Hindi, Chinese, Japanese, Korean, Vietnamese, English, or other foreign scripts. No Latin letters. Keep each segment short enough to read on screen; prefer complete thoughts over tiny fragments.'
       : tgt === 'ar'
         ? ' For Arabic: use natural modern subtitle Arabic suitable for on-screen captions; avoid overly literal translation.'
         : '';
@@ -638,7 +666,14 @@ function mapTranslateProviderError(apiErr, provider, traceId, batchIndex) {
 /**
  * Groq chat completion (OpenAI-compatible API).
  */
-export async function translateWithGroq({ systemPrompt, userPrompt, maxTokens, traceId, batchIndex }) {
+export async function translateWithGroq({
+  systemPrompt,
+  userPrompt,
+  maxTokens,
+  traceId,
+  batchIndex,
+  temperature = 0.25
+}) {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey || String(apiKey).length < MIN_TRANSLATE_KEY_LEN) {
     const e = new Error('GROQ_API_KEY not configured');
@@ -659,7 +694,7 @@ export async function translateWithGroq({ systemPrompt, userPrompt, maxTokens, t
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ],
-      temperature: 0.25,
+      temperature,
       max_tokens: maxTokens
     });
   } catch (apiErr) {
@@ -671,7 +706,15 @@ export async function translateWithGroq({ systemPrompt, userPrompt, maxTokens, t
 /**
  * OpenAI chat completion (fallback).
  */
-export async function translateWithOpenAi({ systemPrompt, userPrompt, maxTokens, traceId, batchIndex, isFallback = false }) {
+export async function translateWithOpenAi({
+  systemPrompt,
+  userPrompt,
+  maxTokens,
+  traceId,
+  batchIndex,
+  isFallback = false,
+  temperature = 0.25
+}) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey || String(apiKey).length < MIN_TRANSLATE_KEY_LEN) {
     const e = new Error('OPENAI_API_KEY not configured');
@@ -689,13 +732,54 @@ export async function translateWithOpenAi({ systemPrompt, userPrompt, maxTokens,
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-      temperature: 0.25,
+      temperature,
       max_tokens: maxTokens
     });
   } catch (apiErr) {
     console.error(`[${logTag}][${traceId}] batch ${batchIndex}`, apiErr?.message || apiErr);
     throw mapTranslateProviderError(apiErr, 'openai', traceId, batchIndex);
   }
+}
+
+/**
+ * LLM batch for fluency / rewrite passes (same segment count + timestamps as input batch).
+ */
+export async function completeSubtitleTextBatch(batch, prompts, traceId, batchLabel, options = {}) {
+  const maxTokens = computeMaxTokensForBatch(batch, 'fa');
+  const temperature = Number(options.temperature ?? 0.25);
+  const groqReady = hasGroqTranslateKey();
+  const openaiReady = hasOpenAiTranslateKey();
+
+  if (groqReady) {
+    try {
+      const completion = await translateWithGroq({
+        systemPrompt: prompts.systemPrompt,
+        userPrompt: prompts.userPrompt,
+        maxTokens,
+        traceId,
+        batchIndex: batchLabel,
+        temperature
+      });
+      return applyBatchTranslation(completion, batch, traceId, batchLabel);
+    } catch (groqErr) {
+      if (!isTranslateFailoverEligible(groqErr) || !openaiReady) throw groqErr;
+    }
+  }
+  if (openaiReady) {
+    const completion = await translateWithOpenAi({
+      systemPrompt: prompts.systemPrompt,
+      userPrompt: prompts.userPrompt,
+      maxTokens,
+      traceId,
+      batchIndex: batchLabel,
+      isFallback: groqReady,
+      temperature
+    });
+    return applyBatchTranslation(completion, batch, traceId, batchLabel);
+  }
+  const e = new Error('No translation provider available');
+  e.errorCode = 'TRANSLATION_PROVIDER_UNAVAILABLE';
+  throw e;
 }
 
 function applyBatchTranslation(completion, batch, traceId, batchIndex) {
