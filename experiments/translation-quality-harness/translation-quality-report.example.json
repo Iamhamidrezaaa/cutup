@@ -24,6 +24,13 @@
     "sourceLanguage": "en",
     "targetLanguage": "fa",
     "domain": "fitness",
+    "detectedDomain": "fitness",
+    "domainConfidence": 0.55,
+    "domainMatch": true,
+    "matchedSignals": [
+      "deadlift",
+      "phrase:nice deadlift"
+    ],
     "sourceText": "Nice deadlift.",
     "translatedText": "ددلیفتت عالیه",
     "finalText": "ددلیفتت عالیه",

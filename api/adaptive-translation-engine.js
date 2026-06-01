@@ -78,7 +78,8 @@ async function runBatchedRewrite(
   traceId,
   runLlmBatch,
   stage,
-  label
+  label,
+  contentDomain = 'general'
 ) {
   if (!indices.length || typeof runLlmBatch !== 'function') return new Map();
 
@@ -92,10 +93,10 @@ async function runBatchedRewrite(
 
   const prompts =
     stage === 'fluency' && norm(targetLanguage) === 'fa'
-      ? buildPersianFluencyPrompts(batch)
+      ? buildPersianFluencyPrompts(batch, contentDomain)
       : stage === 'fluency'
-        ? buildFluencyRewriteBatchPrompts(targetLanguage, batch)
-        : buildLanguageAwareRewriteBatchPrompts(targetLanguage, batch);
+        ? buildFluencyRewriteBatchPrompts(targetLanguage, batch, contentDomain)
+        : buildLanguageAwareRewriteBatchPrompts(targetLanguage, batch, contentDomain);
 
   const out = await runLlmBatch(batch, prompts, traceId, `adaptive-${label}`, {
     temperature: stage === 'fluency' ? 0.35 : 0.3
@@ -120,7 +121,8 @@ export async function runAdaptiveTranslationJob(opts) {
     targetLanguage,
     traceId,
     runLlmBatch,
-    runSingleCompletion
+    runSingleCompletion,
+    contentDomain = 'general'
   } = opts;
 
   const n = Math.min(sourceSegments.length, translatedSegments.length);
@@ -160,7 +162,8 @@ export async function runAdaptiveTranslationJob(opts) {
       traceId,
       runLlmBatch,
       'localization',
-      'loc-batch'
+      'loc-batch',
+      contentDomain
     );
     attempt2Batches = 1;
 
@@ -196,7 +199,8 @@ export async function runAdaptiveTranslationJob(opts) {
       traceId,
       runLlmBatch,
       'fluency',
-      'flu-batch'
+      'flu-batch',
+      contentDomain
     );
     attempt3Batches = 1;
 
@@ -244,6 +248,7 @@ export async function runAdaptiveTranslationJob(opts) {
         traceId,
         sourceLanguage,
         targetLanguage,
+        domain: contentDomain,
         source: sourceSegments[i].text,
         target: winner.text,
         winnerAttemptId: winner.attemptId,
@@ -268,6 +273,7 @@ export async function runAdaptiveTranslationJob(opts) {
     maxAttemptsPerCue: MAX_ATTEMPTS,
     acceptThreshold: ACCEPT_THRESHOLD,
     targetLanguage,
+    contentDomain,
     languageOptimized: isLanguageOptimizedTarget(targetLanguage),
     averageWinnerTranslationScore: winnerScores.translationScore,
     averageWinnerMeaningScore: winnerScores.meaningScore,

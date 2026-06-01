@@ -3,6 +3,7 @@
  * Translation quality, script contamination, cue merging, timing audit.
  */
 import { decodeSubtitleTextEntities } from './subtitle-text-entities.js';
+import { getDomainLocalizationRules } from './domain-translation-hints.js';
 
 const PERSIAN_TARGET = new Set(['fa', 'fas', 'per', 'persian', 'farsi']);
 
@@ -277,9 +278,10 @@ export function mergeFragmentedSubtitleCues(segments, opts = {}) {
   return out;
 }
 
-export function buildPersianFluencyPrompts(batch) {
+export function buildPersianFluencyPrompts(batch, domain = 'general') {
   const n = batch.length;
   const block = batch.map((s) => s.text).join('\n---SEGMENT---\n');
+  const domainRules = getDomainLocalizationRules(domain, 'fa');
   const systemPrompt = `You are an expert Persian (Farsi) subtitle localizer for fitness, business, and social video. Rewrite each line into native conversational Iranian Persian — how a Persian YouTuber would actually speak, NOT literal word-for-word translation and NOT formal/literary Persian.
 
 Rules:
@@ -288,7 +290,7 @@ Rules:
 - Business/entrepreneurship: natural startup Persian, not bureaucratic.
 - Merge incomplete fragments mentally — each output line must be a complete thought readable on screen.
 - Use ONLY Persian in Arabic script. No Latin, Devanagari, CJK, Cyrillic, or Vietnamese.
-- Output exactly ${n} segments separated only by ---SEGMENT--- on its own line. No numbering or timestamps.`;
+- Output exactly ${n} segments separated only by ---SEGMENT--- on its own line. No numbering or timestamps.${domainRules}`;
   const userPrompt = `Localize these ${n} subtitle lines to native conversational Persian (same order, ---SEGMENT--- between lines):
 
 ${block}
@@ -311,7 +313,8 @@ export async function postProcessTranslatedSegments(opts) {
     translatedSegments = [],
     targetLanguage,
     traceId,
-    runLlmBatch
+    runLlmBatch,
+    contentDomain = 'general'
   } = opts;
 
   const tgt = String(targetLanguage || '').toLowerCase().slice(0, 2);
@@ -378,7 +381,7 @@ export async function postProcessTranslatedSegments(opts) {
       const fluent = [];
       for (let i = 0; i < working.length; i += batchSize) {
         const batch = working.slice(i, i + batchSize);
-        const prompts = buildPersianFluencyPrompts(batch);
+        const prompts = buildPersianFluencyPrompts(batch, contentDomain);
         const rewritten = await runLlmBatch(
           batch,
           prompts,

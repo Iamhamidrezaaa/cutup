@@ -30,7 +30,9 @@ export function buildTranslationTelemetry(data) {
     initialScore: data.initialScore != null ? Number(data.initialScore) : undefined,
     rewrittenScore: data.rewrittenScore != null ? Number(data.rewrittenScore) : undefined,
     languageNeedsReview: Boolean(data.languageNeedsReview),
-    detectedBy: data.detectedBy || null
+    detectedBy: data.detectedBy || null,
+    contentDomain: data.contentDomain || 'general',
+    domainConfidence: data.domainConfidence != null ? Number(data.domainConfidence) : undefined
   };
 }
 

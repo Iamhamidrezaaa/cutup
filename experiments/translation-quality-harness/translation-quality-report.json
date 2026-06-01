@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-01T20:03:04.215Z",
+  "generatedAt": "2026-06-01T21:11:43.518Z",
   "summary": {
     "totalEvaluations": 180,
     "totalFailures": 36,
@@ -51,7 +51,8 @@
         "language": "fr",
         "averageScore": 90
       }
-    ]
+    ],
+    "domainAccuracyOverall": 0.5
   },
   "byTargetLanguage": {
     "fa": {
@@ -156,6 +157,79 @@
       "sampleCount": 20
     }
   },
+  "byDomain": {
+    "general": {
+      "averageTranslationScore": 87,
+      "averageMeaningScore": 90,
+      "averageFluencyScore": 83,
+      "sampleCount": 45
+    },
+    "fitness": {
+      "averageTranslationScore": 87,
+      "averageMeaningScore": 91,
+      "averageFluencyScore": 82,
+      "sampleCount": 45
+    },
+    "business": {
+      "averageTranslationScore": 87,
+      "averageMeaningScore": 90,
+      "averageFluencyScore": 82,
+      "sampleCount": 45
+    },
+    "technology": {
+      "averageTranslationScore": 86,
+      "averageMeaningScore": 91,
+      "averageFluencyScore": 80,
+      "sampleCount": 45
+    }
+  },
+  "domainAccuracy": {
+    "overall": 0.5,
+    "evaluatedSamples": 180,
+    "correctMatches": 90,
+    "byDetectedDomain": {
+      "general": {
+        "detected": 45,
+        "correct": 36,
+        "accuracy": 0.8
+      },
+      "technology": {
+        "detected": 9,
+        "correct": 0,
+        "accuracy": 0
+      },
+      "fitness": {
+        "detected": 45,
+        "correct": 36,
+        "accuracy": 0.8
+      },
+      "sales": {
+        "detected": 18,
+        "correct": 0,
+        "accuracy": 0
+      },
+      "business": {
+        "detected": 18,
+        "correct": 18,
+        "accuracy": 1
+      },
+      "finance": {
+        "detected": 9,
+        "correct": 0,
+        "accuracy": 0
+      },
+      "programming": {
+        "detected": 27,
+        "correct": 0,
+        "accuracy": 0
+      },
+      "real_estate": {
+        "detected": 9,
+        "correct": 0,
+        "accuracy": 0
+      }
+    }
+  },
   "recommendedImprovements": [
     "Strengthen fa rewrite strategy and domain-specific glossary (avg score 62).",
     "Expand post-translation script validation for Persian/Arabic/Hindi targets.",
@@ -168,6 +242,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "fa",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "Let's go",
       "translatedText": "بزن بریم",
       "finalText": "بزن بریم",
@@ -185,6 +263,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "fa",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "Everything okay?",
       "translatedText": "همه چیز خوب است؟",
       "finalText": "همه چیز خوب است؟",
@@ -211,6 +293,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "fa",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "I need a minute.",
       "translatedText": "[fa] I need a minute.",
       "finalText": "[fa] I need a minute.",
@@ -244,6 +330,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "fa",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "That makes sense.",
       "translatedText": "[fa] That makes sense.",
       "finalText": "[fa] That makes sense.",
@@ -277,6 +367,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "fa",
       "domain": "general",
+      "detectedDomain": "technology",
+      "domainConfidence": 0.53,
+      "domainMatch": false,
+      "matchedSignals": [
+        "ai"
+      ],
       "sourceText": "Wait, hear me out.",
       "translatedText": "[fa] Wait, hear me out.",
       "finalText": "[fa] Wait, hear me out.",
@@ -310,6 +406,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "ar",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "Let's go",
       "translatedText": "[ar] Let's go",
       "finalText": "[ar] Let's go",
@@ -327,6 +427,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "ar",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "Everything okay?",
       "translatedText": "[ar] Everything okay?",
       "finalText": "[ar] Everything okay?",
@@ -344,6 +448,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "ar",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "I need a minute.",
       "translatedText": "[ar] I need a minute.",
       "finalText": "[ar] I need a minute.",
@@ -361,6 +469,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "ar",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "That makes sense.",
       "translatedText": "[ar] That makes sense.",
       "finalText": "[ar] That makes sense.",
@@ -378,6 +490,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "ar",
       "domain": "general",
+      "detectedDomain": "technology",
+      "domainConfidence": 0.53,
+      "domainMatch": false,
+      "matchedSignals": [
+        "ai"
+      ],
       "sourceText": "Wait, hear me out.",
       "translatedText": "[ar] Wait, hear me out.",
       "finalText": "[ar] Wait, hear me out.",
@@ -395,6 +513,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "es",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "Let's go",
       "translatedText": "[es] Let's go",
       "finalText": "[es] Let's go",
@@ -412,6 +534,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "es",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "Everything okay?",
       "translatedText": "[es] Everything okay?",
       "finalText": "[es] Everything okay?",
@@ -429,6 +555,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "es",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "I need a minute.",
       "translatedText": "[es] I need a minute.",
       "finalText": "[es] I need a minute.",
@@ -446,6 +576,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "es",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "That makes sense.",
       "translatedText": "[es] That makes sense.",
       "finalText": "[es] That makes sense.",
@@ -463,6 +597,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "es",
       "domain": "general",
+      "detectedDomain": "technology",
+      "domainConfidence": 0.53,
+      "domainMatch": false,
+      "matchedSignals": [
+        "ai"
+      ],
       "sourceText": "Wait, hear me out.",
       "translatedText": "[es] Wait, hear me out.",
       "finalText": "[es] Wait, hear me out.",
@@ -480,6 +620,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "ru",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "Let's go",
       "translatedText": "[ru] Let's go",
       "finalText": "[ru] Let's go",
@@ -497,6 +641,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "ru",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "Everything okay?",
       "translatedText": "[ru] Everything okay?",
       "finalText": "[ru] Everything okay?",
@@ -514,6 +662,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "ru",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "I need a minute.",
       "translatedText": "[ru] I need a minute.",
       "finalText": "[ru] I need a minute.",
@@ -531,6 +683,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "ru",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "That makes sense.",
       "translatedText": "[ru] That makes sense.",
       "finalText": "[ru] That makes sense.",
@@ -548,6 +704,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "ru",
       "domain": "general",
+      "detectedDomain": "technology",
+      "domainConfidence": 0.53,
+      "domainMatch": false,
+      "matchedSignals": [
+        "ai"
+      ],
       "sourceText": "Wait, hear me out.",
       "translatedText": "[ru] Wait, hear me out.",
       "finalText": "[ru] Wait, hear me out.",
@@ -565,6 +727,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "fr",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "Let's go",
       "translatedText": "[fr] Let's go",
       "finalText": "[fr] Let's go",
@@ -582,6 +748,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "fr",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "Everything okay?",
       "translatedText": "[fr] Everything okay?",
       "finalText": "[fr] Everything okay?",
@@ -599,6 +769,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "fr",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "I need a minute.",
       "translatedText": "[fr] I need a minute.",
       "finalText": "[fr] I need a minute.",
@@ -616,6 +790,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "fr",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "That makes sense.",
       "translatedText": "[fr] That makes sense.",
       "finalText": "[fr] That makes sense.",
@@ -633,6 +811,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "fr",
       "domain": "general",
+      "detectedDomain": "technology",
+      "domainConfidence": 0.53,
+      "domainMatch": false,
+      "matchedSignals": [
+        "ai"
+      ],
       "sourceText": "Wait, hear me out.",
       "translatedText": "[fr] Wait, hear me out.",
       "finalText": "[fr] Wait, hear me out.",
@@ -650,6 +834,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "de",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "Let's go",
       "translatedText": "[de] Let's go",
       "finalText": "[de] Let's go",
@@ -667,6 +855,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "de",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "Everything okay?",
       "translatedText": "[de] Everything okay?",
       "finalText": "[de] Everything okay?",
@@ -684,6 +876,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "de",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "I need a minute.",
       "translatedText": "[de] I need a minute.",
       "finalText": "[de] I need a minute.",
@@ -701,6 +897,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "de",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "That makes sense.",
       "translatedText": "[de] That makes sense.",
       "finalText": "[de] That makes sense.",
@@ -718,6 +918,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "de",
       "domain": "general",
+      "detectedDomain": "technology",
+      "domainConfidence": 0.53,
+      "domainMatch": false,
+      "matchedSignals": [
+        "ai"
+      ],
       "sourceText": "Wait, hear me out.",
       "translatedText": "[de] Wait, hear me out.",
       "finalText": "[de] Wait, hear me out.",
@@ -735,6 +941,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "tr",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "Let's go",
       "translatedText": "[tr] Let's go",
       "finalText": "[tr] Let's go",
@@ -752,6 +962,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "tr",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "Everything okay?",
       "translatedText": "[tr] Everything okay?",
       "finalText": "[tr] Everything okay?",
@@ -769,6 +983,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "tr",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "I need a minute.",
       "translatedText": "[tr] I need a minute.",
       "finalText": "[tr] I need a minute.",
@@ -786,6 +1004,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "tr",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "That makes sense.",
       "translatedText": "[tr] That makes sense.",
       "finalText": "[tr] That makes sense.",
@@ -803,6 +1025,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "tr",
       "domain": "general",
+      "detectedDomain": "technology",
+      "domainConfidence": 0.53,
+      "domainMatch": false,
+      "matchedSignals": [
+        "ai"
+      ],
       "sourceText": "Wait, hear me out.",
       "translatedText": "[tr] Wait, hear me out.",
       "finalText": "[tr] Wait, hear me out.",
@@ -820,6 +1048,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "hi",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "Let's go",
       "translatedText": "[hi] Let's go",
       "finalText": "[hi] Let's go",
@@ -837,6 +1069,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "hi",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "Everything okay?",
       "translatedText": "[hi] Everything okay?",
       "finalText": "[hi] Everything okay?",
@@ -854,6 +1090,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "hi",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "I need a minute.",
       "translatedText": "[hi] I need a minute.",
       "finalText": "[hi] I need a minute.",
@@ -871,6 +1111,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "hi",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "That makes sense.",
       "translatedText": "[hi] That makes sense.",
       "finalText": "[hi] That makes sense.",
@@ -888,6 +1132,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "hi",
       "domain": "general",
+      "detectedDomain": "technology",
+      "domainConfidence": 0.53,
+      "domainMatch": false,
+      "matchedSignals": [
+        "ai"
+      ],
       "sourceText": "Wait, hear me out.",
       "translatedText": "[hi] Wait, hear me out.",
       "finalText": "[hi] Wait, hear me out.",
@@ -905,6 +1155,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "tl",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "Let's go",
       "translatedText": "[tl] Let's go",
       "finalText": "[tl] Let's go",
@@ -922,6 +1176,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "tl",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "Everything okay?",
       "translatedText": "[tl] Everything okay?",
       "finalText": "[tl] Everything okay?",
@@ -939,6 +1197,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "tl",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "I need a minute.",
       "translatedText": "[tl] I need a minute.",
       "finalText": "[tl] I need a minute.",
@@ -956,6 +1218,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "tl",
       "domain": "general",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": true,
+      "matchedSignals": [],
       "sourceText": "That makes sense.",
       "translatedText": "[tl] That makes sense.",
       "finalText": "[tl] That makes sense.",
@@ -973,6 +1239,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "tl",
       "domain": "general",
+      "detectedDomain": "technology",
+      "domainConfidence": 0.53,
+      "domainMatch": false,
+      "matchedSignals": [
+        "ai"
+      ],
       "sourceText": "Wait, hear me out.",
       "translatedText": "[tl] Wait, hear me out.",
       "finalText": "[tl] Wait, hear me out.",
@@ -990,6 +1262,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "fa",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.55,
+      "domainMatch": true,
+      "matchedSignals": [
+        "deadlift",
+        "phrase:nice deadlift"
+      ],
       "sourceText": "Nice deadlift.",
       "translatedText": "ددلیفتت عالیه",
       "finalText": "ددلیفتت عالیه",
@@ -1007,6 +1286,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "fa",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.55,
+      "domainMatch": true,
+      "matchedSignals": [
+        "phrase:keep your core"
+      ],
       "sourceText": "Keep your core tight.",
       "translatedText": "[fa] Keep your core tight.",
       "finalText": "[fa] Keep your core tight.",
@@ -1040,6 +1325,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "fa",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.61,
+      "domainMatch": true,
+      "matchedSignals": [
+        "rep",
+        "phrase:one more rep"
+      ],
       "sourceText": "One more rep.",
       "translatedText": "[fa] One more rep.",
       "finalText": "[fa] One more rep.",
@@ -1073,6 +1365,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "fa",
       "domain": "fitness",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": false,
+      "matchedSignals": [],
       "sourceText": "Control the descent.",
       "translatedText": "[fa] Control the descent.",
       "finalText": "[fa] Control the descent.",
@@ -1106,6 +1402,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "fa",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.54,
+      "domainMatch": true,
+      "matchedSignals": [
+        "set"
+      ],
       "sourceText": "Great set.",
       "translatedText": "[fa] Great set.",
       "finalText": "[fa] Great set.",
@@ -1139,6 +1441,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "ar",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.55,
+      "domainMatch": true,
+      "matchedSignals": [
+        "deadlift",
+        "phrase:nice deadlift"
+      ],
       "sourceText": "Nice deadlift.",
       "translatedText": "[ar] Nice deadlift.",
       "finalText": "[ar] Nice deadlift.",
@@ -1156,6 +1465,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "ar",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.55,
+      "domainMatch": true,
+      "matchedSignals": [
+        "phrase:keep your core"
+      ],
       "sourceText": "Keep your core tight.",
       "translatedText": "[ar] Keep your core tight.",
       "finalText": "[ar] Keep your core tight.",
@@ -1173,6 +1488,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "ar",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.61,
+      "domainMatch": true,
+      "matchedSignals": [
+        "rep",
+        "phrase:one more rep"
+      ],
       "sourceText": "One more rep.",
       "translatedText": "[ar] One more rep.",
       "finalText": "[ar] One more rep.",
@@ -1190,6 +1512,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "ar",
       "domain": "fitness",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": false,
+      "matchedSignals": [],
       "sourceText": "Control the descent.",
       "translatedText": "[ar] Control the descent.",
       "finalText": "[ar] Control the descent.",
@@ -1207,6 +1533,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "ar",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.54,
+      "domainMatch": true,
+      "matchedSignals": [
+        "set"
+      ],
       "sourceText": "Great set.",
       "translatedText": "[ar] Great set.",
       "finalText": "[ar] Great set.",
@@ -1224,6 +1556,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "es",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.55,
+      "domainMatch": true,
+      "matchedSignals": [
+        "deadlift",
+        "phrase:nice deadlift"
+      ],
       "sourceText": "Nice deadlift.",
       "translatedText": "[es] Nice deadlift.",
       "finalText": "[es] Nice deadlift.",
@@ -1241,6 +1580,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "es",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.55,
+      "domainMatch": true,
+      "matchedSignals": [
+        "phrase:keep your core"
+      ],
       "sourceText": "Keep your core tight.",
       "translatedText": "[es] Keep your core tight.",
       "finalText": "[es] Keep your core tight.",
@@ -1258,6 +1603,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "es",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.61,
+      "domainMatch": true,
+      "matchedSignals": [
+        "rep",
+        "phrase:one more rep"
+      ],
       "sourceText": "One more rep.",
       "translatedText": "[es] One more rep.",
       "finalText": "[es] One more rep.",
@@ -1275,6 +1627,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "es",
       "domain": "fitness",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": false,
+      "matchedSignals": [],
       "sourceText": "Control the descent.",
       "translatedText": "[es] Control the descent.",
       "finalText": "[es] Control the descent.",
@@ -1292,6 +1648,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "es",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.54,
+      "domainMatch": true,
+      "matchedSignals": [
+        "set"
+      ],
       "sourceText": "Great set.",
       "translatedText": "[es] Great set.",
       "finalText": "[es] Great set.",
@@ -1309,6 +1671,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "ru",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.55,
+      "domainMatch": true,
+      "matchedSignals": [
+        "deadlift",
+        "phrase:nice deadlift"
+      ],
       "sourceText": "Nice deadlift.",
       "translatedText": "[ru] Nice deadlift.",
       "finalText": "[ru] Nice deadlift.",
@@ -1326,6 +1695,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "ru",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.55,
+      "domainMatch": true,
+      "matchedSignals": [
+        "phrase:keep your core"
+      ],
       "sourceText": "Keep your core tight.",
       "translatedText": "[ru] Keep your core tight.",
       "finalText": "[ru] Keep your core tight.",
@@ -1343,6 +1718,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "ru",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.61,
+      "domainMatch": true,
+      "matchedSignals": [
+        "rep",
+        "phrase:one more rep"
+      ],
       "sourceText": "One more rep.",
       "translatedText": "[ru] One more rep.",
       "finalText": "[ru] One more rep.",
@@ -1360,6 +1742,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "ru",
       "domain": "fitness",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": false,
+      "matchedSignals": [],
       "sourceText": "Control the descent.",
       "translatedText": "[ru] Control the descent.",
       "finalText": "[ru] Control the descent.",
@@ -1377,6 +1763,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "ru",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.54,
+      "domainMatch": true,
+      "matchedSignals": [
+        "set"
+      ],
       "sourceText": "Great set.",
       "translatedText": "[ru] Great set.",
       "finalText": "[ru] Great set.",
@@ -1394,6 +1786,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "fr",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.55,
+      "domainMatch": true,
+      "matchedSignals": [
+        "deadlift",
+        "phrase:nice deadlift"
+      ],
       "sourceText": "Nice deadlift.",
       "translatedText": "[fr] Nice deadlift.",
       "finalText": "[fr] Nice deadlift.",
@@ -1411,6 +1810,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "fr",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.55,
+      "domainMatch": true,
+      "matchedSignals": [
+        "phrase:keep your core"
+      ],
       "sourceText": "Keep your core tight.",
       "translatedText": "[fr] Keep your core tight.",
       "finalText": "[fr] Keep your core tight.",
@@ -1428,6 +1833,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "fr",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.61,
+      "domainMatch": true,
+      "matchedSignals": [
+        "rep",
+        "phrase:one more rep"
+      ],
       "sourceText": "One more rep.",
       "translatedText": "[fr] One more rep.",
       "finalText": "[fr] One more rep.",
@@ -1445,6 +1857,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "fr",
       "domain": "fitness",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": false,
+      "matchedSignals": [],
       "sourceText": "Control the descent.",
       "translatedText": "[fr] Control the descent.",
       "finalText": "[fr] Control the descent.",
@@ -1462,6 +1878,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "fr",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.54,
+      "domainMatch": true,
+      "matchedSignals": [
+        "set"
+      ],
       "sourceText": "Great set.",
       "translatedText": "[fr] Great set.",
       "finalText": "[fr] Great set.",
@@ -1479,6 +1901,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "de",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.55,
+      "domainMatch": true,
+      "matchedSignals": [
+        "deadlift",
+        "phrase:nice deadlift"
+      ],
       "sourceText": "Nice deadlift.",
       "translatedText": "[de] Nice deadlift.",
       "finalText": "[de] Nice deadlift.",
@@ -1496,6 +1925,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "de",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.55,
+      "domainMatch": true,
+      "matchedSignals": [
+        "phrase:keep your core"
+      ],
       "sourceText": "Keep your core tight.",
       "translatedText": "[de] Keep your core tight.",
       "finalText": "[de] Keep your core tight.",
@@ -1513,6 +1948,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "de",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.61,
+      "domainMatch": true,
+      "matchedSignals": [
+        "rep",
+        "phrase:one more rep"
+      ],
       "sourceText": "One more rep.",
       "translatedText": "[de] One more rep.",
       "finalText": "[de] One more rep.",
@@ -1530,6 +1972,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "de",
       "domain": "fitness",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": false,
+      "matchedSignals": [],
       "sourceText": "Control the descent.",
       "translatedText": "[de] Control the descent.",
       "finalText": "[de] Control the descent.",
@@ -1547,6 +1993,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "de",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.54,
+      "domainMatch": true,
+      "matchedSignals": [
+        "set"
+      ],
       "sourceText": "Great set.",
       "translatedText": "[de] Great set.",
       "finalText": "[de] Great set.",
@@ -1564,6 +2016,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "tr",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.55,
+      "domainMatch": true,
+      "matchedSignals": [
+        "deadlift",
+        "phrase:nice deadlift"
+      ],
       "sourceText": "Nice deadlift.",
       "translatedText": "[tr] Nice deadlift.",
       "finalText": "[tr] Nice deadlift.",
@@ -1581,6 +2040,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "tr",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.55,
+      "domainMatch": true,
+      "matchedSignals": [
+        "phrase:keep your core"
+      ],
       "sourceText": "Keep your core tight.",
       "translatedText": "[tr] Keep your core tight.",
       "finalText": "[tr] Keep your core tight.",
@@ -1598,6 +2063,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "tr",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.61,
+      "domainMatch": true,
+      "matchedSignals": [
+        "rep",
+        "phrase:one more rep"
+      ],
       "sourceText": "One more rep.",
       "translatedText": "[tr] One more rep.",
       "finalText": "[tr] One more rep.",
@@ -1615,6 +2087,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "tr",
       "domain": "fitness",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": false,
+      "matchedSignals": [],
       "sourceText": "Control the descent.",
       "translatedText": "[tr] Control the descent.",
       "finalText": "[tr] Control the descent.",
@@ -1632,6 +2108,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "tr",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.54,
+      "domainMatch": true,
+      "matchedSignals": [
+        "set"
+      ],
       "sourceText": "Great set.",
       "translatedText": "[tr] Great set.",
       "finalText": "[tr] Great set.",
@@ -1649,6 +2131,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "hi",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.55,
+      "domainMatch": true,
+      "matchedSignals": [
+        "deadlift",
+        "phrase:nice deadlift"
+      ],
       "sourceText": "Nice deadlift.",
       "translatedText": "[hi] Nice deadlift.",
       "finalText": "[hi] Nice deadlift.",
@@ -1666,6 +2155,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "hi",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.55,
+      "domainMatch": true,
+      "matchedSignals": [
+        "phrase:keep your core"
+      ],
       "sourceText": "Keep your core tight.",
       "translatedText": "[hi] Keep your core tight.",
       "finalText": "[hi] Keep your core tight.",
@@ -1683,6 +2178,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "hi",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.61,
+      "domainMatch": true,
+      "matchedSignals": [
+        "rep",
+        "phrase:one more rep"
+      ],
       "sourceText": "One more rep.",
       "translatedText": "[hi] One more rep.",
       "finalText": "[hi] One more rep.",
@@ -1700,6 +2202,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "hi",
       "domain": "fitness",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": false,
+      "matchedSignals": [],
       "sourceText": "Control the descent.",
       "translatedText": "[hi] Control the descent.",
       "finalText": "[hi] Control the descent.",
@@ -1717,6 +2223,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "hi",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.54,
+      "domainMatch": true,
+      "matchedSignals": [
+        "set"
+      ],
       "sourceText": "Great set.",
       "translatedText": "[hi] Great set.",
       "finalText": "[hi] Great set.",
@@ -1734,6 +2246,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "tl",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.55,
+      "domainMatch": true,
+      "matchedSignals": [
+        "deadlift",
+        "phrase:nice deadlift"
+      ],
       "sourceText": "Nice deadlift.",
       "translatedText": "[tl] Nice deadlift.",
       "finalText": "[tl] Nice deadlift.",
@@ -1751,6 +2270,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "tl",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.55,
+      "domainMatch": true,
+      "matchedSignals": [
+        "phrase:keep your core"
+      ],
       "sourceText": "Keep your core tight.",
       "translatedText": "[tl] Keep your core tight.",
       "finalText": "[tl] Keep your core tight.",
@@ -1768,6 +2293,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "tl",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.61,
+      "domainMatch": true,
+      "matchedSignals": [
+        "rep",
+        "phrase:one more rep"
+      ],
       "sourceText": "One more rep.",
       "translatedText": "[tl] One more rep.",
       "finalText": "[tl] One more rep.",
@@ -1785,6 +2317,10 @@
       "sourceLanguage": "en",
       "targetLanguage": "tl",
       "domain": "fitness",
+      "detectedDomain": "general",
+      "domainConfidence": 0.45,
+      "domainMatch": false,
+      "matchedSignals": [],
       "sourceText": "Control the descent.",
       "translatedText": "[tl] Control the descent.",
       "finalText": "[tl] Control the descent.",
@@ -1802,6 +2338,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "tl",
       "domain": "fitness",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.54,
+      "domainMatch": true,
+      "matchedSignals": [
+        "set"
+      ],
       "sourceText": "Great set.",
       "translatedText": "[tl] Great set.",
       "finalText": "[tl] Great set.",
@@ -1819,6 +2361,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "fa",
       "domain": "business",
+      "detectedDomain": "sales",
+      "domainConfidence": 0.55,
+      "domainMatch": false,
+      "matchedSignals": [
+        "lead",
+        "leads"
+      ],
       "sourceText": "We need more leads.",
       "translatedText": "ما به لیدهای بیشتری نیاز داریم",
       "finalText": "ما به لیدهای بیشتری نیاز داریم",
@@ -1845,6 +2394,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "fa",
       "domain": "business",
+      "detectedDomain": "business",
+      "domainConfidence": 0.53,
+      "domainMatch": true,
+      "matchedSignals": [
+        "cash flow"
+      ],
       "sourceText": "Cash flow is tight this quarter.",
       "translatedText": "[fa] Cash flow is tight this quarter.",
       "finalText": "[fa] Cash flow is tight this quarter.",
@@ -1878,6 +2433,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "fa",
       "domain": "business",
+      "detectedDomain": "business",
+      "domainConfidence": 0.53,
+      "domainMatch": true,
+      "matchedSignals": [
+        "mvp"
+      ],
       "sourceText": "Ship the MVP first.",
       "translatedText": "[fa] Ship the MVP first.",
       "finalText": "[fa] Ship the MVP first.",
@@ -1911,6 +2472,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "fa",
       "domain": "business",
+      "detectedDomain": "sales",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "conversion"
+      ],
       "sourceText": "Our conversion rate dropped.",
       "translatedText": "[fa] Our conversion rate dropped.",
       "finalText": "[fa] Our conversion rate dropped.",
@@ -1944,6 +2511,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "fa",
       "domain": "business",
+      "detectedDomain": "finance",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "invest"
+      ],
       "sourceText": "Pitch the investors on Friday.",
       "translatedText": "[fa] Pitch the investors on Friday.",
       "finalText": "[fa] Pitch the investors on Friday.",
@@ -1977,6 +2550,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "ar",
       "domain": "business",
+      "detectedDomain": "sales",
+      "domainConfidence": 0.55,
+      "domainMatch": false,
+      "matchedSignals": [
+        "lead",
+        "leads"
+      ],
       "sourceText": "We need more leads.",
       "translatedText": "[ar] We need more leads.",
       "finalText": "[ar] We need more leads.",
@@ -1994,6 +2574,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "ar",
       "domain": "business",
+      "detectedDomain": "business",
+      "domainConfidence": 0.53,
+      "domainMatch": true,
+      "matchedSignals": [
+        "cash flow"
+      ],
       "sourceText": "Cash flow is tight this quarter.",
       "translatedText": "[ar] Cash flow is tight this quarter.",
       "finalText": "[ar] Cash flow is tight this quarter.",
@@ -2011,6 +2597,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "ar",
       "domain": "business",
+      "detectedDomain": "business",
+      "domainConfidence": 0.53,
+      "domainMatch": true,
+      "matchedSignals": [
+        "mvp"
+      ],
       "sourceText": "Ship the MVP first.",
       "translatedText": "[ar] Ship the MVP first.",
       "finalText": "[ar] Ship the MVP first.",
@@ -2028,6 +2620,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "ar",
       "domain": "business",
+      "detectedDomain": "sales",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "conversion"
+      ],
       "sourceText": "Our conversion rate dropped.",
       "translatedText": "[ar] Our conversion rate dropped.",
       "finalText": "[ar] Our conversion rate dropped.",
@@ -2045,6 +2643,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "ar",
       "domain": "business",
+      "detectedDomain": "finance",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "invest"
+      ],
       "sourceText": "Pitch the investors on Friday.",
       "translatedText": "[ar] Pitch the investors on Friday.",
       "finalText": "[ar] Pitch the investors on Friday.",
@@ -2062,6 +2666,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "es",
       "domain": "business",
+      "detectedDomain": "sales",
+      "domainConfidence": 0.55,
+      "domainMatch": false,
+      "matchedSignals": [
+        "lead",
+        "leads"
+      ],
       "sourceText": "We need more leads.",
       "translatedText": "[es] We need more leads.",
       "finalText": "[es] We need more leads.",
@@ -2079,6 +2690,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "es",
       "domain": "business",
+      "detectedDomain": "business",
+      "domainConfidence": 0.53,
+      "domainMatch": true,
+      "matchedSignals": [
+        "cash flow"
+      ],
       "sourceText": "Cash flow is tight this quarter.",
       "translatedText": "[es] Cash flow is tight this quarter.",
       "finalText": "[es] Cash flow is tight this quarter.",
@@ -2096,6 +2713,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "es",
       "domain": "business",
+      "detectedDomain": "business",
+      "domainConfidence": 0.53,
+      "domainMatch": true,
+      "matchedSignals": [
+        "mvp"
+      ],
       "sourceText": "Ship the MVP first.",
       "translatedText": "[es] Ship the MVP first.",
       "finalText": "[es] Ship the MVP first.",
@@ -2113,6 +2736,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "es",
       "domain": "business",
+      "detectedDomain": "sales",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "conversion"
+      ],
       "sourceText": "Our conversion rate dropped.",
       "translatedText": "[es] Our conversion rate dropped.",
       "finalText": "[es] Our conversion rate dropped.",
@@ -2130,6 +2759,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "es",
       "domain": "business",
+      "detectedDomain": "finance",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "invest"
+      ],
       "sourceText": "Pitch the investors on Friday.",
       "translatedText": "[es] Pitch the investors on Friday.",
       "finalText": "[es] Pitch the investors on Friday.",
@@ -2147,6 +2782,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "ru",
       "domain": "business",
+      "detectedDomain": "sales",
+      "domainConfidence": 0.55,
+      "domainMatch": false,
+      "matchedSignals": [
+        "lead",
+        "leads"
+      ],
       "sourceText": "We need more leads.",
       "translatedText": "[ru] We need more leads.",
       "finalText": "[ru] We need more leads.",
@@ -2164,6 +2806,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "ru",
       "domain": "business",
+      "detectedDomain": "business",
+      "domainConfidence": 0.53,
+      "domainMatch": true,
+      "matchedSignals": [
+        "cash flow"
+      ],
       "sourceText": "Cash flow is tight this quarter.",
       "translatedText": "[ru] Cash flow is tight this quarter.",
       "finalText": "[ru] Cash flow is tight this quarter.",
@@ -2181,6 +2829,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "ru",
       "domain": "business",
+      "detectedDomain": "business",
+      "domainConfidence": 0.53,
+      "domainMatch": true,
+      "matchedSignals": [
+        "mvp"
+      ],
       "sourceText": "Ship the MVP first.",
       "translatedText": "[ru] Ship the MVP first.",
       "finalText": "[ru] Ship the MVP first.",
@@ -2198,6 +2852,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "ru",
       "domain": "business",
+      "detectedDomain": "sales",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "conversion"
+      ],
       "sourceText": "Our conversion rate dropped.",
       "translatedText": "[ru] Our conversion rate dropped.",
       "finalText": "[ru] Our conversion rate dropped.",
@@ -2215,6 +2875,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "ru",
       "domain": "business",
+      "detectedDomain": "finance",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "invest"
+      ],
       "sourceText": "Pitch the investors on Friday.",
       "translatedText": "[ru] Pitch the investors on Friday.",
       "finalText": "[ru] Pitch the investors on Friday.",
@@ -2232,6 +2898,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "fr",
       "domain": "business",
+      "detectedDomain": "sales",
+      "domainConfidence": 0.55,
+      "domainMatch": false,
+      "matchedSignals": [
+        "lead",
+        "leads"
+      ],
       "sourceText": "We need more leads.",
       "translatedText": "[fr] We need more leads.",
       "finalText": "[fr] We need more leads.",
@@ -2249,6 +2922,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "fr",
       "domain": "business",
+      "detectedDomain": "business",
+      "domainConfidence": 0.53,
+      "domainMatch": true,
+      "matchedSignals": [
+        "cash flow"
+      ],
       "sourceText": "Cash flow is tight this quarter.",
       "translatedText": "[fr] Cash flow is tight this quarter.",
       "finalText": "[fr] Cash flow is tight this quarter.",
@@ -2266,6 +2945,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "fr",
       "domain": "business",
+      "detectedDomain": "business",
+      "domainConfidence": 0.53,
+      "domainMatch": true,
+      "matchedSignals": [
+        "mvp"
+      ],
       "sourceText": "Ship the MVP first.",
       "translatedText": "[fr] Ship the MVP first.",
       "finalText": "[fr] Ship the MVP first.",
@@ -2283,6 +2968,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "fr",
       "domain": "business",
+      "detectedDomain": "sales",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "conversion"
+      ],
       "sourceText": "Our conversion rate dropped.",
       "translatedText": "[fr] Our conversion rate dropped.",
       "finalText": "[fr] Our conversion rate dropped.",
@@ -2300,6 +2991,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "fr",
       "domain": "business",
+      "detectedDomain": "finance",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "invest"
+      ],
       "sourceText": "Pitch the investors on Friday.",
       "translatedText": "[fr] Pitch the investors on Friday.",
       "finalText": "[fr] Pitch the investors on Friday.",
@@ -2317,6 +3014,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "de",
       "domain": "business",
+      "detectedDomain": "sales",
+      "domainConfidence": 0.55,
+      "domainMatch": false,
+      "matchedSignals": [
+        "lead",
+        "leads"
+      ],
       "sourceText": "We need more leads.",
       "translatedText": "[de] We need more leads.",
       "finalText": "[de] We need more leads.",
@@ -2334,6 +3038,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "de",
       "domain": "business",
+      "detectedDomain": "business",
+      "domainConfidence": 0.53,
+      "domainMatch": true,
+      "matchedSignals": [
+        "cash flow"
+      ],
       "sourceText": "Cash flow is tight this quarter.",
       "translatedText": "[de] Cash flow is tight this quarter.",
       "finalText": "[de] Cash flow is tight this quarter.",
@@ -2351,6 +3061,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "de",
       "domain": "business",
+      "detectedDomain": "business",
+      "domainConfidence": 0.53,
+      "domainMatch": true,
+      "matchedSignals": [
+        "mvp"
+      ],
       "sourceText": "Ship the MVP first.",
       "translatedText": "[de] Ship the MVP first.",
       "finalText": "[de] Ship the MVP first.",
@@ -2368,6 +3084,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "de",
       "domain": "business",
+      "detectedDomain": "sales",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "conversion"
+      ],
       "sourceText": "Our conversion rate dropped.",
       "translatedText": "[de] Our conversion rate dropped.",
       "finalText": "[de] Our conversion rate dropped.",
@@ -2385,6 +3107,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "de",
       "domain": "business",
+      "detectedDomain": "finance",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "invest"
+      ],
       "sourceText": "Pitch the investors on Friday.",
       "translatedText": "[de] Pitch the investors on Friday.",
       "finalText": "[de] Pitch the investors on Friday.",
@@ -2402,6 +3130,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "tr",
       "domain": "business",
+      "detectedDomain": "sales",
+      "domainConfidence": 0.55,
+      "domainMatch": false,
+      "matchedSignals": [
+        "lead",
+        "leads"
+      ],
       "sourceText": "We need more leads.",
       "translatedText": "[tr] We need more leads.",
       "finalText": "[tr] We need more leads.",
@@ -2419,6 +3154,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "tr",
       "domain": "business",
+      "detectedDomain": "business",
+      "domainConfidence": 0.53,
+      "domainMatch": true,
+      "matchedSignals": [
+        "cash flow"
+      ],
       "sourceText": "Cash flow is tight this quarter.",
       "translatedText": "[tr] Cash flow is tight this quarter.",
       "finalText": "[tr] Cash flow is tight this quarter.",
@@ -2436,6 +3177,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "tr",
       "domain": "business",
+      "detectedDomain": "business",
+      "domainConfidence": 0.53,
+      "domainMatch": true,
+      "matchedSignals": [
+        "mvp"
+      ],
       "sourceText": "Ship the MVP first.",
       "translatedText": "[tr] Ship the MVP first.",
       "finalText": "[tr] Ship the MVP first.",
@@ -2453,6 +3200,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "tr",
       "domain": "business",
+      "detectedDomain": "sales",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "conversion"
+      ],
       "sourceText": "Our conversion rate dropped.",
       "translatedText": "[tr] Our conversion rate dropped.",
       "finalText": "[tr] Our conversion rate dropped.",
@@ -2470,6 +3223,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "tr",
       "domain": "business",
+      "detectedDomain": "finance",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "invest"
+      ],
       "sourceText": "Pitch the investors on Friday.",
       "translatedText": "[tr] Pitch the investors on Friday.",
       "finalText": "[tr] Pitch the investors on Friday.",
@@ -2487,6 +3246,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "hi",
       "domain": "business",
+      "detectedDomain": "sales",
+      "domainConfidence": 0.55,
+      "domainMatch": false,
+      "matchedSignals": [
+        "lead",
+        "leads"
+      ],
       "sourceText": "We need more leads.",
       "translatedText": "[hi] We need more leads.",
       "finalText": "[hi] We need more leads.",
@@ -2504,6 +3270,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "hi",
       "domain": "business",
+      "detectedDomain": "business",
+      "domainConfidence": 0.53,
+      "domainMatch": true,
+      "matchedSignals": [
+        "cash flow"
+      ],
       "sourceText": "Cash flow is tight this quarter.",
       "translatedText": "[hi] Cash flow is tight this quarter.",
       "finalText": "[hi] Cash flow is tight this quarter.",
@@ -2521,6 +3293,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "hi",
       "domain": "business",
+      "detectedDomain": "business",
+      "domainConfidence": 0.53,
+      "domainMatch": true,
+      "matchedSignals": [
+        "mvp"
+      ],
       "sourceText": "Ship the MVP first.",
       "translatedText": "[hi] Ship the MVP first.",
       "finalText": "[hi] Ship the MVP first.",
@@ -2538,6 +3316,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "hi",
       "domain": "business",
+      "detectedDomain": "sales",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "conversion"
+      ],
       "sourceText": "Our conversion rate dropped.",
       "translatedText": "[hi] Our conversion rate dropped.",
       "finalText": "[hi] Our conversion rate dropped.",
@@ -2555,6 +3339,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "hi",
       "domain": "business",
+      "detectedDomain": "finance",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "invest"
+      ],
       "sourceText": "Pitch the investors on Friday.",
       "translatedText": "[hi] Pitch the investors on Friday.",
       "finalText": "[hi] Pitch the investors on Friday.",
@@ -2572,6 +3362,13 @@
       "sourceLanguage": "en",
       "targetLanguage": "tl",
       "domain": "business",
+      "detectedDomain": "sales",
+      "domainConfidence": 0.55,
+      "domainMatch": false,
+      "matchedSignals": [
+        "lead",
+        "leads"
+      ],
       "sourceText": "We need more leads.",
       "translatedText": "[tl] We need more leads.",
       "finalText": "[tl] We need more leads.",
@@ -2589,6 +3386,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "tl",
       "domain": "business",
+      "detectedDomain": "business",
+      "domainConfidence": 0.53,
+      "domainMatch": true,
+      "matchedSignals": [
+        "cash flow"
+      ],
       "sourceText": "Cash flow is tight this quarter.",
       "translatedText": "[tl] Cash flow is tight this quarter.",
       "finalText": "[tl] Cash flow is tight this quarter.",
@@ -2606,6 +3409,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "tl",
       "domain": "business",
+      "detectedDomain": "business",
+      "domainConfidence": 0.53,
+      "domainMatch": true,
+      "matchedSignals": [
+        "mvp"
+      ],
       "sourceText": "Ship the MVP first.",
       "translatedText": "[tl] Ship the MVP first.",
       "finalText": "[tl] Ship the MVP first.",
@@ -2623,6 +3432,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "tl",
       "domain": "business",
+      "detectedDomain": "sales",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "conversion"
+      ],
       "sourceText": "Our conversion rate dropped.",
       "translatedText": "[tl] Our conversion rate dropped.",
       "finalText": "[tl] Our conversion rate dropped.",
@@ -2640,6 +3455,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "tl",
       "domain": "business",
+      "detectedDomain": "finance",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "invest"
+      ],
       "sourceText": "Pitch the investors on Friday.",
       "translatedText": "[tl] Pitch the investors on Friday.",
       "finalText": "[tl] Pitch the investors on Friday.",
@@ -2657,6 +3478,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "fa",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "deploy"
+      ],
       "sourceText": "Deploy to staging first.",
       "translatedText": "[fa] Deploy to staging first.",
       "finalText": "[fa] Deploy to staging first.",
@@ -2690,6 +3517,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "fa",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "api"
+      ],
       "sourceText": "The API is rate limited.",
       "translatedText": "[fa] The API is rate limited.",
       "finalText": "[fa] The API is rate limited.",
@@ -2723,6 +3556,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "fa",
       "domain": "technology",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "pr"
+      ],
       "sourceText": "We hit a production bug.",
       "translatedText": "[fa] We hit a production bug.",
       "finalText": "[fa] We hit a production bug.",
@@ -2756,6 +3595,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "fa",
       "domain": "technology",
+      "detectedDomain": "real_estate",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "lease"
+      ],
       "sourceText": "Roll back the release.",
       "translatedText": "[fa] Roll back the release.",
       "finalText": "[fa] Roll back the release.",
@@ -2789,6 +3634,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "fa",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "deploy"
+      ],
       "sourceText": "Latency spiked after the deploy.",
       "translatedText": "[fa] Latency spiked after the deploy.",
       "finalText": "[fa] Latency spiked after the deploy.",
@@ -2822,6 +3673,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "ar",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "deploy"
+      ],
       "sourceText": "Deploy to staging first.",
       "translatedText": "[ar] Deploy to staging first.",
       "finalText": "[ar] Deploy to staging first.",
@@ -2839,6 +3696,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "ar",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "api"
+      ],
       "sourceText": "The API is rate limited.",
       "translatedText": "[ar] The API is rate limited.",
       "finalText": "[ar] The API is rate limited.",
@@ -2856,6 +3719,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "ar",
       "domain": "technology",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "pr"
+      ],
       "sourceText": "We hit a production bug.",
       "translatedText": "[ar] We hit a production bug.",
       "finalText": "[ar] We hit a production bug.",
@@ -2873,6 +3742,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "ar",
       "domain": "technology",
+      "detectedDomain": "real_estate",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "lease"
+      ],
       "sourceText": "Roll back the release.",
       "translatedText": "[ar] Roll back the release.",
       "finalText": "[ar] Roll back the release.",
@@ -2890,6 +3765,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "ar",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "deploy"
+      ],
       "sourceText": "Latency spiked after the deploy.",
       "translatedText": "[ar] Latency spiked after the deploy.",
       "finalText": "[ar] Latency spiked after the deploy.",
@@ -2907,6 +3788,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "es",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "deploy"
+      ],
       "sourceText": "Deploy to staging first.",
       "translatedText": "[es] Deploy to staging first.",
       "finalText": "[es] Deploy to staging first.",
@@ -2924,6 +3811,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "es",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "api"
+      ],
       "sourceText": "The API is rate limited.",
       "translatedText": "[es] The API is rate limited.",
       "finalText": "[es] The API is rate limited.",
@@ -2941,6 +3834,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "es",
       "domain": "technology",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "pr"
+      ],
       "sourceText": "We hit a production bug.",
       "translatedText": "[es] We hit a production bug.",
       "finalText": "[es] We hit a production bug.",
@@ -2958,6 +3857,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "es",
       "domain": "technology",
+      "detectedDomain": "real_estate",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "lease"
+      ],
       "sourceText": "Roll back the release.",
       "translatedText": "[es] Roll back the release.",
       "finalText": "[es] Roll back the release.",
@@ -2975,6 +3880,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "es",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "deploy"
+      ],
       "sourceText": "Latency spiked after the deploy.",
       "translatedText": "[es] Latency spiked after the deploy.",
       "finalText": "[es] Latency spiked after the deploy.",
@@ -2992,6 +3903,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "ru",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "deploy"
+      ],
       "sourceText": "Deploy to staging first.",
       "translatedText": "[ru] Deploy to staging first.",
       "finalText": "[ru] Deploy to staging first.",
@@ -3009,6 +3926,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "ru",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "api"
+      ],
       "sourceText": "The API is rate limited.",
       "translatedText": "[ru] The API is rate limited.",
       "finalText": "[ru] The API is rate limited.",
@@ -3026,6 +3949,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "ru",
       "domain": "technology",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "pr"
+      ],
       "sourceText": "We hit a production bug.",
       "translatedText": "[ru] We hit a production bug.",
       "finalText": "[ru] We hit a production bug.",
@@ -3043,6 +3972,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "ru",
       "domain": "technology",
+      "detectedDomain": "real_estate",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "lease"
+      ],
       "sourceText": "Roll back the release.",
       "translatedText": "[ru] Roll back the release.",
       "finalText": "[ru] Roll back the release.",
@@ -3060,6 +3995,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "ru",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "deploy"
+      ],
       "sourceText": "Latency spiked after the deploy.",
       "translatedText": "[ru] Latency spiked after the deploy.",
       "finalText": "[ru] Latency spiked after the deploy.",
@@ -3077,6 +4018,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "fr",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "deploy"
+      ],
       "sourceText": "Deploy to staging first.",
       "translatedText": "[fr] Deploy to staging first.",
       "finalText": "[fr] Deploy to staging first.",
@@ -3094,6 +4041,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "fr",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "api"
+      ],
       "sourceText": "The API is rate limited.",
       "translatedText": "[fr] The API is rate limited.",
       "finalText": "[fr] The API is rate limited.",
@@ -3111,6 +4064,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "fr",
       "domain": "technology",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "pr"
+      ],
       "sourceText": "We hit a production bug.",
       "translatedText": "[fr] We hit a production bug.",
       "finalText": "[fr] We hit a production bug.",
@@ -3128,6 +4087,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "fr",
       "domain": "technology",
+      "detectedDomain": "real_estate",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "lease"
+      ],
       "sourceText": "Roll back the release.",
       "translatedText": "[fr] Roll back the release.",
       "finalText": "[fr] Roll back the release.",
@@ -3145,6 +4110,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "fr",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "deploy"
+      ],
       "sourceText": "Latency spiked after the deploy.",
       "translatedText": "[fr] Latency spiked after the deploy.",
       "finalText": "[fr] Latency spiked after the deploy.",
@@ -3162,6 +4133,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "de",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "deploy"
+      ],
       "sourceText": "Deploy to staging first.",
       "translatedText": "[de] Deploy to staging first.",
       "finalText": "[de] Deploy to staging first.",
@@ -3179,6 +4156,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "de",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "api"
+      ],
       "sourceText": "The API is rate limited.",
       "translatedText": "[de] The API is rate limited.",
       "finalText": "[de] The API is rate limited.",
@@ -3196,6 +4179,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "de",
       "domain": "technology",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "pr"
+      ],
       "sourceText": "We hit a production bug.",
       "translatedText": "[de] We hit a production bug.",
       "finalText": "[de] We hit a production bug.",
@@ -3213,6 +4202,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "de",
       "domain": "technology",
+      "detectedDomain": "real_estate",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "lease"
+      ],
       "sourceText": "Roll back the release.",
       "translatedText": "[de] Roll back the release.",
       "finalText": "[de] Roll back the release.",
@@ -3230,6 +4225,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "de",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "deploy"
+      ],
       "sourceText": "Latency spiked after the deploy.",
       "translatedText": "[de] Latency spiked after the deploy.",
       "finalText": "[de] Latency spiked after the deploy.",
@@ -3247,6 +4248,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "tr",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "deploy"
+      ],
       "sourceText": "Deploy to staging first.",
       "translatedText": "[tr] Deploy to staging first.",
       "finalText": "[tr] Deploy to staging first.",
@@ -3264,6 +4271,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "tr",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "api"
+      ],
       "sourceText": "The API is rate limited.",
       "translatedText": "[tr] The API is rate limited.",
       "finalText": "[tr] The API is rate limited.",
@@ -3281,6 +4294,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "tr",
       "domain": "technology",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "pr"
+      ],
       "sourceText": "We hit a production bug.",
       "translatedText": "[tr] We hit a production bug.",
       "finalText": "[tr] We hit a production bug.",
@@ -3298,6 +4317,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "tr",
       "domain": "technology",
+      "detectedDomain": "real_estate",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "lease"
+      ],
       "sourceText": "Roll back the release.",
       "translatedText": "[tr] Roll back the release.",
       "finalText": "[tr] Roll back the release.",
@@ -3315,6 +4340,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "tr",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "deploy"
+      ],
       "sourceText": "Latency spiked after the deploy.",
       "translatedText": "[tr] Latency spiked after the deploy.",
       "finalText": "[tr] Latency spiked after the deploy.",
@@ -3332,6 +4363,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "hi",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "deploy"
+      ],
       "sourceText": "Deploy to staging first.",
       "translatedText": "[hi] Deploy to staging first.",
       "finalText": "[hi] Deploy to staging first.",
@@ -3349,6 +4386,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "hi",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "api"
+      ],
       "sourceText": "The API is rate limited.",
       "translatedText": "[hi] The API is rate limited.",
       "finalText": "[hi] The API is rate limited.",
@@ -3366,6 +4409,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "hi",
       "domain": "technology",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "pr"
+      ],
       "sourceText": "We hit a production bug.",
       "translatedText": "[hi] We hit a production bug.",
       "finalText": "[hi] We hit a production bug.",
@@ -3383,6 +4432,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "hi",
       "domain": "technology",
+      "detectedDomain": "real_estate",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "lease"
+      ],
       "sourceText": "Roll back the release.",
       "translatedText": "[hi] Roll back the release.",
       "finalText": "[hi] Roll back the release.",
@@ -3400,6 +4455,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "hi",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "deploy"
+      ],
       "sourceText": "Latency spiked after the deploy.",
       "translatedText": "[hi] Latency spiked after the deploy.",
       "finalText": "[hi] Latency spiked after the deploy.",
@@ -3417,6 +4478,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "tl",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "deploy"
+      ],
       "sourceText": "Deploy to staging first.",
       "translatedText": "[tl] Deploy to staging first.",
       "finalText": "[tl] Deploy to staging first.",
@@ -3434,6 +4501,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "tl",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "api"
+      ],
       "sourceText": "The API is rate limited.",
       "translatedText": "[tl] The API is rate limited.",
       "finalText": "[tl] The API is rate limited.",
@@ -3451,6 +4524,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "tl",
       "domain": "technology",
+      "detectedDomain": "fitness",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "pr"
+      ],
       "sourceText": "We hit a production bug.",
       "translatedText": "[tl] We hit a production bug.",
       "finalText": "[tl] We hit a production bug.",
@@ -3468,6 +4547,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "tl",
       "domain": "technology",
+      "detectedDomain": "real_estate",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "lease"
+      ],
       "sourceText": "Roll back the release.",
       "translatedText": "[tl] Roll back the release.",
       "finalText": "[tl] Roll back the release.",
@@ -3485,6 +4570,12 @@
       "sourceLanguage": "en",
       "targetLanguage": "tl",
       "domain": "technology",
+      "detectedDomain": "programming",
+      "domainConfidence": 0.54,
+      "domainMatch": false,
+      "matchedSignals": [
+        "deploy"
+      ],
       "sourceText": "Latency spiked after the deploy.",
       "translatedText": "[tl] Latency spiked after the deploy.",
       "finalText": "[tl] Latency spiked after the deploy.",

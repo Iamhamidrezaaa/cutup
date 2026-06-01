@@ -1,6 +1,7 @@
 /**
  * Language-aware subtitle rewrite strategies (localization, not generic MT polish).
  */
+import { getDomainLocalizationRules } from './domain-translation-hints.js';
 
 const LANG_LABELS = {
   en: 'English',
@@ -126,13 +127,19 @@ export function getRewriteStrategy(targetLanguage) {
 /**
  * Single-line rewrite prompts.
  */
-export function buildLanguageAwareRewritePrompts(sourceText, translatedText, targetLanguage) {
+export function buildLanguageAwareRewritePrompts(
+  sourceText,
+  translatedText,
+  targetLanguage,
+  domain = 'general'
+) {
   const strategy = getRewriteStrategy(targetLanguage);
   const label = LANG_LABELS[norm(targetLanguage)] || targetLanguage;
   const rules = strategy.rules.map((r) => `- ${r}`).join('\n');
+  const domainRules = getDomainLocalizationRules(domain, targetLanguage);
 
   return {
-    systemPrompt: `You are a ${label} subtitle localizer (${strategy.id}). Rewrite into ${strategy.tone}. Preserve meaning and speaker tone. Output ONLY the rewritten subtitle line.\n\nRules:\n${rules}`,
+    systemPrompt: `You are a ${label} subtitle localizer (${strategy.id}). Rewrite into ${strategy.tone}. Preserve meaning and speaker tone. Output ONLY the rewritten subtitle line.\n\nRules:\n${rules}${domainRules}`,
     userPrompt: `Source:\n${sourceText || '(n/a)'}\n\nCurrent ${label} subtitle (rewrite to sound native):\n${translatedText}\n\nRewritten:`
   };
 }
@@ -141,16 +148,17 @@ export function buildLanguageAwareRewritePrompts(sourceText, translatedText, tar
  * Batch rewrite prompts (---SEGMENT--- delimited).
  * @param {{ text: string, _source?: string }[]} batch
  */
-export function buildLanguageAwareRewriteBatchPrompts(targetLanguage, batch) {
+export function buildLanguageAwareRewriteBatchPrompts(targetLanguage, batch, domain = 'general') {
   const strategy = getRewriteStrategy(targetLanguage);
   const label = LANG_LABELS[norm(targetLanguage)] || targetLanguage;
   const n = batch.length;
   const rules = strategy.rules.map((r) => `- ${r}`).join('\n');
+  const domainRules = getDomainLocalizationRules(domain, targetLanguage);
   const sourceBlock = batch.map((s) => s._source || s.text).join('\n---SEGMENT---\n');
   const transBlock = batch.map((s) => s.text).join('\n---SEGMENT---\n');
 
   return {
-    systemPrompt: `You are a ${label} subtitle localizer (${strategy.id}). Rewrite each segment into ${strategy.tone}. Preserve meaning. Output exactly ${n} segments separated only by ---SEGMENT--- on its own line. No numbering.\n\nRules:\n${rules}`,
+    systemPrompt: `You are a ${label} subtitle localizer (${strategy.id}). Rewrite each segment into ${strategy.tone}. Preserve meaning. Output exactly ${n} segments separated only by ---SEGMENT--- on its own line. No numbering.\n\nRules:\n${rules}${domainRules}`,
     userPrompt: `Source lines (${n}):\n${sourceBlock}\n\nCurrent ${label} translations (rewrite each):\n${transBlock}\n\nRewritten (${n} parts, delimiter only):`
   };
 }
@@ -168,14 +176,15 @@ export function isLanguageOptimizedTarget(targetLanguage) {
  * Attempt 3: conversational fluency polish (after localization).
  * @param {{ text: string }[]} batch
  */
-export function buildFluencyRewriteBatchPrompts(targetLanguage, batch) {
+export function buildFluencyRewriteBatchPrompts(targetLanguage, batch, domain = 'general') {
   const strategy = getRewriteStrategy(targetLanguage);
   const label = LANG_LABELS[norm(targetLanguage)] || targetLanguage;
   const n = batch.length;
   const block = batch.map((s) => s.text).join('\n---SEGMENT---\n');
+  const domainRules = getDomainLocalizationRules(domain, targetLanguage);
 
   return {
-    systemPrompt: `You are a ${label} subtitle fluency editor (${strategy.id}_fluency). Polish each line into natural spoken ${label} for short video captions. Keep meaning identical. Shorter is better. Output exactly ${n} segments separated only by ---SEGMENT--- on its own line.`,
+    systemPrompt: `You are a ${label} subtitle fluency editor (${strategy.id}_fluency). Polish each line into natural spoken ${label} for short video captions. Keep meaning identical. Shorter is better. Output exactly ${n} segments separated only by ---SEGMENT--- on its own line.${domainRules}`,
     userPrompt: `Polish these ${n} ${label} subtitle lines for native fluency (same order, delimiter only):\n\n${block}\n\nFluent lines (${n} parts):`
   };
 }

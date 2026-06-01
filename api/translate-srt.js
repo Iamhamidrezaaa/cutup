@@ -23,6 +23,8 @@ import { postProcessTranslatedSegments } from './subtitle-translation-pipeline.j
 import { buildLanguageConfidence } from './spoken-language-detection.js';
 import { evaluateAndRewriteTranslation } from './translation-quality-pipeline.js';
 import { runAdaptiveTranslationJob, isAdaptiveTranslationEnabled } from './adaptive-translation-engine.js';
+import { detectContentDomain, logDomainDetection } from './domain-detection.js';
+import { getDomainLocalizationRules } from './domain-translation-hints.js';
 import { buildTranslationTelemetry, logTranslationQuality } from './translation-telemetry.js';
 import { investigateTimingOrigins } from './timing-origin-investigation.js';
 
@@ -156,6 +158,15 @@ export default async function handler(req, res) {
     }
 
     const transcriptCorpus = segments.map((s) => s.text).join(' ');
+    const domainDetection = detectContentDomain({
+      transcript: transcriptCorpus,
+      title: metadata?.title || metadata?.videoTitle || null,
+      description: metadata?.description || metadata?.videoDescription || null,
+      segments
+    });
+    logDomainDetection(traceId, domainDetection);
+    const contentDomain = domainDetection.domain || 'general';
+
     const languageConfidence = buildLanguageConfidence(
       sourceLanguage || 'unknown',
       transcriptCorpus,
@@ -190,7 +201,8 @@ export default async function handler(req, res) {
         segments,
         targetLanguage,
         resolvedSourceLanguage,
-        traceId
+        traceId,
+        contentDomain
       );
       translatedSegments = translateResult.segments;
       translationForensicMeta = translateResult.forensicMeta;
@@ -233,6 +245,7 @@ export default async function handler(req, res) {
         sourceLanguage: resolvedSourceLanguage,
         targetLanguage,
         traceId,
+        contentDomain,
         ...llmOpts
       });
     } else {
@@ -242,6 +255,7 @@ export default async function handler(req, res) {
         sourceLanguage: resolvedSourceLanguage,
         targetLanguage,
         traceId,
+        contentDomain,
         ...llmOpts
       });
     }
@@ -259,6 +273,7 @@ export default async function handler(req, res) {
       translatedSegments,
       targetLanguage,
       traceId,
+      contentDomain,
       runLlmBatch: completeSubtitleTextBatch
     });
     translatedSegments = postProcessed.segments;
@@ -278,7 +293,9 @@ export default async function handler(req, res) {
         rewritten: qualityResult.rewritten,
         initialScore: qualityResult.initialScore,
         rewrittenScore: qualityResult.rewritten ? qualityResult.rewrittenScore : undefined,
-        cueCount: translatedSegments.length
+        cueCount: translatedSegments.length,
+        contentDomain,
+        domainConfidence: domainDetection.confidence
       })
     );
 
@@ -554,7 +571,12 @@ const LANGUAGE_NAMES = {
 const GROQ_TRANSLATE_RULES =
   ' CRITICAL OUTPUT RULES: DO NOT add explanations. DO NOT add numbering. DO NOT add timestamps. DO NOT use HTML entities (&gt;, &lt;, &amp;) or @gt;. RETURN ONLY plain subtitle text lines in the same order. KEEP EXACT ORDER. Use exactly N segments separated only by ---SEGMENT--- on its own line between segments.';
 
-function buildTranslationPrompts(batch, targetLanguage, sourceLanguage, { groqHardening = false } = {}) {
+function buildTranslationPrompts(
+  batch,
+  targetLanguage,
+  sourceLanguage,
+  { groqHardening = false, domain = 'general' } = {}
+) {
   const targetLangName = LANGUAGE_NAMES[targetLanguage] || targetLanguage;
   const sourceLangName = sourceLanguage
     ? LANGUAGE_NAMES[sourceLanguage] || sourceLanguage
@@ -569,7 +591,8 @@ function buildTranslationPrompts(batch, targetLanguage, sourceLanguage, { groqHa
       : tgt === 'ar'
         ? ' For Arabic: use natural modern subtitle Arabic suitable for on-screen captions; avoid overly literal translation.'
         : '';
-  const systemPrompt = `You are a professional subtitle translator. Translate each segment from the source language to ${targetLangName}. Output MUST contain exactly ${n} segments separated only by the delimiter "---SEGMENT---" on its own between segments. No numbering, no timestamps, no explanations.${nativeSubtitleRules}${groqExtra}`;
+  const domainRules = getDomainLocalizationRules(domain, targetLanguage);
+  const systemPrompt = `You are a professional subtitle translator. Translate each segment from the source language to ${targetLangName}. Output MUST contain exactly ${n} segments separated only by the delimiter "---SEGMENT---" on its own between segments. No numbering, no timestamps, no explanations.${nativeSubtitleRules}${domainRules}${groqExtra}`;
   const userPrompt = `Translate these ${n} subtitle segments from ${sourceLangName} to ${targetLangName}. Every segment must be fully translated. Return ONLY translated subtitle text — no preamble, no markdown, no bullets. Do not use HTML entities (no &gt;, &lt;, &amp;) or @gt; — plain text only.
 
 Segments (delimiter ---SEGMENT---):
@@ -943,9 +966,22 @@ function applyBatchTranslation(completion, batch, traceId, batchIndex) {
   throw e;
 }
 
-async function translateBatchWithProviders(batch, targetLanguage, sourceLanguage, traceId, batchIndex) {
-  const groqPrompts = buildTranslationPrompts(batch, targetLanguage, sourceLanguage, { groqHardening: true });
-  const openaiPrompts = buildTranslationPrompts(batch, targetLanguage, sourceLanguage, { groqHardening: false });
+async function translateBatchWithProviders(
+  batch,
+  targetLanguage,
+  sourceLanguage,
+  traceId,
+  batchIndex,
+  contentDomain = 'general'
+) {
+  const groqPrompts = buildTranslationPrompts(batch, targetLanguage, sourceLanguage, {
+    groqHardening: true,
+    domain: contentDomain
+  });
+  const openaiPrompts = buildTranslationPrompts(batch, targetLanguage, sourceLanguage, {
+    groqHardening: false,
+    domain: contentDomain
+  });
   const maxTokens = computeMaxTokensForBatch(batch, targetLanguage);
   const groqReady = hasGroqTranslateKey();
   const openaiReady = hasOpenAiTranslateKey();
@@ -995,7 +1031,7 @@ async function translateBatchWithProviders(batch, targetLanguage, sourceLanguage
   throw e;
 }
 
-async function translateSegments(segments, targetLanguage, sourceLanguage, traceId) {
+async function translateSegments(segments, targetLanguage, sourceLanguage, traceId, contentDomain = 'general') {
   const batchSize = 20;
   const translatedSegments = [];
   let lastProvider = null;
@@ -1009,10 +1045,12 @@ async function translateSegments(segments, targetLanguage, sourceLanguage, trace
     console.log(`[translate-batch][${traceId}]`, { batchIndex, cues: batch.length });
 
     const groqPrompts = buildTranslationPrompts(batch, targetLanguage, sourceLanguage, {
-      groqHardening: true
+      groqHardening: true,
+      domain: contentDomain
     });
     const openaiPrompts = buildTranslationPrompts(batch, targetLanguage, sourceLanguage, {
-      groqHardening: false
+      groqHardening: false,
+      domain: contentDomain
     });
 
     const { segments: mapped, provider } = await translateBatchWithProviders(
@@ -1020,7 +1058,8 @@ async function translateSegments(segments, targetLanguage, sourceLanguage, trace
       targetLanguage,
       sourceLanguage,
       traceId,
-      batchIndex
+      batchIndex,
+      contentDomain
     );
     lastProvider = provider;
     translatedSegments.push(...mapped);

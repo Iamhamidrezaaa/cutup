@@ -16,6 +16,7 @@ translation-training-data/
 {
   "recordedAt": "2026-06-01T12:00:00.000Z",
   "traceId": "tr_abc",
+  "domain": "fitness",
   "sourceLanguage": "en",
   "targetLanguage": "fa",
   "source": "Nice deadlift.",

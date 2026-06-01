@@ -60,7 +60,8 @@ export async function evaluateAndRewriteTranslation(opts) {
     targetLanguage,
     traceId,
     runLlmBatch,
-    runSingleCompletion
+    runSingleCompletion,
+    contentDomain = 'general'
   } = opts;
 
   const backTranslations = await backTranslateSample(
@@ -105,7 +106,7 @@ export async function evaluateAndRewriteTranslation(opts) {
     }));
 
     if (batch.length) {
-      const prompts = buildLanguageAwareRewriteBatchPrompts(targetLanguage, batch);
+      const prompts = buildLanguageAwareRewriteBatchPrompts(targetLanguage, batch, contentDomain);
 
       try {
         const rewrittenSegs = await runLlmBatch(batch, prompts, traceId, 'quality-rewrite', {

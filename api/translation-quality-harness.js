@@ -14,6 +14,7 @@ import {
 } from './translation-rewrite-strategies.js';
 import { buildLanguageConfidence } from './spoken-language-detection.js';
 import { detectForeignContamination, isPersianTargetLanguage } from './subtitle-translation-pipeline.js';
+import { detectContentDomain } from './domain-detection.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const CORPUS_ROOT = join(__dirname, '..', 'test-corpus');
@@ -93,6 +94,8 @@ export async function evaluateHarnessSentence(opts) {
   } = opts;
 
   const langConf = buildLanguageConfidence(sourceLanguage, sourceText, [{ text: sourceText }]);
+  const expectedDomain = domain || 'general';
+  const detected = detectContentDomain({ transcript: sourceText, segments: [{ text: sourceText }] });
 
   let translatedText = await translate(sourceText, sourceLanguage, targetLanguage);
   let rewriteApplied = false;
@@ -129,7 +132,11 @@ export async function evaluateHarnessSentence(opts) {
   const row = {
     sourceLanguage,
     targetLanguage,
-    domain,
+    domain: expectedDomain,
+    detectedDomain: detected.domain,
+    domainConfidence: detected.confidence,
+    domainMatch: detected.domain === expectedDomain,
+    matchedSignals: detected.matchedSignals,
     sourceText: String(sourceText).slice(0, 200),
     translatedText: String(translatedText).slice(0, 200),
     finalText: String(translatedText).slice(0, 200),
@@ -154,8 +161,12 @@ export async function evaluateHarnessSentence(opts) {
 export function buildQualityReport(rows) {
   const byTarget = {};
   const byPair = {};
+  const byDomain = {};
   const failuresByType = {};
+  const domainDetectionStats = {};
   let totalFailures = 0;
+  let domainMatchCount = 0;
+  let domainEvalCount = 0;
 
   for (const row of rows) {
     const tgt = row.targetLanguage;
@@ -172,6 +183,26 @@ export function buildQualityReport(rows) {
     if (!byPair[pairKey]) byPair[pairKey] = { scores: [], count: 0 };
     byPair[pairKey].scores.push(row.translationScore);
     byPair[pairKey].count += 1;
+
+    const dom = row.domain || 'general';
+    if (!byDomain[dom]) {
+      byDomain[dom] = { translation: [], meaning: [], fluency: [], count: 0 };
+    }
+    byDomain[dom].translation.push(row.translationScore);
+    byDomain[dom].meaning.push(row.meaningScore);
+    byDomain[dom].fluency.push(row.fluencyScore);
+    byDomain[dom].count += 1;
+
+    if (row.domain != null) {
+      domainEvalCount += 1;
+      if (row.domainMatch) domainMatchCount += 1;
+      const det = row.detectedDomain || 'general';
+      if (!domainDetectionStats[det]) {
+        domainDetectionStats[det] = { detected: 0, correct: 0 };
+      }
+      domainDetectionStats[det].detected += 1;
+      if (row.domainMatch) domainDetectionStats[det].correct += 1;
+    }
 
     for (const f of row.failures || []) {
       failuresByType[f.type] = (failuresByType[f.type] || 0) + 1;
@@ -204,6 +235,34 @@ export function buildQualityReport(rows) {
     .map(([lang, v]) => ({ language: lang, averageScore: v.averageScore }))
     .sort((a, b) => a.averageScore - b.averageScore);
 
+  const byDomainReport = {};
+  for (const [dom, agg] of Object.entries(byDomain)) {
+    const n = agg.count || 1;
+    byDomainReport[dom] = {
+      averageTranslationScore: Math.round(agg.translation.reduce((a, b) => a + b, 0) / n),
+      averageMeaningScore: Math.round(agg.meaning.reduce((a, b) => a + b, 0) / n),
+      averageFluencyScore: Math.round(agg.fluency.reduce((a, b) => a + b, 0) / n),
+      sampleCount: n
+    };
+  }
+
+  const domainAccuracy = {
+    overall:
+      domainEvalCount > 0 ? Number((domainMatchCount / domainEvalCount).toFixed(3)) : null,
+    evaluatedSamples: domainEvalCount,
+    correctMatches: domainMatchCount,
+    byDetectedDomain: Object.fromEntries(
+      Object.entries(domainDetectionStats).map(([d, s]) => [
+        d,
+        {
+          detected: s.detected,
+          correct: s.correct,
+          accuracy: s.detected ? Number((s.correct / s.detected).toFixed(3)) : 0
+        }
+      ])
+    )
+  };
+
   return {
     generatedAt: new Date().toISOString(),
     summary: {
@@ -211,16 +270,19 @@ export function buildQualityReport(rows) {
       totalFailures,
       failuresByType,
       lowestScoringTargets: ranked.slice(0, 5),
-      highestScoringTargets: [...ranked].reverse().slice(0, 5)
+      highestScoringTargets: [...ranked].reverse().slice(0, 5),
+      domainAccuracyOverall: domainAccuracy.overall
     },
     byTargetLanguage: targets,
     byLanguagePair: pairs,
-    recommendedImprovements: buildRecommendations(targets, failuresByType, ranked),
+    byDomain: byDomainReport,
+    domainAccuracy,
+    recommendedImprovements: buildRecommendations(targets, failuresByType, ranked, byDomainReport),
     rows: rows.length <= 500 ? rows : undefined
   };
 }
 
-function buildRecommendations(targets, failuresByType, ranked) {
+function buildRecommendations(targets, failuresByType, ranked, byDomain = {}) {
   const recs = [];
   const lowest = ranked[0];
   if (lowest && lowest.averageScore < 80) {
@@ -243,6 +305,10 @@ function buildRecommendations(targets, failuresByType, ranked) {
   const fa = targets.fa;
   if (fa && fa.averageScore < 85) {
     recs.push('Persian: prioritize conversational localization pass over literal MT (fitness praise patterns).');
+  }
+  const fitness = byDomain.fitness;
+  if (fitness && fitness.averageTranslationScore < 80) {
+    recs.push('Fitness domain: strengthen Persian praise patterns in domain-translation-hints.');
   }
   if (recs.length === 0) {
     recs.push('Scores healthy across targets; run HARNESS_FULL=1 periodically to regression-test.');

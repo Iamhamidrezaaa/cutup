@@ -15,6 +15,7 @@ export function buildTrainingRecord(record) {
   return {
     recordedAt: new Date().toISOString(),
     traceId: record.traceId,
+    domain: record.domain || 'general',
     sourceLanguage: record.sourceLanguage,
     targetLanguage: record.targetLanguage,
     source: record.source,
@@ -57,6 +58,7 @@ export function persistTranslationTrainingData(traceId, cueRecords) {
   const jobPayload = {
     traceId,
     recordedAt: new Date().toISOString(),
+    domain: cueRecords[0]?.domain || 'general',
     cueCount: cueRecords.length,
     cues: cueRecords
   };
