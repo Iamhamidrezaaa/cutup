@@ -1,0 +1,20 @@
+{
+  "at": "2026-06-01T14:54:07.779Z",
+  "purpose": "newline_rtl_ab",
+  "hypothesis": "Does \\N alone corrupt Persian RTL when style matches test-fa.ass?",
+  "styleNote": "RTL_Test + Vazirmatn + Encoding=1 (not Hormozi / RTL_Default / export.ass)",
+  "testA": {
+    "ass": "test-singleline.ass",
+    "mp4": "test-singleline.mp4",
+    "dialogueText": "سلام دنیا"
+  },
+  "testB": {
+    "ass": "test-multiline.ass",
+    "mp4": "test-multiline.mp4",
+    "dialogueText": "سلام دنیا\\Nخوبی؟",
+    "dialogueLogical": "سلام دنیا + line break + خوبی؟"
+  },
+  "ffmpegFilter": "scale=1080:1920,ass=<basename.ass>",
+  "ok": false,
+  "burnSkipped": "ffmpeg not on PATH — ASS written; run on Linux server: node experiments/ass-newline-rtl-ab/run-newline-ab.mjs"
+}

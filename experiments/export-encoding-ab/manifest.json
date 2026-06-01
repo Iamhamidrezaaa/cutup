@@ -1,0 +1,38 @@
+{
+  "at": "2026-06-01T14:50:41.824Z",
+  "purpose": "encoding_ab_forensic",
+  "preset": "hormozi",
+  "inputVideo": null,
+  "outDir": "E:\\Machine Learning\\cutup\\experiments\\export-encoding-ab",
+  "files": {
+    "exportAss": "E:\\Machine Learning\\cutup\\experiments\\export-encoding-ab\\export.ass",
+    "exportEncoding0Ass": "E:\\Machine Learning\\cutup\\experiments\\export-encoding-ab\\export-encoding0.ass",
+    "testEncoding1Mp4": "E:\\Machine Learning\\cutup\\experiments\\export-encoding-ab\\test-encoding1.mp4",
+    "testEncoding0Mp4": "E:\\Machine Learning\\cutup\\experiments\\export-encoding-ab\\test-encoding0.mp4"
+  },
+  "styleEncodingOnlyChange": [
+    {
+      "style": "Style: Default",
+      "encoding1": "1",
+      "encoding0": "0"
+    },
+    {
+      "style": "Style: Emphasis",
+      "encoding1": "1",
+      "encoding0": "0"
+    },
+    {
+      "style": "Style: RTL_Default",
+      "encoding1": "1",
+      "encoding0": "0"
+    }
+  ],
+  "dialogueSample": [
+    "Dialogue: 0,0:00:00.68,0:00:03.67,RTL_Default,,0,0,0,,عذرخواهی می‌کنم، آقا.\\Nآیا واقعاً مثل",
+    "Dialogue: 0,0:00:03.67,0:00:06.37,RTL_Default,,0,0,0,,سنگین است مثل اینکه\\Nبا آن مبارزه می‌کنی؟",
+    "Dialogue: 0,0:00:06.38,0:00:09.19,RTL_Default,,0,0,0,,آیا همه چیز خوب\\Nاست؟ من سعی می‌کنم"
+  ],
+  "filterTemplate": "scale=1080:1920,ass=<basename.ass>",
+  "ok": false,
+  "burnSkipped": "ffmpeg not on PATH — ASS files written; run burn on Linux server"
+}
