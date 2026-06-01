@@ -1,6 +1,15 @@
 /**
  * Line breaking for ASS cues (mirrors website/subtitle-styles/utils/text-layout.js).
+ * Production line breaks: legacy stack only (SEMANTIC_SEGMENTATION_PRODUCTION=0 default).
+ * Semantic segmentation: evaluation-only shadow (SEMANTIC_SEGMENTATION_EVAL=1 default).
  */
+
+import {
+  compareAndSelectSegmentation,
+  evaluateSegmentationShadow,
+  isSemanticSegmentationEvalEnabled,
+  isSemanticSegmentationProductionEnabled
+} from '../segmentation-quality-score.js';
 
 export function words(text) {
   return String(text || '')
@@ -136,7 +145,41 @@ function clampToMaxLines(lines, w, maxLines, minWords, maxWords, maxChars) {
   return out.slice(0, maxLines);
 }
 
-export function layoutLines(text, layout) {
+/** Production line breaks (unchanged pre–Phase-5 behavior). */
+export function layoutLinesLegacyStack(text, layout) {
+  const w = words(text);
+  const min = Math.max(1, layout.wordsPerLineMin || 2);
+  const max = Math.max(min, layout.wordsPerLineMax || 6);
+  const maxChars = Math.max(8, maxCharsForLayout(layout));
+  const maxLines = Number(layout.maxLines || 0);
+
+  const rawLines = [];
+  rawLines.push(...splitSemanticStack(w, min, max, maxChars));
+  rebalanceTrailingOrphan(rawLines, min, max);
+  rebalanceByLength(rawLines, min, max);
+  const lines = rawLines.map((parts) => parts.join(' ').trim()).filter(Boolean);
+  return clampToMaxLines(lines, w, maxLines, min, max, maxChars).filter(Boolean);
+}
+
+function runEvalShadowIfEnabled(text, layout, currentLines) {
+  if (!isSemanticSegmentationEvalEnabled()) return;
+  try {
+    evaluateSegmentationShadow(text, layout, {
+      language: layout.semanticLanguage || 'unknown',
+      domain: layout.contentDomain || 'general',
+      traceId: layout.traceId || null,
+      persistTraining: Boolean(layout.traceId),
+      currentVersion: currentLines
+    });
+  } catch (err) {
+    console.warn('[semantic-segmentation-disabled] eval failed', {
+      traceId: layout.traceId,
+      message: err?.message
+    });
+  }
+}
+
+export function layoutLines(text, layout = {}) {
   const w = words(text);
   if (!w.length) return [''];
   const min = Math.max(1, layout.wordsPerLineMin || 2);
@@ -152,19 +195,23 @@ export function layoutLines(text, layout) {
     return out.length ? out : [''];
   }
 
-  const rawLines = [];
-  rawLines.push(...splitSemanticStack(w, min, max, maxChars));
+  let productionLines;
 
-  rebalanceTrailingOrphan(rawLines, min, max);
-  rebalanceByLength(rawLines, min, max);
-
-  const lines = rawLines.map((parts) => parts.join(' ').trim()).filter(Boolean);
-  const clamped = clampToMaxLines(lines, w, maxLines, min, max, maxChars).filter(Boolean);
-
-  if (!clamped.length) {
-    return [''];
+  if (isSemanticSegmentationProductionEnabled()) {
+    const domain = layout.contentDomain || 'general';
+    const cmp = compareAndSelectSegmentation(text, layout, {
+      language: layout.semanticLanguage || 'unknown',
+      domain,
+      traceId: layout.traceId || null,
+      persistTraining: Boolean(layout.traceId)
+    });
+    productionLines = clampToMaxLines(cmp.lines, w, maxLines, min, max, maxChars).filter(Boolean);
+  } else {
+    productionLines = layoutLinesLegacyStack(text, layout);
+    runEvalShadowIfEnabled(text, layout, productionLines);
   }
-  return clamped;
+
+  return productionLines.length ? productionLines : [''];
 }
 
 export function buildCueLines(segment, layout, uppercase) {

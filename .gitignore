@@ -19,3 +19,5 @@ parspack.txt
 # Adaptive translation training outputs (generated)
 translation-training-data/dataset.jsonl
 translation-training-data/jobs/
+translation-training-data/segmentation/dataset.jsonl
+translation-training-data/segmentation/*.json
