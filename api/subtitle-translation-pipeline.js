@@ -24,6 +24,13 @@ const PERSIAN_SCRIPT_RE =
 
 const SENTENCE_END_RE = /[.!?؟…]["')\]]?\s*$/u;
 
+/** Persian cues ending mid-phrase (preposition, determiner, verb stem). */
+const PERSIAN_INCOMPLETE_END_RE =
+  /(?:^|\s)(یک|دو|سه|چند|با|برای|از|به|در|روی|تو|من|تو|ما|شما|که|و|یا|این|آن|هم|همین|فقط|بار|باره|آب|انجام)\s*$/u;
+
+const PERSIAN_INCOMPLETE_VERB_RE =
+  /\b(می[\u200c]?خواهم|می[\u200c]?خوام|می[\u200c]?توانم|می[\u200c]?تونم|می[\u200c]?خواهید|می[\u200c]?خواید|دارم|داریم|خواهم|خوام)\s*$/u;
+
 export function isPersianTargetLanguage(targetLanguage) {
   const t = String(targetLanguage || '')
     .toLowerCase()
@@ -153,22 +160,68 @@ export function validatePersianCueScripts(segments, targetLanguage) {
   return { ok: violations.length === 0, violations };
 }
 
-function isFragmentCue(text) {
+export function isPersianIncompleteThought(text) {
   const t = normalizeText(text);
   if (!t) return true;
-  const words = countWords(t);
-  if (words <= 2) return true;
-  if (words <= 4 && t.length < 28 && !SENTENCE_END_RE.test(t)) return true;
-  if (words <= 5 && !SENTENCE_END_RE.test(t) && t.length < 40) return true;
+  if (SENTENCE_END_RE.test(t)) return false;
+  if (PERSIAN_INCOMPLETE_END_RE.test(t)) return true;
+  if (PERSIAN_INCOMPLETE_VERB_RE.test(t)) return true;
+  if (/\b(مهمه|مهم است|مهم)\s*$/u.test(t) && countWords(t) <= 4) return true;
   return false;
 }
 
+function isFragmentCue(text, { persian = false } = {}) {
+  const t = normalizeText(text);
+  if (!t) return true;
+  if (persian && isPersianIncompleteThought(t)) return true;
+  const words = countWords(t);
+  if (words <= 2) return true;
+  if (words <= 4 && t.length < 28 && !SENTENCE_END_RE.test(t)) return true;
+  if (words <= 6 && !SENTENCE_END_RE.test(t) && t.length < 48) return true;
+  if (words <= 8 && !SENTENCE_END_RE.test(t) && t.length < 56 && persian) return true;
+  return false;
+}
+
+function mergeWords(a, b) {
+  const wa = Array.isArray(a?.words) ? a.words : [];
+  const wb = Array.isArray(b?.words) ? b.words : [];
+  if (!wa.length && !wb.length) return undefined;
+  return [...wa, ...wb];
+}
+
 function mergePair(a, b) {
-  return {
+  const merged = {
     start: Number(a.start),
     end: Number(b.end),
     text: normalizeText(`${a.text} ${b.text}`)
   };
+  const words = mergeWords(a, b);
+  if (words) merged.words = words;
+  return merged;
+}
+
+/**
+ * Snap cue start/end to first/last word timestamps when available.
+ * @param {{ start, end, text, words? }[]} segments
+ */
+export function refineCueTimingsFromWords(segments) {
+  return (segments || []).map((seg) => {
+    const words = seg?.words;
+    if (!Array.isArray(words) || !words.length) return seg;
+    const timed = words.filter(
+      (w) => Number.isFinite(Number(w?.start)) && Number.isFinite(Number(w?.end))
+    );
+    if (!timed.length) return seg;
+    const audioStart = Number(timed[0].start);
+    const audioEnd = Number(timed[timed.length - 1].end);
+    return {
+      ...seg,
+      start: audioStart,
+      end: audioEnd,
+      _audioStart: audioStart,
+      _audioEnd: audioEnd
+    };
+  });
 }
 
 /**
@@ -177,8 +230,9 @@ function mergePair(a, b) {
  * @param {{ maxGapSec?: number, maxChain?: number }} [opts]
  */
 export function mergeFragmentedSubtitleCues(segments, opts = {}) {
-  const maxGapSec = Number(opts.maxGapSec ?? 1.35);
-  const maxChain = Math.max(2, Number(opts.maxChain ?? 5));
+  const persian = opts.persian === true;
+  const maxGapSec = Number(opts.maxGapSec ?? (persian ? 2.0 : 1.35));
+  const maxChain = Math.max(2, Number(opts.maxChain ?? (persian ? 8 : 5)));
   const sorted = [...(segments || [])]
     .filter((s) => s && typeof s.start === 'number' && typeof s.end === 'number')
     .sort((a, b) => a.start - b.start);
@@ -191,7 +245,8 @@ export function mergeFragmentedSubtitleCues(segments, opts = {}) {
     let cur = {
       start: Number(sorted[i].start),
       end: Number(sorted[i].end),
-      text: normalizeText(sorted[i].text)
+      text: normalizeText(sorted[i].text),
+      ...(Array.isArray(sorted[i].words) ? { words: sorted[i].words } : {})
     };
     let chain = 1;
     let j = i + 1;
@@ -202,9 +257,11 @@ export function mergeFragmentedSubtitleCues(segments, opts = {}) {
       if (gap > maxGapSec) break;
 
       const shouldMerge =
-        isFragmentCue(cur.text) ||
-        isFragmentCue(next.text) ||
-        (!SENTENCE_END_RE.test(cur.text) && countWords(cur.text) < 6);
+        isFragmentCue(cur.text, { persian }) ||
+        isFragmentCue(next.text, { persian }) ||
+        (persian && isPersianIncompleteThought(cur.text)) ||
+        (persian && !SENTENCE_END_RE.test(cur.text) && isPersianIncompleteThought(next.text)) ||
+        (!SENTENCE_END_RE.test(cur.text) && countWords(cur.text) < 7);
 
       if (!shouldMerge) break;
 
@@ -223,12 +280,20 @@ export function mergeFragmentedSubtitleCues(segments, opts = {}) {
 export function buildPersianFluencyPrompts(batch) {
   const n = batch.length;
   const block = batch.map((s) => s.text).join('\n---SEGMENT---\n');
-  const systemPrompt = `You are an expert Persian (Farsi) subtitle editor for social video. Rewrite each segment into natural, conversational Iranian Persian. Preserve meaning and speaker tone. Use ONLY Persian in the Arabic script used for Farsi. Forbidden in output: English, Hindi (Devanagari), Chinese, Japanese, Korean, Vietnamese, Urdu, or any non-Persian script. No Latin letters. Output exactly ${n} segments separated only by ---SEGMENT--- on its own line. No numbering or timestamps.`;
-  const userPrompt = `Rewrite these ${n} subtitle lines for natural Persian fluency (same order, ---SEGMENT--- between lines):
+  const systemPrompt = `You are an expert Persian (Farsi) subtitle localizer for fitness, business, and social video. Rewrite each line into native conversational Iranian Persian — how a Persian YouTuber would actually speak, NOT literal word-for-word translation and NOT formal/literary Persian.
+
+Rules:
+- Translate MEANING and tone, not English word order.
+- Fitness: keep loanwords natural (ددلیفت، اسکوات، بنچ). Praise should sound spoken: "ددلیفتت عالیه" not "ددلیفت خوبی است".
+- Business/entrepreneurship: natural startup Persian, not bureaucratic.
+- Merge incomplete fragments mentally — each output line must be a complete thought readable on screen.
+- Use ONLY Persian in Arabic script. No Latin, Devanagari, CJK, Cyrillic, or Vietnamese.
+- Output exactly ${n} segments separated only by ---SEGMENT--- on its own line. No numbering or timestamps.`;
+  const userPrompt = `Localize these ${n} subtitle lines to native conversational Persian (same order, ---SEGMENT--- between lines):
 
 ${block}
 
-Fluent Persian lines (${n} parts, delimiter only):`;
+Natural Persian lines (${n} parts, delimiter only):`;
   return { systemPrompt, userPrompt };
 }
 
@@ -250,12 +315,26 @@ export async function postProcessTranslatedSegments(opts) {
   } = opts;
 
   const tgt = String(targetLanguage || '').toLowerCase().slice(0, 2);
-  let working = translatedSegments.map((s, i) => ({
-    start: Number(s.start),
-    end: Number(s.end),
-    text: normalizeText(s.text),
-    _srcIndex: i
-  }));
+  const sourceWithWordTiming = refineCueTimingsFromWords(
+    originalSegments.map((s) => ({
+      start: Number(s.start),
+      end: Number(s.end),
+      text: normalizeText(s.text),
+      words: s.words
+    }))
+  );
+
+  let working = refineCueTimingsFromWords(
+    translatedSegments.map((s, i) => ({
+      start: Number(s.start),
+      end: Number(s.end),
+      text: normalizeText(s.text),
+      words: s.words,
+      _srcIndex: i,
+      _audioStart: sourceWithWordTiming[i]?._audioStart,
+      _audioEnd: sourceWithWordTiming[i]?._audioEnd
+    }))
+  );
 
   let traceIdx = working.findIndex((s) => detectForeignContamination(s.text, targetLanguage).contaminated);
   if (traceIdx < 0) traceIdx = 0;
@@ -265,6 +344,8 @@ export async function postProcessTranslatedSegments(opts) {
     transcript: normalizeText(originalSegments[traceIdx]?.text || ''),
     translated: working[traceIdx]?.text || ''
   };
+
+  let oneToOneForTiming = working.map((s) => ({ ...s }));
 
   if (isPersianTargetLanguage(targetLanguage)) {
     for (let i = 0; i < working.length; i++) {
@@ -309,7 +390,9 @@ export async function postProcessTranslatedSegments(opts) {
           fluent.push({
             start: Number(batch[j]?.start ?? rewritten[j].start),
             end: Number(batch[j]?.end ?? rewritten[j].end),
-            text: normalizeText(rewritten[j]?.text)
+            text: normalizeText(rewritten[j]?.text),
+            _audioStart: batch[j]?._audioStart,
+            _audioEnd: batch[j]?._audioEnd
           });
         }
       }
@@ -320,7 +403,8 @@ export async function postProcessTranslatedSegments(opts) {
     }
 
     const beforeMerge = working.length;
-    working = mergeFragmentedSubtitleCues(working);
+    oneToOneForTiming = working.map((s) => ({ ...s }));
+    working = mergeFragmentedSubtitleCues(working, { persian: true });
     console.log('[subtitle-cue-merge]', {
       traceId,
       before: beforeMerge,
@@ -333,7 +417,12 @@ export async function postProcessTranslatedSegments(opts) {
     pipelineStages.exportText = working[traceIdx]?.text || '';
   }
 
-  const timingReport = buildTimingDriftReport(originalSegments, translatedSegments, working, traceId);
+  const timingReport = buildTimingDriftReport({
+    originalSegments: sourceWithWordTiming,
+    translatedOneToOne: oneToOneForTiming,
+    finalCues: working,
+    traceId
+  });
 
   if (isPipelineTraceEnabled()) {
     console.log(
@@ -358,10 +447,36 @@ export async function postProcessTranslatedSegments(opts) {
   };
 }
 
+function cueTimingRow(seg, stage) {
+  const subtitleStart = Number(seg?.start);
+  const subtitleEnd = Number(seg?.end);
+  const audioStart = Number.isFinite(Number(seg?._audioStart))
+    ? Number(seg._audioStart)
+    : subtitleStart;
+  const audioEnd = Number.isFinite(Number(seg?._audioEnd)) ? Number(seg._audioEnd) : subtitleEnd;
+  const driftMs = Math.round((subtitleStart - audioStart) * 1000);
+  return {
+    stage,
+    text: String(seg?.text || '').slice(0, 50),
+    subtitleStart,
+    subtitleEnd,
+    audioStart,
+    audioEnd,
+    driftMs
+  };
+}
+
 /**
- * Compare timestamps: 1:1 translate vs final cues (after merge).
+ * Compare timestamps across pipeline stages (transcript → translate → merge → export proxy).
  */
-export function buildTimingDriftReport(originalEnglish, translatedOneToOne, finalCues, traceId) {
+export function buildTimingDriftReport(opts) {
+  const {
+    originalSegments = [],
+    translatedOneToOne = [],
+    finalCues = [],
+    traceId
+  } = opts || {};
+
   const rows = [];
   let maxDriftMs = 0;
   let leadSum = 0;
@@ -372,31 +487,44 @@ export function buildTimingDriftReport(originalEnglish, translatedOneToOne, fina
   const n = Math.min(12, finalCues.length);
   for (let i = 0; i < n; i++) {
     const fin = finalCues[i];
-    const origIdx = Math.min(i, (originalEnglish?.length || 1) - 1);
-    const orig = originalEnglish[origIdx];
-    const startDriftMs = Math.round((Number(fin.start) - Number(orig?.start ?? fin.start)) * 1000);
-    const endDriftMs = Math.round((Number(fin.end) - Number(orig?.end ?? fin.end)) * 1000);
-    maxDriftMs = Math.max(maxDriftMs, Math.abs(startDriftMs), Math.abs(endDriftMs));
-    if (startDriftMs > 0) {
-      lagSum += startDriftMs;
+    const origIdx = Math.min(i, (originalSegments?.length || 1) - 1);
+    const orig = originalSegments[origIdx];
+    const tr = translatedOneToOne[origIdx] || translatedOneToOne[i];
+    const audioStart = Number.isFinite(Number(orig?._audioStart))
+      ? Number(orig._audioStart)
+      : Number(orig?.start ?? fin.start);
+    const audioEnd = Number.isFinite(Number(orig?._audioEnd))
+      ? Number(orig._audioEnd)
+      : Number(orig?.end ?? fin.end);
+    const subtitleStart = Number(fin.start);
+    const subtitleEnd = Number(fin.end);
+    const driftMs = Math.round((subtitleStart - audioStart) * 1000);
+    const endDriftMs = Math.round((subtitleEnd - audioEnd) * 1000);
+    maxDriftMs = Math.max(maxDriftMs, Math.abs(driftMs), Math.abs(endDriftMs));
+    if (driftMs > 0) {
+      lagSum += driftMs;
       lagN += 1;
-    } else if (startDriftMs < 0) {
-      leadSum += Math.abs(startDriftMs);
+    } else if (driftMs < 0) {
+      leadSum += Math.abs(driftMs);
       leadN += 1;
     }
     rows.push({
       index: i,
-      text: String(fin.text || '').slice(0, 60),
-      originalStart: orig?.start,
-      originalEnd: orig?.end,
-      finalStart: fin.start,
-      finalEnd: fin.end,
-      startDriftMs,
+      transcript: cueTimingRow(orig, 'transcript'),
+      translatedCue: tr ? cueTimingRow(tr, 'translated') : null,
+      mergedCue: cueTimingRow(fin, 'merged'),
+      previewCue: cueTimingRow(fin, 'preview'),
+      exportCue: cueTimingRow(fin, 'export'),
+      subtitleStart,
+      subtitleEnd,
+      audioStart,
+      audioEnd,
+      driftMs,
       endDriftMs,
       note:
-        i >= translatedOneToOne.length
-          ? 'cue merged — timing spans first..last of merged chain'
-          : '1:1 translate timing preserved until merge'
+        finalCues.length !== translatedOneToOne.length
+          ? 'cue may span merged chain — compare audioStart to phrase'
+          : '1:1 until merge; word timing used when segment.words present'
     });
   }
 

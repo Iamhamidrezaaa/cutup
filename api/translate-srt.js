@@ -20,6 +20,7 @@ import {
   logTranslationForensics
 } from './translation-forensics.js';
 import { postProcessTranslatedSegments } from './subtitle-translation-pipeline.js';
+import { resolveSpokenLanguage } from './spoken-language-detection.js';
 
 /** Approximate output expansion vs English subtitle chars for max_tokens budgeting */
 const LANG_OUTPUT_EXPANSION = {
@@ -150,6 +151,23 @@ export default async function handler(req, res) {
       return translateFail(res, traceId, 400, 'TRANSLATION_MALFORMED', 'No valid subtitle cues found. Regenerate subtitles and try again.', false, 'translate-parse');
     }
 
+    const transcriptCorpus = segments.map((s) => s.text).join(' ');
+    const languageResolution = resolveSpokenLanguage(sourceLanguage || 'unknown', transcriptCorpus, segments);
+    let resolvedSourceLanguage = languageResolution.detectedLanguage || sourceLanguage || 'auto';
+    if (
+      srcNorm &&
+      resolvedSourceLanguage !== srcNorm &&
+      languageResolution.resolution !== 'whisper_confirmed_by_text'
+    ) {
+      console.log('[translate-source-language]', {
+        traceId,
+        clientSource: sourceLanguage,
+        resolvedSource: resolvedSourceLanguage,
+        confidence: languageResolution.confidence,
+        resolution: languageResolution.resolution
+      });
+    }
+
     const srtMinutes = billingMinutesFromSrtSegments(segments);
     const featureCheck = await canUseFeature(userEmail, 'srt', srtMinutes);
     if (featureCheck && featureCheck.allowed === false) {
@@ -162,7 +180,7 @@ export default async function handler(req, res) {
       const translateResult = await translateSegments(
         segments,
         targetLanguage,
-        sourceLanguage,
+        resolvedSourceLanguage,
         traceId
       );
       translatedSegments = translateResult.segments;
@@ -191,7 +209,7 @@ export default async function handler(req, res) {
 
     traceLog(traceId, 'translate-response', { batchesDone: true, cues: translatedSegments.length });
 
-    validateTranslationVsOriginal(segments, translatedSegments, sourceLanguage, targetLanguage);
+    validateTranslationVsOriginal(segments, translatedSegments, resolvedSourceLanguage, targetLanguage);
 
     const translatedOneToOne = translatedSegments.map((s) => ({ ...s }));
     const postProcessed = await postProcessTranslatedSegments({
@@ -207,7 +225,7 @@ export default async function handler(req, res) {
       logTranslationForensics(
         buildTranslationForensicReport(segments, translatedSegments, {
           traceId,
-          sourceLanguage,
+          sourceLanguage: resolvedSourceLanguage,
           targetLanguage,
           translationPrompt: translationForensicMeta?.userPrompt || null,
           systemPrompt: translationForensicMeta?.systemPrompt || null,
@@ -234,7 +252,7 @@ export default async function handler(req, res) {
         id: `tr-${i}`,
         text: String(seg?.text || '')
       })),
-      { traceId, targetLanguage, sourceLanguage }
+      { traceId, targetLanguage, sourceLanguage: resolvedSourceLanguage }
     );
     logSubtitleTextForensicStage(
       'before_translation',
@@ -242,7 +260,7 @@ export default async function handler(req, res) {
         id: `src-${i}`,
         text: String(seg?.text || '')
       })),
-      { traceId, targetLanguage, sourceLanguage }
+      { traceId, targetLanguage, sourceLanguage: resolvedSourceLanguage }
     );
 
     const translatedSRT = generateSRT(translatedSegments);
@@ -483,7 +501,7 @@ function buildTranslationPrompts(batch, targetLanguage, sourceLanguage, { groqHa
   const tgt = String(targetLanguage || '').toLowerCase().slice(0, 2);
   const nativeSubtitleRules =
     tgt === 'fa'
-      ? ' For Persian (Farsi): write natural conversational subtitle Persian for social video — not literal word-for-word, not formal literary Persian, not machine/Google-translate tone. Preserve speaker intent, tone, and humor. Use ONLY Persian (Farsi) in Arabic script. NEVER output Devanagari, Hindi, Chinese, Japanese, Korean, Vietnamese, English, or other foreign scripts. No Latin letters. Keep each segment short enough to read on screen; prefer complete thoughts over tiny fragments.'
+      ? ' For Persian (Farsi): translate MEANING into native conversational Iranian subtitle Persian — how people actually talk on fitness/business YouTube, not literal word-for-word English. Examples: "Nice deadlift" → "ددلیفتت عالیه" (NOT "ددلیفت خوبی است"). Keep fitness terms natural (ددلیفت، اسکوات). Entrepreneurship/business terms should sound like startup Persian, not formal bureaucracy. Preserve humor and speaker tone. Use ONLY Persian in Arabic script. NEVER output Devanagari, Hindi, Chinese, Japanese, Korean, Vietnamese, English, Cyrillic, or other foreign scripts. No Latin letters. Prefer complete readable thoughts; avoid tiny fragments.'
       : tgt === 'ar'
         ? ' For Arabic: use natural modern subtitle Arabic suitable for on-screen captions; avoid overly literal translation.'
         : '';

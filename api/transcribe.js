@@ -36,6 +36,7 @@ import {
   dedupeKeyForUrl
 } from './infrastructure/guards.js';
 import { transcribeDebug } from './infrastructure/observability.js';
+import { resolveSpokenLanguage } from './spoken-language-detection.js';
 
 export default async function handler(req, res) {
   const requestId = req.headers['x-request-id'] || `req_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -551,11 +552,25 @@ export default async function handler(req, res) {
       );
     }
 
+    const languageResolution = resolveSpokenLanguage(
+      transcript.language,
+      correctedText,
+      validSegments
+    );
+    const resolvedLanguage = languageResolution.detectedLanguage || transcript.language || 'unknown';
+
     return sendTranscriptSuccess(res, traceId, {
       requestId,
       text: correctedText,
-      language: transcript.language || 'unknown',
-      segments: validSegments
+      language: resolvedLanguage,
+      segments: validSegments,
+      languageDetection: {
+        detectedLanguage: resolvedLanguage,
+        whisperLanguage: languageResolution.whisperLanguage,
+        confidence: languageResolution.confidence,
+        resolution: languageResolution.resolution,
+        transcriptSample: languageResolution.transcriptSample
+      }
     });
   } catch (err) {
     traceLog(traceId, 'failed', {
