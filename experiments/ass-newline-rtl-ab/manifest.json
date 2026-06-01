@@ -1,5 +1,5 @@
 {
-  "at": "2026-06-01T14:54:07.779Z",
+  "at": "2026-06-01T14:56:00.452Z",
   "purpose": "newline_rtl_ab",
   "hypothesis": "Does \\N alone corrupt Persian RTL when style matches test-fa.ass?",
   "styleNote": "RTL_Test + Vazirmatn + Encoding=1 (not Hormozi / RTL_Default / export.ass)",
@@ -15,6 +15,17 @@
     "dialogueLogical": "سلام دنیا + line break + خوبی؟"
   },
   "ffmpegFilter": "scale=1080:1920,ass=<basename.ass>",
-  "ok": false,
-  "burnSkipped": "ffmpeg not on PATH — ASS written; run on Linux server: node experiments/ass-newline-rtl-ab/run-newline-ab.mjs"
+  "burnA": {
+    "ok": true,
+    "vf": "scale=1080:1920,ass=test-singleline.ass",
+    "command": "cd /var/www/cutup/experiments/ass-newline-rtl-ab && ffmpeg -hide_banner -y -f lavfi -i color=c=#1a1a1a:s=1080x1920:d=4:r=30 -vf scale=1080:1920,ass=test-singleline.ass -c:v libx264 -preset ultrafast -crf 23 -pix_fmt yuv420p -an test-singleline.mp4",
+    "error": null
+  },
+  "burnB": {
+    "ok": true,
+    "vf": "scale=1080:1920,ass=test-multiline.ass",
+    "command": "cd /var/www/cutup/experiments/ass-newline-rtl-ab && ffmpeg -hide_banner -y -f lavfi -i color=c=#1a1a1a:s=1080x1920:d=4:r=30 -vf scale=1080:1920,ass=test-multiline.ass -c:v libx264 -preset ultrafast -crf 23 -pix_fmt yuv420p -an test-multiline.mp4",
+    "error": null
+  },
+  "ok": true
 }
