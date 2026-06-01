@@ -20,6 +20,7 @@ import {
   logSubtitleBurnSync,
   buildSubtitleBurnSyncReport
 } from './ffmpeg-timeline.js';
+import { runRtlBurnForensics } from './rtl-burn-forensics.js';
 import {
   isHardSyncTestEnabled,
   writeHardSyncTestAss,
@@ -452,6 +453,16 @@ export async function burnSubtitles(opts) {
     input: basename(inputPath),
     timelinePlan
   });
+
+  if (jobDir) {
+    await runRtlBurnForensics({
+      burnAssPath: burnAssAbsolute,
+      jobDir,
+      generatorAssPath: assPath,
+      ffmpegCommandExact,
+      ffmpegCwd: resolve(assDir)
+    });
+  }
 
   return new Promise((resolve, reject) => {
     const proc = spawn('ffmpeg', args, { cwd: assDir, stdio: ['ignore', 'ignore', 'pipe'] });
