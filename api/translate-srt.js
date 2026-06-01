@@ -27,6 +27,14 @@ import { detectContentDomain, logDomainDetection } from './domain-detection.js';
 import { getDomainLocalizationRules } from './domain-translation-hints.js';
 import { buildTranslationTelemetry, logTranslationQuality } from './translation-telemetry.js';
 import { investigateTimingOrigins } from './timing-origin-investigation.js';
+import {
+  createTranslationPerformanceTracker,
+  isTranslationPerformanceEnabled
+} from './translation-performance.js';
+import {
+  createTranslationOptimizationTracker,
+  isTranslationOptimizationEnabled
+} from './translation-optimization.js';
 
 /** Approximate output expansion vs English subtitle chars for max_tokens budgeting */
 const LANG_OUTPUT_EXPANSION = {
@@ -157,21 +165,46 @@ export default async function handler(req, res) {
       return translateFail(res, traceId, 400, 'TRANSLATION_MALFORMED', 'No valid subtitle cues found. Regenerate subtitles and try again.', false, 'translate-parse');
     }
 
-    const transcriptCorpus = segments.map((s) => s.text).join(' ');
-    const domainDetection = detectContentDomain({
-      transcript: transcriptCorpus,
-      title: metadata?.title || metadata?.videoTitle || null,
-      description: metadata?.description || metadata?.videoDescription || null,
-      segments
-    });
-    logDomainDetection(traceId, domainDetection);
-    const contentDomain = domainDetection.domain || 'general';
+    const perf = isTranslationPerformanceEnabled()
+      ? createTranslationPerformanceTracker(traceId, segments.length)
+      : null;
+    const optimization = isTranslationOptimizationEnabled()
+      ? createTranslationOptimizationTracker(traceId)
+      : null;
 
-    const languageConfidence = buildLanguageConfidence(
-      sourceLanguage || 'unknown',
-      transcriptCorpus,
-      segments
-    );
+    const transcriptCorpus = segments.map((s) => s.text).join(' ');
+    let domainDetection;
+    let languageConfidence;
+    if (perf) {
+      await perf.timeAsync('languageDetectionMs', async () => {
+        domainDetection = detectContentDomain({
+          transcript: transcriptCorpus,
+          title: metadata?.title || metadata?.videoTitle || null,
+          description: metadata?.description || metadata?.videoDescription || null,
+          segments
+        });
+        logDomainDetection(traceId, domainDetection);
+        languageConfidence = buildLanguageConfidence(
+          sourceLanguage || 'unknown',
+          transcriptCorpus,
+          segments
+        );
+      });
+    } else {
+      domainDetection = detectContentDomain({
+        transcript: transcriptCorpus,
+        title: metadata?.title || metadata?.videoTitle || null,
+        description: metadata?.description || metadata?.videoDescription || null,
+        segments
+      });
+      logDomainDetection(traceId, domainDetection);
+      languageConfidence = buildLanguageConfidence(
+        sourceLanguage || 'unknown',
+        transcriptCorpus,
+        segments
+      );
+    }
+    const contentDomain = domainDetection.domain || 'general';
     let resolvedSourceLanguage = languageConfidence.language || sourceLanguage || 'auto';
     if (
       srcNorm &&
@@ -197,13 +230,23 @@ export default async function handler(req, res) {
     let translatedSegments;
     let translationForensicMeta = null;
     try {
-      const translateResult = await translateSegments(
-        segments,
-        targetLanguage,
-        resolvedSourceLanguage,
-        traceId,
-        contentDomain
-      );
+      const translateResult = perf
+        ? await perf.timeAsync('translationMs', () =>
+            translateSegments(
+              segments,
+              targetLanguage,
+              resolvedSourceLanguage,
+              traceId,
+              contentDomain
+            )
+          )
+        : await translateSegments(
+            segments,
+            targetLanguage,
+            resolvedSourceLanguage,
+            traceId,
+            contentDomain
+          );
       translatedSegments = translateResult.segments;
       translationForensicMeta = translateResult.forensicMeta;
     } catch (batchErr) {
@@ -234,20 +277,34 @@ export default async function handler(req, res) {
 
     const llmOpts = {
       runLlmBatch: completeSubtitleTextBatch,
-      runSingleCompletion: (prompts) => completeSingleSubtitleLine(prompts, traceId, 'quality-backtranslate')
+      runSingleCompletion: (prompts) => completeSingleSubtitleLine(prompts, traceId, 'quality-backtranslate'),
+      perf,
+      optimization
     };
 
     let qualityResult;
     if (isAdaptiveTranslationEnabled()) {
-      qualityResult = await runAdaptiveTranslationJob({
-        sourceSegments: segments,
-        translatedSegments,
-        sourceLanguage: resolvedSourceLanguage,
-        targetLanguage,
-        traceId,
-        contentDomain,
-        ...llmOpts
-      });
+      qualityResult = perf
+        ? await perf.timeAsync('adaptiveEngineMs', () =>
+            runAdaptiveTranslationJob({
+              sourceSegments: segments,
+              translatedSegments,
+              sourceLanguage: resolvedSourceLanguage,
+              targetLanguage,
+              traceId,
+              contentDomain,
+              ...llmOpts
+            })
+          )
+        : await runAdaptiveTranslationJob({
+            sourceSegments: segments,
+            translatedSegments,
+            sourceLanguage: resolvedSourceLanguage,
+            targetLanguage,
+            traceId,
+            contentDomain,
+            ...llmOpts
+          });
     } else {
       qualityResult = await evaluateAndRewriteTranslation({
         sourceSegments: segments,
@@ -274,9 +331,20 @@ export default async function handler(req, res) {
       targetLanguage,
       traceId,
       contentDomain,
-      runLlmBatch: completeSubtitleTextBatch
+      runLlmBatch: completeSubtitleTextBatch,
+      perf
     });
     translatedSegments = postProcessed.segments;
+
+    perf?.finish({
+      adaptiveEnabled: isAdaptiveTranslationEnabled(),
+      contentDomain
+    });
+    optimization?.finish({
+      cueCount: segments.length,
+      adaptiveEnabled: isAdaptiveTranslationEnabled(),
+      contentDomain
+    });
 
     const finalScores = qualityResult.scores;
     logTranslationQuality(

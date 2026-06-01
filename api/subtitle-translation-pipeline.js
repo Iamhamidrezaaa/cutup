@@ -314,7 +314,8 @@ export async function postProcessTranslatedSegments(opts) {
     targetLanguage,
     traceId,
     runLlmBatch,
-    contentDomain = 'general'
+    contentDomain = 'general',
+    perf = null
   } = opts;
 
   const tgt = String(targetLanguage || '').toLowerCase().slice(0, 2);
@@ -379,25 +380,32 @@ export async function postProcessTranslatedSegments(opts) {
     if (typeof runLlmBatch === 'function' && String(process.env.PERSIAN_FLUENCY_PASS ?? '1') !== '0') {
       const batchSize = 15;
       const fluent = [];
-      for (let i = 0; i < working.length; i += batchSize) {
-        const batch = working.slice(i, i + batchSize);
-        const prompts = buildPersianFluencyPrompts(batch, contentDomain);
-        const rewritten = await runLlmBatch(
-          batch,
-          prompts,
-          traceId,
-          `fluency-${Math.floor(i / batchSize) + 1}`,
-          { temperature: 0.35 }
-        );
-        for (let j = 0; j < rewritten.length; j++) {
-          fluent.push({
-            start: Number(batch[j]?.start ?? rewritten[j].start),
-            end: Number(batch[j]?.end ?? rewritten[j].end),
-            text: normalizeText(rewritten[j]?.text),
-            _audioStart: batch[j]?._audioStart,
-            _audioEnd: batch[j]?._audioEnd
-          });
+      const runFluencyPass = async () => {
+        for (let i = 0; i < working.length; i += batchSize) {
+          const batch = working.slice(i, i + batchSize);
+          const prompts = buildPersianFluencyPrompts(batch, contentDomain);
+          const rewritten = await runLlmBatch(
+            batch,
+            prompts,
+            traceId,
+            `fluency-${Math.floor(i / batchSize) + 1}`,
+            { temperature: 0.35 }
+          );
+          for (let j = 0; j < rewritten.length; j++) {
+            fluent.push({
+              start: Number(batch[j]?.start ?? rewritten[j].start),
+              end: Number(batch[j]?.end ?? rewritten[j].end),
+              text: normalizeText(rewritten[j]?.text),
+              _audioStart: batch[j]?._audioStart,
+              _audioEnd: batch[j]?._audioEnd
+            });
+          }
         }
+      };
+      if (perf) {
+        await perf.timeAsync('fluencyPassMs', runFluencyPass);
+      } else {
+        await runFluencyPass();
       }
       if (fluent.length === working.length) {
         working = fluent;

@@ -2,12 +2,12 @@
  * Translation quality evaluation + automatic rewrite (diagnostics-driven).
  */
 
-import {
-  scoreTranslationBatch,
-  scoreTranslationPair,
-  buildBackTranslationPrompts
-} from './translation-quality-score.js';
+import { scoreTranslationBatch, scoreTranslationPair } from './translation-quality-score.js';
 import { buildLanguageAwareRewriteBatchPrompts } from './translation-rewrite-strategies.js';
+import {
+  pickBackTranslationSampleIndices,
+  backTranslateSampleIndices
+} from './translation-optimization.js';
 
 function isQualityLlmEnabled() {
   return String(process.env.TRANSLATION_QUALITY_LLM ?? '1') !== '0';
@@ -18,28 +18,33 @@ function isQualityRewriteEnabled() {
 }
 
 /**
- * Back-translate sample cues for semantic scoring.
- * @param {{ text, start, end }[]} translatedSegments
- * @param {Function} runSingleCompletion async (prompts) => string
+ * Back-translate first/middle/last sample cues (max 9) for semantic scoring.
  */
-async function backTranslateSample(translatedSegments, sourceLanguage, runSingleCompletion, max = 5) {
-  const backMap = new Map();
-  if (!isQualityLlmEnabled() || typeof runSingleCompletion !== 'function') {
-    return backMap;
-  }
-  const n = Math.min(max, translatedSegments.length);
-  for (let i = 0; i < n; i++) {
-    const text = String(translatedSegments[i]?.text || '').trim();
-    if (!text) continue;
-    try {
-      const prompts = buildBackTranslationPrompts(text, sourceLanguage);
-      const back = await runSingleCompletion(prompts);
-      if (back) backMap.set(i, back.trim());
-    } catch (err) {
-      console.warn('[translation-quality] back-translate failed', { index: i, message: err?.message });
-    }
-  }
-  return backMap;
+async function backTranslateSample(
+  translatedSegments,
+  sourceLanguage,
+  runLlmBatch,
+  runSingleCompletion,
+  traceId,
+  optimization = null
+) {
+  if (!isQualityLlmEnabled()) return new Map();
+  const texts = translatedSegments.map((s) => String(s?.text || '').trim());
+  const indices = pickBackTranslationSampleIndices(texts.length);
+  if (!indices.length) return new Map();
+
+  const avoided = Math.max(0, texts.length - indices.length);
+  optimization?.recordBackTranslateAvoided(avoided);
+  optimization?.recordBackTranslateSample(indices.length);
+
+  return backTranslateSampleIndices(
+    indices,
+    texts,
+    sourceLanguage,
+    runLlmBatch,
+    runSingleCompletion,
+    traceId
+  );
 }
 
 /**
@@ -61,22 +66,40 @@ export async function evaluateAndRewriteTranslation(opts) {
     traceId,
     runLlmBatch,
     runSingleCompletion,
-    contentDomain = 'general'
+    contentDomain = 'general',
+    perf = null,
+    optimization = null
   } = opts;
 
-  const backTranslations = await backTranslateSample(
-    translatedSegments,
-    sourceLanguage,
-    runSingleCompletion,
-    5
-  );
+  const runBackSample = () =>
+    backTranslateSample(
+      translatedSegments,
+      sourceLanguage,
+      runLlmBatch,
+      runSingleCompletion,
+      traceId,
+      optimization
+    );
 
-  const initialBatch = scoreTranslationBatch(sourceSegments, translatedSegments, {
-    sourceLanguage,
-    targetLanguage,
-    backTranslations,
-    maxSample: Math.min(12, translatedSegments.length)
-  });
+  const backTranslations = perf
+    ? await perf.timeAsync('backTranslationMs', runBackSample)
+    : await runBackSample();
+
+  const initialBatch = perf
+    ? perf.timeSync('qualityScoreMs', () =>
+        scoreTranslationBatch(sourceSegments, translatedSegments, {
+          sourceLanguage,
+          targetLanguage,
+          backTranslations,
+          maxSample: Math.min(12, translatedSegments.length)
+        })
+      )
+    : scoreTranslationBatch(sourceSegments, translatedSegments, {
+        sourceLanguage,
+        targetLanguage,
+        backTranslations,
+        maxSample: Math.min(12, translatedSegments.length)
+      });
 
   const initialScore = initialBatch.translationScore;
   let working = translatedSegments.map((s) => ({ ...s }));
@@ -109,9 +132,11 @@ export async function evaluateAndRewriteTranslation(opts) {
       const prompts = buildLanguageAwareRewriteBatchPrompts(targetLanguage, batch, contentDomain);
 
       try {
-        const rewrittenSegs = await runLlmBatch(batch, prompts, traceId, 'quality-rewrite', {
-          temperature: 0.32
-        });
+        const runRewrite = () =>
+          runLlmBatch(batch, prompts, traceId, 'quality-rewrite', {
+            temperature: 0.32
+          });
+        const rewrittenSegs = perf ? await perf.timeAsync('rewriteMs', runRewrite) : await runRewrite();
         for (let j = 0; j < rewrittenSegs.length; j++) {
           const idx = batch[j]._index;
           if (working[idx] && rewrittenSegs[j]?.text) {
@@ -123,13 +148,21 @@ export async function evaluateAndRewriteTranslation(opts) {
         }
         rewritten = true;
 
-        const backAfter = await backTranslateSample(working, sourceLanguage, runSingleCompletion, 5);
-        const afterBatch = scoreTranslationBatch(sourceSegments, working, {
-          sourceLanguage,
-          targetLanguage,
-          backTranslations: backAfter,
-          maxSample: Math.min(12, working.length)
-        });
+        const afterBatch = perf
+          ? perf.timeSync('qualityScoreMs', () =>
+              scoreTranslationBatch(sourceSegments, working, {
+                sourceLanguage,
+                targetLanguage,
+                backTranslations: new Map(),
+                maxSample: Math.min(12, working.length)
+              })
+            )
+          : scoreTranslationBatch(sourceSegments, working, {
+              sourceLanguage,
+              targetLanguage,
+              backTranslations: new Map(),
+              maxSample: Math.min(12, working.length)
+            });
         rewrittenScore = afterBatch.translationScore;
 
         return {

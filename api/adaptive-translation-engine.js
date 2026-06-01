@@ -4,7 +4,6 @@
  */
 
 import { scoreTranslationPair } from './translation-quality-score.js';
-import { buildBackTranslationPrompts } from './translation-quality-score.js';
 import {
   buildLanguageAwareRewriteBatchPrompts,
   buildFluencyRewriteBatchPrompts,
@@ -20,6 +19,12 @@ import {
   buildTrainingRecord,
   persistTranslationTrainingData
 } from './translation-training-data.js';
+import {
+  EARLY_ACCEPT_THRESHOLD,
+  pickBackTranslationSampleIndices,
+  backTranslateSampleIndices,
+  createScoreCache
+} from './translation-optimization.js';
 
 export const ACCEPT_THRESHOLD = 90;
 export const MAX_ATTEMPTS = 3;
@@ -65,8 +70,17 @@ function makeVersion(attemptId, stage, text, scores) {
   };
 }
 
+/** Accept without further rewrites or back-translation (optimization). */
+export function canEarlyAccept(scores) {
+  return Number(scores.translationScore) >= EARLY_ACCEPT_THRESHOLD;
+}
+
 function needsRetry(scores) {
   return Number(scores.translationScore) < ACCEPT_THRESHOLD;
+}
+
+function needsFurtherAttempts(scores) {
+  return Number(scores.translationScore) < EARLY_ACCEPT_THRESHOLD;
 }
 
 async function runBatchedRewrite(
@@ -79,7 +93,8 @@ async function runBatchedRewrite(
   runLlmBatch,
   stage,
   label,
-  contentDomain = 'general'
+  contentDomain = 'general',
+  perf = null
 ) {
   if (!indices.length || typeof runLlmBatch !== 'function') return new Map();
 
@@ -98,9 +113,12 @@ async function runBatchedRewrite(
         ? buildFluencyRewriteBatchPrompts(targetLanguage, batch, contentDomain)
         : buildLanguageAwareRewriteBatchPrompts(targetLanguage, batch, contentDomain);
 
-  const out = await runLlmBatch(batch, prompts, traceId, `adaptive-${label}`, {
-    temperature: stage === 'fluency' ? 0.35 : 0.3
-  });
+  const perfStageKey = stage === 'localization' ? 'domainRewriteMs' : 'rewriteMs';
+  const runBatch = () =>
+    runLlmBatch(batch, prompts, traceId, `adaptive-${label}`, {
+      temperature: stage === 'fluency' ? 0.35 : 0.3
+    });
+  const out = perf ? await perf.timeAsync(perfStageKey, runBatch) : await runBatch();
 
   const map = new Map();
   for (let j = 0; j < out.length; j++) {
@@ -111,7 +129,7 @@ async function runBatchedRewrite(
 }
 
 /**
- * Run up to 3 attempts; batch API calls for attempts 2–3 (cost-safe).
+ * Run up to 3 attempts; one batched rewrite per stage; sampled back-translation.
  */
 export async function runAdaptiveTranslationJob(opts) {
   const {
@@ -122,18 +140,29 @@ export async function runAdaptiveTranslationJob(opts) {
     traceId,
     runLlmBatch,
     runSingleCompletion,
-    contentDomain = 'general'
+    contentDomain = 'general',
+    perf = null,
+    optimization = null
   } = opts;
 
   const n = Math.min(sourceSegments.length, translatedSegments.length);
-  const texts = translatedSegments.map((s, i) => String(s.text || '').trim());
+  const texts = translatedSegments.map((s) => String(s.text || '').trim());
   const allAttemptsByCue = [];
   let earlyAcceptCount = 0;
   let attempt2Batches = 0;
   let attempt3Batches = 0;
+  const scoreCache = createScoreCache();
+  const jobBackSample = pickBackTranslationSampleIndices(n);
+  let jobBackMap = null;
+
+  const scoreCueCached = (cueIndex, sourceText, translatedText, backText = null) => {
+    const run = () => scoreCue(sourceText, translatedText, sourceLanguage, targetLanguage, backText);
+    const timed = () => (perf ? perf.timeSync('qualityScoreMs', run) : run());
+    return scoreCache.get(sourceText, translatedText, backText, timed);
+  };
 
   for (let i = 0; i < n; i++) {
-    const scores1 = scoreCue(sourceSegments[i].text, texts[i], sourceLanguage, targetLanguage);
+    const scores1 = scoreCueCached(i, sourceSegments[i].text, texts[i]);
     const v1 = makeVersion(1, ATTEMPT_STAGES[1], texts[i], scores1);
     allAttemptsByCue[i] = [v1];
     logTranslationCompetitionAttempt(traceId, {
@@ -143,13 +172,20 @@ export async function runAdaptiveTranslationJob(opts) {
       ...scores1,
       winner: false
     });
-    if (!needsRetry(scores1)) earlyAcceptCount += 1;
+    if (canEarlyAccept(scores1)) {
+      earlyAcceptCount += 1;
+      optimization?.recordAdaptiveSkip();
+    } else if (!needsRetry(scores1)) {
+      earlyAcceptCount += 1;
+    }
   }
 
-  let needLoc = [];
+  const needLoc = [];
   for (let i = 0; i < n; i++) {
     const last = allAttemptsByCue[i][allAttemptsByCue[i].length - 1];
-    if (needsRetry(last) && allAttemptsByCue[i].length < MAX_ATTEMPTS) needLoc.push(i);
+    if (needsFurtherAttempts(last) && allAttemptsByCue[i].length < MAX_ATTEMPTS) {
+      needLoc.push(i);
+    }
   }
 
   if (needLoc.length) {
@@ -163,14 +199,39 @@ export async function runAdaptiveTranslationJob(opts) {
       runLlmBatch,
       'localization',
       'loc-batch',
-      contentDomain
+      contentDomain,
+      perf
     );
     attempt2Batches = 1;
 
+    const backIndices = jobBackSample.filter((i) => needLoc.includes(i));
+    if (backIndices.length) {
+      const runBack = () =>
+        backTranslateSampleIndices(
+          backIndices,
+          texts,
+          sourceLanguage,
+          runLlmBatch,
+          runSingleCompletion,
+          traceId
+        );
+      jobBackMap = perf
+        ? await perf.timeAsync('backTranslationMs', runBack)
+        : await runBack();
+      optimization?.recordBackTranslateSample(backIndices.length);
+      const perCueAvoided = Math.max(0, needLoc.length - 1);
+      optimization?.recordBatchBackTranslateSaved(perCueAvoided);
+      optimization?.recordBackTranslateAvoided(
+        Math.max(0, needLoc.length - backIndices.length)
+      );
+    } else {
+      optimization?.recordBackTranslateAvoided(needLoc.length);
+    }
+
     for (const i of needLoc) {
       if (locMap.has(i)) texts[i] = locMap.get(i);
-      const back = await maybeBackTranslate(texts[i], sourceLanguage, runSingleCompletion);
-      const scores2 = scoreCue(sourceSegments[i].text, texts[i], sourceLanguage, targetLanguage, back);
+      const back = jobBackMap?.get(i) ?? null;
+      const scores2 = scoreCueCached(i, sourceSegments[i].text, texts[i], back);
       const v2 = makeVersion(2, ATTEMPT_STAGES[2], texts[i], scores2);
       allAttemptsByCue[i].push(v2);
       logTranslationCompetitionAttempt(traceId, {
@@ -180,13 +241,22 @@ export async function runAdaptiveTranslationJob(opts) {
         ...scores2,
         winner: false
       });
+      if (canEarlyAccept(scores2)) {
+        optimization?.recordAdaptiveSkip();
+      }
     }
   }
 
-  let needFlu = [];
+  const needFlu = [];
   for (let i = 0; i < n; i++) {
     const last = allAttemptsByCue[i][allAttemptsByCue[i].length - 1];
-    if (needsRetry(last) && allAttemptsByCue[i].length < MAX_ATTEMPTS) needFlu.push(i);
+    if (
+      needsFurtherAttempts(last) &&
+      allAttemptsByCue[i].length < MAX_ATTEMPTS &&
+      !canEarlyAccept(last)
+    ) {
+      needFlu.push(i);
+    }
   }
 
   if (needFlu.length) {
@@ -200,14 +270,15 @@ export async function runAdaptiveTranslationJob(opts) {
       runLlmBatch,
       'fluency',
       'flu-batch',
-      contentDomain
+      contentDomain,
+      perf
     );
     attempt3Batches = 1;
+    optimization?.recordBackTranslateAvoided(needFlu.length);
 
     for (const i of needFlu) {
       if (fluMap.has(i)) texts[i] = fluMap.get(i);
-      const back = await maybeBackTranslate(texts[i], sourceLanguage, runSingleCompletion);
-      const scores3 = scoreCue(sourceSegments[i].text, texts[i], sourceLanguage, targetLanguage, back);
+      const scores3 = scoreCueCached(i, sourceSegments[i].text, texts[i], null);
       const v3 = makeVersion(3, ATTEMPT_STAGES[3], texts[i], scores3);
       allAttemptsByCue[i].push(v3);
       logTranslationCompetitionAttempt(traceId, {
@@ -262,7 +333,9 @@ export async function runAdaptiveTranslationJob(opts) {
     );
   }
 
-  const persist = persistTranslationTrainingData(traceId, trainingRecords);
+  const persist = perf
+    ? perf.timeSync('trainingDataMs', () => persistTranslationTrainingData(traceId, trainingRecords))
+    : persistTranslationTrainingData(traceId, trainingRecords);
   const winnerScores = aggregateWinnerScores(trainingRecords);
 
   const summary = {
@@ -272,6 +345,9 @@ export async function runAdaptiveTranslationJob(opts) {
     attempt3Batches,
     maxAttemptsPerCue: MAX_ATTEMPTS,
     acceptThreshold: ACCEPT_THRESHOLD,
+    earlyAcceptThreshold: EARLY_ACCEPT_THRESHOLD,
+    backTranslationSampleIndices: jobBackSample,
+    scoreCacheHits: scoreCache.size(),
     targetLanguage,
     contentDomain,
     languageOptimized: isLanguageOptimizedTarget(targetLanguage),
@@ -294,19 +370,6 @@ export async function runAdaptiveTranslationJob(opts) {
     rewritten: trainingRecords.some((r) => r.winnerAttemptId > 1),
     scores: winnerScores
   };
-}
-
-async function maybeBackTranslate(text, sourceLanguage, runSingleCompletion) {
-  if (!runSingleCompletion || String(process.env.TRANSLATION_QUALITY_LLM ?? '1') === '0') {
-    return null;
-  }
-  try {
-    const prompts = buildBackTranslationPrompts(text, sourceLanguage);
-    const back = await runSingleCompletion(prompts);
-    return back ? String(back).trim() : null;
-  } catch {
-    return null;
-  }
 }
 
 function averageAttemptScore(allAttempts, attemptId) {
