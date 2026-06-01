@@ -226,7 +226,10 @@ function linesToAssText(lines, preset, { disableEmphasis = false, renderProfile,
   return { text: parts.join(''), emphasisWords: [...new Set(emphasisWords)] };
 }
 
-function styleLine(name, preset) {
+/** ASS Style Encoding: 0 = Unicode (proven for Persian libass burn); 1 breaks BiDi on export cues. */
+const ASS_STYLE_ENCODING_UNICODE = 0;
+
+function styleLine(name, preset, encoding = ASS_STYLE_ENCODING_UNICODE) {
   const borderStyle = preset.borderStyle ?? 1;
   const scaleY = preset.scaleY ?? 100;
   return [
@@ -252,42 +255,42 @@ function styleLine(name, preset) {
     preset.marginL ?? Math.round(preset.playResX * 0.06),
     preset.marginR ?? Math.round(preset.playResX * 0.06),
     preset.marginV,
-    1
+    encoding
   ].join(',');
 }
 
 /**
- * RTL burn style — no inline \\pos (libass BiDi breaks after override blocks).
- * Position via Alignment=2 + MarginV; Encoding=1 for Arabic/Persian shaping.
+ * RTL burn style — matches proven test-fa.ass (Vazirmatn, Encoding=0, ScaleY=100).
  */
 function buildRtlStyleLine(name, preset, marginV) {
   const marginL = preset.marginL ?? Math.round((preset.playResX || 1080) * 0.08);
   const marginR = preset.marginR ?? marginL;
-  const borderStyle = preset.borderStyle ?? 1;
+  const white = '&H00FFFFFF&';
+  const black = '&H00000000&';
   return [
     `Style: ${name}`,
     preset.fontName,
     preset.fontSize,
-    preset.primaryColor,
-    preset.secondaryColor,
-    preset.outlineColor,
-    preset.backColor,
+    white,
+    white,
+    black,
+    black,
     0,
     0,
     0,
     0,
     100,
-    preset.scaleY ?? 100,
-    preset.spacing ?? 0,
+    100,
     0,
-    borderStyle,
-    preset.outline ?? 4,
-    preset.shadow ?? 3,
+    0,
+    1,
+    2,
+    0,
     2,
     marginL,
     marginR,
     marginV,
-    1
+    ASS_STYLE_ENCODING_UNICODE
   ].join(',');
 }
 
@@ -495,31 +498,51 @@ export function generateAssContent(segments, presetId, dims = {}) {
     }
   });
 
-  const header = [
-    '[Script Info]',
-    'Title: Cutup Viral Export',
-    'ScriptType: v4.00+',
-    `PlayResX: ${playResX}`,
-    `PlayResY: ${playResY}`,
-    'ScaledBorderAndShadow: yes',
-    'WrapStyle: 0',
-    `; RenderQuality: ${quality}`,
-    `; RenderProfile: ${renderProfile.id}`,
-    `; StyleMode: ${renderProfile.styleMode}`,
-    `; AdaptiveSafeguards: ${renderProfile.safeguardsActive ? 'on' : 'off'}`,
-    layout.rtl ? `; RtlFont: ${burnFontName}` : '',
-    '',
+  const header = layout.rtl
+    ? [
+        '[Script Info]',
+        'Title: Cutup Viral Export',
+        'ScriptType: v4.00+',
+        `PlayResX: ${playResX}`,
+        `PlayResY: ${playResY}`,
+        'ScaledBorderAndShadow: yes',
+        'WrapStyle: 0',
+        ''
+      ]
+    : [
+        '[Script Info]',
+        'Title: Cutup Viral Export',
+        'ScriptType: v4.00+',
+        `PlayResX: ${playResX}`,
+        `PlayResY: ${playResY}`,
+        'ScaledBorderAndShadow: yes',
+        'WrapStyle: 0',
+        `; RenderQuality: ${quality}`,
+        `; RenderProfile: ${renderProfile.id}`,
+        `; StyleMode: ${renderProfile.styleMode}`,
+        `; AdaptiveSafeguards: ${renderProfile.safeguardsActive ? 'on' : 'off'}`,
+        '',
+      ];
+  const headerWithRtlNote = layout.rtl
+    ? [...header, `; RtlFont: ${burnFontName}`, '']
+    : header;
+
+  const assHeader = headerWithRtlNote.concat(
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    styleLine('Default', preset),
-    styleLine('Emphasis', { ...preset, fontSize: Math.round(preset.fontSize * 1.08), bold: true }),
+    styleLine('Default', preset, layout.rtl ? ASS_STYLE_ENCODING_UNICODE : 1),
+    styleLine(
+      'Emphasis',
+      { ...preset, fontSize: Math.round(preset.fontSize * 1.08), bold: true },
+      layout.rtl ? ASS_STYLE_ENCODING_UNICODE : 1
+    ),
     ...(layout.rtl || visibleCues.some((c) => isRtlText(c.text))
       ? [buildRtlStyleLine('RTL_Default', preset, layout.marginV)]
       : []),
     '',
     '[Events]',
     ASS_EVENTS_FORMAT
-  ];
+  );
   const disableEmphasis = layout.rtl || captionMode === 'accurate';
   let totalLines = 0;
   let wrappedCount = 0;
@@ -649,7 +672,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
   const yAnchor = 1 - layout.marginV / playResY;
 
   // Keep internal metrics for diagnostics payload without verbose logs.
-  const assContent = [...header, ...dialogues].join('\n').replace(/\r\n/g, '\n');
+  const assContent = [...assHeader, ...dialogues].join('\n').replace(/\r\n/g, '\n');
 
   return {
     content: assContent,

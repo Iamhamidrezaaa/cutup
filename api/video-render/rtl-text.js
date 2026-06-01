@@ -63,12 +63,13 @@ export function resolveCaptionTypography(preset, playResY, rtl) {
       rtl: false
     };
   }
+  // Match proven libass burn profile (test-fa.ass): 72px, no stretch, no extra spacing.
   const minRtl = Math.max(56, Math.round(72 * (playResY / 1920)));
   return {
     fontName: resolveRtlFontName(),
     fontSize: Math.max(baseSize, minRtl),
-    spacing: 2,
-    scaleY: 112,
+    spacing: 0,
+    scaleY: 100,
     rtl: true
   };
 }

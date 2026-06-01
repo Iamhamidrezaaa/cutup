@@ -45,7 +45,6 @@ export function resolveDynamicFontSize({
   const h = playResY || 1920;
   if (preset?.useFixedTypography && Number(preset.fontSize) > 0) {
     let size = Math.round(preset.fontSize * (h / 1920));
-    if (rtl) size = Math.round(size * 1.08);
     return Math.max(28, size);
   }
   let size;
@@ -73,8 +72,6 @@ export function resolveDynamicFontSize({
     size = Math.round(h * 0.062);
     size = Math.max(size, Math.round(64 * (h / 1920)));
   }
-
-  if (rtl) size = Math.round(size * 1.14);
 
   const cap = isVertical ? Math.round(120 * (h / 1920)) : Math.round(h * 0.074);
   return Math.min(cap, Math.max(32, size));
@@ -142,6 +139,13 @@ export function resolveRenderLayout(dims, cues, preset) {
   if (presetLayout.maxCharsPerLine != null) layout.maxCharsPerLine = presetLayout.maxCharsPerLine;
   if (presetLayout.maxLines != null) layout.maxLines = presetLayout.maxLines;
 
+  const rtlEarly = cuesAreMostlyRtl(cues);
+  if (rtlEarly) {
+    layout.mode = 'single';
+    layout.maxLines = 1;
+    layout.maxCharsPerLine = Math.max(layout.maxCharsPerLine || 36, 72);
+  }
+
   const placement = resolveSubtitlePlacement(
     { width: playResX, height: playResY, durationSec: dims.durationSec || 0 },
     cues,
@@ -171,12 +175,12 @@ export function resolveRenderLayout(dims, cues, preset) {
     rtl
   );
 
-  const lineHeightRatio = preset.useFixedTypography && preset.scaleY
-    ? Number(preset.scaleY) / 100
-    : isVertical
-      ? 1.08
-      : rtl
-        ? 1.25
+  const lineHeightRatio = rtl
+    ? 1
+    : preset.useFixedTypography && preset.scaleY
+      ? Number(preset.scaleY) / 100
+      : isVertical
+        ? 1.08
         : 1.2;
   const lineHeight = Math.round(fontSize * lineHeightRatio);
   const maxWidthRatio =
