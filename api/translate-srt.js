@@ -20,7 +20,10 @@ import {
   logTranslationForensics
 } from './translation-forensics.js';
 import { postProcessTranslatedSegments } from './subtitle-translation-pipeline.js';
-import { resolveSpokenLanguage } from './spoken-language-detection.js';
+import { buildLanguageConfidence } from './spoken-language-detection.js';
+import { evaluateAndRewriteTranslation } from './translation-quality-pipeline.js';
+import { buildTranslationTelemetry, logTranslationQuality } from './translation-telemetry.js';
+import { investigateTimingOrigins } from './timing-origin-investigation.js';
 
 /** Approximate output expansion vs English subtitle chars for max_tokens budgeting */
 const LANG_OUTPUT_EXPANSION = {
@@ -152,19 +155,24 @@ export default async function handler(req, res) {
     }
 
     const transcriptCorpus = segments.map((s) => s.text).join(' ');
-    const languageResolution = resolveSpokenLanguage(sourceLanguage || 'unknown', transcriptCorpus, segments);
-    let resolvedSourceLanguage = languageResolution.detectedLanguage || sourceLanguage || 'auto';
+    const languageConfidence = buildLanguageConfidence(
+      sourceLanguage || 'unknown',
+      transcriptCorpus,
+      segments
+    );
+    let resolvedSourceLanguage = languageConfidence.language || sourceLanguage || 'auto';
     if (
       srcNorm &&
       resolvedSourceLanguage !== srcNorm &&
-      languageResolution.resolution !== 'whisper_confirmed_by_text'
+      languageConfidence.detectedBy !== 'whisper_confirmed_by_text'
     ) {
       console.log('[translate-source-language]', {
         traceId,
         clientSource: sourceLanguage,
         resolvedSource: resolvedSourceLanguage,
-        confidence: languageResolution.confidence,
-        resolution: languageResolution.resolution
+        confidence: languageConfidence.confidence,
+        detectedBy: languageConfidence.detectedBy,
+        needsReview: languageConfidence.needsReview
       });
     }
 
@@ -211,6 +219,23 @@ export default async function handler(req, res) {
 
     validateTranslationVsOriginal(segments, translatedSegments, resolvedSourceLanguage, targetLanguage);
 
+    const qualityResult = await evaluateAndRewriteTranslation({
+      sourceSegments: segments,
+      translatedSegments,
+      sourceLanguage: resolvedSourceLanguage,
+      targetLanguage,
+      traceId,
+      runLlmBatch: completeSubtitleTextBatch,
+      runSingleCompletion: (prompts) => completeSingleSubtitleLine(prompts, traceId, 'quality-backtranslate')
+    });
+    translatedSegments = qualityResult.segments;
+
+    investigateTimingOrigins({
+      traceId,
+      transcriptSegments: segments,
+      translatedSegments
+    });
+
     const translatedOneToOne = translatedSegments.map((s) => ({ ...s }));
     const postProcessed = await postProcessTranslatedSegments({
       originalSegments: segments,
@@ -220,6 +245,25 @@ export default async function handler(req, res) {
       runLlmBatch: completeSubtitleTextBatch
     });
     translatedSegments = postProcessed.segments;
+
+    const finalScores = qualityResult.scores;
+    logTranslationQuality(
+      traceId,
+      buildTranslationTelemetry({
+        traceId,
+        detectedLanguage: resolvedSourceLanguage,
+        languageConfidence: languageConfidence.confidence,
+        detectedBy: languageConfidence.detectedBy,
+        languageNeedsReview: languageConfidence.needsReview,
+        translationScore: qualityResult.rewritten ? qualityResult.rewrittenScore : qualityResult.initialScore,
+        meaningScore: finalScores?.meaningScore ?? 0,
+        fluencyScore: finalScores?.fluencyScore ?? 0,
+        rewritten: qualityResult.rewritten,
+        initialScore: qualityResult.initialScore,
+        rewrittenScore: qualityResult.rewritten ? qualityResult.rewrittenScore : undefined,
+        cueCount: translatedSegments.length
+      })
+    );
 
     if (isTranslationForensicEnabled() || translationForensicMeta) {
       logTranslationForensics(
@@ -762,6 +806,13 @@ export async function translateWithOpenAi({
 /**
  * LLM batch for fluency / rewrite passes (same segment count + timestamps as input batch).
  */
+/** Single-line LLM completion (back-translation / scoring helpers). */
+export async function completeSingleSubtitleLine(prompts, traceId, label) {
+  const batch = [{ start: 0, end: 1, text: '.' }];
+  const out = await completeSubtitleTextBatch(batch, prompts, traceId, label, { temperature: 0.15 });
+  return String(out[0]?.text || '').trim();
+}
+
 export async function completeSubtitleTextBatch(batch, prompts, traceId, batchLabel, options = {}) {
   const maxTokens = computeMaxTokensForBatch(batch, 'fa');
   const temperature = Number(options.temperature ?? 0.25);

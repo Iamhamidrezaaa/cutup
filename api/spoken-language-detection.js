@@ -192,3 +192,28 @@ export function resolveSpokenLanguage(whisperLanguage, text, segments = []) {
   console.log('[spoken-language-detection]', payload);
   return payload;
 }
+
+const REVIEW_CONFIDENCE_THRESHOLD = 0.8;
+
+/**
+ * Hardened language confidence for telemetry and gating.
+ * @returns {{ language, confidence, detectedBy, needsReview, transcriptSample, whisperLanguage }}
+ */
+export function buildLanguageConfidence(whisperLanguage, text, segments = []) {
+  const resolved = resolveSpokenLanguage(whisperLanguage, text, segments);
+  const detectedBy = resolved.resolution || 'whisper';
+  const confidence = Number(resolved.confidence ?? 0.5);
+  const needsReview = confidence < REVIEW_CONFIDENCE_THRESHOLD;
+
+  const payload = {
+    language: resolved.detectedLanguage,
+    confidence,
+    detectedBy,
+    needsReview,
+    transcriptSample: resolved.transcriptSample,
+    whisperLanguage: resolved.whisperLanguage
+  };
+
+  console.log('[language-confidence]', payload);
+  return payload;
+}

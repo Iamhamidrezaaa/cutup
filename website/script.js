@@ -743,12 +743,13 @@ function normalizeTranscriptionResult(result) {
   const text = result.text ?? result.transcript ?? result.content ?? '';
   const langDet = result.languageDetection || null;
   if (langDet?.detectedLanguage) {
-    console.log('[spoken-language-detection-client]', {
-      detectedLanguage: langDet.detectedLanguage,
+    console.log('[language-confidence-client]', {
+      language: langDet.detectedLanguage,
       confidence: langDet.confidence,
+      detectedBy: langDet.detectedBy,
+      needsReview: langDet.needsReview,
       transcriptSample: langDet.transcriptSample,
-      whisperLanguage: langDet.whisperLanguage,
-      resolution: langDet.resolution
+      whisperLanguage: langDet.whisperLanguage
     });
   }
   return {
