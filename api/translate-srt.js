@@ -14,6 +14,11 @@ import { classifyOpenAiTranscriptionFailure } from './transcription-provider.js'
 import { logProviderQuota } from './provider-health.js';
 import { decodeSubtitleTextEntities } from './subtitle-text-entities.js';
 import { logSubtitleTextForensicStage } from './video-render/subtitle-text-forensics.js';
+import {
+  buildTranslationForensicReport,
+  isTranslationForensicEnabled,
+  logTranslationForensics
+} from './translation-forensics.js';
 
 /** Approximate output expansion vs English subtitle chars for max_tokens budgeting */
 const LANG_OUTPUT_EXPANSION = {
@@ -151,8 +156,16 @@ export default async function handler(req, res) {
     }
 
     let translatedSegments;
+    let translationForensicMeta = null;
     try {
-      translatedSegments = await translateSegments(segments, targetLanguage, sourceLanguage, traceId);
+      const translateResult = await translateSegments(
+        segments,
+        targetLanguage,
+        sourceLanguage,
+        traceId
+      );
+      translatedSegments = translateResult.segments;
+      translationForensicMeta = translateResult.forensicMeta;
     } catch (batchErr) {
       const msg = batchErr?.message || String(batchErr);
       const code = batchErr?.errorCode || 'TRANSLATION_UNAVAILABLE';
@@ -178,6 +191,22 @@ export default async function handler(req, res) {
     traceLog(traceId, 'translate-response', { batchesDone: true, cues: translatedSegments.length });
 
     validateTranslationVsOriginal(segments, translatedSegments, sourceLanguage, targetLanguage);
+
+    if (isTranslationForensicEnabled() || translationForensicMeta) {
+      logTranslationForensics(
+        buildTranslationForensicReport(segments, translatedSegments, {
+          traceId,
+          sourceLanguage,
+          targetLanguage,
+          translationPrompt: translationForensicMeta?.userPrompt || null,
+          systemPrompt: translationForensicMeta?.systemPrompt || null,
+          modelUsed: translationForensicMeta?.modelUsed || null,
+          temperature: translationForensicMeta?.temperature ?? 0.25,
+          provider: translationForensicMeta?.provider || null,
+          batchSize: 20
+        })
+      );
+    }
 
     logSubtitleTextForensicStage(
       'after_translation',
@@ -423,7 +452,14 @@ function buildTranslationPrompts(batch, targetLanguage, sourceLanguage, { groqHa
   const batchTexts = batch.map((s) => s.text).join('\n---SEGMENT---\n');
   const n = batch.length;
   const groqExtra = groqHardening ? GROQ_TRANSLATE_RULES.replace(/exactly N/g, `exactly ${n}`) : '';
-  const systemPrompt = `You are a professional subtitle translator. Translate each segment from the source language to ${targetLangName}. Output MUST contain exactly ${n} segments separated only by the delimiter "---SEGMENT---" on its own between segments. No numbering, no timestamps, no explanations.${groqExtra}`;
+  const tgt = String(targetLanguage || '').toLowerCase().slice(0, 2);
+  const nativeSubtitleRules =
+    tgt === 'fa'
+      ? ' For Persian (Farsi): write natural conversational subtitle Persian for social video — not literal word-for-word, not formal literary Persian, not machine/Google-translate tone. Preserve speaker intent, tone, and humor. Keep each segment short enough to read on screen in one glance.'
+      : tgt === 'ar'
+        ? ' For Arabic: use natural modern subtitle Arabic suitable for on-screen captions; avoid overly literal translation.'
+        : '';
+  const systemPrompt = `You are a professional subtitle translator. Translate each segment from the source language to ${targetLangName}. Output MUST contain exactly ${n} segments separated only by the delimiter "---SEGMENT---" on its own between segments. No numbering, no timestamps, no explanations.${nativeSubtitleRules}${groqExtra}`;
   const userPrompt = `Translate these ${n} subtitle segments from ${sourceLangName} to ${targetLangName}. Every segment must be fully translated. Return ONLY translated subtitle text — no preamble, no markdown, no bullets. Do not use HTML entities (no &gt;, &lt;, &amp;) or @gt; — plain text only.
 
 Segments (delimiter ---SEGMENT---):
@@ -790,6 +826,7 @@ async function translateSegments(segments, targetLanguage, sourceLanguage, trace
   const batchSize = 20;
   const translatedSegments = [];
   let lastProvider = null;
+  let forensicMeta = null;
 
   for (let i = 0; i < segments.length; i += batchSize) {
     const batch = segments.slice(i, i + batchSize);
@@ -797,6 +834,13 @@ async function translateSegments(segments, targetLanguage, sourceLanguage, trace
 
     traceLog(traceId, 'translate-batch', { batchIndex, cues: batch.length });
     console.log(`[translate-batch][${traceId}]`, { batchIndex, cues: batch.length });
+
+    const groqPrompts = buildTranslationPrompts(batch, targetLanguage, sourceLanguage, {
+      groqHardening: true
+    });
+    const openaiPrompts = buildTranslationPrompts(batch, targetLanguage, sourceLanguage, {
+      groqHardening: false
+    });
 
     const { segments: mapped, provider } = await translateBatchWithProviders(
       batch,
@@ -808,6 +852,17 @@ async function translateSegments(segments, targetLanguage, sourceLanguage, trace
     lastProvider = provider;
     translatedSegments.push(...mapped);
 
+    if (!forensicMeta && (isTranslationForensicEnabled() || batchIndex === 1)) {
+      const useGroq = provider === 'groq';
+      forensicMeta = {
+        systemPrompt: (useGroq ? groqPrompts : openaiPrompts).systemPrompt,
+        userPrompt: (useGroq ? groqPrompts : openaiPrompts).userPrompt,
+        modelUsed: useGroq ? GROQ_TRANSLATE_MODEL : 'gpt-4o-mini',
+        temperature: 0.25,
+        provider
+      };
+    }
+
     traceLog(traceId, 'translate-parse', { batchIndex, mappedCues: batch.length, provider });
     console.log(`[translate-parse][${traceId}]`, { batchIndex, mappedCues: batch.length, provider });
   }
@@ -818,8 +873,8 @@ async function translateSegments(segments, targetLanguage, sourceLanguage, trace
     provider: lastProvider,
     batches: Math.ceil(segments.length / batchSize)
   });
-  
-  return translatedSegments;
+
+  return { segments: translatedSegments, forensicMeta };
 }
 
 function generateSRT(segments) {

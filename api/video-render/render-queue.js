@@ -34,6 +34,7 @@ import {
   isHardSyncTestEnabled
 } from './render-timeline-trace.js';
 import { parseAssDialogueTimes } from './ffmpeg-timeline.js';
+import { isTimingForensicEnabled, logTimingForensics } from './timing-forensics.js';
 import { logProductionAssDialogueDump } from './subtitle-text-forensics.js';
 
 const MAX_CONCURRENT = Math.max(1, Math.min(3, Number(process.env.VIDEO_RENDER_CONCURRENCY || 1)));
@@ -557,9 +558,20 @@ async function runJob(job) {
       },
       forensicCtx: {
         jobId: job.id,
-        traceId: job.traceId || null
+        traceId: job.traceId || null,
+        jobDir: job.jobDir
       }
     };
+
+    console.log('[preset-style-debug]', {
+      requestedPreset: job.presetId,
+      resolvedPreset: job.presetId,
+      presetDisplayName: job.presetDisplayName || job.presetId,
+      captionMode: job.captionMode,
+      styleMode: job.styleMode,
+      segmentCount: job.segments?.length || job.exportDoc?.cues?.length || 0,
+      note: 'Full style fields logged in generateAssContent [preset-style-debug]'
+    });
 
     setSubStage(job, 'Applying cinematic layout…', 40);
 
@@ -785,6 +797,15 @@ async function runJob(job) {
         ffmpegCwd: job.ffmpegCwd,
         ffmpegCommand: job.ffmpegCommandExact
       });
+
+      if (assResult?.timingAudit && isTimingForensicEnabled(job.segments?.[0]?.text || '')) {
+        logTimingForensics({
+          ...assResult.timingAudit,
+          timelinePlan: job.timelinePlan || null,
+          jobDir: job.jobDir,
+          jobId: job.id
+        });
+      }
     } finally {
       stopRenderHeartbeat(job);
       job.ffmpegAbort = null;
