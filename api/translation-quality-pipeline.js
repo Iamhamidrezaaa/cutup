@@ -5,9 +5,9 @@
 import {
   scoreTranslationBatch,
   scoreTranslationPair,
-  buildBackTranslationPrompts,
-  buildQualityRewritePrompts
+  buildBackTranslationPrompts
 } from './translation-quality-score.js';
+import { buildLanguageAwareRewriteBatchPrompts } from './translation-rewrite-strategies.js';
 
 function isQualityLlmEnabled() {
   return String(process.env.TRANSLATION_QUALITY_LLM ?? '1') !== '0';
@@ -105,12 +105,7 @@ export async function evaluateAndRewriteTranslation(opts) {
     }));
 
     if (batch.length) {
-      const block = batch.map((s) => s.text).join('\n---SEGMENT---\n');
-      const sourceBlock = batch.map((s) => s._source).join('\n---SEGMENT---\n');
-      const prompts = {
-        systemPrompt: `You rewrite ${targetLanguage === 'fa' || String(targetLanguage).startsWith('fa') ? 'Persian' : 'target'} subtitles to sound native. Preserve meaning. No literal translation. Examples: "Nice deadlift"→"ددلیفتت عالیه"; "Let's go"→"بزن بریم"; "Everything okay?"→"همه چیز روبه‌راهه؟". Output exactly ${batch.length} lines separated by ---SEGMENT--- only.`,
-        userPrompt: `Source lines:\n${sourceBlock}\n\nCurrent translations (rewrite each):\n${block}\n\nRewritten (${batch.length} parts):`
-      };
+      const prompts = buildLanguageAwareRewriteBatchPrompts(targetLanguage, batch);
 
       try {
         const rewrittenSegs = await runLlmBatch(batch, prompts, traceId, 'quality-rewrite', {

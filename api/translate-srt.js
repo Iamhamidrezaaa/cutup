@@ -22,6 +22,7 @@ import {
 import { postProcessTranslatedSegments } from './subtitle-translation-pipeline.js';
 import { buildLanguageConfidence } from './spoken-language-detection.js';
 import { evaluateAndRewriteTranslation } from './translation-quality-pipeline.js';
+import { runAdaptiveTranslationJob, isAdaptiveTranslationEnabled } from './adaptive-translation-engine.js';
 import { buildTranslationTelemetry, logTranslationQuality } from './translation-telemetry.js';
 import { investigateTimingOrigins } from './timing-origin-investigation.js';
 
@@ -219,15 +220,31 @@ export default async function handler(req, res) {
 
     validateTranslationVsOriginal(segments, translatedSegments, resolvedSourceLanguage, targetLanguage);
 
-    const qualityResult = await evaluateAndRewriteTranslation({
-      sourceSegments: segments,
-      translatedSegments,
-      sourceLanguage: resolvedSourceLanguage,
-      targetLanguage,
-      traceId,
+    const llmOpts = {
       runLlmBatch: completeSubtitleTextBatch,
       runSingleCompletion: (prompts) => completeSingleSubtitleLine(prompts, traceId, 'quality-backtranslate')
-    });
+    };
+
+    let qualityResult;
+    if (isAdaptiveTranslationEnabled()) {
+      qualityResult = await runAdaptiveTranslationJob({
+        sourceSegments: segments,
+        translatedSegments,
+        sourceLanguage: resolvedSourceLanguage,
+        targetLanguage,
+        traceId,
+        ...llmOpts
+      });
+    } else {
+      qualityResult = await evaluateAndRewriteTranslation({
+        sourceSegments: segments,
+        translatedSegments,
+        sourceLanguage: resolvedSourceLanguage,
+        targetLanguage,
+        traceId,
+        ...llmOpts
+      });
+    }
     translatedSegments = qualityResult.segments;
 
     investigateTimingOrigins({
@@ -278,6 +295,9 @@ export default async function handler(req, res) {
           provider: translationForensicMeta?.provider || null,
           batchSize: 20,
           postProcessingSteps: [
+            isAdaptiveTranslationEnabled()
+              ? 'adaptiveTranslation (3-attempt competition, ADAPTIVE_TRANSLATION=1)'
+              : 'evaluateAndRewriteTranslation',
             'stripForeignScripts',
             'validatePersianCueScripts',
             'persianFluencyPass (PERSIAN_FLUENCY_PASS=1)',

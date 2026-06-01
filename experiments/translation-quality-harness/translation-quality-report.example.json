@@ -1,0 +1,40 @@
+{
+  "note": "Static heuristic examples (no LLM)",
+  "literalVsNatural": {
+    "literalDeadlift": {
+      "translationScore": 53,
+      "meaningScore": 48,
+      "fluencyScore": 60,
+      "needsRewrite": true
+    },
+    "naturalDeadlift": {
+      "translationScore": 83,
+      "meaningScore": 78,
+      "fluencyScore": 88,
+      "needsRewrite": false
+    },
+    "letsGo": {
+      "translationScore": 90,
+      "meaningScore": 91,
+      "fluencyScore": 88,
+      "needsRewrite": false
+    }
+  },
+  "sampleEvaluation": {
+    "sourceLanguage": "en",
+    "targetLanguage": "fa",
+    "domain": "fitness",
+    "sourceText": "Nice deadlift.",
+    "translatedText": "ددلیفتت عالیه",
+    "finalText": "ددلیفتت عالیه",
+    "backTranslatedText": "Nice deadlift",
+    "translationScore": 90,
+    "meaningScore": 91,
+    "fluencyScore": 88,
+    "rewriteApplied": true,
+    "languageConfidence": 0.98,
+    "detectedBy": "whisper_confirmed_by_text",
+    "languageNeedsReview": false,
+    "failures": []
+  }
+}

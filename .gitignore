@@ -16,4 +16,6 @@ parspack.txt
 *.gif
 *.GIF
 # فایل‌های موقت
-{
+# Adaptive translation training outputs (generated)
+translation-training-data/dataset.jsonl
+translation-training-data/jobs/

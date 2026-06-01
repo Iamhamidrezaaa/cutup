@@ -1,0 +1,184 @@
+{
+  "version": 1,
+  "languages": [
+    "en",
+    "ar",
+    "es",
+    "ru",
+    "fr",
+    "de",
+    "tr",
+    "fa",
+    "tl",
+    "hi"
+  ],
+  "domains": [
+    "general",
+    "fitness",
+    "business",
+    "technology"
+  ],
+  "minSentencesPerCell": 50,
+  "files": [
+    {
+      "path": "en/general.json",
+      "count": 50
+    },
+    {
+      "path": "en/fitness.json",
+      "count": 50
+    },
+    {
+      "path": "en/business.json",
+      "count": 50
+    },
+    {
+      "path": "en/technology.json",
+      "count": 50
+    },
+    {
+      "path": "ar/general.json",
+      "count": 50
+    },
+    {
+      "path": "ar/fitness.json",
+      "count": 50
+    },
+    {
+      "path": "ar/business.json",
+      "count": 50
+    },
+    {
+      "path": "ar/technology.json",
+      "count": 50
+    },
+    {
+      "path": "es/general.json",
+      "count": 50
+    },
+    {
+      "path": "es/fitness.json",
+      "count": 50
+    },
+    {
+      "path": "es/business.json",
+      "count": 50
+    },
+    {
+      "path": "es/technology.json",
+      "count": 50
+    },
+    {
+      "path": "ru/general.json",
+      "count": 50
+    },
+    {
+      "path": "ru/fitness.json",
+      "count": 50
+    },
+    {
+      "path": "ru/business.json",
+      "count": 50
+    },
+    {
+      "path": "ru/technology.json",
+      "count": 50
+    },
+    {
+      "path": "fr/general.json",
+      "count": 50
+    },
+    {
+      "path": "fr/fitness.json",
+      "count": 50
+    },
+    {
+      "path": "fr/business.json",
+      "count": 50
+    },
+    {
+      "path": "fr/technology.json",
+      "count": 50
+    },
+    {
+      "path": "de/general.json",
+      "count": 50
+    },
+    {
+      "path": "de/fitness.json",
+      "count": 50
+    },
+    {
+      "path": "de/business.json",
+      "count": 50
+    },
+    {
+      "path": "de/technology.json",
+      "count": 50
+    },
+    {
+      "path": "tr/general.json",
+      "count": 50
+    },
+    {
+      "path": "tr/fitness.json",
+      "count": 50
+    },
+    {
+      "path": "tr/business.json",
+      "count": 50
+    },
+    {
+      "path": "tr/technology.json",
+      "count": 50
+    },
+    {
+      "path": "fa/general.json",
+      "count": 50
+    },
+    {
+      "path": "fa/fitness.json",
+      "count": 50
+    },
+    {
+      "path": "fa/business.json",
+      "count": 50
+    },
+    {
+      "path": "fa/technology.json",
+      "count": 50
+    },
+    {
+      "path": "tl/general.json",
+      "count": 50
+    },
+    {
+      "path": "tl/fitness.json",
+      "count": 50
+    },
+    {
+      "path": "tl/business.json",
+      "count": 50
+    },
+    {
+      "path": "tl/technology.json",
+      "count": 50
+    },
+    {
+      "path": "hi/general.json",
+      "count": 50
+    },
+    {
+      "path": "hi/fitness.json",
+      "count": 50
+    },
+    {
+      "path": "hi/business.json",
+      "count": 50
+    },
+    {
+      "path": "hi/technology.json",
+      "count": 50
+    }
+  ]
+}
