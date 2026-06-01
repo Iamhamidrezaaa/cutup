@@ -464,6 +464,8 @@ export async function burnSubtitles(opts) {
     });
   }
 
+  console.log('[ffmpeg-video-filter]\n' + vf);
+
   return new Promise((resolve, reject) => {
     const proc = spawn('ffmpeg', args, { cwd: assDir, stdio: ['ignore', 'ignore', 'pipe'] });
     let stderr = '';

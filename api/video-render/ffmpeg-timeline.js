@@ -277,7 +277,14 @@ export function buildAlignedVideoFilter(assName, plan, opts = {}) {
   }
   const w = Math.max(2, Number(opts.playResX || 1080));
   const h = Math.max(2, Number(opts.playResY || 1920));
-  parts.push(`scale=${w}:${h}`, `ass=${assName}`);
+  const shapingMode = String(process.env.RENDER_ASS_SHAPING || '')
+    .trim()
+    .toLowerCase();
+  const assFilter =
+    shapingMode === 'complex' || shapingMode === 'simple' || shapingMode === 'auto'
+      ? `ass=${assName}:shaping=${shapingMode}`
+      : `ass=${assName}`;
+  parts.push(`scale=${w}:${h}`, assFilter);
   return parts.join(',');
 }
 
