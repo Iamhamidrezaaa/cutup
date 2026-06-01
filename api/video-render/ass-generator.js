@@ -22,7 +22,12 @@ import {
   orderAssLinesBottomFirst,
   buildAssBottomAnchorTag
 } from './layout-engine.js';
-import { isRtlText, resolveRtlFontName } from './rtl-text.js';
+import {
+  anchorRtlPunctuation,
+  isRtlText,
+  resolveRtlFontName,
+  rtlPunctuationTailSample
+} from './rtl-text.js';
 import {
   isSubtitleTextForensicEnabled,
   logSubtitleTextForensicStage,
@@ -261,43 +266,8 @@ function styleLine(name, preset, encoding = ASS_STYLE_ENCODING_UNICODE) {
 }
 
 /**
- * RTL burn style — matches proven test-fa.ass (Vazirmatn, Encoding=0, ScaleY=100).
- */
-function buildRtlStyleLine(name, preset, marginV) {
-  const marginL = preset.marginL ?? Math.round((preset.playResX || 1080) * 0.08);
-  const marginR = preset.marginR ?? marginL;
-  const white = '&H00FFFFFF&';
-  const black = '&H00000000&';
-  return [
-    `Style: ${name}`,
-    preset.fontName,
-    preset.fontSize,
-    white,
-    white,
-    black,
-    black,
-    0,
-    0,
-    0,
-    0,
-    100,
-    100,
-    0,
-    0,
-    1,
-    2,
-    0,
-    2,
-    marginL,
-    marginR,
-    marginV,
-    ASS_STYLE_ENCODING_UNICODE
-  ].join(',');
-}
-
-/**
- * RTL Dialogue payload: plain escaped text only (RTL_Default style handles font/alignment/margin).
- * @param {string} assBodyText escaped ASS body (may contain \\N)
+ * RTL dialogue body: escaped ASS from linesToAssText (preset Default style applies visuals).
+ * @param {string} assBodyText
  */
 function buildRtlDialogueText(assBodyText) {
   return String(assBodyText || '');
@@ -474,8 +444,10 @@ export function generateAssContent(segments, presetId, dims = {}) {
   );
   const glow = Number((basePreset.glow ?? signature.glow).toFixed(2));
 
-  const rtlBurnFont = layout.rtl ? resolveRtlFontName() : null;
-  const burnFontName = rtlBurnFont || layout.fontName || basePreset.fontName || 'Arial';
+  const hasRtlCues = visibleCues.some((c) => isRtlText(c.text));
+  const burnFontName = hasRtlCues
+    ? resolveRtlFontName()
+    : layout.fontName || basePreset.fontName || 'Arial';
 
   Object.assign(preset, {
     fontName: burnFontName,
@@ -497,6 +469,26 @@ export function generateAssContent(segments, presetId, dims = {}) {
       maxPerLine: clamp((renderProfile.maxInlineEmphasisPerCue || 2) + signature.inlineEmphasisBonus, 1, 6),
       scalePercent: emphasisScalePercent
     }
+  });
+
+  console.log('[preset-style-debug]', {
+    requestedPreset: selectedPresetId,
+    resolvedPreset: preset.id || selectedPresetId,
+    styleName: 'Default',
+    fontName: preset.fontName,
+    fontSize: preset.fontSize,
+    outline: preset.outline,
+    shadow: preset.shadow,
+    alignment: preset.alignment,
+    spacing: preset.spacing,
+    scaleY: preset.scaleY,
+    primaryColor: preset.primaryColor,
+    bold: preset.bold,
+    hasRtlCues,
+    assEncoding: hasRtlCues ? ASS_STYLE_ENCODING_UNICODE : 1,
+    note: hasRtlCues
+      ? 'RTL cues use Default style (preset colours); not RTL_Default'
+      : 'LTR job'
   });
 
   const header = layout.rtl
@@ -531,20 +523,17 @@ export function generateAssContent(segments, presetId, dims = {}) {
   const assHeader = headerWithRtlNote.concat(
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    styleLine('Default', preset, layout.rtl ? ASS_STYLE_ENCODING_UNICODE : 1),
+    styleLine('Default', preset, hasRtlCues ? ASS_STYLE_ENCODING_UNICODE : 1),
     styleLine(
       'Emphasis',
       { ...preset, fontSize: Math.round(preset.fontSize * 1.08), bold: true },
-      layout.rtl ? ASS_STYLE_ENCODING_UNICODE : 1
+      hasRtlCues ? ASS_STYLE_ENCODING_UNICODE : 1
     ),
-    ...(layout.rtl || visibleCues.some((c) => isRtlText(c.text))
-      ? [buildRtlStyleLine('RTL_Default', preset, layout.marginV)]
-      : []),
     '',
     '[Events]',
     ASS_EVENTS_FORMAT
   );
-  const disableEmphasis = layout.rtl || captionMode === 'accurate';
+  const disableEmphasis = captionMode === 'accurate';
   let totalLines = 0;
   let wrappedCount = 0;
   let maxLineCount = 1;
@@ -570,14 +559,19 @@ export function generateAssContent(segments, presetId, dims = {}) {
   let rtlMultilineLineOrderLogs = 0;
   const RTL_MULTILINE_FORENSIC_MAX = 5;
   let rtlLayoutDebugLogged = false;
+  let rtlPunctuationDebugLogged = false;
 
   const dialogues = visibleCues.map((cue, segmentIndex) => {
     const enrichedCue = applyFutureVisualExtensions(cue, {
       renderProfile,
       visualFeatureFlags
     });
-    const cueText = String(enrichedCue.text || '');
-    const cueRtl = isRtlText(cueText);
+    const originalText = String(enrichedCue.text || '');
+    const cueRtl = isRtlText(originalText);
+    const cueText = cueRtl ? anchorRtlPunctuation(originalText) : originalText;
+    if (cueRtl && cueText !== originalText) {
+      enrichedCue.text = cueText;
+    }
     const layoutModeBefore = layout.layout?.mode;
     const cueLineLayout = resolveCueLineLayout(layout.layout, cueText);
     const lines = buildCueLines(
@@ -626,7 +620,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
       );
     }
     const bodyResult = linesToAssText(assLines, preset, {
-      disableEmphasis: disableEmphasis || cueRtl,
+      disableEmphasis,
       renderProfile,
       cue: enrichedCue,
       segmentIndex
@@ -644,8 +638,16 @@ export function generateAssContent(segments, presetId, dims = {}) {
         forensicBeforeRtlDialogue.push({ id: cueKey, text: bodyResult.text });
       }
       text = buildRtlDialogueText(bodyResult.text);
-      styleName = 'RTL_Default';
-      dialogueMarginV = 0;
+      styleName = 'Default';
+      if (!rtlPunctuationDebugLogged) {
+        rtlPunctuationDebugLogged = true;
+        console.log('[rtl-punctuation-debug]', {
+          originalText,
+          punctuatedText: cueText,
+          finalDialogueText: text,
+          unicodeCodepoints: rtlPunctuationTailSample(text.replace(/\{[^}]*\}/g, ''))
+        });
+      }
     } else {
       const bottomAnchor = buildAssBottomAnchorTag(playResX, playResY, layout.marginV);
       const glowPrefix = preset.glow > 0 ? `{\\blur${Number(preset.glow).toFixed(2)}}` : '';
