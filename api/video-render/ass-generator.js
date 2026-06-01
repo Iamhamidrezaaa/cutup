@@ -24,6 +24,8 @@ import {
 } from './layout-engine.js';
 import { isRtlText, resolveRtlFontName } from './rtl-text.js';
 import { isTimingForensicEnabled, logTimingForensics } from './timing-forensics.js';
+import { logCaptionForensics, isCaptionForensicEnabled } from './caption-forensics.js';
+import { BURN_LEAD_DELAY_SEC } from './subtitle-pipeline.js';
 import {
   isSubtitleTextForensicEnabled,
   logSubtitleTextForensicStage,
@@ -591,6 +593,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
   const forensicAfterLinesToAssText = [];
   const forensicBeforeRtlDialogue = [];
   const forensicFinalDialogue = [];
+  const forensicExportSegmentedLines = [];
   let rtlMultilineLineOrderLogs = 0;
   const RTL_MULTILINE_FORENSIC_MAX = 5;
   let rtlLayoutDebugLogged = false;
@@ -626,6 +629,9 @@ export function generateAssContent(segments, presetId, dims = {}) {
         id: cueKey,
         text: (Array.isArray(lines) ? lines : []).join('\n')
       });
+    }
+    if (isCaptionForensicEnabled() && segmentIndex < 10) {
+      forensicExportSegmentedLines[segmentIndex] = Array.isArray(lines) ? [...lines] : [];
     }
     const lineCount = Math.max(1, lines.length);
     totalLines += lineCount;
@@ -750,6 +756,23 @@ export function generateAssContent(segments, presetId, dims = {}) {
       timelinePlan: dims.timelinePlan || null,
       jobDir: forensicCtx?.jobDir || null,
       jobId: forensicCtx?.jobId || null
+    });
+  }
+
+  if (isCaptionForensicEnabled()) {
+    logCaptionForensics({
+      traceId: forensicCtx?.traceId || forensicCtx?.jobId || null,
+      stylePreset: selectedPresetId,
+      exportPresetId: preset.id,
+      transcriptSegments: forensicCtx?.transcriptSegments || [],
+      translatedSegments: forensicCtx?.translatedSegments || [],
+      exportInputSegments: finalOnlySegments,
+      canonicalCues: canonicalSubtitles,
+      assDialogues: timingAuditRows,
+      exportSegmentedLines: forensicExportSegmentedLines,
+      previewRows: forensicCtx?.previewRows || [],
+      burnLeadDelaySec: BURN_LEAD_DELAY_SEC,
+      jobDir: forensicCtx?.jobDir || null
     });
   }
 

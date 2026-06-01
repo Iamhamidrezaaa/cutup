@@ -158,6 +158,13 @@ async function handleStart(req, res) {
         body.segments = [];
       }
     }
+    if (parsed.fields.captionForensics) {
+      try {
+        body.captionForensics = JSON.parse(parsed.fields.captionForensics);
+      } catch {
+        body.captionForensics = null;
+      }
+    }
     videoBuffer = parsed.videoBuffer;
     videoFilename = parsed.videoFilename;
   } else {
@@ -227,6 +234,9 @@ async function handleStart(req, res) {
     quality
   });
 
+  const captionForensics =
+    body.captionForensics && typeof body.captionForensics === 'object' ? body.captionForensics : null;
+
   const result = createRenderJob({
     userEmail: email,
     sessionId,
@@ -237,6 +247,7 @@ async function handleStart(req, res) {
     styleMode,
     segments: segments.length ? segments : null,
     exportDoc,
+    captionForensics,
     sourceUrl: sourceUrl && !String(sourceUrl).startsWith('upload://') ? sourceUrl : null,
     uploadBuffer: videoBuffer,
     uploadFilename: videoFilename,

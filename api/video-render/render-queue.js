@@ -273,6 +273,7 @@ export function createRenderJob(payload) {
     ffmpegMsgIndex: 0,
     segments: payload.segments || null,
     exportDoc: payload.exportDoc || null,
+    captionForensics: payload.captionForensics || null,
     sourceUrl: payload.sourceUrl || null,
     localVideoPath: payload.localVideoPath || null,
     uploadBuffer: payload.uploadBuffer || null,
@@ -559,7 +560,10 @@ async function runJob(job) {
       forensicCtx: {
         jobId: job.id,
         traceId: job.traceId || null,
-        jobDir: job.jobDir
+        jobDir: job.jobDir,
+        previewRows: job.captionForensics?.previewRows || [],
+        transcriptSegments: job.captionForensics?.transcriptSegments || [],
+        translatedSegments: job.captionForensics?.translatedSegments || []
       }
     };
 

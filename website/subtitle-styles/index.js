@@ -39,6 +39,9 @@
     }
 
     global.CutupStyleRenderer.render(stage, segments, presetId);
+    global.CutupCaptionForensics?.logPreviewForensics?.(segments, presetId, {
+      transcriptSegments: global.CutupCaptionForensics?.getTranscriptSegments?.() || []
+    });
     global.cutupStyleExportDoc = global.CutupStyleExport?.buildExportDocument?.(segments, presetId) || null;
     global.CutupViralExport?.refreshExportButton?.();
 

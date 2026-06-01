@@ -686,6 +686,10 @@
         fd.append('captionMode', captionMode);
         fd.append('styleMode', styleMode);
         fd.append('segments', JSON.stringify(resolvedPayload.segments || []));
+        const captionForensics = global.CutupCaptionForensics?.getPayloadForExport?.();
+        if (captionForensics) {
+          fd.append('captionForensics', JSON.stringify(captionForensics));
+        }
         if (resolvedPayload.exportDoc) {
           fd.append('exportDoc', JSON.stringify(resolvedPayload.exportDoc));
         }
@@ -711,7 +715,8 @@
             styleMode,
             sourceUrl,
             exportDoc: resolvedPayload.exportDoc || undefined,
-            segments: resolvedPayload.segments || undefined
+            segments: resolvedPayload.segments || undefined,
+            captionForensics: global.CutupCaptionForensics?.getPayloadForExport?.() || undefined
           })
         });
       }
