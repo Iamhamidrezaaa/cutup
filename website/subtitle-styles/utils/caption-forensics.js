@@ -52,7 +52,7 @@
   function logPreviewForensics(segments, presetId, ctx = {}) {
     if (!isEnabled()) return [];
     const rows = buildPreviewForensicRows(segments, presetId, ctx);
-    const previewStyleObject = Presets?.getPreset?.(presetId) || null;
+    const previewStyleObject = global.CutupStylePresets?.getPreset?.(presetId) || null;
     global.cutupCaptionForensicsPreview = {
       presetId,
       previewStyleObject,

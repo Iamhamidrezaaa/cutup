@@ -39,9 +39,13 @@
     }
 
     global.CutupStyleRenderer.render(stage, segments, presetId);
-    global.CutupCaptionForensics?.logPreviewForensics?.(segments, presetId, {
-      transcriptSegments: global.CutupCaptionForensics?.getTranscriptSegments?.() || []
-    });
+    try {
+      global.CutupCaptionForensics?.logPreviewForensics?.(segments, presetId, {
+        transcriptSegments: global.CutupCaptionForensics?.getTranscriptSegments?.() || []
+      });
+    } catch (err) {
+      console.warn('[caption-forensics] preview logging skipped:', err?.message);
+    }
     global.cutupStyleExportDoc = global.CutupStyleExport?.buildExportDocument?.(segments, presetId) || null;
     global.CutupViralExport?.refreshExportButton?.();
 
