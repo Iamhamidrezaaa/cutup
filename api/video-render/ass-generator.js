@@ -308,7 +308,7 @@ function buildRtlPresetStyleLine(styleName, preset, marginV) {
 }
 
 /**
- * RTL Dialogue: plain escaped text only (no inline emphasis / pos overrides — style row handles look).
+ * RTL Dialogue: preserves inline emphasis tags from linesToAssText; RTL_* style row handles font/BiDi.
  * @param {string} assBodyText
  */
 function buildRtlDialogueText(assBodyText) {
@@ -583,7 +583,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
     '[Events]',
     ASS_EVENTS_FORMAT
   );
-  const disableEmphasis = layout.rtl || captionMode === 'accurate';
+  const disableEmphasis = captionMode === 'accurate';
   let totalLines = 0;
   let wrappedCount = 0;
   let maxLineCount = 1;
@@ -670,7 +670,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
       );
     }
     const bodyResult = linesToAssText(assLines, preset, {
-      disableEmphasis: disableEmphasis || cueRtl,
+      disableEmphasis,
       renderProfile,
       cue: enrichedCue,
       segmentIndex
@@ -699,12 +699,14 @@ export function generateAssContent(segments, presetId, dims = {}) {
     if (forensicOn && segmentIndex < forensicCueCap) {
       forensicFinalDialogue.push({ id: cueKey, text, styleName });
     }
-    console.log('[caption-emphasis-debug]', {
-      originalText: enrichedCue.text,
-      cueRtl,
-      emphasisWords: Array.isArray(cue.emphasisWords) ? cue.emphasisWords : bodyResult.emphasisWords,
-      finalStyledAssText: text
-    });
+    if (cueRtl) {
+      console.log('[rtl-emphasis-fix]', {
+        cueRtl,
+        disableEmphasis,
+        emphasisWords: bodyResult.emphasisWords,
+        finalStyledAssText: text
+      });
+    }
     const syncStart = Number(
       useSourceAlignedTimings
         ? enrichedCue.sourceStart ?? enrichedCue.start

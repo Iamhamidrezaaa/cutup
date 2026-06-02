@@ -36,6 +36,7 @@ import {
 import { parseAssDialogueTimes } from './ffmpeg-timeline.js';
 import { isTimingForensicEnabled, logTimingForensics } from './timing-forensics.js';
 import { logCaptionForensics } from './caption-forensics.js';
+import { logExportRootCauseForensics } from './export-root-cause-forensics.js';
 import { logProductionAssDialogueDump } from './subtitle-text-forensics.js';
 
 const MAX_CONCURRENT = Math.max(1, Math.min(3, Number(process.env.VIDEO_RENDER_CONCURRENCY || 1)));
@@ -626,6 +627,22 @@ async function runJob(job) {
       jobId: job.id,
       traceId: job.traceId || null
     });
+
+    if (job.segments?.length) {
+      logExportRootCauseForensics({
+        rawSegments: job.segments,
+        assResult,
+        presetId: job.presetId,
+        captionMode: job.captionMode || 'viral',
+        durationSec: probe.durationSec,
+        playResX: assOpts.playResX,
+        playResY: assOpts.playResY,
+        positionMode: assOpts.positionMode,
+        jobId: job.id,
+        traceId: job.traceId || null,
+        jobDir: job.jobDir
+      });
+    }
 
     const assDialoguesPreview = parseAssDialogueTimes(job.assPath, 3);
     traceRenderTimeline(timelineTrace, 'ass_written', {
