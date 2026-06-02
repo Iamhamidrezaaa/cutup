@@ -236,6 +236,18 @@ async function handleStart(req, res) {
 
   const captionForensics =
     body.captionForensics && typeof body.captionForensics === 'object' ? body.captionForensics : null;
+  const selectedPresetFromUI =
+    captionForensics?.selectedPresetFromUI ||
+    body.selectedPresetId ||
+    body.presetId ||
+    body.preset ||
+    null;
+
+  console.log('[caption-forensics-preset-lineage]', {
+    traceId,
+    selectedPresetFromUI,
+    presetReceivedByAPI: presetId
+  });
 
   const result = createRenderJob({
     userEmail: email,
@@ -247,7 +259,16 @@ async function handleStart(req, res) {
     styleMode,
     segments: segments.length ? segments : null,
     exportDoc,
-    captionForensics,
+    captionForensics: captionForensics
+      ? {
+          ...captionForensics,
+          selectedPresetFromUI,
+          presetReceivedByAPI: presetId
+        }
+      : {
+          selectedPresetFromUI,
+          presetReceivedByAPI: presetId
+        },
     sourceUrl: sourceUrl && !String(sourceUrl).startsWith('upload://') ? sourceUrl : null,
     uploadBuffer: videoBuffer,
     uploadFilename: videoFilename,

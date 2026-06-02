@@ -79,7 +79,14 @@
   function getPayloadForExport() {
     const preview = global.cutupCaptionForensicsPreview;
     if (!preview?.rows?.length) return null;
+    const selectedPresetFromUI =
+      global.cutupSelectedPresetId ||
+      global.cutupActiveStylePreset ||
+      global.CutupPresetSelector?.getActivePresetId?.() ||
+      preview.presetId ||
+      null;
     return {
+      selectedPresetFromUI,
       previewRows: preview.rows,
       stylePreset: preview.presetId,
       previewStyleObject: preview.previewStyleObject || null,

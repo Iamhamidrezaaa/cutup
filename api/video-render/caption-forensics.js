@@ -139,6 +139,16 @@ export function buildFirstSubtitleDelayEvidence(opts = {}) {
   const timelinePlan = opts.timelinePlan || {};
 
   const t0 = 0;
+  const firstTranscriptWord = (() => {
+    const seg = whisper || {};
+    const words = Array.isArray(seg.words) ? seg.words : [];
+    const firstWord = words.find((w) => Number.isFinite(Number(w?.start)));
+    return firstWord ? Number(firstWord.start) : num(seg.start, null);
+  })();
+  const firstTranslatedCue = num(opts.translatedSegments?.[0]?.start, null);
+  const firstMergedCue = num(stabilize0?.start ?? coalesce0?.start ?? merge0?.start, null);
+  const firstBurnCue = num(stabilize0?.start, null);
+  const firstASSDialogue = num(ass0?.assStart, null);
   const rows = [];
 
   const push = (stage, startSec, endSec, note) => {
@@ -189,6 +199,17 @@ export function buildFirstSubtitleDelayEvidence(opts = {}) {
   return {
     evidenceRows: rows,
     introducedAtStage,
+    firstTranscriptWord: roundSec(firstTranscriptWord),
+    firstTranslatedCue: roundSec(firstTranslatedCue),
+    firstMergedCue: roundSec(firstMergedCue),
+    firstBurnCue: roundSec(firstBurnCue),
+    firstASSDialogue: roundSec(firstASSDialogue),
+    deltasMs: {
+      translatedMinusTranscriptWord: deltaMs(firstTranscriptWord, firstTranslatedCue),
+      mergedMinusTranscriptWord: deltaMs(firstTranscriptWord, firstMergedCue),
+      burnMinusTranscriptWord: deltaMs(firstTranscriptWord, firstBurnCue),
+      assMinusTranscriptWord: deltaMs(firstTranscriptWord, firstASSDialogue)
+    },
     firstVisibleStartSec: roundSec(
       ass0?.assStart ?? stabilize0?.start ?? merge0?.start ?? whisper?.start
     ),
@@ -263,6 +284,10 @@ export function buildCaptionForensicRecords(opts = {}) {
 export function buildCaptionForensicReport(opts = {}) {
   const records = buildCaptionForensicRecords(opts);
   const firstSubtitleDelay = buildFirstSubtitleDelayEvidence(opts);
+  const selectedPresetFromUI = opts.selectedPresetFromUI || null;
+  const presetReceivedByAPI = opts.presetReceivedByAPI || null;
+  const presetReceivedByRenderQueue = opts.presetReceivedByRenderQueue || null;
+  const presetUsedByASSGenerator = opts.presetUsedByASSGenerator || opts.exportPresetId || null;
   const styleComparison = {
     ...collectStyleEvidence(opts.previewPresetId, opts.exportPresetId),
     previewStyleObject: opts.previewStyleObject || null
@@ -275,10 +300,27 @@ export function buildCaptionForensicReport(opts = {}) {
     traceId: opts.traceId || null,
     jobId: opts.jobId || null,
     cueCountLogged: records.length,
+    presetLineage: {
+      selectedPresetFromUI,
+      presetReceivedByAPI,
+      presetReceivedByRenderQueue,
+      presetUsedByASSGenerator
+    },
     captionRecords: records,
     firstSubtitleDelayAttribution: firstSubtitleDelay,
     styleComparison,
     segmentationProof,
+    cueCountByStage: opts.pipelineAudit
+      ? {
+          inputToBuildSourceAlignedSubtitles: opts.pipelineAudit.inputCount,
+          beforeMergeRollingCaptionChains: opts.pipelineAudit.parsedCount,
+          afterMergeRollingCaptionChains: opts.pipelineAudit.afterRollingMergeCount,
+          beforeCoalesceBurnPhrases: opts.pipelineAudit.afterRollingMergeCount,
+          afterCoalesceBurnPhrases: opts.pipelineAudit.afterCoalesceCount,
+          beforeStabilizeBurnCueTiming: opts.pipelineAudit.afterCoalesceCount,
+          afterStabilizeBurnCueTiming: opts.pipelineAudit.afterStabilizeCount
+        }
+      : null,
     pipelineCounts: opts.pipelineAudit
       ? {
           input: opts.pipelineAudit.inputCount,
@@ -301,6 +343,10 @@ export function logCaptionForensics(opts = {}) {
   }
 
   console.log('[caption-forensics-report]', JSON.stringify(report));
+  console.log('[caption-forensics-preset-lineage]', JSON.stringify(report.presetLineage));
+  if (report.cueCountByStage) {
+    console.log('[caption-forensics-cue-counts]', JSON.stringify(report.cueCountByStage));
+  }
 
   if (opts.jobDir) {
     try {
@@ -308,6 +354,11 @@ export function logCaptionForensics(opts = {}) {
       writeFileSync(join(opts.jobDir, 'caption-forensics.json'), JSON.stringify(report, null, 2), 'utf8');
       writeFileSync(
         join(opts.jobDir, 'CAPTION-ROOT-CAUSE-REPORT.json'),
+        JSON.stringify(report, null, 2),
+        'utf8'
+      );
+      writeFileSync(
+        join(opts.jobDir, 'CAPTION-PIPELINE-FORENSICS.json'),
         JSON.stringify(report, null, 2),
         'utf8'
       );

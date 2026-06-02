@@ -566,9 +566,20 @@ async function runJob(job) {
         transcriptSegments: job.captionForensics?.transcriptSegments || [],
         translatedSegments: job.captionForensics?.translatedSegments || [],
         previewPresetId: job.captionForensics?.stylePreset || job.presetId,
-        previewStyleObject: job.captionForensics?.previewStyleObject || null
+        previewStyleObject: job.captionForensics?.previewStyleObject || null,
+        selectedPresetFromUI: job.captionForensics?.selectedPresetFromUI || null,
+        presetReceivedByAPI: job.captionForensics?.presetReceivedByAPI || null,
+        presetReceivedByRenderQueue: job.presetId
       }
     };
+
+    console.log('[caption-forensics-preset-lineage]', {
+      traceId: job.traceId || null,
+      jobId: job.id,
+      selectedPresetFromUI: job.captionForensics?.selectedPresetFromUI || null,
+      presetReceivedByAPI: job.captionForensics?.presetReceivedByAPI || null,
+      presetReceivedByRenderQueue: job.presetId
+    });
 
     console.log('[preset-style-debug]', {
       requestedPreset: job.presetId,

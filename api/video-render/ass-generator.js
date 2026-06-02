@@ -767,6 +767,10 @@ export function generateAssContent(segments, presetId, dims = {}) {
     ? {
         traceId: forensicCtx?.traceId || forensicCtx?.jobId || null,
         jobId: forensicCtx?.jobId || null,
+        selectedPresetFromUI: forensicCtx?.selectedPresetFromUI || null,
+        presetReceivedByAPI: forensicCtx?.presetReceivedByAPI || null,
+        presetReceivedByRenderQueue: forensicCtx?.presetReceivedByRenderQueue || selectedPresetId,
+        presetUsedByASSGenerator: selectedPresetId,
         previewPresetId: forensicCtx?.previewPresetId || selectedPresetId,
         exportPresetId: selectedPresetId,
         whisperSegments: forensicCtx?.transcriptSegments || finalOnlySegments,
