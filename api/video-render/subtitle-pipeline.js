@@ -814,8 +814,18 @@ export function mergeRollingCaptionChains(segments) {
 /**
  * Drop blink-length orphans; glue tiny tail words into the next phrase.
  */
-export function coalesceBurnPhrases(cues) {
+export function coalesceBurnPhrases(cues, opts = {}) {
+  const preservePhraseCues = Boolean(opts.preservePhraseCues);
   const sorted = [...(Array.isArray(cues) ? cues : [])].sort((a, b) => a.start - b.start);
+  if (preservePhraseCues) {
+    return sorted
+      .map((cur) => {
+        const text = normalizeCueText(cur.text);
+        if (!text) return null;
+        return { start: cur.start, end: cur.end, text, words: cueWords(text) };
+      })
+      .filter(Boolean);
+  }
   const out = [];
 
   for (let i = 0; i < sorted.length; i++) {
@@ -1047,6 +1057,13 @@ export function dedupeOverlappingBurnCues(cues) {
     out.push({ ...cue });
   }
   return out;
+}
+
+/**
+ * Phrase-level burn/export captions (composeRhythmBlocks). One short phrase per cue.
+ */
+export function buildPhraseBurnSubtitles(rawSegments) {
+  return buildCanonicalSubtitles(rawSegments);
 }
 
 /**

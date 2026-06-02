@@ -5,7 +5,7 @@ import { getStylePreset, resolvePresetIdOrThrow } from './style-presets.js';
 import { buildCueLines } from './text-layout.js';
 import { analyzeTextWithEmphasis, shouldEmphasize, markSpokenWord } from './emphasis-engine.js';
 import {
-  buildCanonicalSubtitles,
+  buildPhraseBurnSubtitles,
   buildSourceAlignedSubtitles,
   buildVisualCueView,
   applyVisualReadabilityWindows,
@@ -367,12 +367,21 @@ export function generateAssContent(segments, presetId, dims = {}) {
     }))
   );
 
-  const useSourceAlignedTimings =
-    String(process.env.RENDER_BURN_USE_SOURCE_TIMINGS ?? '1').toLowerCase() !== '0' ||
-    captionMode === 'accurate';
+  const captionModeNorm = String(captionMode || 'viral').toLowerCase();
+  const useSourceAlignedTimings = captionModeNorm === 'accurate';
+  const inputSegmentCount = finalOnlySegments.length;
   const canonicalSubtitles = useSourceAlignedTimings
     ? buildSourceAlignedSubtitles(finalOnlySegments)
-    : buildCanonicalSubtitles(finalOnlySegments);
+    : buildPhraseBurnSubtitles(finalOnlySegments);
+  const exportPhraseCueCount = canonicalSubtitles.length;
+  console.log('[burn-caption-export]', {
+    path: useSourceAlignedTimings ? 'source-aligned-segment' : 'phrase-rhythm',
+    captionMode: captionModeNorm,
+    inputSegmentCount,
+    exportPhraseCueCount,
+    assDialogueCount: exportPhraseCueCount,
+    coalesceSkipped: !useSourceAlignedTimings
+  });
   if (isSubtitleTextForensicEnabled(forensicSample)) {
     logSubtitleTextForensicStage(
       'after_subtitle_pipeline_normalization',

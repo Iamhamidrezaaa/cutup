@@ -36,8 +36,6 @@ import {
 import { parseAssDialogueTimes } from './ffmpeg-timeline.js';
 import { isTimingForensicEnabled, logTimingForensics } from './timing-forensics.js';
 import { logCaptionForensics } from './caption-forensics.js';
-import { logCaptionMergeForensics } from './caption-merge-forensics.js';
-import { logPhrasePipelineForensics } from './phrase-pipeline-forensics.js';
 import { logProductionAssDialogueDump } from './subtitle-text-forensics.js';
 
 const MAX_CONCURRENT = Math.max(1, Math.min(3, Number(process.env.VIDEO_RENDER_CONCURRENCY || 1)));
@@ -834,20 +832,6 @@ async function runJob(job) {
         });
       }
 
-      if (job.segments?.length) {
-        logCaptionMergeForensics(job.segments, {
-          traceId: job.traceId || null,
-          jobId: job.id,
-          jobDir: job.jobDir
-        });
-        logPhrasePipelineForensics(job.segments, {
-          traceId: job.traceId || null,
-          jobId: job.id,
-          jobDir: job.jobDir,
-          presetId: job.presetId,
-          captionMode: job.captionMode || 'viral'
-        });
-      }
     } finally {
       stopRenderHeartbeat(job);
       job.ffmpegAbort = null;
