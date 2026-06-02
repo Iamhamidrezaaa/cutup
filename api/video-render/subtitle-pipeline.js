@@ -964,6 +964,57 @@ export function buildSourceAlignedSubtitles(rawSegments) {
 }
 
 /**
+ * Read-only pipeline audit (does not alter buildSourceAlignedSubtitles output).
+ * Used by caption-forensics for per-stage timing evidence.
+ */
+export function auditSourceAlignedPipelineStages(rawSegments) {
+  const raw = Array.isArray(rawSegments) ? rawSegments : [];
+  const cues = [];
+  for (let i = 0; i < raw.length; i++) {
+    const seg = raw[i];
+    if (!seg || typeof seg.start !== 'number' || typeof seg.end !== 'number' || seg.end <= seg.start) {
+      continue;
+    }
+    const text = normalizeCueText(seg.text);
+    if (!text) continue;
+    const start = Number(seg.start);
+    const end = Number(seg.end);
+    cues.push({
+      segmentIndex: i,
+      start,
+      end,
+      text,
+      sourceStart: start,
+      sourceEnd: end
+    });
+  }
+  const afterRollingMerge = mergeRollingCaptionChains(cues);
+  const afterCoalesce = coalesceBurnPhrases(afterRollingMerge);
+  const afterStabilize = stabilizeBurnCueTiming(afterCoalesce);
+
+  const slice10 = (list) =>
+    (Array.isArray(list) ? list : []).slice(0, 10).map((c, idx) => ({
+      pipelineIndex: idx,
+      segmentIndex: c.segmentIndex ?? null,
+      start: Number(c.start),
+      end: Number(c.end),
+      text: String(c.text || '').slice(0, 120)
+    }));
+
+  return {
+    inputCount: raw.length,
+    parsedCount: cues.length,
+    afterRollingMergeCount: afterRollingMerge.length,
+    afterCoalesceCount: afterCoalesce.length,
+    afterStabilizeCount: afterStabilize.length,
+    parsed: slice10(cues),
+    afterRollingMerge: slice10(afterRollingMerge),
+    afterCoalesce: slice10(afterCoalesce),
+    afterStabilize: slice10(afterStabilize)
+  };
+}
+
+/**
  * Remove stacked "growing" captions (common with word-by-word ASR) before ASS burn-in.
  */
 export function dedupeOverlappingBurnCues(cues) {

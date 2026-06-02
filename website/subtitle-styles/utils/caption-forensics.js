@@ -52,8 +52,10 @@
   function logPreviewForensics(segments, presetId, ctx = {}) {
     if (!isEnabled()) return [];
     const rows = buildPreviewForensicRows(segments, presetId, ctx);
+    const previewStyleObject = Presets?.getPreset?.(presetId) || null;
     global.cutupCaptionForensicsPreview = {
       presetId,
+      previewStyleObject,
       rows,
       capturedAt: Date.now(),
       transcriptSegments: ctx.transcriptSegments || null
@@ -80,6 +82,7 @@
     return {
       previewRows: preview.rows,
       stylePreset: preview.presetId,
+      previewStyleObject: preview.previewStyleObject || null,
       transcriptSegments: preview.transcriptSegments || getTranscriptSegments(),
       translatedSegments:
         global.CutupSubtitleVersions?.getActiveVersion?.()?.key === 'original'

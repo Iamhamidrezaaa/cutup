@@ -24,8 +24,12 @@ import {
 } from './layout-engine.js';
 import { isRtlText, resolveRtlFontName } from './rtl-text.js';
 import { isTimingForensicEnabled, logTimingForensics } from './timing-forensics.js';
-import { logCaptionForensics, isCaptionForensicEnabled } from './caption-forensics.js';
-import { BURN_LEAD_DELAY_SEC } from './subtitle-pipeline.js';
+import {
+  isCaptionForensicEnabled,
+  buildCaptionForensicRecords,
+  logCaptionForensics
+} from './caption-forensics.js';
+import { auditSourceAlignedPipelineStages } from './subtitle-pipeline.js';
 import {
   isSubtitleTextForensicEnabled,
   logSubtitleTextForensicStage,
@@ -759,26 +763,36 @@ export function generateAssContent(segments, presetId, dims = {}) {
     });
   }
 
-  if (isCaptionForensicEnabled()) {
-    logCaptionForensics({
-      traceId: forensicCtx?.traceId || forensicCtx?.jobId || null,
-      stylePreset: selectedPresetId,
-      exportPresetId: preset.id,
-      transcriptSegments: forensicCtx?.transcriptSegments || [],
-      translatedSegments: forensicCtx?.translatedSegments || [],
-      exportInputSegments: finalOnlySegments,
-      canonicalCues: canonicalSubtitles,
-      assDialogues: timingAuditRows,
-      exportSegmentedLines: forensicExportSegmentedLines,
-      previewRows: forensicCtx?.previewRows || [],
-      burnLeadDelaySec: BURN_LEAD_DELAY_SEC,
-      jobDir: forensicCtx?.jobDir || null
-    });
+  const forensicBundle = isCaptionForensicEnabled()
+    ? {
+        traceId: forensicCtx?.traceId || forensicCtx?.jobId || null,
+        jobId: forensicCtx?.jobId || null,
+        previewPresetId: forensicCtx?.previewPresetId || selectedPresetId,
+        exportPresetId: selectedPresetId,
+        whisperSegments: forensicCtx?.transcriptSegments || finalOnlySegments,
+        translatedSegments: forensicCtx?.translatedSegments || [],
+        exportInputSegments: finalOnlySegments,
+        canonicalCues: canonicalSubtitles,
+        assDialogues: timingAuditRows,
+        exportSegmentedLines: forensicExportSegmentedLines,
+        previewRows: forensicCtx?.previewRows || [],
+        previewStyleObject: forensicCtx?.previewStyleObject || null,
+        pipelineAudit: auditSourceAlignedPipelineStages(finalOnlySegments),
+        jobDir: forensicCtx?.jobDir || null
+      }
+    : null;
+
+  if (forensicBundle) {
+    const records = buildCaptionForensicRecords(forensicBundle);
+    for (const record of records) {
+      console.log('[caption-forensics]', JSON.stringify(record));
+    }
   }
 
   return {
     content: assContent,
     timingAudit,
+    forensicBundle,
     cueCount,
     playResX,
     playResY,

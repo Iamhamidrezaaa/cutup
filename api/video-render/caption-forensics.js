@@ -1,12 +1,17 @@
 /**
- * Caption rendering forensic trace — first N cues only.
- * Enable: CAPTION_FORENSIC=1 (default on)
+ * Caption rendering forensic trace — evidence only (no behavior changes).
+ * Enable: CAPTION_FORENSIC=1
  */
 
 import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import { getStylePreset, resolvePresetIdOrThrow } from './style-presets.js';
+import { layoutLinesLegacyStack } from './text-layout.js';
+import { BURN_LEAD_DELAY_SEC } from './subtitle-pipeline.js';
 
 export const CAPTION_FORENSIC_MAX = 10;
+
+const SAMPLE_SEGMENTATION_TEXT = 'این بچه تو یه چالش شرکت کرده بود...';
 
 export function isCaptionForensicEnabled() {
   return String(process.env.CAPTION_FORENSIC ?? '1') !== '0';
@@ -22,187 +27,302 @@ function roundSec(v) {
   return n == null ? null : Number(n.toFixed(3));
 }
 
-function linesEqual(a, b) {
-  const aa = Array.isArray(a) ? a : [];
-  const bb = Array.isArray(b) ? b : [];
-  if (aa.length !== bb.length) return false;
-  return aa.every((line, i) => String(line).trim() === String(bb[i]).trim());
+function deltaMs(a, b) {
+  if (a == null || b == null) return null;
+  return Math.round((Number(b) - Number(a)) * 1000);
+}
+
+/** Preview chunkWords (mirrors website/subtitle-styles/utils/text-layout.js). */
+function previewChunkWords(text, layout) {
+  const w = String(text || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!w.length) return [''];
+  const min = layout.wordsPerLineMin || 2;
+  const max = layout.wordsPerLineMax || 6;
+  if (layout.mode === 'single') return [w.join(' ')];
+  const lines = [];
+  let i = 0;
+  while (i < w.length) {
+    const remain = w.length - i;
+    const size = remain <= max ? remain : remain - max < min ? remain : max;
+    lines.push(w.slice(i, i + size).join(' '));
+    i += size;
+  }
+  return lines.length ? lines : [''];
 }
 
 /**
- * @param {object} opts
- * @param {string} [opts.traceId]
- * @param {string} [opts.stylePreset]
- * @param {{ start, end, text }[]} [opts.transcriptSegments]
- * @param {{ start, end, text }[]} [opts.translatedSegments]
- * @param {{ start, end, text }[]} [opts.exportInputSegments]
- * @param {{ start, end, text, sourceStart?, sourceEnd? }[]} [opts.canonicalCues]
- * @param {{ assStart, assEnd, text }[]} [opts.assDialogues]
- * @param {string[][]} [opts.exportSegmentedLines]
- * @param {object[]} [opts.previewRows]
- * @param {string} [opts.jobDir]
+ * Code-proven segmentation split for forensic sample text.
  */
-export function buildCaptionForensicRows(opts = {}) {
-  const transcript = Array.isArray(opts.transcriptSegments) ? opts.transcriptSegments : [];
+export function proveSegmentationSplit(text = SAMPLE_SEGMENTATION_TEXT, layout = null) {
+  const previewLayout = layout || {
+    mode: 'stack',
+    wordsPerLineMin: 2,
+    wordsPerLineMax: 4,
+    align: 'center',
+    maxWidth: '88%'
+  };
+  const exportLayout =
+    getStylePreset('hormozi').layout ||
+    getStylePreset('alexHormozi').layout || {
+      mode: 'stack',
+      wordsPerLineMin: 2,
+      wordsPerLineMax: 4,
+      maxCharsPerLine: 18,
+      maxLines: 2
+    };
+
+  const previewLines = previewChunkWords(text, previewLayout);
+  const exportLines = layoutLinesLegacyStack(text, exportLayout);
+
+  return {
+    inputText: text,
+    preview: {
+      module: 'website/subtitle-styles/utils/text-layout.js',
+      functionChain: ['layoutLines', 'chunkWords'],
+      layout: previewLayout,
+      lines: previewLines
+    },
+    export: {
+      module: 'api/video-render/text-layout.js',
+      functionChain: [
+        'layoutLinesLegacyStack',
+        'splitSemanticStack',
+        'rebalanceTrailingOrphan',
+        'rebalanceByLength',
+        'clampToMaxLines'
+      ],
+      layout: exportLayout,
+      lines: exportLines,
+      semanticProductionEnabled: String(process.env.SEMANTIC_SEGMENTATION_PRODUCTION ?? '0') !== '0'
+    },
+    linesMatch: JSON.stringify(previewLines) === JSON.stringify(exportLines)
+  };
+}
+
+/**
+ * Exact style objects used by each renderer (serialized).
+ */
+export function collectStyleEvidence(previewPresetId = 'hormozi', exportPresetId = 'hormozi') {
+  const exportResolvedId = resolvePresetIdOrThrow(exportPresetId);
+  const exportPreset = getStylePreset(exportResolvedId);
+  return {
+    preview: {
+      renderer: 'CutupStyleRenderer',
+      module: 'website/subtitle-styles/presets/registry.js',
+      presetId: previewPresetId,
+      note: 'Full object captured client-side in cutupCaptionForensicsPreview.previewStyleObject when preview refreshes'
+    },
+    export: {
+      renderer: 'ass-generator.js',
+      module: 'api/video-render/style-presets.js',
+      requestedPresetId: exportPresetId,
+      resolvedPresetId: exportResolvedId,
+      styleObject: exportPreset
+    }
+  };
+}
+
+/**
+ * First-subtitle delay: evidence table from measured stage timestamps (no guesses).
+ */
+export function buildFirstSubtitleDelayEvidence(opts = {}) {
+  const whisper = opts.whisperSegments?.[0];
+  const pipeline = opts.pipelineAudit || {};
+  const parsed0 = pipeline.parsed?.[0];
+  const merge0 = pipeline.afterRollingMerge?.[0];
+  const coalesce0 = pipeline.afterCoalesce?.[0];
+  const stabilize0 = pipeline.afterStabilize?.[0];
+  const ass0 = opts.assDialogues?.[0];
+  const timelinePlan = opts.timelinePlan || {};
+
+  const t0 = 0;
+  const rows = [];
+
+  const push = (stage, startSec, endSec, note) => {
+    rows.push({
+      stage,
+      startSec: roundSec(startSec),
+      endSec: roundSec(endSec),
+      deltaStartFromVideoZeroMs: deltaMs(t0, startSec),
+      deltaStartFromPreviousStageMs:
+        rows.length > 0 && startSec != null ? deltaMs(rows[rows.length - 1].startSec, startSec) : null,
+      note: note || undefined
+    });
+  };
+
+  push('Whisper', whisper?.start, whisper?.end, 'transcriptSegments[0] / cutupLastTranscription');
+  push('export_input_segment', opts.exportInputSegments?.[0]?.start, opts.exportInputSegments?.[0]?.end, 'job.segments[0] sent to render');
+  push('buildSourceAlignedSubtitles_parsed', parsed0?.start, parsed0?.end, 'normalizeCueText only');
+  push('mergeRollingCaptionChains', merge0?.start, merge0?.end, `cue count ${pipeline.parsedCount} → ${pipeline.afterRollingMergeCount}`);
+  push('coalesceBurnPhrases', coalesce0?.start, coalesce0?.end, `cue count → ${pipeline.afterCoalesceCount}`);
+  push(
+    'stabilizeBurnCueTiming',
+    stabilize0?.start,
+    stabilize0?.end,
+    `BURN_LEAD_DELAY_SEC=${BURN_LEAD_DELAY_SEC}`
+  );
+  push('ASS_Dialogue', ass0?.assStart, ass0?.assEnd, 'timingAuditRows / generateAssContent');
+  if (timelinePlan.assShiftSec != null && Math.abs(Number(timelinePlan.assShiftSec)) > 0.0001) {
+    push(
+      'render_queue_ffmpeg_assShift',
+      ass0?.assStart != null ? Number(ass0.assStart) + Number(timelinePlan.assShiftSec) : null,
+      null,
+      `assShiftSec=${timelinePlan.assShiftSec} applied in ffmpeg-renderer shiftAssFileTimestamps`
+    );
+  }
+
+  let introducedAtStage = null;
+  for (const row of rows) {
+    if (row.deltaStartFromPreviousStageMs != null && row.deltaStartFromPreviousStageMs > 100) {
+      introducedAtStage = row.stage;
+      break;
+    }
+    if (row.stage === 'Whisper' && row.deltaStartFromVideoZeroMs != null && row.deltaStartFromVideoZeroMs > 1000) {
+      introducedAtStage = 'Whisper';
+      break;
+    }
+  }
+
+  return {
+    evidenceRows: rows,
+    introducedAtStage,
+    firstVisibleStartSec: roundSec(
+      ass0?.assStart ?? stabilize0?.start ?? merge0?.start ?? whisper?.start
+    ),
+    whisperFirstStartSec: roundSec(whisper?.start),
+    exportMinusWhisperMs: deltaMs(whisper?.start, ass0?.assStart ?? stabilize0?.start)
+  };
+}
+
+/**
+ * Full per-cue record for [caption-forensics] logs.
+ */
+export function buildCaptionForensicRecords(opts = {}) {
+  const max = CAPTION_FORENSIC_MAX;
+  const whisper = Array.isArray(opts.whisperSegments) ? opts.whisperSegments : [];
   const translated = Array.isArray(opts.translatedSegments) ? opts.translatedSegments : [];
-  const exportInput = Array.isArray(opts.exportInputSegments)
-    ? opts.exportInputSegments
-    : translated.length
-      ? translated
-      : transcript;
+  const exportInput = Array.isArray(opts.exportInputSegments) ? opts.exportInputSegments : [];
+  const pipeline = opts.pipelineAudit || {};
   const canonical = Array.isArray(opts.canonicalCues) ? opts.canonicalCues : [];
   const ass = Array.isArray(opts.assDialogues) ? opts.assDialogues : [];
-  const exportLines = Array.isArray(opts.exportSegmentedLines) ? opts.exportSegmentedLines : [];
   const previewByIndex = new Map(
-    (Array.isArray(opts.previewRows) ? opts.previewRows : []).map((r) => [Number(r.cueIndex), r])
-  );
-  const stylePreset = opts.stylePreset || 'hormozi';
-  const max = Math.min(
-    CAPTION_FORENSIC_MAX,
-    Math.max(exportInput.length, transcript.length, canonical.length, ass.length, 0)
+    (Array.isArray(opts.previewRows) ? opts.previewRows : []).map((r) => [Number(r.cueIndex ?? r.segmentIndex), r])
   );
 
-  const rows = [];
-  for (let cueIndex = 0; cueIndex < max; cueIndex++) {
-    const tr = transcript[cueIndex];
-    const trCue = translated[cueIndex];
-    const inCue = exportInput[cueIndex];
-    const canon = canonical[cueIndex];
-    const assRow = ass[cueIndex];
-    const preview = previewByIndex.get(cueIndex);
+  const mergeByInputIndex = (list, segmentIndex) => {
+    const hit = (Array.isArray(list) ? list : []).find((c) => c.segmentIndex === segmentIndex);
+    if (hit) return hit;
+    return list?.[segmentIndex] || null;
+  };
 
-    const previewLines = preview?.segmentedLines || preview?.segmentedLinesPreview || [];
-    const exportSegLines = exportLines[cueIndex] || (canon?.text ? [String(canon.text)] : []);
+  const records = [];
+  for (let segmentIndex = 0; segmentIndex < max; segmentIndex++) {
+    const w = whisper[segmentIndex];
+    const tr = translated[segmentIndex];
+    const inp = exportInput[segmentIndex];
+    const prev = previewByIndex.get(segmentIndex);
+    const canon = canonical[segmentIndex];
+    const assRow = ass[segmentIndex];
+    const merged = mergeByInputIndex(pipeline.afterStabilize, segmentIndex);
 
-    rows.push({
-      cueIndex,
-      originalStart: roundSec(tr?.start ?? inCue?.start),
-      originalEnd: roundSec(tr?.end ?? inCue?.end),
-      translatedStart: roundSec(trCue?.start ?? inCue?.start),
-      translatedEnd: roundSec(trCue?.end ?? inCue?.end),
-      previewStart: roundSec(preview?.previewStart ?? inCue?.start ?? tr?.start),
-      previewEnd: roundSec(preview?.previewEnd ?? inCue?.end ?? tr?.end),
-      exportStart: roundSec(assRow?.assStart ?? canon?.sourceStart ?? canon?.start),
-      exportEnd: roundSec(assRow?.assEnd ?? canon?.sourceEnd ?? canon?.end),
-      text: String(inCue?.text ?? canon?.text ?? trCue?.text ?? tr?.text ?? '').slice(0, 200),
-      transcriptText: tr?.text ? String(tr.text).slice(0, 120) : undefined,
-      segmentedLines: {
-        preview: previewLines,
-        export: exportSegLines
-      },
-      stylePreset: preview?.stylePreset || stylePreset,
-      previewRenderer: preview?.previewRenderer || 'CutupStyleRenderer',
-      exportRenderer: 'ass-generator+ffmpeg-burn',
-      canonicalCueIndex: cueIndex,
-      exportInputCount: exportInput.length,
-      canonicalCueCount: canonical.length,
-      segmentationMatch: linesEqual(previewLines, exportSegLines),
-      previewExportStartDeltaMs:
-        preview?.previewStart != null && (assRow?.assStart ?? canon?.start) != null
-          ? Math.round(((assRow?.assStart ?? canon?.start) - preview.previewStart) * 1000)
-          : inCue?.start != null && (assRow?.assStart ?? canon?.start) != null
-            ? Math.round(((assRow?.assStart ?? canon?.start) - inCue.start) * 1000)
-            : null
+    records.push({
+      segmentIndex,
+      originalStart: roundSec(w?.start ?? inp?.start),
+      originalEnd: roundSec(w?.end ?? inp?.end),
+      originalText: String(w?.text ?? '').slice(0, 200),
+
+      translatedStart: roundSec(tr?.start),
+      translatedEnd: roundSec(tr?.end),
+      translatedText: tr?.text ? String(tr.text).slice(0, 200) : null,
+
+      mergedStart: roundSec(merged?.start),
+      mergedEnd: roundSec(merged?.end),
+
+      previewStart: roundSec(prev?.previewStart ?? inp?.start ?? tr?.start ?? w?.start),
+      previewEnd: roundSec(prev?.previewEnd ?? inp?.end ?? tr?.end ?? w?.end),
+      previewText: String(prev?.text ?? inp?.text ?? tr?.text ?? w?.text ?? '').slice(0, 200),
+
+      exportStart: roundSec(canon?.start ?? canon?.sourceStart),
+      exportEnd: roundSec(canon?.end ?? canon?.sourceEnd),
+      exportText: String(canon?.text ?? inp?.text ?? '').slice(0, 200),
+
+      assDialogueStart: roundSec(assRow?.assStart),
+      assDialogueEnd: roundSec(assRow?.assEnd),
+      assText: assRow?.text ? String(assRow.text).slice(0, 200) : null,
+
+      segmentedLinesPreview: prev?.segmentedLines || prev?.segmentedLinesPreview || null,
+      segmentedLinesExport: opts.exportSegmentedLines?.[segmentIndex] || null
     });
   }
-  return rows;
+  return records;
 }
 
-/**
- * @param {ReturnType<typeof buildCaptionForensicRows>} rows
- */
-export function buildCaptionForensicRootCause(rows, opts = {}) {
-  const first = rows[0];
-  const firstOriginalStart = num(first?.originalStart, 0);
-  const firstPreviewStart = num(first?.previewStart, firstOriginalStart);
-  const firstExportStart = num(first?.exportStart, firstPreviewStart);
-
-  const segmentationBreaks = rows.filter(
-    (r) =>
-      r.segmentedLines?.preview?.length &&
-      r.segmentedLines?.export?.length &&
-      !r.segmentationMatch
+export function buildCaptionForensicReport(opts = {}) {
+  const records = buildCaptionForensicRecords(opts);
+  const firstSubtitleDelay = buildFirstSubtitleDelayEvidence(opts);
+  const styleComparison = {
+    ...collectStyleEvidence(opts.previewPresetId, opts.exportPresetId),
+    previewStyleObject: opts.previewStyleObject || null
+  };
+  const segmentationProof = proveSegmentationSplit(
+    opts.segmentationSampleText || SAMPLE_SEGMENTATION_TEXT
   );
-
-  const previewExportDeltas = rows
-    .map((r) => r.previewExportStartDeltaMs)
-    .filter((v) => v != null);
-
-  const exportInputCount = num(rows[0]?.exportInputCount, 0);
-  const canonicalCount = num(rows[0]?.canonicalCueCount, 0);
-  const cuesCollapsed = exportInputCount > 0 && canonicalCount > 0 && canonicalCount < exportInputCount;
 
   return {
     traceId: opts.traceId || null,
-    cueCountLogged: rows.length,
-    regressionFindings: {
-      firstSubtitleLate: {
-        originalStartSec: firstOriginalStart,
-        previewStartSec: firstPreviewStart,
-        exportStartSec: firstExportStart,
-        lateByPreviewMs: Math.round((firstPreviewStart - firstOriginalStart) * 1000),
-        lateByExportMs: Math.round((firstExportStart - firstOriginalStart) * 1000),
-        likelyCause:
-          firstOriginalStart >= 1.5
-            ? 'whisper_first_segment_late (transcript start > 0, not export burn delay)'
-            : firstExportStart - firstPreviewStart > 0.15
-              ? 'export_stabilizeBurnCueTiming_or_rolling_merge'
-              : 'timing_aligned_at_source'
-      },
-      previewExportStyleDivergence: {
-        previewRenderer: 'CutupStyleRenderer (DOM/CSS, chunkWords layout)',
-        exportRenderer: 'ass-generator (layoutLinesLegacyStack, ASS inline tags, ffmpeg burn)',
-        presetPreviewId: opts.stylePreset || 'hormozi',
-        presetExportId: opts.exportPresetId || opts.stylePreset || 'alexHormozi',
-        avgPreviewExportStartDeltaMs:
-          previewExportDeltas.length > 0
-            ? Math.round(previewExportDeltas.reduce((a, b) => a + b, 0) / previewExportDeltas.length)
-            : 0,
-        likelyCause:
-          'Different layout engines (client chunkWords vs server legacyStack), font/CSS vs ASS typography, RTL/font overrides in preview only'
-      },
-      segmentationBreaks: {
-        count: segmentationBreaks.length,
-        cueIndices: segmentationBreaks.map((r) => r.cueIndex),
-        likelyCause:
-          'Preview uses website/subtitle-styles/utils/text-layout.js chunkWords; export uses api/video-render/text-layout.js layoutLinesLegacyStack (semantic production off by default)'
-      },
-      hormoziKaraokeAppearance: {
-        previewPath: 'CutupStyleRenderer spokenWord CSS OR FakePlayerAnimator mid-word highlight cycle',
-        exportPath: 'ass-generator spokenWord inline {\\c\\b1} tags (static per cue, not \\k karaoke)',
-        likelyCause:
-          'FakePlayerAnimator cycles cues every 3.8s with mid-sentence highlight (karaoke-like); export uses one spoken word per full cue duration'
-      }
-    },
-    pipelineNotes: {
-      cuesCollapsedOnExport: cuesCollapsed,
-      exportInputCues: exportInputCount,
-      canonicalCuesAfterMerge: canonicalCount,
-      burnLeadDelaySec: num(opts.burnLeadDelaySec, 0.09),
-      note: 'Export applies mergeRollingCaptionChains + coalesceBurnPhrases + stabilizeBurnCueTiming; preview uses raw segment times'
-    }
+    jobId: opts.jobId || null,
+    cueCountLogged: records.length,
+    captionRecords: records,
+    firstSubtitleDelayAttribution: firstSubtitleDelay,
+    styleComparison,
+    segmentationProof,
+    pipelineCounts: opts.pipelineAudit
+      ? {
+          input: opts.pipelineAudit.inputCount,
+          parsed: opts.pipelineAudit.parsedCount,
+          afterRollingMerge: opts.pipelineAudit.afterRollingMergeCount,
+          afterCoalesce: opts.pipelineAudit.afterCoalesceCount,
+          afterStabilize: opts.pipelineAudit.afterStabilizeCount
+        }
+      : null
   };
 }
 
 export function logCaptionForensics(opts = {}) {
   if (!isCaptionForensicEnabled()) return null;
 
-  const rows = buildCaptionForensicRows(opts);
-  for (const row of rows) {
-    console.log('[caption-forensics]', JSON.stringify(row));
+  const report = buildCaptionForensicReport(opts);
+
+  for (const record of report.captionRecords) {
+    console.log('[caption-forensics]', JSON.stringify(record));
   }
 
-  const summary = buildCaptionForensicRootCause(rows, opts);
-  console.log('[caption-forensics-summary]', JSON.stringify(summary));
+  console.log('[caption-forensics-report]', JSON.stringify(report));
 
-  const payload = { rows, summary };
   if (opts.jobDir) {
     try {
       mkdirSync(opts.jobDir, { recursive: true });
-      writeFileSync(join(opts.jobDir, 'caption-forensics.json'), JSON.stringify(payload, null, 2), 'utf8');
+      writeFileSync(join(opts.jobDir, 'caption-forensics.json'), JSON.stringify(report, null, 2), 'utf8');
+      writeFileSync(
+        join(opts.jobDir, 'CAPTION-ROOT-CAUSE-REPORT.json'),
+        JSON.stringify(report, null, 2),
+        'utf8'
+      );
     } catch (err) {
       console.warn('[caption-forensics] write failed:', err?.message);
     }
   }
-  return payload;
+  return report;
+}
+
+/** @deprecated use buildCaptionForensicRecords */
+export function buildCaptionForensicRows(opts = {}) {
+  return buildCaptionForensicRecords(opts).map((r) => ({
+    cueIndex: r.segmentIndex,
+    ...r,
+    text: r.previewText || r.exportText
+  }));
 }

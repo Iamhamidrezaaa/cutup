@@ -35,6 +35,7 @@ import {
 } from './render-timeline-trace.js';
 import { parseAssDialogueTimes } from './ffmpeg-timeline.js';
 import { isTimingForensicEnabled, logTimingForensics } from './timing-forensics.js';
+import { logCaptionForensics } from './caption-forensics.js';
 import { logProductionAssDialogueDump } from './subtitle-text-forensics.js';
 
 const MAX_CONCURRENT = Math.max(1, Math.min(3, Number(process.env.VIDEO_RENDER_CONCURRENCY || 1)));
@@ -563,7 +564,9 @@ async function runJob(job) {
         jobDir: job.jobDir,
         previewRows: job.captionForensics?.previewRows || [],
         transcriptSegments: job.captionForensics?.transcriptSegments || [],
-        translatedSegments: job.captionForensics?.translatedSegments || []
+        translatedSegments: job.captionForensics?.translatedSegments || [],
+        previewPresetId: job.captionForensics?.stylePreset || job.presetId,
+        previewStyleObject: job.captionForensics?.previewStyleObject || null
       }
     };
 
@@ -808,6 +811,13 @@ async function runJob(job) {
           timelinePlan: job.timelinePlan || null,
           jobDir: job.jobDir,
           jobId: job.id
+        });
+      }
+
+      if (assResult?.forensicBundle) {
+        logCaptionForensics({
+          ...assResult.forensicBundle,
+          timelinePlan: job.timelinePlan || null
         });
       }
     } finally {
