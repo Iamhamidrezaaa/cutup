@@ -94,7 +94,10 @@
       translatedSegments:
         global.CutupSubtitleVersions?.getActiveVersion?.()?.key === 'original'
           ? null
-          : global.CutupSubtitleVersions?.getActiveSegments?.() || null
+          : global.CutupSubtitleVersions?.getActiveSegments?.() || null,
+      whisperTimingTrace: global.CutupWhisperTimingTrace?.getWhisperTimingTraceForExport?.() || null,
+      transcribeApiForensics: global.cutupTranscribeApiForensics || null,
+      segmentTimingLineage: global.cutupSegmentTimingLineage || null
     };
   }
 

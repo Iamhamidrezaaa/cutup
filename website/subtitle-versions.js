@@ -107,6 +107,9 @@
   }
 
   function registerOriginal({ segments, srtContent, language }) {
+    global.CutupWhisperTimingTrace?.recordWhisperTimingStage?.('after_register_original', segments, {
+      note: 'before cloneSegments (words preserved in snapshot)'
+    });
     const store = ensureStore();
     const lang = normKey(language) === 'original' ? normKey(global.cutupDetectedSourceLanguage) : normKey(language);
     const segs = cloneSegments(segments);
@@ -128,6 +131,9 @@
   }
 
   function registerTranslation(targetLanguage, { srtContent, segments }) {
+    global.CutupWhisperTimingTrace?.recordWhisperTimingStage?.('after_register_translation', segments, {
+      targetLanguage: normKey(targetLanguage)
+    });
     const store = ensureStore();
     const key = normKey(targetLanguage);
     if (key === 'original') return null;

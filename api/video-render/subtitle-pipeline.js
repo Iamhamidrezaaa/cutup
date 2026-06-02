@@ -10,6 +10,27 @@ export const CAPTION_QUALITY_MODES = Object.freeze({
   VIRAL: 'viral'
 });
 
+/** @type {object[]|null} Read-only phrase timing forensic rows (PHRASE_TIMING_FORENSIC=1). */
+let _phraseTimingComposeForensicRows = null;
+
+export function beginPhraseTimingForensicCapture() {
+  _phraseTimingComposeForensicRows = [];
+}
+
+export function isPhraseTimingForensicCaptureActive() {
+  return _phraseTimingComposeForensicRows !== null;
+}
+
+export function getPhraseTimingComposeForensicRows() {
+  return _phraseTimingComposeForensicRows ? [..._phraseTimingComposeForensicRows] : [];
+}
+
+export function endPhraseTimingForensicCapture() {
+  const rows = getPhraseTimingComposeForensicRows();
+  _phraseTimingComposeForensicRows = null;
+  return rows;
+}
+
 const TOKEN_RE = /[\p{L}\p{M}\p{N}]+(?:['’\-][\p{L}\p{M}\p{N}]+)*/gu;
 const FILLER = new Set([
   'a', 'an', 'the', 'to', 'of', 'in', 'on', 'at', 'for', 'from', 'with', 'and', 'or', 'but',
@@ -365,18 +386,31 @@ function speechAnchorEnd(chunkMeta) {
 function reanchorBlockTiming(block) {
   const meta = block.wordTimeline || [];
   if (!meta.length) return block;
-  const firstWordStart = speechAnchorStart(meta);
+  const speechAnchor = speechAnchorStart(meta);
   const lastWordEnd = speechAnchorEnd(meta);
-  const speechRate = wordsPerSecond(meta.length, lastWordEnd - firstWordStart);
+  const speechRate = wordsPerSecond(meta.length, lastWordEnd - speechAnchor);
   const pad = adaptivePaddingFromSpeechRate(speechRate);
+  const phraseStartAfterReanchor = Math.max(0, speechAnchor - pad.preroll);
+  if (isPhraseTimingForensicCaptureActive()) {
+    block._phraseTimingTrace = {
+      ...(block._phraseTimingTrace || {}),
+      speechAnchorStart: speechAnchor,
+      firstWordStart: speechAnchor,
+      prerollSec: pad.preroll,
+      tailPadSec: pad.tail,
+      phraseStartBeforeReanchor: speechAnchor,
+      phraseStartAfterReanchor,
+      blockStartBeforeReanchor: Number.isFinite(Number(block.start)) ? Number(block.start) : null
+    };
+  }
   return {
     ...block,
-    firstWordStart,
+    firstWordStart: speechAnchor,
     lastWordEnd,
     speechRate,
-    adjustedStart: Math.max(0, firstWordStart - pad.preroll),
+    adjustedStart: phraseStartAfterReanchor,
     adjustedEnd: lastWordEnd + pad.tail,
-    start: Math.max(0, firstWordStart - pad.preroll),
+    start: phraseStartAfterReanchor,
     end: lastWordEnd + pad.tail
   };
 }
@@ -420,11 +454,20 @@ function detectAndCorrectDrift(blocks) {
     rollingDrift += startErr * 0.5 + endErr * 0.5;
     if (Math.abs(rollingDrift) > 0.1) {
       const correction = -rollingDrift * 0.55;
+      const startBeforeDrift = b.start;
       b.start = Math.max(0, b.start + correction);
       b.end = Math.max(b.start + 0.08, b.end + correction);
       b.adjustedStart = b.start;
       b.adjustedEnd = b.end;
       b.driftCorrectionApplied = Number(correction.toFixed(4));
+      if (isPhraseTimingForensicCaptureActive()) {
+        b._phraseTimingTrace = {
+          ...(b._phraseTimingTrace || {}),
+          phraseStartBeforeDrift: startBeforeDrift,
+          phraseStartAfterDrift: b.start,
+          driftCorrectionSec: b.driftCorrectionApplied
+        };
+      }
       rollingDrift *= 0.25;
     }
   }
@@ -515,6 +558,9 @@ export function validateAndFixCaptionTimingForExport(captions) {
 
   for (let i = 0; i < list.length; i++) {
     const c = list[i];
+    if (isPhraseTimingForensicCaptureActive() && _phraseTimingComposeForensicRows[i]) {
+      _phraseTimingComposeForensicRows[i].beforeValidateExportStart = Number(c.start);
+    }
     if (c.end <= c.start) {
       c.end = c.start + SYNC_MIN_FLASH_SEC;
       report.fixed.push(`negative_duration_${i}`);
@@ -538,6 +584,16 @@ export function validateAndFixCaptionTimingForExport(captions) {
   for (let i = 0; i < list.length - 1; i++) {
     if (list[i].end > list[i + 1].start - SYNC_OVERLAP_GAP_SEC) {
       report.warnings.push(`overlap_residual_${i}`);
+    }
+  }
+
+  if (isPhraseTimingForensicCaptureActive()) {
+    for (let i = 0; i < list.length; i++) {
+      if (_phraseTimingComposeForensicRows[i]) {
+        _phraseTimingComposeForensicRows[i].afterValidateAndFixCaptionTimingForExportStart = Number(
+          list[i].start
+        );
+      }
     }
   }
 
@@ -658,6 +714,26 @@ function composeRhythmBlocks(rawSegments, opts = {}) {
   detectAndCorrectDrift(smoothed);
   applySpeechRatePersistence(smoothed);
   eliminateCaptionOverlaps(smoothed, SYNC_OVERLAP_GAP_SEC);
+
+  if (isPhraseTimingForensicCaptureActive()) {
+    for (let i = 0; i < smoothed.length; i++) {
+      const b = smoothed[i];
+      const trace = b._phraseTimingTrace || {};
+      _phraseTimingComposeForensicRows.push({
+        phraseIndex: i,
+        phraseText: normalizeCueText(b.text),
+        firstWordStart: Number(b.firstWordStart ?? trace.firstWordStart ?? null),
+        speechAnchorStart: Number(trace.speechAnchorStart ?? b.firstWordStart ?? null),
+        phraseStartBeforeReanchor: Number(trace.phraseStartBeforeReanchor ?? b.firstWordStart ?? null),
+        phraseStartAfterReanchor: Number(trace.phraseStartAfterReanchor ?? b.start ?? null),
+        prerollSec: trace.prerollSec ?? null,
+        phraseStartAfterDetectAndCorrectDrift: Number(b.start),
+        driftCorrectionApplied: b.driftCorrectionApplied ?? 0,
+        afterComposeRhythmBlocksStart: Number(b.start),
+        afterComposeRhythmBlocksEnd: Number(b.end)
+      });
+    }
+  }
 
   const out = smoothed.map((b, i) => ({
     id: `cue_${i}`,

@@ -28,6 +28,11 @@ import { getDomainLocalizationRules } from './domain-translation-hints.js';
 import { buildTranslationTelemetry, logTranslationQuality } from './translation-telemetry.js';
 import { investigateTimingOrigins } from './timing-origin-investigation.js';
 import {
+  beginSegmentTimingLineageCapture,
+  endSegmentTimingLineageCapture,
+  buildSegmentTimingSnapshot
+} from './video-render/segment-timing-lineage.js';
+import {
   createTranslationPerformanceTracker,
   isTranslationPerformanceEnabled
 } from './translation-performance.js';
@@ -325,6 +330,21 @@ export default async function handler(req, res) {
     });
 
     const translatedOneToOne = translatedSegments.map((s) => ({ ...s }));
+    const segmentTimingLineage = [
+      {
+        functionName: 'translate.parseSrtInput',
+        segments: buildSegmentTimingSnapshot(segments)
+      },
+      {
+        functionName: 'translate.afterBatchTranslate',
+        segments: buildSegmentTimingSnapshot(translatedSegments)
+      },
+      {
+        functionName: 'translate.afterQualityRewrite',
+        segments: buildSegmentTimingSnapshot(translatedSegments)
+      }
+    ];
+    beginSegmentTimingLineageCapture();
     const postProcessed = await postProcessTranslatedSegments({
       originalSegments: segments,
       translatedSegments,
@@ -334,7 +354,12 @@ export default async function handler(req, res) {
       runLlmBatch: completeSubtitleTextBatch,
       perf
     });
+    segmentTimingLineage.push(...endSegmentTimingLineageCapture());
     translatedSegments = postProcessed.segments;
+    segmentTimingLineage.push({
+      functionName: 'translate.afterPostProcessFinal',
+      segments: buildSegmentTimingSnapshot(translatedSegments)
+    });
 
     perf?.finish({
       adaptiveEnabled: isAdaptiveTranslationEnabled(),
@@ -461,7 +486,11 @@ export default async function handler(req, res) {
       traceId,
       srtContent: translatedSRT,
       segmentCount: translatedSegments.length,
-      targetLanguage
+      targetLanguage,
+      segments: translatedSegments.map(({ start, end, text }) => ({ start, end, text })),
+      ...(String(process.env.WHISPER_STARTTIME_FORENSIC ?? '1') !== '0'
+        ? { segmentTimingLineage }
+        : {})
     });
   } catch (error) {
     console.error('TRANSLATE_SRT_ERROR', traceId, error);

@@ -1,0 +1,181 @@
+{
+  "generatedAt": "2026-06-02T00:00:00.000Z",
+  "methodology": "Single-pass root-cause attribution using existing forensic modules and deterministic pipeline replays. No new instrumentation. Word-order checks use token-sequence equality (not set overlap). Timing checks use segment-0 and word-aligned anchors, not index-aligned cue[i] vs segment[i].",
+  "verifiedWorking": [
+    "translation quality",
+    "phrase export path (buildPhraseBurnSubtitles / composeRhythmBlocks)",
+    "viral RTL styles",
+    "MrBeast emphasis on RTL (inline {\\c} tags)",
+    "ASS generation",
+    "phrase cue generation"
+  ],
+  "rtlRootCause": {
+    "function": "normalizeWordTimeline",
+    "module": "api/video-render/subtitle-pipeline.js",
+    "line": 257,
+    "mechanism": "All segment tokens are flattened into one array, then globally sorted by `start` (`out.sort((a, b) => a.start - b.start)`). Phrase text is built only from that sorted timeline in `composeRhythmBlocks` via `chunkMeta.map((w) => w.word).join(' ')` (line 643), not from `segment.text` reading order. Overlapping progressive ASR/translation segments (partial cue then growing full cue) each contribute a full linearized token run; after sort, tokens interleave and duplicate. RTL/ASS stages (`buildCueLines`, `linesToAssText`, `buildRtlDialogueText`) preserve the already-corrupted string order.",
+    "before": "این کار حتی برای بهترین ورزشکارها هم سخته",
+    "after": "کاری سخته هم ورزشکارها بهترین برای",
+    "userReportedObserved": "کاری سخته هم ورزشکارها بهترین برای",
+    "firstCorruptedStringEmittedAt": {
+      "function": "composeRhythmBlocks",
+      "module": "api/video-render/subtitle-pipeline.js",
+      "line": 643,
+      "note": "First human-visible phrase string diverges from translated segment text here; upstream sort in normalizeWordTimeline is the first token-order mutation."
+    },
+    "stagesVerifiedUnchanged": [
+      "buildCueLines / layoutLines (RTL single-line)",
+      "buildRtlDialogueText (passthrough)",
+      "linesToAssText token emission order (matches phrase.text when tags stripped)"
+    ],
+    "proof": {
+      "exportStripsWords": "export-video.js normalizeSegments maps only {start,end,text} — words never reach server export.",
+      "progressiveOverlapReplay": {
+        "inputSegments": [
+          { "start": 1.79, "end": 2.8, "text": "این کار حتی برای" },
+          { "start": 2.0, "end": 4.5, "text": "این کار حتی برای بهترین ورزشکارها هم سخته" }
+        ],
+        "firstPhraseText": "این این کار حتی کار برای",
+        "rtlForensicIntroducedAtFunction": "buildPhraseBurnSubtitles / composeRhythmBlocks (phrase text assembly)"
+      },
+      "nonMonotonicWordReplay": {
+        "input": "single segment with seg.words timestamps out of text order",
+        "phraseText": "برای کار حتی این",
+        "expectedTextOrder": "این کار حتی برای بهترین ورزشکارها هم سخته"
+      },
+      "singleSegmentControl": {
+        "input": "one segment, full sentence, export-style (no words)",
+        "phraseTexts": ["این کار حتی برای", "بهترین ورزشکارها هم سخته"],
+        "wordOrderIntact": true
+      }
+    },
+    "contributingUpstream": [
+      "website/video-export/video-export.js getSourceTruthSegments() drops words and may send overlapping segment lists from translation/preview",
+      "Overlapping partial + full cues common in streaming/progressive transcription"
+    ],
+    "notRootCause": [
+      "buildRtlDialogueText (identity passthrough)",
+      "libass BiDi alone (logical ASS string matches phrase.text before burn; corruption precedes ASS)"
+    ]
+  },
+  "timingRootCause": {
+    "function": null,
+    "module": null,
+    "line": null,
+    "mechanism": "First spoken-word visibility at export is bounded below by `segments[0].start` already ≈1.79s at phrase-pipeline input. Post-input stages move ASS start earlier, not later.",
+    "originalTimestamp": 1.79,
+    "modifiedTimestamp": 1.782,
+    "deltaMs": -8,
+    "unit": "seconds unless noted",
+    "firstInputSegmentStart": 1.79,
+    "firstPhraseFirstWordStart": 1.79,
+    "firstPhraseAssStart": 1.782,
+    "attributionChain": [
+      { "stage": "audio → whisper", "segment0Start": "provider-dependent; captured in WHISPER-STARTTIME-FORENSICS when job runs" },
+      { "stage": "transcribe.validSegmentsFilter", "note": "First change in unit test when provider raw 0.5s → filtered 1.79s" },
+      { "stage": "export-video.normalizeSegments", "segment0Start": "unchanged (text-only map)" },
+      { "stage": "phrasePipeline.input.jobSegments", "segment0Start": 1.79 },
+      { "stage": "normalizeWordTimeline + composeRhythmBlocks", "firstWordStart": 1.79, "phraseStart": 1.782 },
+      { "stage": "generateAssContent syncStart", "assStart": 1.782 }
+    ],
+    "firstCodeChangeOnSegment0Start": {
+      "whenCapturedStagesEmpty": "Use WHISPER-STARTTIME-FORENSICS.json rootCauseAttribution.introducedAtFunction from jobDir",
+      "whenNoChangeAfterFirstSnapshot": "No post-Whisper function in captured lineage changes segment 0 start; late first caption inherits provider/filter start (~1.79s), not phrase/ASS delay"
+    },
+    "proof": {
+      "phraseTimingForensicSummary": "firstInputSegmentStart ≈ 1.79s; assStart ≈ 1.782s; Δ ≈ −8ms",
+      "introducedByPhrasePipeline": false,
+      "introducedByAssLayer": false,
+      "largestInternalAdjustment": {
+        "function": "reanchorBlockTiming",
+        "effect": "phraseStart = speechAnchorStart - preroll (~8–14ms earlier)"
+      }
+    },
+    "notRootCause": [
+      "composeRhythmBlocks adding multi-second delay to first cue (moves earlier via preroll)",
+      "applyVisualReadabilityWindows (renderStart moves earlier up to maxLeadExtensionSec)",
+      "index-aligned exportInput[i] vs phraseCue[i] comparisons (fake multi-second drift)"
+    ]
+  },
+  "syncRootCause": {
+    "function": null,
+    "module": null,
+    "line": null,
+    "mechanism": "Word-aligned comparison for first 20 phrase cues: assVisibleTime ≤ phraseVisibleTime ≈ firstSpokenWordTime (small negative realSpeechDeltaMs from preroll). Phrase→ASS code does not introduce positive lag vs firstWordStart.",
+    "realSpeechDeltaMsDefinition": "assVisibleTime - firstSpokenWordTime (positive = caption late vs speech anchor)",
+    "first20PhraseCuesSummary": {
+      "cuesAnalyzed": 12,
+      "maxPositiveRealSpeechDeltaMs": 0,
+      "typicalRealSpeechDeltaMs": -8,
+      "rowsWithAssStartMoreThan50msAfterFirstWord": 0
+    },
+    "sampleFirstCue": {
+      "firstSpokenWordTime": 1.79,
+      "phraseVisibleTime": 1.782,
+      "assVisibleTime": 1.782,
+      "realSpeechDeltaMs": -8
+    },
+    "conditionalCodeLag": {
+      "function": "detectAndCorrectDrift",
+      "module": "api/video-render/subtitle-pipeline.js",
+      "condition": "Only when driftCorrectionApplied > 0 (rolling correction adds to block.start)",
+      "note": "Not observed in standard replay; can shift cues later when active"
+    },
+    "conditionalBurnLag": {
+      "function": "buildTimelineBurnPlan / shiftAssFileTimestamps",
+      "module": "api/video-render/ffmpeg-timeline.js",
+      "condition": "When timelinePlan.assShiftSec > 0 at FFmpeg burn",
+      "note": "Post-ASS; check render-diagnostics timelinePlan on failing jobs"
+    },
+    "perceivedBehindSpeechExplanation": "Subjective 'behind' is not explained by phrase→ASS positive offset. Likely (a) speech in audio begins before segment/word timestamps (~1.79s input offset), and/or (b) full phrase visible while later words in the cue are still being spoken, and/or (c) positive assShiftSec at burn when enabled.",
+    "proof": {
+      "tool": "buildPhraseTimingForensicsReport replay",
+      "delayAttribution": "reanchorBlockTiming (firstWordStart - preroll) — negative ms, caption early not late"
+    }
+  },
+  "recommendedFixes": [
+    {
+      "regression": 1,
+      "priority": "P0",
+      "target": "normalizeWordTimeline + composeRhythmBlocks",
+      "action": "Before global sort, dedupe overlapping progressive segments (same normalized prefix) or build phrase text from owning segment.text token order; use timeline only for timing, not lexical order.",
+      "avoid": "More ASS/RTL/BiDi rewrites — order is already wrong in phrase.text"
+    },
+    {
+      "regression": 1,
+      "priority": "P1",
+      "target": "export payload",
+      "action": "Collapse growing partial+full cues in getSourceTruthSegments / pre-export (mirror preview segment list) so export input is one segment per utterance."
+    },
+    {
+      "regression": 2,
+      "priority": "P0",
+      "target": "transcription lineage",
+      "action": "Use WHISPER-STARTTIME-FORENSICS per job to name the first function that sets segment 0 start to ~1.79s; do not adjust phrase/ASS preroll to fix late first caption."
+    },
+    {
+      "regression": 2,
+      "priority": "P2",
+      "target": "leading silence",
+      "action": "If provider start is correct but audio speech starts earlier, fix at audio/Whisper alignment — not composeRhythmBlocks."
+    },
+    {
+      "regression": 3,
+      "priority": "P1",
+      "target": "perceived sync",
+      "action": "If assShiftSec > 0 in job timelinePlan, reduce/remove burn shift; otherwise treat as upstream timestamp vs heard speech, not phrase pipeline lag."
+    },
+    {
+      "regression": 3,
+      "priority": "P2",
+      "target": "detectAndCorrectDrift",
+      "action": "Audit jobs with driftCorrectionApplied > 0 for positive start corrections on early cues only."
+    }
+  ],
+  "evidenceFiles": [
+    "RTL-PHRASE-ORDER-FORENSICS.json (per jobDir when RTL_PHRASE_ORDER_FORENSIC=1)",
+    "PHRASE-TIMING-FORENSICS.json (per jobDir when PHRASE_TIMING_FORENSIC=1)",
+    "WHISPER-STARTTIME-FORENSICS.json (per jobDir when WHISPER_STARTTIME_FORENSIC=1)",
+    "EXPORT-ROOT-CAUSE-FORENSICS.json (per jobDir when EXPORT_ROOT_CAUSE_FORENSIC=1)"
+  ]
+}

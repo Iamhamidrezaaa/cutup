@@ -37,6 +37,9 @@ import { parseAssDialogueTimes } from './ffmpeg-timeline.js';
 import { isTimingForensicEnabled, logTimingForensics } from './timing-forensics.js';
 import { logCaptionForensics } from './caption-forensics.js';
 import { logExportRootCauseForensics } from './export-root-cause-forensics.js';
+import { logPhraseTimingForensics } from './phrase-timing-forensics.js';
+import { logWhisperStarttimeForensics } from './whisper-starttime-forensics.js';
+import { logRtlPhraseOrderForensics } from './rtl-phrase-order-forensics.js';
 import { logProductionAssDialogueDump } from './subtitle-text-forensics.js';
 
 const MAX_CONCURRENT = Math.max(1, Math.min(3, Number(process.env.VIDEO_RENDER_CONCURRENCY || 1)));
@@ -642,7 +645,42 @@ async function runJob(job) {
         traceId: job.traceId || null,
         jobDir: job.jobDir
       });
-    }
+        logPhraseTimingForensics({
+          rawSegments: job.segments,
+          assResult,
+          captionMode: job.captionMode || 'viral',
+          durationSec: probe.durationSec,
+          minCueDurationSec:
+            assResult.renderProfile?.styleMode === 'safe'
+              ? 0.95
+              : assResult.renderProfile?.styleMode === 'cinematic'
+                ? 0.84
+                : 0.74,
+          jobId: job.id,
+          traceId: job.traceId || null,
+          jobDir: job.jobDir
+        });
+        logWhisperStarttimeForensics({
+          exportSegments: job.segments,
+          captionForensics: job.captionForensics,
+          transcribeApiForensics: job.captionForensics?.transcribeApiForensics,
+          segmentTimingLineage: job.captionForensics?.segmentTimingLineage,
+          jobId: job.id,
+          traceId: job.traceId || null,
+          jobDir: job.jobDir
+        });
+        logRtlPhraseOrderForensics({
+          exportSegments: job.segments,
+          translatedSegments:
+            job.captionForensics?.translatedSegments || job.segments,
+          assResult,
+          presetId: job.presetId,
+          captionMode: job.captionMode || 'viral',
+          jobId: job.id,
+          traceId: job.traceId || null,
+          jobDir: job.jobDir
+        });
+      }
 
     const assDialoguesPreview = parseAssDialogueTimes(job.assPath, 3);
     traceRenderTimeline(timelineTrace, 'ass_written', {

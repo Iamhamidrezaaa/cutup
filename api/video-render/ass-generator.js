@@ -840,6 +840,24 @@ export function generateAssContent(segments, presetId, dims = {}) {
   };
 }
 
+/**
+ * Read-only RTL phrase text pipeline trace for forensics (no export side effects).
+ */
+export function forensicTraceRtlPhraseText(cue, preset, { captionMode = 'viral', layout: baseLayout } = {}) {
+  const cueText = String(cue?.text || '');
+  const cueRtl = isRtlText(cueText);
+  const cueLineLayout = resolveCueLineLayout(baseLayout || preset.layout || {}, cueText);
+  const lines = buildCueLines(cue, cueLineLayout, Boolean(preset.uppercase) && !cueRtl);
+  const assLines = cueRtl ? lines : orderAssLinesBottomFirst(lines);
+  const disableEmphasis = String(captionMode || 'viral').toLowerCase() === 'accurate';
+  const bodyResult = linesToAssText(assLines, preset, {
+    disableEmphasis,
+    cue
+  });
+  const finalText = cueRtl ? buildRtlDialogueText(bodyResult.text) : bodyResult.text;
+  return { cueRtl, lines, assLines, bodyResult, finalText };
+}
+
 export function generateAssFromExportDoc(exportDoc, dims = {}) {
   if (!exportDoc || exportDoc.format !== 'cutup-style-v1') {
     throw new Error('Invalid export document: expected cutup-style-v1');

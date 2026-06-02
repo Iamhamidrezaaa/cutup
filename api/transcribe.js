@@ -559,11 +559,26 @@ export default async function handler(req, res) {
     );
     const resolvedLanguage = languageConfidence.language || transcript.language || 'unknown';
 
+    const { buildTranscribeApiWhisperForensicSnapshot } = await import(
+      './video-render/whisper-starttime-forensics.js'
+    );
+    const whisperTimingForensics =
+      String(process.env.WHISPER_STARTTIME_FORENSIC ?? '1') !== '0'
+        ? {
+            whisperProviderRawFirst10: buildTranscribeApiWhisperForensicSnapshot(
+              transcript.segments || []
+            ),
+            afterGptCorrectionFirst10: buildTranscribeApiWhisperForensicSnapshot(correctedSegments || []),
+            afterValidFilterFirst10: buildTranscribeApiWhisperForensicSnapshot(validSegments)
+          }
+        : undefined;
+
     return sendTranscriptSuccess(res, traceId, {
       requestId,
       text: correctedText,
       language: resolvedLanguage,
       segments: validSegments,
+      ...(whisperTimingForensics ? { whisperTimingForensics } : {}),
       languageDetection: {
         detectedLanguage: resolvedLanguage,
         whisperLanguage: languageConfidence.whisperLanguage,

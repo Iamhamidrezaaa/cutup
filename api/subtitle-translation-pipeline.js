@@ -4,6 +4,10 @@
  */
 import { decodeSubtitleTextEntities } from './subtitle-text-entities.js';
 import { getDomainLocalizationRules } from './domain-translation-hints.js';
+import {
+  isSegmentTimingLineageCaptureActive,
+  recordSegmentTimingStage
+} from './video-render/segment-timing-lineage.js';
 
 const PERSIAN_TARGET = new Set(['fa', 'fas', 'per', 'persian', 'farsi']);
 
@@ -327,6 +331,9 @@ export async function postProcessTranslatedSegments(opts) {
       words: s.words
     }))
   );
+  if (isSegmentTimingLineageCaptureActive()) {
+    recordSegmentTimingStage('postProcess.afterRefineCueTimingsSource', sourceWithWordTiming);
+  }
 
   let working = refineCueTimingsFromWords(
     translatedSegments.map((s, i) => ({
@@ -339,6 +346,9 @@ export async function postProcessTranslatedSegments(opts) {
       _audioEnd: sourceWithWordTiming[i]?._audioEnd
     }))
   );
+  if (isSegmentTimingLineageCaptureActive()) {
+    recordSegmentTimingStage('postProcess.afterRefineCueTimingsTranslated', working);
+  }
 
   let traceIdx = working.findIndex((s) => detectForeignContamination(s.text, targetLanguage).contaminated);
   if (traceIdx < 0) traceIdx = 0;
@@ -367,6 +377,9 @@ export async function postProcessTranslatedSegments(opts) {
       working[i] = { ...working[i], text: cleaned || working[i].text };
     }
     pipelineStages.afterContaminationCheck = working[traceIdx]?.text || '';
+    if (isSegmentTimingLineageCaptureActive()) {
+      recordSegmentTimingStage('postProcess.afterContaminationCheck', working);
+    }
 
     const scriptCheck = validatePersianCueScripts(working, targetLanguage);
     if (!scriptCheck.ok) {
@@ -411,11 +424,17 @@ export async function postProcessTranslatedSegments(opts) {
         working = fluent;
       }
       pipelineStages.afterFluency = working[traceIdx]?.text || '';
+      if (isSegmentTimingLineageCaptureActive()) {
+        recordSegmentTimingStage('postProcess.afterPersianFluencyPass', working);
+      }
     }
 
     const beforeMerge = working.length;
     oneToOneForTiming = working.map((s) => ({ ...s }));
     working = mergeFragmentedSubtitleCues(working, { persian: true });
+    if (isSegmentTimingLineageCaptureActive()) {
+      recordSegmentTimingStage('postProcess.afterMergeFragmentedSubtitleCues', working);
+    }
     console.log('[subtitle-cue-merge]', {
       traceId,
       before: beforeMerge,
