@@ -5,8 +5,10 @@ import { resolveSubtitlePlacement } from './placement.js';
 import { buildCueLines } from './text-layout.js';
 import { cuesAreMostlyRtl, isRtlText, resolveCaptionTypography } from './rtl-text.js';
 
-/** Hard cap for burned MP4 subtitles (never 3+ stacked lines). */
-export const BURN_SUBTITLE_MAX_LINES = 2;
+/** Hard cap for burned LTR subtitles (single line per on-screen cue). */
+export const BURN_SUBTITLE_MAX_LINES = 1;
+/** RTL burn: two balanced lines so 9:16 text stays inside frame. */
+export const BURN_RTL_MAX_LINES = 2;
 
 /**
  * Per-cue ASS line layout — stack mode, max two \\N lines (avoids libass soft-wrap to 3–4 rows).
@@ -15,15 +17,21 @@ export const BURN_SUBTITLE_MAX_LINES = 2;
  */
 export function resolveCueLineLayout(baseLayout, cueText) {
   const layout = { ...(baseLayout || {}) };
-  const cap = Math.min(BURN_SUBTITLE_MAX_LINES, Math.max(1, Number(baseLayout.maxLines) || BURN_SUBTITLE_MAX_LINES));
-  layout.mode = 'stack';
+  const rtl = isRtlText(cueText);
+  const cap = rtl
+    ? BURN_RTL_MAX_LINES
+    : Math.min(BURN_SUBTITLE_MAX_LINES, Math.max(1, Number(baseLayout.maxLines) || BURN_SUBTITLE_MAX_LINES));
+  layout.mode = cap === 1 ? 'single' : 'stack';
   layout.maxLines = cap;
   layout.wordsPerLineMin = Math.min(Number(layout.wordsPerLineMin) || 2, 2);
-  layout.wordsPerLineMax = Math.min(Number(layout.wordsPerLineMax) || 4, 4);
-  layout.maxCharsPerLine = Math.min(Number(layout.maxCharsPerLine) || 22, isRtlText(cueText) ? 36 : 20);
+  layout.wordsPerLineMax = Math.min(Number(layout.wordsPerLineMax) || 4, rtl ? 6 : 4);
+  layout.maxCharsPerLine = Math.min(
+    Number(layout.maxCharsPerLine) || 22,
+    rtl ? Number(baseLayout.rtlMaxCharsPerLine) || 26 : 20
+  );
 
-  if (isRtlText(cueText)) {
-    layout.maxCharsPerLine = Math.max(layout.maxCharsPerLine, 32);
+  if (rtl) {
+    layout.maxCharsPerLine = Math.min(32, Math.max(20, layout.maxCharsPerLine));
   }
   return layout;
 }
@@ -88,7 +96,7 @@ export function resolveDynamicFontSize({
     const [baseMin, baseMax] = verticalPresetRanges[presetId] || [82, 100];
     const minVertical = Math.round(baseMin * (h / 1920));
     const maxVertical = Math.round(baseMax * (h / 1920));
-    size = Math.round(((baseMin + baseMax) / 2) * (h / 1920));
+    size = Math.round(((baseMin + baseMax) / 2) * (h / 1920) * 0.92);
     size = Math.max(minVertical, Math.min(maxVertical, size));
   } else if (isHorizontal) {
     size = Math.round(h * 0.056);
@@ -141,8 +149,9 @@ export function resolveRenderLayout(dims, cues, preset) {
     layout.mode = 'stack';
     layout.wordsPerLineMin = 2;
     layout.wordsPerLineMax = 5;
-    layout.maxCharsPerLine = 22;
-    layout.maxLines = 2;
+    layout.maxCharsPerLine = 20;
+    layout.rtlMaxCharsPerLine = 24;
+    layout.maxLines = BURN_SUBTITLE_MAX_LINES;
   } else if (isHorizontal) {
     layout.mode = 'stack';
     layout.wordsPerLineMin = 2;

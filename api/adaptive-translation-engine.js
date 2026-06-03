@@ -10,6 +10,7 @@ import {
   isLanguageOptimizedTarget
 } from './translation-rewrite-strategies.js';
 import { buildPersianFluencyPrompts } from './subtitle-translation-pipeline.js';
+import { sanitizeTranslationCueText } from './translation-output-sanitizer.js';
 import { selectBestVersion, compositeSelectionScore } from './translation-version-selector.js';
 import {
   logTranslationCompetitionAttempt,
@@ -123,7 +124,12 @@ async function runBatchedRewrite(
   const map = new Map();
   for (let j = 0; j < out.length; j++) {
     const idx = batch[j]._index;
-    if (out[j]?.text) map.set(idx, String(out[j].text).trim());
+    if (out[j]?.text) {
+      map.set(
+        idx,
+        sanitizeTranslationCueText(String(out[j].text).trim(), batch[j]._source || '')
+      );
+    }
   }
   return map;
 }

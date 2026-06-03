@@ -57,7 +57,40 @@
       .replace(/[^\p{L}\p{N}]/gu, '');
   }
 
-  function pickSpokenWordKey(words, cueStart, cueEnd, fallbackTokens) {
+  const NON_SPEECH_TOKEN_RE = /^\[[^\]]*\]$/;
+  const NON_SPEECH_CLEAN_RE = /^(music|applause|laughter|inaudible|موسیقی|صدای موسیقی)$/i;
+
+  function isNonSpeechToken(token) {
+    const raw = String(token?.text || '').trim();
+    if (NON_SPEECH_TOKEN_RE.test(raw)) return true;
+    const clean = String(token?.clean || '').trim();
+    if (!clean) return true;
+    return NON_SPEECH_CLEAN_RE.test(clean);
+  }
+
+  function pickSpokenWordKeyRtl(words, fallbackTokens, lineText) {
+    const lineWords = String(lineText || '')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    for (const raw of lineWords) {
+      if (NON_SPEECH_TOKEN_RE.test(raw)) continue;
+      const clean = raw.replace(/[^\p{L}\p{N}]/gu, '');
+      if (!clean || NON_SPEECH_CLEAN_RE.test(clean)) continue;
+      return normalizeWordKey(clean);
+    }
+
+    const content = (fallbackTokens || []).filter((t) => !t.isSpace && t.clean && !isNonSpeechToken(t));
+    if (content.length) {
+      return normalizeWordKey(content[0].clean);
+    }
+    return null;
+  }
+
+  function pickSpokenWordKey(words, cueStart, cueEnd, fallbackTokens, opts) {
+    if (opts && opts.rtl) {
+      return pickSpokenWordKeyRtl(words, fallbackTokens, opts.lineText || '');
+    }
     const start = Number(cueStart);
     const end = Number(cueEnd);
     if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
@@ -89,8 +122,8 @@
     return normalizeWordKey(ranked[0]?.clean);
   }
 
-  function markSpokenWord(tokens, words, cueStart, cueEnd) {
-    const spokenKey = pickSpokenWordKey(words, cueStart, cueEnd, tokens);
+  function markSpokenWord(tokens, words, cueStart, cueEnd, opts) {
+    const spokenKey = pickSpokenWordKey(words, cueStart, cueEnd, tokens, opts);
     if (!spokenKey) return tokens;
     return tokens.map((t) => ({
       ...t,

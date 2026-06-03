@@ -410,8 +410,9 @@ export default async function handler(req, res) {
               : 'evaluateAndRewriteTranslation',
             'stripForeignScripts',
             'validatePersianCueScripts',
-            'persianFluencyPass (PERSIAN_FLUENCY_PASS=1)',
-            'mergeFragmentedSubtitleCues',
+            'sanitizeTranslationPromptLeakage',
+            'persianFluencyPass (PERSIAN_FLUENCY_PASS=0 default)',
+            'mergeFragmentedSubtitleCues (SUBTITLE_MERGE_TRANSLATED=0 default)',
             'subtitle-timing-integrity log'
           ],
           timingReport: postProcessed.timingReport,
@@ -684,7 +685,7 @@ function buildTranslationPrompts(
   const tgt = String(targetLanguage || '').toLowerCase().slice(0, 2);
   const nativeSubtitleRules =
     tgt === 'fa'
-      ? ' For Persian (Farsi): translate MEANING into native conversational Iranian subtitle Persian — how people actually talk on fitness/business YouTube, not literal word-for-word English. Examples: "Nice deadlift" → "ددلیفتت عالیه" (NOT "ددلیفت خوبی است"). Keep fitness terms natural (ددلیفت، اسکوات). Entrepreneurship/business terms should sound like startup Persian, not formal bureaucracy. Preserve humor and speaker tone. Use ONLY Persian in Arabic script. NEVER output Devanagari, Hindi, Chinese, Japanese, Korean, Vietnamese, English, Cyrillic, or other foreign scripts. No Latin letters. Prefer complete readable thoughts; avoid tiny fragments.'
+      ? ' For Persian (Farsi): translate MEANING into native conversational Iranian subtitle Persian — how people actually talk on fitness/business YouTube, not literal word-for-word English. Never output prompt examples, glossary lines, or training phrases — only the dialogue in each segment. Keep fitness loanwords only when the source mentions them. Entrepreneurship/business terms should sound like startup Persian, not formal bureaucracy. Preserve humor and speaker tone. Use ONLY Persian in Arabic script. NEVER output Devanagari, Hindi, Chinese, Japanese, Korean, Vietnamese, English, Cyrillic, or other foreign scripts. No Latin letters. Prefer complete readable thoughts; avoid tiny fragments.'
       : tgt === 'ar'
         ? ' For Arabic: use natural modern subtitle Arabic suitable for on-screen captions; avoid overly literal translation.'
         : '';

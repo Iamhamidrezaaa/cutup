@@ -38,6 +38,15 @@
       segments = getSegmentsFromSrt(global.currentSrtContent);
     }
 
+    if (global.CutupSubtitleClean?.clean) {
+      segments = segments
+        .map((s) => ({
+          ...s,
+          text: global.CutupSubtitleClean.clean(String(s.text || ''))
+        }))
+        .filter((s) => s.text && s.end > s.start);
+    }
+
     global.CutupStyleRenderer.render(stage, segments, presetId);
     try {
       global.CutupCaptionForensics?.logPreviewForensics?.(segments, presetId, {

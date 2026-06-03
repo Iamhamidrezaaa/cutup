@@ -3,11 +3,18 @@
  */
 import { getStylePreset, resolvePresetIdOrThrow } from './style-presets.js';
 import { buildCueLines } from './text-layout.js';
-import { analyzeTextWithEmphasis, shouldEmphasize, markSpokenWord } from './emphasis-engine.js';
+import {
+  analyzeText,
+  analyzeTextWithEmphasis,
+  shouldEmphasize,
+  markSpokenWord
+} from './emphasis-engine.js';
 import {
   buildPhraseBurnSubtitles,
   buildPreviewAlignedSubtitles,
   buildCleanSrtExactSubtitles,
+  clipOverlappingCueRenderEnds,
+  dedupeOverlappingBurnCues,
   applyCleanSrtFirstCueLeadIn,
   expandCueVisualChunks,
   buildSourceAlignedSubtitles,
@@ -26,6 +33,17 @@ import {
   buildAssBottomAnchorTag
 } from './layout-engine.js';
 import { isRtlText, resolveRtlFontName } from './rtl-text.js';
+import {
+  buildRtlDialogueText,
+  buildRtlWordRunAssText,
+  coalesceRtlPunctuationTokens,
+  rotateRtlFirstWordToLineEndForAss
+} from './rtl-ass-bidi.js';
+import {
+  maxSubtitleBandWidthPx,
+  resolveFittedFontSize,
+  resolveVerticalChunkCharBudget
+} from './subtitle-width-fit.js';
 import { isTimingForensicEnabled, logTimingForensics } from './timing-forensics.js';
 import {
   isCaptionForensicEnabled,
@@ -187,9 +205,45 @@ function buildInlineEmphasis(token, preset, { wordIndex = 0, segmentIndex = 0 } 
   return `{\\c${preset.secondaryColor}${weight}}${text}{\\r}`;
 }
 
-function linesToAssText(lines, preset, { disableEmphasis = false, renderProfile, cue, segmentIndex = 0 } = {}) {
+function resolveRtlAssDisplayLines(previewLines, builtLines, cueText, useUppercase) {
+  let lines =
+    Array.isArray(previewLines) && previewLines.length >= 1 && previewLines.length <= 2
+      ? previewLines.map((l) => String(l))
+      : Array.isArray(builtLines)
+        ? builtLines.map((l) => String(l))
+        : [];
+  lines = lines.filter((l) => l.trim()).slice(0, 2);
+  if (lines.length === 1) {
+    const w = String(cueText || '')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (w.length >= 4) {
+      const mid = Math.ceil(w.length / 2);
+      lines = [w.slice(0, mid).join(' '), w.slice(mid).join(' ')].filter(Boolean);
+    }
+  }
+  if (useUppercase) lines = lines.map((l) => l.toUpperCase());
+  return lines.length ? lines : [''];
+}
+
+function collapseToSingleAssLine(lines, fallbackText = '') {
+  const flat = (Array.isArray(lines) ? lines : [])
+    .map((l) => String(l || '').trim())
+    .filter(Boolean);
+  if (!flat.length) {
+    const t = String(fallbackText || '').trim().replace(/\s+/g, ' ');
+    return t ? [t] : [''];
+  }
+  if (flat.length === 1) return flat;
+  return [flat.join(' ').replace(/\s+/g, ' ').trim()];
+}
+
+function linesToAssText(lines, preset, { disableEmphasis = false, renderProfile, cue, segmentIndex = 0, rtl = false } = {}) {
+  const displayLines = collapseToSingleAssLine(lines, cue?.text);
   if (disableEmphasis) {
-    return { text: lines.map((line) => escapeAssText(line)).join('\\N'), emphasisWords: [] };
+    const plain = displayLines.map((line) => escapeAssText(line)).join('\\N');
+    return { text: rtl ? buildRtlDialogueText(plain) : plain, emphasisWords: [] };
   }
 
   const handler = preset.emphasis?.handler || 'default';
@@ -203,11 +257,20 @@ function linesToAssText(lines, preset, { disableEmphasis = false, renderProfile,
   const parts = [];
   const emphasisWords = [];
 
-  for (let li = 0; li < lines.length; li++) {
+  for (let li = 0; li < displayLines.length; li++) {
     if (li > 0) parts.push('\\N');
-    let tokens = analyzeTextWithEmphasis(lines[li], handler);
+    const sourceLine = displayLines[li];
+    const assLine = rtl ? rotateRtlFirstWordToLineEndForAss(sourceLine) : sourceLine;
+    let tokens =
+      mode === 'spokenWord' ? analyzeText(assLine) : analyzeTextWithEmphasis(assLine, handler);
+    if (rtl) {
+      tokens = coalesceRtlPunctuationTokens(tokens);
+    }
     if (mode === 'spokenWord' && cue) {
-      tokens = markSpokenWord(tokens, cue.words, cue.start, cue.end);
+      tokens = markSpokenWord(tokens, cue.words, cue.start, cue.end, {
+        rtl,
+        lineText: sourceLine
+      });
     }
 
     for (const token of tokens) {
@@ -216,25 +279,33 @@ function linesToAssText(lines, preset, { disableEmphasis = false, renderProfile,
         continue;
       }
 
+      let inner;
       if (handler === 'mrbeast' && mode === 'cycleWords') {
-        parts.push(buildInlineEmphasis(token, preset, { wordIndex, segmentIndex }));
+        inner = buildInlineEmphasis(token, preset, { wordIndex, segmentIndex });
         emphasisWords.push(String(token.clean || token.text || '').toLowerCase());
         wordIndex += 1;
-        continue;
-      }
-
-      if (emphasized < maxInline && shouldEmphasize(token, handler)) {
-        parts.push(buildInlineEmphasis(token, preset, { wordIndex, segmentIndex }));
+      } else if (emphasized < maxInline && shouldEmphasize(token, handler)) {
+        inner = buildInlineEmphasis(token, preset, { wordIndex, segmentIndex });
         emphasisWords.push(String(token.clean || token.text || '').toLowerCase());
         emphasized += 1;
         wordIndex += 1;
       } else {
-        parts.push(escapeAssText(token.text));
+        inner = escapeAssText(token.text);
         wordIndex += 1;
       }
+      parts.push(inner);
     }
   }
-  return { text: parts.join(''), emphasisWords: [...new Set(emphasisWords)] };
+  const joined = parts.join('');
+  const hasInlineTags = /\{\\c/i.test(joined);
+  return {
+    text: rtl
+      ? hasInlineTags
+        ? buildRtlWordRunAssText(parts)
+        : buildRtlDialogueText(joined)
+      : joined,
+    emphasisWords: [...new Set(emphasisWords)]
+  };
 }
 
 /** ASS Style Encoding: 0 = Unicode (proven for Persian libass burn); 1 breaks BiDi on export cues. */
@@ -311,14 +382,6 @@ function buildRtlPresetStyleLine(styleName, preset, marginV) {
 }
 
 /**
- * RTL Dialogue: preserves inline emphasis tags from linesToAssText; RTL_* style row handles font/BiDi.
- * @param {string} assBodyText
- */
-function buildRtlDialogueText(assBodyText) {
-  return String(assBodyText || '');
-}
-
-/**
  * @param {{ start: number, end: number, text: string }[]} segments
  * @param {string} presetId
  * @param {{ playResX?: number, playResY?: number, durationSec?: number, positionMode?: string, captionMode?: string, qualityMode?: string, quality?: 'fast'|'hq', renderHints?: { forceSafeguards?: boolean } }} [dims]
@@ -375,13 +438,16 @@ export function generateAssContent(segments, presetId, dims = {}) {
   const strictCleanSrtTimings = Boolean(dims.strictCleanSrtTimings);
   const useSourceAlignedTimings = captionModeNorm === 'accurate' || burnFromPreviewCues;
   const inputSegmentCount = finalOnlySegments.length;
-  const canonicalSubtitles = strictCleanSrtTimings
+  let canonicalSubtitles = strictCleanSrtTimings
     ? buildCleanSrtExactSubtitles(finalOnlySegments)
     : burnFromPreviewCues
     ? buildPreviewAlignedSubtitles(finalOnlySegments)
     : useSourceAlignedTimings
       ? buildSourceAlignedSubtitles(finalOnlySegments)
       : buildPhraseBurnSubtitles(finalOnlySegments);
+  if (strictCleanSrtTimings || burnFromPreviewCues) {
+    canonicalSubtitles = dedupeOverlappingBurnCues(canonicalSubtitles);
+  }
   const exportPhraseCueCount = canonicalSubtitles.length;
   const burnPath = strictCleanSrtTimings
     ? 'clean-srt-exact'
@@ -493,12 +559,20 @@ export function generateAssContent(segments, presetId, dims = {}) {
         videoDurationSec: durationSec || 0
       });
 
+  const verticalChunkChars = layout.isVertical
+    ? resolveVerticalChunkCharBudget(playResX, layout.marginL, layout.marginR, layout.fontSize)
+    : 0;
   if (strictCleanSrtTimings || burnFromPreviewCues) {
     visibleCues = expandCueVisualChunks(visibleCues, {
-      maxWordsPerChunk: 5,
-      minWordsToSplit: 6,
-      minChunkSec: 0.38
+      isVertical: layout.isVertical,
+      maxWordsPerChunk: layout.isVertical ? 4 : 5,
+      minWordsToSplit: layout.isVertical ? 4 : 6,
+      minChunkSec: 0.38,
+      minDurToSplitSec: layout.isVertical ? 0.5 : 2.2,
+      maxCharsPerChunk: verticalChunkChars,
+      forceSplitOverflow: layout.isVertical
     });
+    visibleCues = clipOverlappingCueRenderEnds(visibleCues);
   }
 
   const visibility = validateVisualVisibility(visibleCues, {
@@ -598,7 +672,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
         `PlayResX: ${playResX}`,
         `PlayResY: ${playResY}`,
         'ScaledBorderAndShadow: yes',
-        'WrapStyle: 0',
+        'WrapStyle: 2',
         ''
       ]
     : [
@@ -608,7 +682,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
         `PlayResX: ${playResX}`,
         `PlayResY: ${playResY}`,
         'ScaledBorderAndShadow: yes',
-        'WrapStyle: 0',
+        'WrapStyle: 2',
         `; RenderQuality: ${quality}`,
         `; RenderProfile: ${renderProfile.id}`,
         `; StyleMode: ${renderProfile.styleMode}`,
@@ -673,12 +747,17 @@ export function generateAssContent(segments, presetId, dims = {}) {
     const cueLineLayout = resolveCueLineLayout(layout.layout, cueText);
     const useUppercase = layout.useUppercase && !cueRtl;
     const previewLines = enrichedCue.previewLines;
-    const lines =
-      Array.isArray(previewLines) && previewLines.length && previewLines.length <= 2
-        ? useUppercase
-          ? previewLines.map((l) => String(l).toUpperCase())
-          : previewLines.map((l) => String(l))
-        : buildCueLines(enrichedCue, cueLineLayout, useUppercase);
+    const builtLines = buildCueLines(enrichedCue, cueLineLayout, useUppercase);
+    const lines = cueRtl
+      ? resolveRtlAssDisplayLines(previewLines, builtLines, cueText, useUppercase)
+      : collapseToSingleAssLine(
+          Array.isArray(previewLines) && previewLines.length === 1
+            ? useUppercase
+              ? previewLines.map((l) => String(l).toUpperCase())
+              : previewLines.map((l) => String(l))
+            : builtLines,
+          cueText
+        );
     if (cueRtl && !rtlLayoutDebugLogged) {
       rtlLayoutDebugLogged = true;
       console.log('[rtl-layout-debug]', {
@@ -727,11 +806,19 @@ export function generateAssContent(segments, presetId, dims = {}) {
       disableEmphasis,
       renderProfile,
       cue: enrichedCue,
-      segmentIndex
+      segmentIndex,
+      rtl: cueRtl
     });
     if (forensicOn && segmentIndex < forensicCueCap) {
       forensicAfterLinesToAssText.push({ id: cueKey, text: bodyResult.text });
     }
+
+    const linePlain = assLines.join(' ');
+    const maxBand = maxSubtitleBandWidthPx(playResX, layout.marginL, layout.marginR);
+    const minFs = layout.isVertical ? Math.max(28, Math.round(34 * (playResY / 1920))) : layout.fontSize;
+    const fittedFs = resolveFittedFontSize(linePlain, layout.fontSize, maxBand, minFs);
+    const fsPrefix =
+      !cueRtl && fittedFs < layout.fontSize ? `{\\fs${fittedFs}}` : '';
 
     let text;
     let styleName = 'Default';
@@ -741,13 +828,13 @@ export function generateAssContent(segments, presetId, dims = {}) {
       if (forensicOn && segmentIndex < forensicCueCap) {
         forensicBeforeRtlDialogue.push({ id: cueKey, text: bodyResult.text });
       }
-      text = buildRtlDialogueText(bodyResult.text);
+      text = `${fsPrefix}${bodyResult.text}`;
       styleName = rtlPresetStyleName;
       dialogueMarginV = 0;
     } else {
       const bottomAnchor = buildAssBottomAnchorTag(playResX, playResY, layout.marginV);
       const glowPrefix = preset.glow > 0 ? `{\\blur${Number(preset.glow).toFixed(2)}}` : '';
-      text = `${bottomAnchor}${glowPrefix}${bodyResult.text}`;
+      text = `${bottomAnchor}${glowPrefix}${fsPrefix}${bodyResult.text}`;
     }
 
     if (forensicOn && segmentIndex < forensicCueCap) {
@@ -930,7 +1017,8 @@ export function generateAssFromExportDoc(exportDoc, dims = {}) {
     start: Number(c.start),
     end: Number(c.end),
     text: c.text || (c.lines || []).join(' '),
-    previewLines: Array.isArray(c.lines) && c.lines.length ? c.lines : null
+    previewLines:
+      Array.isArray(c.lines) && c.lines.length === 1 ? c.lines.map((l) => String(l)) : null
   }));
   return generateAssContent(segments, presetId, {
     ...dims,

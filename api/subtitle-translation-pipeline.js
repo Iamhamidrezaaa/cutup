@@ -4,6 +4,7 @@
  */
 import { decodeSubtitleTextEntities } from './subtitle-text-entities.js';
 import { getDomainLocalizationRules } from './domain-translation-hints.js';
+import { sanitizeTranslatedSegments, sanitizeTranslationCueText } from './translation-output-sanitizer.js';
 import {
   isSegmentTimingLineageCaptureActive,
   recordSegmentTimingStage
@@ -290,7 +291,8 @@ export function buildPersianFluencyPrompts(batch, domain = 'general') {
 
 Rules:
 - Translate MEANING and tone, not English word order.
-- Fitness: keep loanwords natural (ددلیفت، اسکوات، بنچ). Praise should sound spoken: "ددلیفتت عالیه" not "ددلیفت خوبی است".
+- Fitness: keep loanwords natural when the source mentions them. Praise should sound spoken, not «خوبی است» formal patterns.
+- NEVER output example phrases from these rules — only localize the lines provided below.
 - Business/entrepreneurship: natural startup Persian, not bureaucratic.
 - Merge incomplete fragments mentally — each output line must be a complete thought readable on screen.
 - Use ONLY Persian in Arabic script. No Latin, Devanagari, CJK, Cyrillic, or Vietnamese.
@@ -359,6 +361,13 @@ export async function postProcessTranslatedSegments(opts) {
     translated: working[traceIdx]?.text || ''
   };
 
+  working = working
+    .map((s, i) => ({
+      ...s,
+      text: sanitizeTranslationCueText(s.text, originalSegments[i]?.text) || normalizeText(s.text)
+    }))
+    .filter((s) => s.text);
+
   let oneToOneForTiming = working.map((s) => ({ ...s }));
 
   if (isPersianTargetLanguage(targetLanguage)) {
@@ -390,7 +399,7 @@ export async function postProcessTranslatedSegments(opts) {
       });
     }
 
-    if (typeof runLlmBatch === 'function' && String(process.env.PERSIAN_FLUENCY_PASS ?? '1') !== '0') {
+    if (typeof runLlmBatch === 'function' && String(process.env.PERSIAN_FLUENCY_PASS ?? '0') !== '0') {
       const batchSize = 15;
       const fluent = [];
       const runFluencyPass = async () => {
@@ -405,10 +414,11 @@ export async function postProcessTranslatedSegments(opts) {
             { temperature: 0.35 }
           );
           for (let j = 0; j < rewritten.length; j++) {
+            const srcLine = batch[j]?.text || originalSegments[i + j]?.text || '';
             fluent.push({
               start: Number(batch[j]?.start ?? rewritten[j].start),
               end: Number(batch[j]?.end ?? rewritten[j].end),
-              text: normalizeText(rewritten[j]?.text),
+              text: sanitizeTranslationCueText(rewritten[j]?.text, srcLine),
               _audioStart: batch[j]?._audioStart,
               _audioEnd: batch[j]?._audioEnd
             });
@@ -429,28 +439,32 @@ export async function postProcessTranslatedSegments(opts) {
       }
     }
 
-    const beforeMerge = working.length;
     oneToOneForTiming = working.map((s) => ({ ...s }));
-    working = mergeFragmentedSubtitleCues(working, { persian: true });
-    if (isSegmentTimingLineageCaptureActive()) {
-      recordSegmentTimingStage('postProcess.afterMergeFragmentedSubtitleCues', working);
+    if (String(process.env.SUBTITLE_MERGE_TRANSLATED ?? '0') === '1') {
+      const beforeMerge = working.length;
+      working = mergeFragmentedSubtitleCues(working, { persian: true });
+      if (isSegmentTimingLineageCaptureActive()) {
+        recordSegmentTimingStage('postProcess.afterMergeFragmentedSubtitleCues', working);
+      }
+      console.log('[subtitle-cue-merge]', {
+        traceId,
+        before: beforeMerge,
+        after: working.length,
+        mergedAway: beforeMerge - working.length
+      });
+      pipelineStages.afterMerge = working[traceIdx]?.text || '';
     }
-    console.log('[subtitle-cue-merge]', {
-      traceId,
-      before: beforeMerge,
-      after: working.length,
-      mergedAway: beforeMerge - working.length
-    });
-    pipelineStages.afterMerge = working[traceIdx]?.text || '';
-    pipelineStages.exportText = pipelineStages.afterMerge;
+    pipelineStages.exportText = oneToOneForTiming[traceIdx]?.text || '';
   } else {
     pipelineStages.exportText = working[traceIdx]?.text || '';
   }
 
+  const exportOneToOne = sanitizeTranslatedSegments(oneToOneForTiming, originalSegments);
+
   const timingReport = buildTimingDriftReport({
     originalSegments: sourceWithWordTiming,
-    translatedOneToOne: oneToOneForTiming,
-    finalCues: working,
+    translatedOneToOne: exportOneToOne,
+    finalCues: exportOneToOne,
     traceId
   });
 
@@ -471,7 +485,7 @@ export async function postProcessTranslatedSegments(opts) {
   }
 
   return {
-    segments: working.map(({ start, end, text }) => ({ start, end, text })),
+    segments: exportOneToOne.map(({ start, end, text }) => ({ start, end, text })),
     timingReport,
     pipelineStages
   };

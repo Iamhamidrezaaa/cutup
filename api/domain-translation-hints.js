@@ -22,8 +22,8 @@ function normLang(code) {
 const DOMAIN_LOCALIZATION = {
   fitness: {
     fa: [
-      'Fitness praise must sound spoken and gym-native: "Nice deadlift" → "ددلیفتت عالیه" (NOT "ددلیفت خوبی است").',
-      'Keep loanwords: ددلیفت، اسکوات، بنچ، پروتئین.',
+      'Fitness praise must sound spoken and gym-native, not textbook Persian.',
+      'Keep loanwords only when the source mentions them (ددلیفت، اسکوات، بنچ).',
       'Short energetic cues; coach tone.'
     ],
     ar: ['Use natural gym Arabic; praise should feel spoken, not textbook.'],
@@ -66,8 +66,8 @@ const DOMAIN_LOCALIZATION = {
   },
   general: {
     fa: [
-      'General conversational Persian; neutral praise e.g. "Nice deadlift" → "ددلیفت خوبی بود" is OK when not fitness-focused.',
-      'Still avoid literal word-for-word and formal «خوبی است» patterns.'
+      'General conversational Persian; avoid literal word-for-word and formal «خوبی است» patterns.',
+      'Never paste style-guide example sentences into subtitles.'
     ],
     ar: ['General modern Arabic subtitles.'],
     es: ['General conversational Spanish.']

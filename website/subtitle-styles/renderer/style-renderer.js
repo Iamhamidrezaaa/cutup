@@ -71,12 +71,22 @@
   function renderLineHtml(line, preset, seg, segmentIndex) {
     const handlerId = preset.emphasis.handler;
     const mode = preset.emphasis.mode || 'score';
-    let tokens = Emphasis().analyzeTextWithEmphasis
-      ? Emphasis().analyzeTextWithEmphasis(line, handlerId)
-      : Emphasis().analyzeText(line);
+    let tokens =
+      mode === 'spokenWord' && Emphasis().analyzeText
+        ? Emphasis().analyzeText(line)
+        : Emphasis().analyzeTextWithEmphasis
+          ? Emphasis().analyzeTextWithEmphasis(line, handlerId)
+          : Emphasis().analyzeText(line);
 
+    const stageRtl = document.getElementById('srtStyledPreview')?.hasAttribute('data-rtl');
+    const lineRtl =
+      stageRtl ||
+      /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/.test(String(seg?.text || line || ''));
     if (mode === 'spokenWord' && seg && Emphasis().markSpokenWord) {
-      tokens = Emphasis().markSpokenWord(tokens, seg.words, seg.start, seg.end);
+      tokens = Emphasis().markSpokenWord(tokens, seg.words, seg.start, seg.end, {
+        rtl: lineRtl,
+        lineText: line
+      });
     }
 
     let wordIndex = 0;
@@ -147,7 +157,13 @@
 
     const cuesHtml = list
       .map((seg, i) => {
-        const lines = Layout().layoutLines(seg.text, preset.layout);
+        let raw = String(seg.text || '').trim().replace(/\s+/g, ' ');
+        if (global.CutupSubtitleClean?.clean) {
+          raw = global.CutupSubtitleClean.clean(raw);
+        }
+        if (!raw) return '';
+        const rtl = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/.test(raw);
+        const lines = [raw];
         const linesHtml = lines
           .map(
             (line, li) =>
@@ -155,9 +171,9 @@
           )
           .join('');
         return `
-          <article class="cutup-cue" data-start="${seg.start}" style="--cue-i:${i}">
+          <article class="cutup-cue" data-start="${seg.start}" style="--cue-i:${i}"${rtl ? ' dir="rtl"' : ''}>
             <time class="cutup-cue-time" datetime="${seg.start}s">${formatClock(seg.start)}</time>
-            <div class="cutup-cue-body">${linesHtml}</div>
+            <div class="cutup-cue-body"${rtl ? ' dir="rtl" style="unicode-bidi:plaintext"' : ''}>${linesHtml}</div>
           </article>`;
       })
       .join('');

@@ -54,7 +54,7 @@ const PRESETS = {
     playResY: 1920,
     uppercase: true,
     glow: 0,
-    layout: { mode: 'stack', wordsPerLineMin: 2, wordsPerLineMax: 4, maxCharsPerLine: 18, maxLines: 2 },
+    layout: { mode: 'single', wordsPerLineMin: 2, wordsPerLineMax: 8, maxCharsPerLine: 42, maxLines: 1 },
     positionMode: 'adaptive',
     emphasis: { handler: 'hormozi', mode: 'spokenWord', maxPerLine: 1, highlightColor: '&H0000E5FF&' },
     motion: { kinetic: false }

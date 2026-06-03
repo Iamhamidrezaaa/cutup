@@ -1027,7 +1027,8 @@ async function runJob(job) {
     job.fileSizeBytes = fileStat.size;
     job.resolution = `${renderGeometry.outputWidth}×${renderGeometry.outputHeight}`;
     job.videoDurationSec = Math.round(probe.durationSec * 10) / 10;
-    job.renderDurationSec = Math.max(1, Math.round((Date.now() - job.renderStartedAt) / 1000));
+    const renderStartAt = job.processingStartedAt || job.renderStartedAt || Date.now();
+    job.renderDurationSec = Math.max(1, Math.round((Date.now() - renderStartAt) / 1000));
     const assGenerationMs =
       assTiming.start && assTiming.end && assTiming.end >= assTiming.start ? Math.max(1, assTiming.end - assTiming.start) : 0;
     const ffmpegMs = ffmpegStartedAt.at ? Math.max(1, Date.now() - ffmpegStartedAt.at) : 0;

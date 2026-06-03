@@ -26,6 +26,7 @@ import { transcribeAudioPayload, messageForAllProvidersFailed } from './transcri
 import { ensureTranscriptionProvidersInit, getTranscriptionProviderRegistry } from './transcription/init.js';
 import { runQueuedTranscribe } from './infrastructure/guards.js';
 import { transcribeDebug } from './infrastructure/observability.js';
+import { prepareUploadBufferForTranscription } from './upload-media-prep.js';
 
 export default async function handler(req, res) {
   // Log immediately to verify this endpoint is being called
@@ -169,18 +170,19 @@ export default async function handler(req, res) {
       console.log(`UPLOAD: File is ${(totalSize / 1024 / 1024).toFixed(2)}MB, will be processed in chunks`);
     }
     
-    const audioBuffer = Buffer.concat(chunks);
-    console.log(`UPLOAD: Processing audio file, size: ${audioBuffer.length} bytes, type: ${mimeType}`);
+    let audioBuffer = Buffer.concat(chunks);
+    console.log(`UPLOAD: Processing upload, size: ${audioBuffer.length} bytes, type: ${mimeType}`);
+
+    const prepared = await prepareUploadBufferForTranscription(audioBuffer, mimeType, filename, traceId);
+    audioBuffer = prepared.buffer;
+    mimeType = prepared.mimeType;
+    const extension = prepared.extension;
+    if (prepared.extractedFromVideo) {
+      console.log('UPLOAD: Audio track extracted from video before transcription');
+    }
 
     const preMinutes = estimateTranscriptionMinutesFromBytes(audioBuffer.length);
     console.log('[transcript-download]', { traceId, bytes: audioBuffer.length, preMinutes });
-
-    // Determine file extension from mime type
-    let extension = 'mp3';
-    if (mimeType.includes('wav')) extension = 'wav';
-    else if (mimeType.includes('m4a')) extension = 'm4a';
-    else if (mimeType.includes('ogg')) extension = 'ogg';
-    else if (mimeType.includes('webm')) extension = 'webm';
 
     let transcript;
     transcribeDebug(traceId, { phase: 'input_ready', bytes: audioBuffer.length, route: 'upload' });

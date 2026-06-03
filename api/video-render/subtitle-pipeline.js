@@ -5,6 +5,8 @@
 import { decodeSubtitleTextEntities } from '../subtitle-text-entities.js';
 import { applyWhisperLeadingOffsetIfNeeded } from '../whisper-leading-offset.js';
 import { layoutLines } from './text-layout.js';
+import { splitWordsByCharBudget } from './subtitle-width-fit.js';
+import { isRtlText } from './rtl-text.js';
 
 export const CAPTION_QUALITY_MODES = Object.freeze({
   ACCURATE: 'accurate',
@@ -1273,7 +1275,7 @@ export function ensureBurnCueDurations(cues, minDurSec = MIN_BURN_CUE_VISIBLE_SE
 /** YouTube rolling captions often include 0.01s blink cues — skip for ASS burn. */
 export const PREVIEW_EXPORT_MIN_CUE_SEC = 0.08;
 
-const BURN_STRIP_TAG_RE = /\[(?:music|applause|laughter|inaudible|crowd cheering)\]\s*/gi;
+const BURN_STRIP_TAG_RE = /\[[^\]]*\]\s*/gi;
 
 /** Remove [music] and similar tags from burned viral captions (not SRT download). */
 export function stripBurnNonSpeechTags(text) {
@@ -1376,7 +1378,7 @@ export function buildCleanSrtExactSubtitles(rawSegments) {
       const start = Number(seg.start);
       const end = Number(seg.end);
       const previewLines =
-        Array.isArray(seg.previewLines) && seg.previewLines.length
+        Array.isArray(seg.previewLines) && seg.previewLines.length === 1
           ? seg.previewLines.map((l) => String(l))
           : null;
       return {
@@ -1451,34 +1453,64 @@ export function applyCleanSrtFirstCueLeadIn(cues, opts = {}) {
  * Split long SRT cues into shorter on-screen chunks (render times only; source SRT unchanged).
  */
 export function expandCueVisualChunks(cues, opts = {}) {
-  const maxWordsPerChunk = Math.max(2, Number(opts.maxWordsPerChunk ?? 5));
-  const minWordsToSplit = Math.max(maxWordsPerChunk + 1, Number(opts.minWordsToSplit ?? 6));
+  const isVertical = Boolean(opts.isVertical);
+  const maxWordsPerChunk = Math.max(2, Number(opts.maxWordsPerChunk ?? (isVertical ? 4 : 5)));
+  const minWordsToSplit = Math.max(
+    3,
+    Number(opts.minWordsToSplit ?? (isVertical ? 4 : maxWordsPerChunk + 1))
+  );
   const minChunkSec = Math.max(0.28, Number(opts.minChunkSec ?? 0.38));
-  const minDurToSplitSec = Math.max(2, Number(opts.minDurToSplitSec ?? 2.2));
+  const minDurToSplitSec = Math.max(
+    isVertical ? 0.35 : 2,
+    Number(opts.minDurToSplitSec ?? (isVertical ? 0.5 : 2.2))
+  );
   const gapSec = Math.max(0.01, Number(opts.gapSec ?? 0.02));
+  const maxCharsPerChunk = Math.max(0, Number(opts.maxCharsPerChunk ?? 0));
+  const forceSplitOverflow = Boolean(opts.forceSplitOverflow);
 
   const out = [];
   for (const cue of Array.isArray(cues) ? cues : []) {
     const text = stripBurnNonSpeechTags(cue.text);
     if (!text) continue;
 
+    if (isRtlText(text)) {
+      out.push({ ...cue, text, previewLines: null });
+      continue;
+    }
+
     const w = cueWords(text);
     const start = Number(cue.renderStart ?? cue.sourceStart ?? cue.start);
     const end = Number(cue.renderEnd ?? cue.sourceEnd ?? cue.end);
     const dur = end - start;
 
-    if (w.length < minWordsToSplit || dur < minDurToSplitSec || start <= 0.02) {
+    const overflowSplit =
+      forceSplitOverflow && maxCharsPerChunk > 0 && w.length >= 3 && text.length > maxCharsPerChunk;
+    const shouldSplit =
+      overflowSplit ||
+      (w.length >= minWordsToSplit && dur >= minDurToSplitSec && start > 0.02);
+
+    if (!shouldSplit) {
       out.push({ ...cue, text, previewLines: null });
       continue;
     }
 
-    const chunkCount = Math.ceil(w.length / maxWordsPerChunk);
-    const sliceDur = dur / chunkCount;
+    let wordChunks;
+    if (overflowSplit && maxCharsPerChunk > 0) {
+      wordChunks = splitWordsByCharBudget(w, maxCharsPerChunk);
+    } else {
+      const chunkCount = Math.ceil(w.length / maxWordsPerChunk);
+      wordChunks = [];
+      for (let i = 0; i < chunkCount; i++) {
+        wordChunks.push(w.slice(i * maxWordsPerChunk, (i + 1) * maxWordsPerChunk));
+      }
+    }
 
-    for (let i = 0; i < chunkCount; i++) {
-      const chunkWords = w.slice(i * maxWordsPerChunk, (i + 1) * maxWordsPerChunk);
+    const sliceDur = dur / wordChunks.length;
+    for (let i = 0; i < wordChunks.length; i++) {
+      const chunkWords = wordChunks[i];
+      if (!chunkWords?.length) continue;
       const chunkStart = start + i * sliceDur;
-      const chunkEnd = i === chunkCount - 1 ? end : start + (i + 1) * sliceDur - gapSec;
+      const chunkEnd = i === wordChunks.length - 1 ? end : start + (i + 1) * sliceDur - gapSec;
       out.push({
         ...cue,
         id: `${cue.id || 'cue'}-v${i}`,
@@ -1642,6 +1674,35 @@ export function auditSourceAlignedPipelineStages(rawSegments) {
 /**
  * Remove stacked "growing" captions (common with word-by-word ASR) before ASS burn-in.
  */
+/**
+ * Ensure only one burned cue is visible at a time (clip renderEnd before next renderStart).
+ */
+export function clipOverlappingCueRenderEnds(cues, opts = {}) {
+  const gapSec = Math.max(0.01, Number(opts.gapSec ?? 0.02));
+  const minVisibleSec = Math.max(0.05, Number(opts.minVisibleSec ?? 0.12));
+  const sorted = [...(Array.isArray(cues) ? cues : [])].sort(
+    (a, b) =>
+      Number(a.renderStart ?? a.sourceStart ?? a.start) -
+      Number(b.renderStart ?? b.sourceStart ?? b.start)
+  );
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const cur = sorted[i];
+    const next = sorted[i + 1];
+    const curStart = Number(cur.renderStart ?? cur.sourceStart ?? cur.start);
+    let curEnd = Number(cur.renderEnd ?? cur.sourceEnd ?? cur.end);
+    const nextStart = Number(next.renderStart ?? next.sourceStart ?? next.start);
+    if (!Number.isFinite(curStart) || !Number.isFinite(curEnd) || !Number.isFinite(nextStart)) {
+      continue;
+    }
+    const capEnd = nextStart - gapSec;
+    if (curEnd > capEnd) {
+      curEnd = Math.max(curStart + minVisibleSec, capEnd);
+      sorted[i] = { ...cur, renderEnd: Number(curEnd.toFixed(3)) };
+    }
+  }
+  return sorted;
+}
+
 export function dedupeOverlappingBurnCues(cues) {
   const sorted = [...(Array.isArray(cues) ? cues : [])].sort((a, b) => a.start - b.start);
   const out = [];

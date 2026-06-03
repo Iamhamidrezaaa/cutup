@@ -71,6 +71,11 @@
 .cutup-export-options__card--srt {
   border-color: #a7f3d0;
   background: linear-gradient(180deg, #f0fdf4 0%, #fff 100%);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 100%;
+  box-sizing: border-box;
 }
 
 .cutup-export-options__card--viral {
@@ -78,6 +83,9 @@
   background: linear-gradient(180deg, #eef2ff 0%, #fff 100%);
   padding: 0;
   overflow: hidden;
+  height: 100%;
+  min-height: 100%;
+  box-sizing: border-box;
 }
 
 .cutup-export-options__title {
@@ -442,23 +450,26 @@
   display: none !important;
 }
 
-.cutup-viral-export__optin {
-  grid-column: 1 / -1;
-  margin-top: 0.35rem;
+.cutup-creator-wall-optin {
+  margin-top: 2rem;
   padding: 0.75rem;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.65);
+  background: rgba(255, 255, 255, 0.85);
   border: 1px dashed #6ee7b7;
 }
 
-.cutup-viral-export__optin-title {
+.cutup-creator-wall-optin[hidden] {
+  display: none !important;
+}
+
+.cutup-creator-wall-optin__title {
   margin: 0 0 0.45rem;
   font-size: 0.82rem;
   font-weight: 700;
   color: #065f46;
 }
 
-.cutup-viral-export__optin-check {
+.cutup-creator-wall-optin__check {
   display: flex;
   align-items: center;
   gap: 0.45rem;
@@ -467,14 +478,14 @@
   cursor: pointer;
 }
 
-.cutup-viral-export__optin-fields {
+.cutup-creator-wall-optin__fields {
   display: grid;
   gap: 0.4rem;
   margin-top: 0.55rem;
 }
 
-.cutup-viral-export__optin-fields input,
-.cutup-viral-export__optin-fields textarea {
+.cutup-creator-wall-optin__fields input,
+.cutup-creator-wall-optin__fields textarea {
   font: inherit;
   font-size: 0.78rem;
   padding: 0.4rem 0.55rem;
@@ -483,14 +494,26 @@
   resize: vertical;
 }
 
-.cutup-viral-export__btn--optin {
+.cutup-creator-wall-optin__live-hint {
+  margin: 0;
+  font-size: 0.7rem;
+  color: #64748b;
+}
+
+.cutup-creator-wall-optin__submit {
+  font: inherit;
   font-size: 0.78rem;
+  font-weight: 700;
   padding: 0.45rem 0.9rem;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  color: #fff;
   background: linear-gradient(135deg, #6366f1, #4f46e5);
   box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
 }
 
-.cutup-viral-export__optin-note {
+.cutup-creator-wall-optin__note {
   margin: 0;
   font-size: 0.72rem;
   color: #047857;
@@ -502,8 +525,17 @@
     'btn btn'
     'hint hint'
     'toggle toggle'
-    'preview preview'
-    'optin optin';
+    'preview preview';
+}
+
+.cw-card--draft {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+}
+
+.cw-badge--draft {
+  background: #6366f1;
+  color: #fff;
 }
 
 @media (max-width: 520px) {

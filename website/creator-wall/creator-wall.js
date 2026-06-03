@@ -14,6 +14,8 @@
 
   let lastFeedIds = '';
   let pollTimer = null;
+  let draftPreview = null;
+  let cachedPosts = [];
 
   function countryFlag(code) {
     const c = String(code || 'US').toUpperCase();
@@ -61,15 +63,16 @@
   }
 
   function buildFeaturedCard(post) {
+    const isDraft = post.id === 'draft-preview';
     const label = escapeHtml(post.presetLabel || post.stylePreset);
     const handle = post.socialHandle
       ? escapeHtml(post.socialHandle)
       : escapeHtml(post.creatorName || 'Creator');
     return `
-      <article class="cw-card cw-card--featured" data-preset="${escapeHtml(post.stylePreset)}" itemscope itemtype="https://schema.org/CreativeWork">
+      <article class="cw-card cw-card--featured${isDraft ? ' cw-card--draft' : ''}" data-preset="${escapeHtml(post.stylePreset)}" itemscope itemtype="https://schema.org/CreativeWork">
         <div class="cw-card__media">${buildFrame(post, false)}</div>
         <div class="cw-card__body">
-          <span class="cw-badge">${label}</span>
+          <span class="cw-badge${isDraft ? ' cw-badge--draft' : ''}">${isDraft ? 'Your preview' : label}</span>
           <p class="cw-card__quote" itemprop="description">“${escapeHtml(post.feedback)}”</p>
           <div class="cw-meta">
             <span>${handle}</span>
@@ -151,11 +154,43 @@
     });
   }
 
+  function presetLabelFor(id) {
+    return global.CutupStylePresets?.PRESETS?.[id]?.name || String(id || 'hormozi');
+  }
+
+  function setDraftPreview(draft) {
+    if (!draft) return;
+    draftPreview = {
+      id: 'draft-preview',
+      featured: true,
+      stylePreset: draft.stylePreset || 'hormozi',
+      presetLabel: presetLabelFor(draft.stylePreset),
+      feedback: String(draft.feedback || '').trim() || 'Your quote appears here as you type.',
+      creatorName: String(draft.creatorName || '').trim(),
+      socialHandle: String(draft.socialHandle || '').trim(),
+      platform: draft.platform || 'youtube',
+      countryCode: draft.countryCode || 'US',
+      createdAt: new Date().toISOString()
+    };
+    renderShowcase(cachedPosts);
+    document.getElementById('creator-wall')?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function clearDraftPreview() {
+    draftPreview = null;
+    renderShowcase(cachedPosts);
+  }
+
   function renderShowcase(posts) {
     const host = document.getElementById('creatorWallShowcase');
     if (!host) return;
 
-    const { featured, secondary } = pickShowcase(posts);
+    cachedPosts = Array.isArray(posts) ? posts : [];
+    const merged = draftPreview
+      ? [draftPreview, ...cachedPosts.filter((p) => p && p.id !== 'draft-preview')]
+      : cachedPosts;
+
+    const { featured, secondary } = pickShowcase(merged);
     if (!featured) {
       host.innerHTML = '';
       host.classList.remove('creator-wall__showcase--ready', 'creator-wall__showcase--loading');
@@ -253,7 +288,14 @@
     startPolling();
   }
 
-  global.CutupCreatorWall = { init, useStyle, stopPolling, renderShowcase };
+  global.CutupCreatorWall = {
+    init,
+    useStyle,
+    stopPolling,
+    renderShowcase,
+    setDraftPreview,
+    clearDraftPreview
+  };
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);

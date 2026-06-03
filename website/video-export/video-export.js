@@ -329,20 +329,6 @@
           <p class="cutup-viral-export__download-hint">Download handled securely by your browser</p>
           <button type="button" class="cutup-viral-export__preview-toggle" id="cutupExportPreviewToggle">Open preview</button>
           <video class="cutup-viral-export__preview" id="cutupExportPreview" controls playsinline preload="none" hidden></video>
-          <div class="cutup-viral-export__optin" id="cutupExportOptIn" hidden>
-            <p class="cutup-viral-export__optin-title">Want to inspire other creators?</p>
-            <label class="cutup-viral-export__optin-check">
-              <input type="checkbox" id="cutupExportOptInCheck">
-              Feature my export in the Creator Wall
-            </label>
-            <div class="cutup-viral-export__optin-fields" id="cutupExportOptInFields" hidden>
-              <input type="text" id="cutupExportOptInName" placeholder="Creator name (optional)" maxlength="120">
-              <input type="text" id="cutupExportOptInHandle" placeholder="@handle (optional)" maxlength="120">
-              <textarea id="cutupExportOptInQuote" rows="2" placeholder="Short feedback quote" maxlength="500"></textarea>
-              <button type="button" class="cutup-viral-export__btn cutup-viral-export__btn--optin" id="cutupExportOptInSubmit">Share with creators</button>
-              <p class="cutup-viral-export__optin-note" id="cutupExportOptInNote" hidden></p>
-            </div>
-          </div>
         </div>
       </section>`;
 
@@ -373,13 +359,7 @@
     container.querySelector('#cutupExportPreviewToggle')?.addEventListener('click', () => {
       togglePreview(container);
     });
-    container.querySelector('#cutupExportOptInCheck')?.addEventListener('change', (e) => {
-      const fields = container.querySelector('#cutupExportOptInFields');
-      if (fields) fields.hidden = !e.target.checked;
-    });
-    container.querySelector('#cutupExportOptInSubmit')?.addEventListener('click', () => {
-      submitCreatorWallOptIn(container);
-    });
+    bindCreatorWallOptIn(container);
     refreshExportButton();
   }
 
@@ -389,28 +369,74 @@
     showNotice(container, '');
   }
 
+  function getCreatorWallOptInRoot() {
+    return document.getElementById('cutupCreatorWallOptInMount');
+  }
+
+  function syncCreatorWallLivePreview(container) {
+    const optRoot = getCreatorWallOptInRoot();
+    if (!optRoot || optRoot.hidden) return;
+    const check = optRoot.querySelector('#cutupExportOptInCheck');
+    if (!check?.checked) {
+      global.CutupCreatorWall?.clearDraftPreview?.();
+      return;
+    }
+    global.CutupCreatorWall?.setDraftPreview?.({
+      stylePreset: container?.dataset?.cwPresetId || getActivePresetId(),
+      creatorName: optRoot.querySelector('#cutupExportOptInName')?.value?.trim() || '',
+      socialHandle: optRoot.querySelector('#cutupExportOptInHandle')?.value?.trim() || '',
+      feedback:
+        optRoot.querySelector('#cutupExportOptInQuote')?.value?.trim() ||
+        'Previewing your quote on the Creator Wall…',
+      platform: 'youtube',
+      countryCode: 'US'
+    });
+  }
+
+  function bindCreatorWallOptIn(container) {
+    const optRoot = getCreatorWallOptInRoot();
+    if (!optRoot || optRoot.dataset.bound === '1') return;
+    optRoot.dataset.bound = '1';
+    const sync = () => syncCreatorWallLivePreview(container);
+    optRoot.querySelector('#cutupExportOptInCheck')?.addEventListener('change', (e) => {
+      const fields = optRoot.querySelector('#cutupExportOptInFields');
+      if (fields) fields.hidden = !e.target.checked;
+      sync();
+    });
+    ['#cutupExportOptInName', '#cutupExportOptInHandle', '#cutupExportOptInQuote'].forEach((sel) => {
+      optRoot.querySelector(sel)?.addEventListener('input', sync);
+    });
+    optRoot.querySelector('#cutupExportOptInSubmit')?.addEventListener('click', () => {
+      submitCreatorWallOptIn(container);
+    });
+  }
+
   function hideCreatorWallOptIn(container) {
-    const opt = container.querySelector('#cutupExportOptIn');
+    const opt = getCreatorWallOptInRoot();
     if (opt) opt.hidden = true;
-    const note = container.querySelector('#cutupExportOptInNote');
+    const note = opt?.querySelector('#cutupExportOptInNote');
     if (note) {
       note.hidden = true;
       note.textContent = '';
     }
+    global.CutupCreatorWall?.clearDraftPreview?.();
   }
 
   function showCreatorWallOptIn(container, data, jobId) {
-    const opt = container.querySelector('#cutupExportOptIn');
+    const opt = getCreatorWallOptInRoot();
     if (!opt) return;
     opt.hidden = false;
-    container.dataset.cwExportJobId = jobId || '';
-    container.dataset.cwPresetId = data.presetId || getActivePresetId();
-    container.dataset.cwProcessingSec = data.renderDurationSec != null ? String(data.renderDurationSec) : '';
-    container.dataset.cwResolution = data.resolution || '';
-    const check = container.querySelector('#cutupExportOptInCheck');
-    const fields = container.querySelector('#cutupExportOptInFields');
+    if (container) {
+      container.dataset.cwExportJobId = jobId || '';
+      container.dataset.cwPresetId = data.presetId || getActivePresetId();
+      container.dataset.cwProcessingSec = data.renderDurationSec != null ? String(data.renderDurationSec) : '';
+      container.dataset.cwResolution = data.resolution || '';
+    }
+    const check = opt.querySelector('#cutupExportOptInCheck');
+    const fields = opt.querySelector('#cutupExportOptInFields');
     if (check) check.checked = false;
     if (fields) fields.hidden = true;
+    bindCreatorWallOptIn(container);
   }
 
   async function submitCreatorWallOptIn(container) {
@@ -419,12 +445,13 @@
       showError(container, 'Sign in to share on the Creator Wall.');
       return;
     }
-    const check = container.querySelector('#cutupExportOptInCheck');
+    const optRoot = getCreatorWallOptInRoot();
+    const check = optRoot?.querySelector('#cutupExportOptInCheck');
     if (!check?.checked) return;
 
-    const quote = container.querySelector('#cutupExportOptInQuote')?.value?.trim() || '';
+    const quote = optRoot?.querySelector('#cutupExportOptInQuote')?.value?.trim() || '';
     if (quote.length < 8) {
-      const note = container.querySelector('#cutupExportOptInNote');
+      const note = optRoot?.querySelector('#cutupExportOptInNote');
       if (note) {
         note.hidden = false;
         note.textContent = 'Add a short quote (at least 8 characters).';
@@ -432,7 +459,7 @@
       return;
     }
 
-    const btn = container.querySelector('#cutupExportOptInSubmit');
+    const btn = optRoot?.querySelector('#cutupExportOptInSubmit');
     if (btn) btn.disabled = true;
 
     try {
@@ -446,8 +473,8 @@
           optIn: true,
           stylePreset: container.dataset.cwPresetId || getActivePresetId(),
           feedback: quote,
-          creatorName: container.querySelector('#cutupExportOptInName')?.value?.trim() || '',
-          socialHandle: container.querySelector('#cutupExportOptInHandle')?.value?.trim() || '',
+          creatorName: optRoot?.querySelector('#cutupExportOptInName')?.value?.trim() || '',
+          socialHandle: optRoot?.querySelector('#cutupExportOptInHandle')?.value?.trim() || '',
           exportJobId: container.dataset.cwExportJobId || null,
           processingSec: container.dataset.cwProcessingSec || null,
           resolution: container.dataset.cwResolution || null,
@@ -456,7 +483,7 @@
         })
       });
       const data = await res.json().catch(() => ({}));
-      const note = container.querySelector('#cutupExportOptInNote');
+      const note = optRoot?.querySelector('#cutupExportOptInNote');
       if (note) {
         note.hidden = false;
         note.textContent = data.message || (res.ok ? 'Submitted — pending review. Thank you!' : data.error || 'Could not submit.');
@@ -486,15 +513,27 @@
     }
   }
 
+  function resolveRenderDurationSec(data) {
+    const clientSec =
+      exportStartedAt > 0 ? Math.max(1, Math.round((Date.now() - exportStartedAt) / 1000)) : null;
+    const serverSec =
+      data?.renderDurationSec != null ? Math.max(1, Math.round(Number(data.renderDurationSec))) : null;
+    if (clientSec != null && serverSec != null) {
+      return Math.max(clientSec, serverSec);
+    }
+    return clientSec ?? serverSec ?? null;
+  }
+
   function populateMeta(container, data) {
     const meta = container.querySelector('#cutupExportMeta');
     if (!meta) return;
 
+    const renderSec = resolveRenderDurationSec(data);
     const qualityLabel = data.quality === 'hq' ? 'High quality' : 'Fast preview';
     const rows = [
       ['Style', data.presetName || data.presetId || getActivePresetId()],
       ['Resolution', data.resolution || '—'],
-      ['Render time', data.renderDurationSec != null ? formatDuration(data.renderDurationSec) : '—'],
+      ['Render time', renderSec != null ? formatDuration(renderSec) : '—'],
       ['File size', data.fileSizeLabel || (data.fileSizeBytes != null ? `${data.fileSizeBytes} B` : '—')],
       ['Quality', qualityLabel]
     ];
@@ -541,7 +580,8 @@
       void ready.offsetWidth;
       ready.classList.add('cutup-viral-export__ready--animate');
     }
-    showCreatorWallOptIn(container, data, jobId);
+    const renderSec = resolveRenderDurationSec(data);
+    showCreatorWallOptIn(container, { ...data, renderDurationSec: renderSec }, jobId);
   }
 
   function togglePreview(container) {

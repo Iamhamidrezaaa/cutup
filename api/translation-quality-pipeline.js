@@ -4,6 +4,7 @@
 
 import { scoreTranslationBatch, scoreTranslationPair } from './translation-quality-score.js';
 import { buildLanguageAwareRewriteBatchPrompts } from './translation-rewrite-strategies.js';
+import { sanitizeTranslationCueText } from './translation-output-sanitizer.js';
 import {
   pickBackTranslationSampleIndices,
   backTranslateSampleIndices
@@ -142,7 +143,10 @@ export async function evaluateAndRewriteTranslation(opts) {
           if (working[idx] && rewrittenSegs[j]?.text) {
             working[idx] = {
               ...working[idx],
-              text: String(rewrittenSegs[j].text).trim()
+              text: sanitizeTranslationCueText(
+                String(rewrittenSegs[j].text).trim(),
+                sourceSegments[idx]?.text || ''
+              )
             };
           }
         }

@@ -30,9 +30,9 @@ const STRATEGIES = {
     rules: [
       'Translate meaning, not English word order.',
       'Use Arabic script only; no Latin letters.',
-      'Fitness: keep loanwords natural (ددلیفت، اسکوات).',
+      'Fitness: keep loanwords natural (ددلیفت، اسکوات) when the source mentions them.',
       'Avoid formal/literal patterns like «خوبی است», «می‌باشد».',
-      'Examples: "Nice deadlift"→"ددلیفتت عالیه"; "Let\'s go"→"بزن بریم"; "Everything okay?"→"همه چیز روبه‌راهه؟"'
+      'Never output prompt examples or glossary lines — only rewrite the given source line.'
     ]
   },
   ar: {

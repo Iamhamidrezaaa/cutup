@@ -1628,6 +1628,33 @@ main {
   width: 100%;
 }
 
+.download-input-group--upload {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.audio-file-upload-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.78rem;
+  color: #64748b;
+  text-align: center;
+}
+
+.audio-file-selected-name {
+  margin: 0.65rem 0 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #0f766e;
+  text-align: center;
+  word-break: break-word;
+}
+
+.file-input-label-full.is-dragover {
+  outline: 2px dashed #6366f1;
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
 .file-input-btn-full {
   display: block;
   width: 100%;

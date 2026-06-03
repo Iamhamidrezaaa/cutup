@@ -5,13 +5,13 @@ import { resolveCueLineLayout, BURN_SUBTITLE_MAX_LINES } from './layout-engine.j
 import { expandCueVisualChunks } from './subtitle-pipeline.js';
 import { generateAssFromExportDoc } from './ass-generator.js';
 
-test('burn layout never exceeds two ASS lines per dialogue', () => {
+test('burn layout uses a single ASS line per dialogue', () => {
   const base = {
     mode: 'stack',
     wordsPerLineMin: 2,
     wordsPerLineMax: 4,
     maxCharsPerLine: 18,
-    maxLines: 2
+    maxLines: 1
   };
   const layout = resolveCueLineLayout(base, 'WHEN HE WAS ABOUT TO MAKE HIS MOVE');
   const lines = buildCueLines(
@@ -19,8 +19,8 @@ test('burn layout never exceeds two ASS lines per dialogue', () => {
     layout,
     true
   );
-  assert.equal(BURN_SUBTITLE_MAX_LINES, 2);
-  assert.ok(lines.length >= 1 && lines.length <= 2);
+  assert.equal(BURN_SUBTITLE_MAX_LINES, 1);
+  assert.equal(lines.length, 1);
 });
 
 test('expandCueVisualChunks splits long cues without changing first chunk start', () => {
@@ -40,7 +40,7 @@ test('expandCueVisualChunks splits long cues without changing first chunk start'
   assert.ok(out[0].text.split(/\s+/).length <= 5);
 });
 
-test('export ASS uses at most two newline-separated rows', () => {
+test('export ASS collapses multi-line exportDoc cues to one row', () => {
   const exportDoc = {
     format: 'cutup-style-v1',
     preset: { id: 'alexHormozi' },
@@ -49,7 +49,7 @@ test('export ASS uses at most two newline-separated rows', () => {
         start: 5,
         end: 9,
         text: 'when he was about to make his move exactly now',
-        lines: ['WHEN HE WAS', 'ABOUT TO MAKE', 'HIS MOVE']
+        lines: ['WHEN HE WAS ABOUT', 'TO MAKE HIS MOVE EXACTLY NOW']
       }
     ]
   };
@@ -63,5 +63,5 @@ test('export ASS uses at most two newline-separated rows', () => {
   assert.ok(dialogue);
   const textField = dialogue.split(',').slice(9).join(',');
   const rowCount = textField.split('\\N').length;
-  assert.ok(rowCount <= 2, `expected <=2 rows, got ${rowCount}`);
+  assert.equal(rowCount, 1, `expected 1 row, got ${rowCount}`);
 });

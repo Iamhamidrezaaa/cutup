@@ -1172,6 +1172,11 @@ async function cutupExecuteLocalPendingResume(data) {
     } catch (_e2) {
       /* ignore */
     }
+    const pendingFile = window.selectedFile;
+    if (pendingFile instanceof File && cutupIsLoggedIn()) {
+      await processFullTextFile(pendingFile, getCutupSessionId(), 'fulltext');
+      return;
+    }
     showMessage('Select your file again to transcribe.', 'info');
     return;
   }
@@ -1307,10 +1312,12 @@ async function cutupTriggerLoginForPendingAction(type, payload) {
       (payload && payload.platform) || currentPlatform || 'youtube'
     );
   }
+  const fileFlow = Boolean(payload && payload.fileFlow);
   showAuthTransition({
-    title: 'Sign in to continue',
-    text:
-      'To keep going and save this project in your Cutup workspace, please sign in with Google. Your link and settings are saved.',
+    title: fileFlow ? 'Sign in to transcribe your upload' : 'Sign in to continue',
+    text: fileFlow
+      ? 'Like social links: sign in with Google to extract speech, build subtitles, and export your file.'
+      : 'To keep going and save this project in your Cutup workspace, please sign in with Google. Your link and settings are saved.',
     sub: 'Redirecting to Google sign-in…'
   });
   await new Promise((r) => setTimeout(r, 700));
@@ -1352,7 +1359,12 @@ async function resumeCutupPendingAction() {
       await handleSummarize();
     } else if (type === 'resume_upload_tab') {
       retentionSwitchPlatformWithUrl('audiofile', '');
-      showMessage('Select your file again to transcribe.', 'info');
+      const pendingFile = window.selectedFile;
+      if (pendingFile instanceof File) {
+        await processFullTextFile(pendingFile, getCutupSessionId(), 'fulltext');
+      } else {
+        showMessage('Select your file again to transcribe.', 'info');
+      }
     }
   } catch (err) {
     console.error('[script] resumeCutupPendingAction failed:', err);
@@ -1646,12 +1658,20 @@ function updateFulltextSoftLockVeil() {
     }
   }
   const previewOn = previewModeFromState || previewBannerVisible;
+  const producedFullTranscript = !!(
+    lastOpts &&
+    (lastOpts.authenticatedResult === true || lastOpts.previewMode === false)
+  );
   const planKey = normalizePlanKey(window.userSubscription && window.userSubscription.plan);
   const paidPlanCached = planKey !== 'free';
   const hydration = window.CutupApp.subscriptionHydration || 'idle';
+  const authenticated =
+    cutupIsLoggedIn() ||
+    cutupHasStoredSession() ||
+    producedFullTranscript;
   const shouldLock =
     !previewOn &&
-    !sessionId &&
+    !authenticated &&
     !paidPlanCached &&
     len >= LONG_TRANSCRIPT_SOFT_LOCK_CHARS;
 
@@ -1659,13 +1679,15 @@ function updateFulltextSoftLockVeil() {
     let renderBranch = 'authenticated_or_short_no_lock';
     if (shouldLock) renderBranch = 'guest_soft_lock';
     else if (previewOn) renderBranch = 'preview_suppresses_lock';
-    else if (sessionId) renderBranch = 'session_suppresses_guest_lock';
+    else if (authenticated) renderBranch = 'authenticated_suppresses_guest_lock';
     else if (paidPlanCached) renderBranch = 'paid_plan_suppresses_guest_lock';
     else if (hydration === 'pending' && sessionId) renderBranch = 'hydration_pending_session';
     console.log(
       '[translate-auth-debug]',
       JSON.stringify({
-        isAuthenticated: !!sessionId,
+        isAuthenticated: cutupIsLoggedIn(),
+        hasStoredSession: cutupHasStoredSession(),
+        producedFullTranscript,
         userPlan: window.userSubscription?.plan ?? null,
         sessionLoaded: hydration === 'ready',
         resumeMode: cutupResumeModeActive(),
@@ -2682,6 +2704,7 @@ async function loadUserProfile() {
         setCutupSession(sessionId, 'loadUserProfile_ok');
         cutupMarkSessionVerified(true, 'loadUserProfile_ok');
         showUserProfile(data.user);
+        updateFulltextSoftLockVeil();
         // Load subscription info and update UI
         await updateButtonsBasedOnSubscription(sessionId);
         await retentionMergeGuestIfNeeded(sessionId);
@@ -3487,6 +3510,8 @@ document.addEventListener('DOMContentLoaded', () => {
       checkInput();
     });
   }
+
+  initUploadFileTab();
 });
 
 // Check if YouTube URL is valid — after normalization (Shorts, live, youtu.be, watch?v=)
@@ -3942,14 +3967,11 @@ function initHeroPreviewTabs() {
 
   pasteBtn.addEventListener('click', async () => {
     if (currentHeroPlatform === 'audiofile') {
-      if (!cutupIsLoggedIn()) {
-        await cutupTriggerLoginForPendingAction('resume_upload_tab', { platform: 'audiofile', fileFlow: true });
-        return;
-      }
+      document.getElementById('tool')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       switchPlatform('audiofile');
+      if (!(await cutupGateUploadAuth(null))) return;
       const audioInput = document.getElementById('audioFileInput');
       if (audioInput) audioInput.click();
-      document.getElementById('tool')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;
     }
     if ((input.value || '').trim() === '') {
@@ -4224,13 +4246,8 @@ async function handleSummarize() {
     (currentPlatform === 'audiofile' ||
       !url ||
       (typeof url === 'string' && url.startsWith('📁')));
-  if (isFileFlow && !cutupIsLoggedIn()) {
+  if (isFileFlow && !(await cutupGateUploadAuth(file))) {
     endPipelineRun();
-    try {
-      await cutupTriggerLoginForPendingAction('resume_upload_tab', { platform: 'audiofile' });
-    } catch (_e) {
-      cutupClearPendingAction();
-    }
     return;
   }
 
@@ -4304,13 +4321,8 @@ async function handleFullText(activeTab = 'fulltext') {
     (currentPlatform === 'audiofile' ||
       !url ||
       (typeof url === 'string' && url.startsWith('📁')));
-  if (isFileFlowFt && !cutupIsLoggedIn()) {
+  if (isFileFlowFt && !(await cutupGateUploadAuth(file))) {
     endPipelineRun();
-    try {
-      await cutupTriggerLoginForPendingAction('resume_upload_tab', { platform: 'audiofile' });
-    } catch (_e) {
-      cutupClearPendingAction();
-    }
     return;
   }
 
@@ -6102,6 +6114,7 @@ function displayResults(summary, fullText, segments = null, options = {}) {
       isYouTubeSubtitle: options.isYouTubeSubtitle,
       availableLanguages: options.availableLanguages || [],
       previewMode: options.previewMode,
+      authenticatedResult: !options.previewMode && !!getCutupSessionId(),
       videoDurationSeconds: options.videoDurationSeconds,
       platform: normalizeCinematicPlatform(
         options.platform || (typeof currentPlatform !== 'undefined' ? currentPlatform : null)
@@ -7712,48 +7725,171 @@ document.addEventListener('DOMContentLoaded', () => {
   applyCutupPricingPlanLocks(window.userSubscription || { plan: 'free' });
 });
 
-// Handle audio file input (like extension)
-async function handleFileSelect(e) {
-  const file = e.target.files[0];
-  if (!file) {
+const UPLOAD_MEDIA_EXTENSIONS = new Set([
+  'mp3',
+  'wav',
+  'm4a',
+  'ogg',
+  'webm',
+  'mp4',
+  'mov',
+  'mkv',
+  'aac',
+  'flac',
+  'mpeg',
+  'mpga'
+]);
+
+function isAllowedUploadFile(file) {
+  if (!file) return false;
+  const mime = String(file.type || '').toLowerCase();
+  if (mime.startsWith('audio/') || mime.startsWith('video/')) return true;
+  const ext = String(file.name || '')
+    .split('.')
+    .pop()
+    ?.toLowerCase();
+  return ext ? UPLOAD_MEDIA_EXTENSIONS.has(ext) : false;
+}
+
+/**
+ * Same auth gate as social links: overlay + Google OAuth before upload processing.
+ * @returns {Promise<boolean>} true when user may continue
+ */
+async function cutupGateUploadAuth(file = null) {
+  if (cutupIsLoggedIn()) return true;
+  if (file instanceof File) {
+    window.selectedFile = file;
+    rememberSourceVideoFile(file);
+    updateAudioFileSelectedLabel(file);
+    if (currentPlatform !== 'audiofile') switchPlatform('audiofile');
     checkInput();
+  } else if (currentPlatform !== 'audiofile') {
+    switchPlatform('audiofile');
+  }
+  try {
+    await cutupTriggerLoginForPendingAction('resume_upload_tab', {
+      platform: 'audiofile',
+      fileFlow: true,
+      mode: 'fulltext'
+    });
+  } catch (_e) {
+    cutupClearPendingAction();
+    hideAuthTransition();
+    showMessage('Sign in to transcribe uploads.', 'error');
+  }
+  return false;
+}
+
+function updateAudioFileSelectedLabel(file) {
+  const el = document.getElementById('audioFileSelectedName');
+  if (!el) return;
+  if (!file) {
+    el.hidden = true;
+    el.textContent = '';
     return;
   }
+  const mb = (file.size / 1024 / 1024).toFixed(1);
+  const kind = String(file.type || '').startsWith('video/') ? 'Video' : 'Audio';
+  el.textContent = `${kind}: ${file.name} (${mb} MB)`;
+  el.hidden = false;
+}
+
+function initUploadFileTab() {
+  audioFileInput = document.getElementById('audioFileInput');
+  if (!audioFileInput || audioFileInput.dataset.cutupBound === '1') return;
+  audioFileInput.dataset.cutupBound = '1';
+
+  const chooseBtn = document.getElementById('audioFileChooseBtn');
+  const dropZone = document.getElementById('audioFileDropZone');
+
+  const openPicker = async () => {
+    if (currentPlatform !== 'audiofile') switchPlatform('audiofile');
+    if (!(await cutupGateUploadAuth(null))) return;
+    audioFileInput.click();
+  };
+
+  if (chooseBtn && chooseBtn.dataset.cutupBound !== '1') {
+    chooseBtn.dataset.cutupBound = '1';
+    chooseBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      void openPicker();
+    });
+    chooseBtn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        void openPicker();
+      }
+    });
+  }
+
+  if (dropZone) {
+    dropZone.addEventListener('click', (e) => {
+      if (e.target === audioFileInput) return;
+      if (!cutupIsLoggedIn()) {
+        e.preventDefault();
+        void cutupGateUploadAuth(null);
+      }
+    });
+  }
+
+  audioFileInput.addEventListener('change', (ev) => {
+    void handleFileSelect(ev);
+  });
+
+  if (dropZone) {
+    ['dragenter', 'dragover'].forEach((evt) => {
+      dropZone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        dropZone.classList.add('is-dragover');
+      });
+    });
+    ['dragleave', 'drop'].forEach((evt) => {
+      dropZone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('is-dragover');
+      });
+    });
+    dropZone.addEventListener('drop', (e) => {
+      const file = e.dataTransfer?.files?.[0];
+      if (!file) return;
+      void processSelectedUploadFile(file);
+    });
+  }
+}
+
+async function processSelectedUploadFile(file) {
+  if (!file) return;
 
   const maxSize = 100 * 1024 * 1024;
   if (file.size > maxSize) {
-    showMessage(`File is too large (${(file.size / 1024 / 1024).toFixed(2)} MB). Maximum allowed is ${maxSize / 1024 / 1024} MB.`, 'error');
-    audioFileInput.value = '';
+    showMessage(
+      `File is too large (${(file.size / 1024 / 1024).toFixed(2)} MB). Maximum allowed is ${maxSize / 1024 / 1024} MB.`,
+      'error'
+    );
+    if (audioFileInput) audioFileInput.value = '';
+    updateAudioFileSelectedLabel(null);
     checkInput();
     return;
   }
 
-  const isAudio = file.type.startsWith('audio/');
-  const isVideo = file.type.startsWith('video/');
-
-  if (!isAudio && !isVideo) {
-    showMessage('Please select an audio or video file.', 'error');
-    audioFileInput.value = '';
+  if (!isAllowedUploadFile(file)) {
+    showMessage('Please select an audio or video file (MP3, WAV, M4A, MP4, MOV…).', 'error');
+    if (audioFileInput) audioFileInput.value = '';
+    updateAudioFileSelectedLabel(null);
     checkInput();
     return;
   }
+
+  if (!(await cutupGateUploadAuth(file))) return;
 
   window.selectedFile = file;
+  rememberSourceVideoFile(file);
+  if (currentPlatform !== 'audiofile') switchPlatform('audiofile');
+  updateAudioFileSelectedLabel(file);
   checkInput();
 
-  const sessionId = localStorage.getItem('cutup_session');
-  if (!sessionId) {
-    showMessage('Processing will continue after sign-in. Opening Google…', 'info');
-    try {
-      await cutupTriggerLoginForPendingAction('resume_upload_tab', { platform: 'audiofile' });
-    } catch (_err) {
-      cutupClearPendingAction();
-      showMessage('Sign in to transcribe uploads.', 'error');
-    }
-    return;
-  }
-
-  showMessage('Processing started…', 'info');
+  const sessionId = getCutupSessionId();
+  showMessage('Processing your file…', 'info');
   try {
     await processFullTextFile(file, sessionId, 'fulltext');
   } catch (err) {
@@ -7761,6 +7897,16 @@ async function handleFileSelect(e) {
     const msg = err && typeof err.message === 'string' ? err.message : USER_ERROR_GENERIC;
     showMessage(msg, 'error');
   }
+}
+
+async function handleFileSelect(e) {
+  const file = e?.target?.files?.[0];
+  if (!file) {
+    updateAudioFileSelectedLabel(null);
+    checkInput();
+    return;
+  }
+  await processSelectedUploadFile(file);
 }
 
 // Get current URL input based on active tab
@@ -7853,13 +7999,6 @@ function checkInput() {
       options.style.display = 'none';
     }
   }
-}
-
-// Handle audio file input (event listener already set up above)
-if (audioFileInput) {
-  audioFileInput.addEventListener('change', (ev) => {
-    void handleFileSelect(ev);
-  });
 }
 
 // Show subtitle modal (like extension)

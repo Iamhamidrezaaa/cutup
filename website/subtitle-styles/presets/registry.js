@@ -112,7 +112,7 @@
         wordsPerLineMin: 2,
         wordsPerLineMax: 4,
         maxCharsPerLine: 20,
-        maxLines: 2,
+        maxLines: 1,
         align: 'center',
         maxWidth: '88%'
       },

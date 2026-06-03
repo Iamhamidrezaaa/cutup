@@ -11,9 +11,27 @@
   const NOTES = /♪+/g;
   const HALLUCINATION = /[@#$%^&*]{2,}/;
   const NOISE = /^(applause|laughter|music|inaudible|crowd|cheering|clapping)\b/i;
+  const TRANSLATION_LEAK_RES = [
+    /به\s+خوبی\s+انجام\s+می(?:دهی|دی|د|‌دهی|‌دی)/giu,
+    /(?:^|[\s،,])وای\s+ددلیفت(?:ت)?\s+عالیه/giu,
+    /(?:^|[\s،,])وای\s+اسکوات(?:ت)?\s+هم\s+عالیه/giu,
+    /این\s+بنچ\s+پرش\s+عالیه/giu,
+    /^ددلیفت(?:ت)?\s+عالیه[.!?\s]*$/giu
+  ];
+
+  function stripTranslationLeakage(text) {
+    let t = String(text || '');
+    for (const re of TRANSLATION_LEAK_RES) {
+      t = t.replace(re, ' ');
+    }
+    return t.replace(/\s{2,}/g, ' ').trim();
+  }
 
   function clean(text, opts = {}) {
     let t = String(text || '');
+    if (opts.stripTranslationLeakage) {
+      t = stripTranslationLeakage(t);
+    }
     if (opts.stripNoiseTags !== false) {
       t = t.replace(BRACKET, ' ');
       t = t.replace(PAREN_NOISE, ' ');
@@ -45,8 +63,7 @@
     const out = [];
     for (const s of segments || []) {
       if (!s || s.end <= s.start) continue;
-      let text = normalizeNonSpeech(s.text, 'accurate');
-      text = clean(text, { stripNoiseTags: false });
+      let text = clean(s.text, { stripTranslationLeakage: true });
       if (!text || isGarbage(text)) continue;
       out.push({ start: s.start, end: s.end, text });
     }
@@ -59,7 +76,6 @@
     for (const s of segments || []) {
       if (!s || s.end <= s.start) continue;
       let text = clean(s.text);
-      text = normalizeNonSpeech(text, 'clean');
       if (!text || isGarbage(text, true)) continue;
       const key = text.toLowerCase();
       if (key === prev) continue;
@@ -74,7 +90,7 @@
     let prev = '';
     for (const s of segments || []) {
       if (!s || s.end <= s.start) continue;
-      const text = clean(s.text);
+      const text = clean(s.text, { stripTranslationLeakage: true });
       if (!text || isGarbage(text, true)) continue;
       const key = text.toLowerCase();
       if (key === prev) continue;

@@ -139,11 +139,13 @@
 
           <div class="tab-content" id="audiofile-tab">
             <h2 class="download-title">Upload audio or video</h2>
-            <div class="download-input-group">
-              <label for="audioFileInput" class="file-input-label-full">
-                <input type="file" id="audioFileInput" accept="audio/*,video/*" style="display:none;">
-                <span class="file-input-btn-full">📁 Choose file</span>
+            <div class="download-input-group download-input-group--upload">
+              <label for="audioFileInput" class="file-input-label-full" id="audioFileDropZone">
+                <input type="file" id="audioFileInput" accept="audio/*,video/*,.mp3,.wav,.m4a,.ogg,.webm,.mp4,.mov,.mkv,.aac,.flac" style="display:none;">
+                <span class="file-input-btn-full" id="audioFileChooseBtn" role="button" tabindex="0">📁 Choose file</span>
               </label>
+              <p class="audio-file-selected-name" id="audioFileSelectedName" hidden aria-live="polite"></p>
+              <p class="audio-file-upload-hint">MP3, WAV, M4A, MP4, MOV — we extract speech like social links.</p>
             </div>
             <div class="download-options" id="downloadOptionsAudiofile" style="display: none;">
               <div class="download-option-group">
@@ -235,6 +237,21 @@
                         <p class="cutup-export-options__desc">Accurate timing · plain text · Premiere, CapCut &amp; DaVinci ready.</p>
                         <button type="button" class="cutup-export-options__btn cutup-export-options__btn--srt" id="downloadCleanSrtBtn">Download Clean SRT</button>
                         <button type="button" class="download-btn cutup-export-options__btn-secondary" id="downloadSrtBtn" hidden>Download SRT (legacy)</button>
+                        <div class="cutup-creator-wall-optin" id="cutupCreatorWallOptInMount" hidden aria-label="Share on Creator Wall">
+                          <p class="cutup-creator-wall-optin__title">Want to inspire other creators?</p>
+                          <label class="cutup-creator-wall-optin__check">
+                            <input type="checkbox" id="cutupExportOptInCheck">
+                            Feature my export in the Creator Wall
+                          </label>
+                          <div class="cutup-creator-wall-optin__fields" id="cutupExportOptInFields" hidden>
+                            <input type="text" id="cutupExportOptInName" placeholder="Creator name (optional)" maxlength="120" autocomplete="name">
+                            <input type="text" id="cutupExportOptInHandle" placeholder="@handle (optional)" maxlength="120" autocomplete="username">
+                            <textarea id="cutupExportOptInQuote" rows="2" placeholder="Short feedback quote" maxlength="500"></textarea>
+                            <p class="cutup-creator-wall-optin__live-hint">Live preview on the homepage Creator Wall below.</p>
+                            <button type="button" class="cutup-creator-wall-optin__submit" id="cutupExportOptInSubmit">Share with creators</button>
+                            <p class="cutup-creator-wall-optin__note" id="cutupExportOptInNote" hidden></p>
+                          </div>
+                        </div>
                       </div>
                       <div class="cutup-export-options__card cutup-export-options__card--viral">
                         <div id="cutupViralExportMount" class="cutup-viral-export-mount" hidden></div>

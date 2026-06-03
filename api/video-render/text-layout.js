@@ -221,8 +221,22 @@ export function layoutLines(text, layout = {}) {
 
 export function buildCueLines(segment, layout, uppercase) {
   const lines = layoutLines(segment.text, layout);
-  const maxLines = Math.min(2, Math.max(0, Number(layout.maxLines) || 2));
-  const trimmed = maxLines > 0 && lines.length > maxLines ? lines.slice(0, maxLines) : lines;
+  const maxLines = Math.max(1, Number(layout.maxLines) || 1);
+  let trimmed;
+  if (maxLines === 1) {
+    trimmed = [lines.join(' ').trim() || lines[0] || ''].filter(Boolean).slice(0, 1);
+  } else if (maxLines >= 2) {
+    const flat = lines.join(' ').trim();
+    const w = words(flat);
+    if (w.length >= 4 && (lines.length === 1 || flat.length > (layout.maxCharsPerLine || 26) * 1.15)) {
+      const mid = Math.ceil(w.length / 2);
+      trimmed = [w.slice(0, mid).join(' '), w.slice(mid).join(' ')].filter(Boolean);
+    } else {
+      trimmed = (lines.length > maxLines ? lines.slice(0, maxLines) : lines).filter(Boolean);
+    }
+  } else {
+    trimmed = lines.filter(Boolean);
+  }
   if (uppercase) return trimmed.map((l) => l.toUpperCase());
   return trimmed;
 }

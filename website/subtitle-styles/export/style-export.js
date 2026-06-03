@@ -12,7 +12,8 @@
 
     const preset = Presets.getPreset(presetId);
     const cues = (Array.isArray(segments) ? segments : []).map((seg, index) => {
-      const lines = Layout.layoutLines(seg.text, preset.layout);
+      const raw = String(seg.text || '').trim().replace(/\s+/g, ' ');
+      const lines = [raw];
       const lineTokens = lines.map((line) => Emphasis.analyzeText(line));
       return {
         index: index + 1,

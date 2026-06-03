@@ -25,7 +25,7 @@
     if (!w.length) return [''];
     const min = layout.wordsPerLineMin || 2;
     const max = layout.wordsPerLineMax || 6;
-    const maxLines = Math.min(2, Math.max(0, Number(layout.maxLines) || 2));
+    const maxLines = Math.min(1, Math.max(0, Number(layout.maxLines) || 1));
     let lines;
     if (layout.mode === 'single') {
       lines = [w.join(' ')];
