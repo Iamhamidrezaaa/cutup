@@ -7,6 +7,9 @@ import { analyzeTextWithEmphasis, shouldEmphasize, markSpokenWord } from './emph
 import {
   buildPhraseBurnSubtitles,
   buildPreviewAlignedSubtitles,
+  buildCleanSrtExactSubtitles,
+  applyCleanSrtFirstCueLeadIn,
+  expandCueVisualChunks,
   buildSourceAlignedSubtitles,
   buildVisualCueView,
   applyVisualReadabilityWindows,
@@ -20,7 +23,6 @@ import {
 import {
   resolveRenderLayout,
   resolveCueLineLayout,
-  orderAssLinesBottomFirst,
   buildAssBottomAnchorTag
 } from './layout-engine.js';
 import { isRtlText, resolveRtlFontName } from './rtl-text.js';
@@ -370,15 +372,20 @@ export function generateAssContent(segments, presetId, dims = {}) {
 
   const captionModeNorm = String(captionMode || 'viral').toLowerCase();
   const burnFromPreviewCues = Boolean(dims.burnFromPreviewCues);
+  const strictCleanSrtTimings = Boolean(dims.strictCleanSrtTimings);
   const useSourceAlignedTimings = captionModeNorm === 'accurate' || burnFromPreviewCues;
   const inputSegmentCount = finalOnlySegments.length;
-  const canonicalSubtitles = burnFromPreviewCues
+  const canonicalSubtitles = strictCleanSrtTimings
+    ? buildCleanSrtExactSubtitles(finalOnlySegments)
+    : burnFromPreviewCues
     ? buildPreviewAlignedSubtitles(finalOnlySegments)
     : useSourceAlignedTimings
       ? buildSourceAlignedSubtitles(finalOnlySegments)
       : buildPhraseBurnSubtitles(finalOnlySegments);
   const exportPhraseCueCount = canonicalSubtitles.length;
-  const burnPath = burnFromPreviewCues
+  const burnPath = strictCleanSrtTimings
+    ? 'clean-srt-exact'
+    : burnFromPreviewCues
     ? 'preview-export-doc'
     : useSourceAlignedTimings
       ? 'source-aligned-segment'
@@ -454,19 +461,46 @@ export function generateAssContent(segments, presetId, dims = {}) {
       : renderProfile.styleMode === 'cinematic'
         ? 0.84
         : 0.74;
-  const visibleCues = useSourceAlignedTimings
-    ? cues.map((cue) => ({
-        ...cue,
-        renderStart: Number(cue.sourceStart ?? cue.start),
-        renderEnd: Number(cue.sourceEnd ?? cue.end)
-      }))
-    : applyVisualReadabilityWindows(cues, {
+  const previewMinVisibleSec = 4 / 30 + 0.002;
+  let visibleCues = strictCleanSrtTimings
+    ? applyCleanSrtFirstCueLeadIn(
+        cues.map((cue) => ({
+          ...cue,
+          renderStart: Number(cue.sourceStart ?? cue.start),
+          renderEnd: Number(cue.sourceEnd ?? cue.end)
+        }))
+      )
+    : burnFromPreviewCues
+    ? cues.map((cue) => {
+        const start = Number(cue.sourceStart ?? cue.start);
+        let end = Number(cue.sourceEnd ?? cue.end);
+        if (end - start < previewMinVisibleSec) {
+          end = start + previewMinVisibleSec;
+        }
+        return { ...cue, renderStart: start, renderEnd: end };
+      })
+    : useSourceAlignedTimings
+      ? cues.map((cue) => ({
+          ...cue,
+          renderStart: Number(cue.sourceStart ?? cue.start),
+          renderEnd: Number(cue.sourceEnd ?? cue.end)
+        }))
+      : applyVisualReadabilityWindows(cues, {
         minCueDurationSec: minReadableCueSec,
         minGapSec: 0.035,
         maxTailExtensionSec: renderProfile.styleMode === 'safe' ? 0.62 : 0.48,
         maxLeadExtensionSec: renderProfile.styleMode === 'safe' ? 0.22 : 0.16,
         videoDurationSec: durationSec || 0
       });
+
+  if (strictCleanSrtTimings || burnFromPreviewCues) {
+    visibleCues = expandCueVisualChunks(visibleCues, {
+      maxWordsPerChunk: 5,
+      minWordsToSplit: 6,
+      minChunkSec: 0.38
+    });
+  }
+
   const visibility = validateVisualVisibility(visibleCues, {
     fps: 30,
     minFrames: renderProfile.styleMode === 'safe' ? 5 : 4
@@ -476,9 +510,16 @@ export function generateAssContent(segments, presetId, dims = {}) {
     maxExtraGapSec: 0.6
   });
   if (visibility.invisibleCount > 0) {
-    const err = new Error(`SUBTITLE_VISIBILITY_LOSS: ${visibility.warnings.join(',')}`);
-    err.code = 'SUBTITLE_VISIBILITY_LOSS';
-    throw err;
+    if (burnFromPreviewCues) {
+      console.warn('[preview-burn-visibility-warn]', {
+        invisibleCount: visibility.invisibleCount,
+        warnings: visibility.warnings.slice(0, 12)
+      });
+    } else {
+      const err = new Error(`SUBTITLE_VISIBILITY_LOSS: ${visibility.warnings.join(',')}`);
+      err.code = 'SUBTITLE_VISIBILITY_LOSS';
+      throw err;
+    }
   }
 
   const density = subtitleDensityMetrics(canonicalSubtitles, durationSec || continuity.cueCount || 1);
@@ -633,7 +674,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
     const useUppercase = layout.useUppercase && !cueRtl;
     const previewLines = enrichedCue.previewLines;
     const lines =
-      Array.isArray(previewLines) && previewLines.length
+      Array.isArray(previewLines) && previewLines.length && previewLines.length <= 2
         ? useUppercase
           ? previewLines.map((l) => String(l).toUpperCase())
           : previewLines.map((l) => String(l))
@@ -664,7 +705,8 @@ export function generateAssContent(segments, presetId, dims = {}) {
     if (lineCount > 1) wrappedCount += 1;
     totalChars += String(enrichedCue.text || '').length;
 
-    const assLines = cueRtl ? lines : orderAssLinesBottomFirst(lines);
+    // With {\an2\pos} bottom anchor, first \N line is the top row — match preview top→bottom order.
+    const assLines = lines;
     if (
       cueRtl &&
       lines.length > 1 &&
@@ -720,17 +762,21 @@ export function generateAssContent(segments, presetId, dims = {}) {
       });
     }
     const syncStart = Number(
-      useSourceAlignedTimings
-        ? enrichedCue.sourceStart ?? enrichedCue.start
-        : enrichedCue.firstWordStart ?? enrichedCue.sourceStart ?? enrichedCue.start
+      burnFromPreviewCues
+        ? enrichedCue.renderStart ?? enrichedCue.sourceStart ?? enrichedCue.start
+        : useSourceAlignedTimings
+          ? enrichedCue.sourceStart ?? enrichedCue.start
+          : enrichedCue.firstWordStart ?? enrichedCue.sourceStart ?? enrichedCue.start
     );
     const syncEnd = Number(
-      useSourceAlignedTimings
-        ? enrichedCue.sourceEnd ?? enrichedCue.end
-        : Math.max(
-            Number(enrichedCue.lastWordEnd ?? enrichedCue.sourceEnd ?? enrichedCue.end),
-            Number(enrichedCue.renderEnd ?? enrichedCue.end)
-          )
+      burnFromPreviewCues
+        ? enrichedCue.renderEnd ?? enrichedCue.sourceEnd ?? enrichedCue.end
+        : useSourceAlignedTimings
+          ? enrichedCue.sourceEnd ?? enrichedCue.end
+          : Math.max(
+              Number(enrichedCue.lastWordEnd ?? enrichedCue.sourceEnd ?? enrichedCue.end),
+              Number(enrichedCue.renderEnd ?? enrichedCue.end)
+            )
     );
     timingAuditRows.push({
       id: cueKey,
@@ -860,7 +906,7 @@ export function forensicTraceRtlPhraseText(cue, preset, { captionMode = 'viral',
   const cueRtl = isRtlText(cueText);
   const cueLineLayout = resolveCueLineLayout(baseLayout || preset.layout || {}, cueText);
   const lines = buildCueLines(cue, cueLineLayout, Boolean(preset.uppercase) && !cueRtl);
-  const assLines = cueRtl ? lines : orderAssLinesBottomFirst(lines);
+  const assLines = lines;
   const disableEmphasis = String(captionMode || 'viral').toLowerCase() === 'accurate';
   const bodyResult = linesToAssText(assLines, preset, {
     disableEmphasis,
@@ -881,15 +927,14 @@ export function generateAssFromExportDoc(exportDoc, dims = {}) {
     throw err;
   }
   const segments = (exportDoc.cues || []).map((c) => ({
-    start: c.start,
-    end: c.end,
+    start: Number(c.start),
+    end: Number(c.end),
     text: c.text || (c.lines || []).join(' '),
     previewLines: Array.isArray(c.lines) && c.lines.length ? c.lines : null
   }));
-  // Preview/exportDoc timings already match the UI and clean SRT — do not re-shift.
   return generateAssContent(segments, presetId, {
     ...dims,
     burnFromPreviewCues: true,
-    skipWhisperLeadingOffset: true
+    strictCleanSrtTimings: true
   });
 }

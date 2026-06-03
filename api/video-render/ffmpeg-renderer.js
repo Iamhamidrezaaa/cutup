@@ -245,7 +245,7 @@ export async function burnSubtitles(opts) {
   });
 
   const framePtsAtSeek = await probeVideoFramePtsAtSeconds(inputPath, [0, 1, 2, 3, 4]);
-  const speechAnchor = trustPreviewTimings ? null : await detectFirstSpeechSec(inputPath);
+  const speechAnchor = await detectFirstSpeechSec(inputPath);
   logBurnInputVerification(timelineTrace, inputPath, framePtsAtSeek, speechAnchor);
 
   const inputProbe = await probeMediaTimeline(inputPath);
@@ -259,6 +259,10 @@ export async function burnSubtitles(opts) {
     firstSpeechSec: trustPreviewTimings ? null : speechAnchor?.firstSpeechSec ?? null,
     trustClientSubtitleTiming: trustPreviewTimings
   });
+  if (trustPreviewTimings) {
+    timelinePlan.assShiftSec = 0;
+    timelinePlan.videoPtsShiftSec = 0;
+  }
   if (timelinePlan.offsetDetected) {
     logStreamOffsetDetected({
       streamOffsetSec: timelinePlan.streamOffsetSec,
@@ -287,10 +291,7 @@ export async function burnSubtitles(opts) {
       diagnostic:
         'If subtitle still appears ~4s late in output, delay is in video timeline not ASS cue times'
     });
-  } else if (
-    !timelinePlan.skipTimelineCorrection &&
-    Math.abs(timelinePlan.assShiftSec) > 0.001
-  ) {
+  } else if (!trustPreviewTimings && !timelinePlan.skipTimelineCorrection && Math.abs(timelinePlan.assShiftSec) > 0.001) {
     burnAssPath = shiftAssFileTimestamps(assPath, timelinePlan.assShiftSec);
     traceRenderTimeline(timelineTrace, 'ass_timeline_shift_export_only', {
       from: assPath,

@@ -1270,28 +1270,246 @@ export function ensureBurnCueDurations(cues, minDurSec = MIN_BURN_CUE_VISIBLE_SE
   return stabilizeBurnCueTiming(cues, { minVisibleSec: minDurSec, minReadSec: minDurSec });
 }
 
+/** YouTube rolling captions often include 0.01s blink cues — skip for ASS burn. */
+export const PREVIEW_EXPORT_MIN_CUE_SEC = 0.08;
+
+const BURN_STRIP_TAG_RE = /\[(?:music|applause|laughter|inaudible|crowd cheering)\]\s*/gi;
+
+/** Remove [music] and similar tags from burned viral captions (not SRT download). */
+export function stripBurnNonSpeechTags(text) {
+  return normalizeCueText(String(text || '').replace(BURN_STRIP_TAG_RE, ' '));
+}
+
 /**
- * Burn/export from UI preview exportDoc: one cue per segment, text/lines unchanged.
+ * Clean SRT → burn-ready: merge rolling chains, strip tags, keep first sentence visible.
  */
-export function buildPreviewAlignedSubtitles(rawSegments) {
-  const raw = Array.isArray(rawSegments) ? rawSegments : [];
-  const cues = [];
-  for (let i = 0; i < raw.length; i++) {
-    const seg = raw[i];
-    if (!seg || typeof seg.start !== 'number' || typeof seg.end !== 'number' || seg.end <= seg.start) {
+export function prepareCleanSrtBurnCues(rawSegments) {
+  const parsed = (Array.isArray(rawSegments) ? rawSegments : [])
+    .filter((s) => s && typeof s.start === 'number' && typeof s.end === 'number' && s.end > s.start)
+    .map((s) => ({
+      start: Number(s.start),
+      end: Number(s.end),
+      text: stripBurnNonSpeechTags(s.text)
+    }))
+    .filter((s) => s.text);
+
+  const merged = mergeRollingCaptionChains(parsed);
+  return [...merged].sort((a, b) => a.start - b.start);
+}
+
+function shiftCueTimeline(cues, offsetSec) {
+  const offset = Number(offsetSec);
+  if (!Number.isFinite(offset) || Math.abs(offset) < 0.05) {
+    return { cues: Array.isArray(cues) ? cues : [], offsetSec: 0 };
+  }
+  const shifted = (Array.isArray(cues) ? cues : []).map((cue) => {
+    const start = Math.max(0, Number(cue.start) - offset);
+    const end = Math.max(start + 0.05, Number(cue.end) - offset);
+    return {
+      ...cue,
+      start,
+      end,
+      sourceStart: start,
+      sourceEnd: end,
+      duration: Number((end - start).toFixed(3))
+    };
+  });
+  return { cues: shifted, offsetSec: offset };
+}
+
+/**
+ * Align first clean-SRT cue to detected speech in the video file (keeps SRT spacing).
+ */
+export function alignCleanSrtToVideoSpeech(cues, firstSpeechSec) {
+  const sorted = [...(Array.isArray(cues) ? cues : [])].sort((a, b) => a.start - b.start);
+  if (!sorted.length) return { cues: sorted, offsetSec: 0 };
+  const firstStart = Number(sorted[0].start);
+  const speech = Number(firstSpeechSec);
+  if (!Number.isFinite(speech) || speech < 0 || speech > 2.5) {
+    return { cues: sorted, offsetSec: 0 };
+  }
+  const offset = firstStart - speech;
+  if (Math.abs(offset) < 0.05 || Math.abs(offset) > 3.2) {
+    return { cues: sorted, offsetSec: 0 };
+  }
+  return shiftCueTimeline(sorted, offset);
+}
+
+/**
+ * Pick burn timeline alignment: speech anchor when known, else snap to t=0.
+ */
+export function alignCleanSrtForBurn(cues, firstSpeechSec) {
+  const speech = Number(firstSpeechSec);
+  if (Number.isFinite(speech) && speech >= 0 && speech <= 2.5) {
+    return alignCleanSrtToVideoSpeech(cues, speech);
+  }
+  return snapCleanSrtTimelineToZero(cues);
+}
+
+/**
+ * Shift clean-SRT timeline so earliest cue starts at t≈0 (uniform offset, text unchanged).
+ */
+export function snapCleanSrtTimelineToZero(cues) {
+  const list = Array.isArray(cues) ? cues : [];
+  if (!list.length) return { cues: list, offsetSec: 0 };
+  const lead = Math.min(...list.map((c) => Number(c.start)).filter(Number.isFinite));
+  if (!Number.isFinite(lead) || lead < 0.45 || lead > 2.8) {
+    return { cues: list, offsetSec: 0 };
+  }
+  return shiftCueTimeline(list, lead);
+}
+
+/** @deprecated use snapCleanSrtTimelineToZero */
+export function snapPreviewExportTimelineToZero(cues) {
+  return snapCleanSrtTimelineToZero(cues).cues;
+}
+
+/**
+ * Export burn: 1:1 clean SRT cues (no merge, no timeline shift). Text tags stripped only.
+ */
+export function buildCleanSrtExactSubtitles(rawSegments) {
+  const cues = (Array.isArray(rawSegments) ? rawSegments : [])
+    .filter((s) => s && typeof s.start === 'number' && typeof s.end === 'number' && s.end > s.start)
+    .map((seg, i) => {
+      const text = stripBurnNonSpeechTags(seg.text);
+      if (!text) return null;
+      const start = Number(seg.start);
+      const end = Number(seg.end);
+      const previewLines =
+        Array.isArray(seg.previewLines) && seg.previewLines.length
+          ? seg.previewLines.map((l) => String(l))
+          : null;
+      return {
+        id: `srt-${i}`,
+        index: i,
+        start,
+        end,
+        duration: Number((end - start).toFixed(3)),
+        text,
+        words: cueWords(text),
+        sourceStart: start,
+        sourceEnd: end,
+        previewLines
+      };
+    })
+    .filter(Boolean);
+
+  console.log('[clean-srt-exact-burn]', {
+    cueCount: cues.length,
+    firstCue: cues[0]
+      ? { start: cues[0].start, end: cues[0].end, text: String(cues[0].text).slice(0, 80) }
+      : null
+  });
+  return cues;
+}
+
+/**
+ * Whisper often tags the first word ~1–2s late. Extend only cue 0's display window backward
+ * (source timings unchanged for sync checks; renderStart/renderEnd only).
+ */
+export function applyCleanSrtFirstCueLeadIn(cues, opts = {}) {
+  const list = (Array.isArray(cues) ? cues : []).map((c) => ({ ...c }));
+  if (!list.length) return list;
+
+  const fillThroughSec = Number(opts.fillThroughSec ?? 2);
+  const maxLateStartSec = Number(opts.maxLateStartSec ?? 2.8);
+  const minVisibleSec = Number(opts.minVisibleSec ?? 4 / 30 + 0.002);
+
+  const first = list[0];
+  const sourceStart = Number(first.sourceStart ?? first.start);
+  let renderStart = Number(first.renderStart ?? sourceStart);
+  let renderEnd = Number(first.renderEnd ?? first.sourceEnd ?? first.end);
+
+  if (!Number.isFinite(sourceStart) || sourceStart <= 0.05 || sourceStart > maxLateStartSec) {
+    return list;
+  }
+
+  const next = list[1];
+  const nextStart = next ? Number(next.sourceStart ?? next.start) : null;
+
+  renderStart = 0;
+  renderEnd = Math.max(renderEnd, fillThroughSec);
+  if (nextStart != null && nextStart > renderStart) {
+    renderEnd = Math.min(renderEnd, nextStart - 0.001);
+  }
+  if (renderEnd - renderStart < minVisibleSec) {
+    renderEnd = Math.max(renderEnd, renderStart + minVisibleSec);
+    if (nextStart != null) renderEnd = Math.min(renderEnd, nextStart - 0.001);
+  }
+
+  list[0] = { ...first, renderStart, renderEnd };
+  console.log('[clean-srt-first-lead-in]', {
+    sourceStart,
+    renderStart,
+    renderEnd,
+    nextStart
+  });
+  return list;
+}
+
+/**
+ * Split long SRT cues into shorter on-screen chunks (render times only; source SRT unchanged).
+ */
+export function expandCueVisualChunks(cues, opts = {}) {
+  const maxWordsPerChunk = Math.max(2, Number(opts.maxWordsPerChunk ?? 5));
+  const minWordsToSplit = Math.max(maxWordsPerChunk + 1, Number(opts.minWordsToSplit ?? 6));
+  const minChunkSec = Math.max(0.28, Number(opts.minChunkSec ?? 0.38));
+  const minDurToSplitSec = Math.max(2, Number(opts.minDurToSplitSec ?? 2.2));
+  const gapSec = Math.max(0.01, Number(opts.gapSec ?? 0.02));
+
+  const out = [];
+  for (const cue of Array.isArray(cues) ? cues : []) {
+    const text = stripBurnNonSpeechTags(cue.text);
+    if (!text) continue;
+
+    const w = cueWords(text);
+    const start = Number(cue.renderStart ?? cue.sourceStart ?? cue.start);
+    const end = Number(cue.renderEnd ?? cue.sourceEnd ?? cue.end);
+    const dur = end - start;
+
+    if (w.length < minWordsToSplit || dur < minDurToSplitSec || start <= 0.02) {
+      out.push({ ...cue, text, previewLines: null });
       continue;
     }
-    const text = normalizeCueText(
-      seg.text || (Array.isArray(seg.previewLines) ? seg.previewLines.join(' ') : '')
-    );
-    if (!text) continue;
-    const start = Number(seg.start);
-    const end = Number(seg.end);
-    const previewLines =
-      Array.isArray(seg.previewLines) && seg.previewLines.length
-        ? seg.previewLines.map((l) => String(l))
-        : null;
-    cues.push({
+
+    const chunkCount = Math.ceil(w.length / maxWordsPerChunk);
+    const sliceDur = dur / chunkCount;
+
+    for (let i = 0; i < chunkCount; i++) {
+      const chunkWords = w.slice(i * maxWordsPerChunk, (i + 1) * maxWordsPerChunk);
+      const chunkStart = start + i * sliceDur;
+      const chunkEnd = i === chunkCount - 1 ? end : start + (i + 1) * sliceDur - gapSec;
+      out.push({
+        ...cue,
+        id: `${cue.id || 'cue'}-v${i}`,
+        text: chunkWords.join(' '),
+        renderStart: Number(chunkStart.toFixed(3)),
+        renderEnd: Math.max(chunkStart + minChunkSec, Number(chunkEnd.toFixed(3))),
+        previewLines: null
+      });
+    }
+  }
+
+  if (out.length > (Array.isArray(cues) ? cues.length : 0)) {
+    console.log('[clean-srt-visual-chunks]', {
+      inputCues: cues.length,
+      outputCues: out.length,
+      maxWordsPerChunk
+    });
+  }
+  return out.length ? out : cues;
+}
+
+/**
+ * Burn/export from clean SRT: merge rolling utterances, strip [music], keep first line readable.
+ */
+export function buildPreviewAlignedSubtitles(rawSegments) {
+  const prepared = prepareCleanSrtBurnCues(rawSegments);
+  const cues = prepared.map((cue, i) => {
+    const start = Number(cue.start);
+    const end = Number(cue.end);
+    const text = stripBurnNonSpeechTags(cue.text);
+    return {
       id: `preview-${i}`,
       index: i,
       start,
@@ -1301,9 +1519,15 @@ export function buildPreviewAlignedSubtitles(rawSegments) {
       words: cueWords(text),
       sourceStart: start,
       sourceEnd: end,
-      previewLines
-    });
-  }
+      previewLines: null
+    };
+  });
+  console.log('[preview-burn-clean-srt]', {
+    cueCount: cues.length,
+    firstCue: cues[0]
+      ? { start: cues[0].start, end: cues[0].end, text: String(cues[0].text).slice(0, 80) }
+      : null
+  });
   return cues;
 }
 

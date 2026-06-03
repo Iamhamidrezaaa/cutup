@@ -211,11 +211,18 @@ export function layoutLines(text, layout = {}) {
     runEvalShadowIfEnabled(text, layout, productionLines);
   }
 
-  return productionLines.length ? productionLines : [''];
+  const capped =
+    maxLines > 0 && productionLines.length > maxLines
+      ? clampToMaxLines(productionLines.flatMap((l) => words(l)), w, maxLines, min, max, maxChars)
+      : productionLines;
+
+  return capped.length ? capped : [''];
 }
 
 export function buildCueLines(segment, layout, uppercase) {
   const lines = layoutLines(segment.text, layout);
-  if (uppercase) return lines.map((l) => l.toUpperCase());
-  return lines;
+  const maxLines = Math.min(2, Math.max(0, Number(layout.maxLines) || 2));
+  const trimmed = maxLines > 0 && lines.length > maxLines ? lines.slice(0, maxLines) : lines;
+  if (uppercase) return trimmed.map((l) => l.toUpperCase());
+  return trimmed;
 }

@@ -607,11 +607,38 @@ async function runJob(job) {
         ? job.exportDoc
         : null;
     const usePreviewBurn =
-      previewExportDoc && String(job.captionMode || 'viral').toLowerCase() !== 'accurate';
+      Boolean(previewExportDoc) && String(job.captionMode || 'viral').toLowerCase() !== 'accurate';
+    if (previewExportDoc && !usePreviewBurn) {
+      console.log('[preview-burn-skipped]', {
+        jobId: job.id,
+        captionMode: job.captionMode,
+        reason: 'accurate/clean mode uses source-aligned ASS'
+      });
+    }
+    if (previewExportDoc && usePreviewBurn && job.segments?.length) {
+      const doc0 = previewExportDoc.cues[0];
+      const seg0 = job.segments[0];
+      const docText = String(doc0?.text || '').trim().toLowerCase();
+      const segText = String(seg0?.text || '').trim().toLowerCase();
+      if (docText && segText && docText !== segText) {
+        console.warn('[export-doc-segment-mismatch]', {
+          jobId: job.id,
+          exportDocFirst: docText.slice(0, 80),
+          segmentFirst: segText.slice(0, 80)
+        });
+      }
+    }
 
     if (usePreviewBurn) {
       setSubStage(job, 'Applying cinematic layout…', 44);
       job.burnFromPreviewExportDoc = true;
+      console.log('[preview-burn-source]', {
+        jobId: job.id,
+        exportDocCueCount: previewExportDoc.cues.length,
+        firstCue: previewExportDoc.cues[0],
+        lastCue: previewExportDoc.cues[previewExportDoc.cues.length - 1],
+        note: 'ASS uses clean-SRT timings 1:1 (no merge, no speech shift)'
+      });
       assResult = generateAssFromExportDoc(previewExportDoc, {
         ...assOpts,
         presetIdOverride: job.presetId

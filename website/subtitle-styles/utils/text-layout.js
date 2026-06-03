@@ -25,14 +25,24 @@
     if (!w.length) return [''];
     const min = layout.wordsPerLineMin || 2;
     const max = layout.wordsPerLineMax || 6;
-    if (layout.mode === 'single') return [w.join(' ')];
-    if (layout.mode === 'wide') {
+    const maxLines = Math.min(2, Math.max(0, Number(layout.maxLines) || 2));
+    let lines;
+    if (layout.mode === 'single') {
+      lines = [w.join(' ')];
+    } else if (layout.mode === 'wide') {
       const per = layout.wordsPerLineMax || 10;
-      const out = [];
-      for (let i = 0; i < w.length; i += per) out.push(w.slice(i, i + per).join(' '));
-      return out;
+      lines = [];
+      for (let i = 0; i < w.length; i += per) lines.push(w.slice(i, i + per).join(' '));
+    } else {
+      lines = chunkWords(w, min, max);
     }
-    return chunkWords(w, min, max);
+    if (maxLines > 0 && lines.length > maxLines) {
+      const merged = w.join(' ');
+      if (maxLines === 1) return [merged];
+      const mid = Math.ceil(w.length / 2);
+      return [w.slice(0, mid).join(' '), w.slice(mid).join(' ')];
+    }
+    return lines.length ? lines : [''];
   }
 
   global.CutupTextLayout = { layoutLines, words };

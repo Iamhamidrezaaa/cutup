@@ -5,22 +5,26 @@ import { resolveSubtitlePlacement } from './placement.js';
 import { buildCueLines } from './text-layout.js';
 import { cuesAreMostlyRtl, isRtlText, resolveCaptionTypography } from './rtl-text.js';
 
+/** Hard cap for burned MP4 subtitles (never 3+ stacked lines). */
+export const BURN_SUBTITLE_MAX_LINES = 2;
+
 /**
- * Per-cue ASS line layout. RTL cues always single-line (never splitSemanticStack).
+ * Per-cue ASS line layout — stack mode, max two \\N lines (avoids libass soft-wrap to 3–4 rows).
  * @param {object} baseLayout from resolveRenderLayout().layout
  * @param {string} cueText
  */
 export function resolveCueLineLayout(baseLayout, cueText) {
   const layout = { ...(baseLayout || {}) };
+  const cap = Math.min(BURN_SUBTITLE_MAX_LINES, Math.max(1, Number(baseLayout.maxLines) || BURN_SUBTITLE_MAX_LINES));
+  layout.mode = 'stack';
+  layout.maxLines = cap;
+  layout.wordsPerLineMin = Math.min(Number(layout.wordsPerLineMin) || 2, 2);
+  layout.wordsPerLineMax = Math.min(Number(layout.wordsPerLineMax) || 4, 4);
+  layout.maxCharsPerLine = Math.min(Number(layout.maxCharsPerLine) || 22, isRtlText(cueText) ? 36 : 20);
+
   if (isRtlText(cueText)) {
-    layout.mode = 'single';
-    layout.maxLines = 1;
-    layout.maxCharsPerLine = Math.max(Number(layout.maxCharsPerLine) || 36, 72);
-    return layout;
+    layout.maxCharsPerLine = Math.max(layout.maxCharsPerLine, 32);
   }
-  layout.mode = 'single';
-  layout.maxLines = 1;
-  layout.maxCharsPerLine = Math.max(Number(layout.maxCharsPerLine) || 28, 42);
   return layout;
 }
 
@@ -140,17 +144,17 @@ export function resolveRenderLayout(dims, cues, preset) {
     layout.maxCharsPerLine = 22;
     layout.maxLines = 2;
   } else if (isHorizontal) {
-    layout.mode = 'wide';
-    layout.wordsPerLineMin = 3;
-    layout.wordsPerLineMax = 12;
-    layout.maxCharsPerLine = 42;
-    layout.maxLines = 3;
+    layout.mode = 'stack';
+    layout.wordsPerLineMin = 2;
+    layout.wordsPerLineMax = 5;
+    layout.maxCharsPerLine = 28;
+    layout.maxLines = BURN_SUBTITLE_MAX_LINES;
   } else {
     layout.mode = 'stack';
     layout.wordsPerLineMin = 3;
-    layout.wordsPerLineMax = 10;
-    layout.maxCharsPerLine = 36;
-    layout.maxLines = 3;
+    layout.wordsPerLineMax = 8;
+    layout.maxCharsPerLine = 32;
+    layout.maxLines = BURN_SUBTITLE_MAX_LINES;
   }
 
   const presetLayout = preset.layout || {};
@@ -158,13 +162,16 @@ export function resolveRenderLayout(dims, cues, preset) {
   if (presetLayout.wordsPerLineMin != null) layout.wordsPerLineMin = presetLayout.wordsPerLineMin;
   if (presetLayout.wordsPerLineMax != null) layout.wordsPerLineMax = presetLayout.wordsPerLineMax;
   if (presetLayout.maxCharsPerLine != null) layout.maxCharsPerLine = presetLayout.maxCharsPerLine;
-  if (presetLayout.maxLines != null) layout.maxLines = presetLayout.maxLines;
+  if (presetLayout.maxLines != null) {
+    layout.maxLines = Math.min(BURN_SUBTITLE_MAX_LINES, Number(presetLayout.maxLines) || BURN_SUBTITLE_MAX_LINES);
+  }
+  layout.maxLines = Math.min(BURN_SUBTITLE_MAX_LINES, Math.max(1, Number(layout.maxLines) || BURN_SUBTITLE_MAX_LINES));
 
   const rtlEarly = cuesAreMostlyRtl(cues);
   if (rtlEarly) {
-    layout.mode = 'single';
-    layout.maxLines = 1;
-    layout.maxCharsPerLine = Math.max(layout.maxCharsPerLine || 36, 72);
+    layout.mode = 'stack';
+    layout.maxLines = BURN_SUBTITLE_MAX_LINES;
+    layout.maxCharsPerLine = Math.max(layout.maxCharsPerLine || 32, 36);
   }
 
   const placement = resolveSubtitlePlacement(

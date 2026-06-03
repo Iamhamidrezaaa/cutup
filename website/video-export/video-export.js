@@ -168,8 +168,35 @@
     global.CutupSubtitleStyles?.refreshPreview?.();
   }
 
+  /**
+   * Export burn source: clean SRT the site generates (same as "View clean SRT" / download).
+   */
+  function getCleanSrtSegmentsForExport() {
+    if (typeof global.buildCleanSrtFromSource !== 'function' || typeof global.parseSRTToSegments !== 'function') {
+      return { segments: [], source: 'none' };
+    }
+    const cleanSrt = global.buildCleanSrtFromSource();
+    if (!cleanSrt) return { segments: [], source: 'empty' };
+    const parsed = global.parseSRTToSegments(cleanSrt);
+    if (!parsed.length) return { segments: [], source: 'parse_failed' };
+    const stripTags = (text) =>
+      String(text || '')
+        .replace(/\[(?:music|applause|laughter|inaudible|crowd cheering)\]\s*/gi, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+
+    return {
+      segments: parsed.map((s) => ({
+        start: Number(s.start),
+        end: Number(s.end),
+        text: stripTags(s.text)
+      })),
+      source: 'clean-srt'
+    };
+  }
+
   function buildFreshExportDocument(presetId) {
-    const segments = getSourceTruthSegments();
+    const { segments } = getCleanSrtSegmentsForExport();
     if (!segments.length || !global.CutupStyleExport?.buildExportDocument) return null;
     return global.CutupStyleExport.buildExportDocument(segments, presetId);
   }
@@ -185,19 +212,29 @@
 
   function getExportPayload() {
     const presetId = getSelectedPresetId();
-    const segments = getSourceTruthSegments();
+    const { segments, source } = getCleanSrtSegmentsForExport();
     if (!segments.length) return null;
 
     const exportDoc = buildFreshExportDocument(presetId);
     if (exportDoc?.format === 'cutup-style-v1' && exportDoc.cues?.length) {
       global.cutupStyleExportDoc = exportDoc;
-      return {
+      const ordered = [...exportDoc.cues].sort((a, b) => Number(a.start) - Number(b.start));
+      const payload = {
         exportDoc,
         segments: segmentsFromExportDoc(exportDoc),
-        presetId
+        presetId,
+        exportMeta: {
+          segmentSource: source,
+          videoId: global.cutupLastTranscription?.videoId || null,
+          activeVersion: getSelectedVersionKey(),
+          cueCount: exportDoc.cues.length,
+          firstCueText: String(ordered[0]?.text || '').slice(0, 80),
+          firstCueStart: Number(ordered[0]?.start)
+        }
       };
+      return payload;
     }
-    return { segments, presetId };
+    return { segments, presetId, exportMeta: { segmentSource: source } };
   }
 
   function resolveSourceUrl() {
@@ -688,7 +725,10 @@
       console.log('[render-payload]', {
         selectedPresetId: resolvedPresetId,
         selectedVersion,
-        renderQuality: quality
+        renderQuality: quality,
+        exportMeta: resolvedPayload.exportMeta || null,
+        exportCueCount: resolvedPayload.exportDoc?.cues?.length || resolvedPayload.segments?.length || 0,
+        firstExportCue: resolvedPayload.exportDoc?.cues?.[0] || resolvedPayload.segments?.[0] || null
       });
       const sourceUrl = resolveSourceUrl();
 

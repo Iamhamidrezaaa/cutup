@@ -107,7 +107,15 @@
         background: 'transparent',
         shadow: '3px 3px 0 rgba(0,0,0,0.6)'
       },
-      layout: { mode: 'stack', wordsPerLineMin: 2, wordsPerLineMax: 4, align: 'center', maxWidth: '88%' },
+      layout: {
+        mode: 'stack',
+        wordsPerLineMin: 2,
+        wordsPerLineMax: 4,
+        maxCharsPerLine: 20,
+        maxLines: 2,
+        align: 'center',
+        maxWidth: '88%'
+      },
       emphasis: { handler: 'hormozi', mode: 'spokenWord' },
       motion: { cueEnter: 'pop', durationMs: 50, staggerMs: 0 },
       export: {

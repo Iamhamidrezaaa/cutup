@@ -221,10 +221,29 @@ async function handleStart(req, res) {
     });
   }
 
+  const firstExportCue = exportDoc?.cues?.[0];
+  const firstSegment = segments[0];
   console.log('[render-payload]', {
     selectedPresetId: presetId,
     selectedVersion,
-    renderQuality: quality
+    renderQuality: quality,
+    hasExportDoc: Boolean(exportDoc?.cues?.length),
+    exportDocCueCount: exportDoc?.cues?.length || 0,
+    segmentCount: segments.length,
+    firstExportDocCue: firstExportCue
+      ? {
+          start: firstExportCue.start,
+          end: firstExportCue.end,
+          text: String(firstExportCue.text || '').slice(0, 100)
+        }
+      : null,
+    firstSegment: firstSegment
+      ? {
+          start: firstSegment.start,
+          end: firstSegment.end,
+          text: String(firstSegment.text || '').slice(0, 100)
+        }
+      : null
   });
 
   extractionDebug(traceId, {
