@@ -40,6 +40,9 @@ import { logExportRootCauseForensics } from './export-root-cause-forensics.js';
 import { logPhraseTimingForensics } from './phrase-timing-forensics.js';
 import { logWhisperStarttimeForensics } from './whisper-starttime-forensics.js';
 import { logRtlPhraseOrderForensics } from './rtl-phrase-order-forensics.js';
+import { logCaptionPositionForensics } from './caption-position-forensics.js';
+import { logLineLayoutForensics } from './line-layout-forensics.js';
+import { logFirstCaptionForensics } from './first-caption-forensics.js';
 import { logProductionAssDialogueDump } from './subtitle-text-forensics.js';
 
 const MAX_CONCURRENT = Math.max(1, Math.min(3, Number(process.env.VIDEO_RENDER_CONCURRENCY || 1)));
@@ -676,6 +679,63 @@ async function runJob(job) {
           assResult,
           presetId: job.presetId,
           captionMode: job.captionMode || 'viral',
+          jobId: job.id,
+          traceId: job.traceId || null,
+          jobDir: job.jobDir
+        });
+        logCaptionPositionForensics({
+          segments: job.segments,
+          assResult,
+          presetId: job.presetId,
+          captionMode: job.captionMode || 'viral',
+          durationSec: probe.durationSec,
+          playResX: assOpts.playResX,
+          playResY: assOpts.playResY,
+          positionMode: assOpts.positionMode,
+          minCueDurationSec:
+            assResult.renderProfile?.styleMode === 'safe'
+              ? 0.95
+              : assResult.renderProfile?.styleMode === 'cinematic'
+                ? 0.84
+                : 0.74,
+          jobId: job.id,
+          traceId: job.traceId || null,
+          jobDir: job.jobDir
+        });
+        logLineLayoutForensics({
+          segments: job.segments,
+          assResult,
+          presetId: job.presetId,
+          captionMode: job.captionMode || 'viral',
+          durationSec: probe.durationSec,
+          playResX: assOpts.playResX,
+          playResY: assOpts.playResY,
+          positionMode: assOpts.positionMode,
+          minCueDurationSec:
+            assResult.renderProfile?.styleMode === 'safe'
+              ? 0.95
+              : assResult.renderProfile?.styleMode === 'cinematic'
+                ? 0.84
+                : 0.74,
+          jobId: job.id,
+          traceId: job.traceId || null,
+          jobDir: job.jobDir
+        });
+        await logFirstCaptionForensics({
+          segments: job.segments,
+          assResult,
+          probe,
+          videoPath,
+          presetId: job.presetId,
+          captionMode: job.captionMode || 'viral',
+          durationSec: probe.durationSec,
+          captionForensics: job.captionForensics,
+          minCueDurationSec:
+            assResult.renderProfile?.styleMode === 'safe'
+              ? 0.95
+              : assResult.renderProfile?.styleMode === 'cinematic'
+                ? 0.84
+                : 0.74,
           jobId: job.id,
           traceId: job.traceId || null,
           jobDir: job.jobDir
