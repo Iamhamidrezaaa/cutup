@@ -5428,7 +5428,10 @@ async function processSummarize(url, sessionId, platform = 'youtube') {
         CUTUP_PIPELINE.GENERATE_TRANSCRIPT,
         CUTUP_PIPELINE.GENERATE_TRANSCRIPT
       );
-      transcription = await transcribeAudio(audioUrl, null, sessionId, {
+      const youtubeLangHint =
+        youtubeResult.language || youtubeResult.subtitleLanguage || null;
+      if (youtubeLangHint) setDetectedSourceLanguage(youtubeLangHint);
+      transcription = await transcribeAudio(audioUrl, youtubeLangHint, sessionId, {
         platform,
         title: youtubeResult.title || `${getPlatformName(platform)} video`,
         sourceUrl: url
@@ -5591,7 +5594,10 @@ async function processFullText(url, sessionId, platform = 'youtube', activeTab =
         CUTUP_PIPELINE.GENERATE_TRANSCRIPT,
         CUTUP_PIPELINE.GENERATE_TRANSCRIPT
       );
-      transcription = await transcribeAudio(audioUrl, null, sessionId, {
+      const youtubeLangHint =
+        youtubeResult.language || youtubeResult.subtitleLanguage || null;
+      if (youtubeLangHint) setDetectedSourceLanguage(youtubeLangHint);
+      transcription = await transcribeAudio(audioUrl, youtubeLangHint, sessionId, {
         platform,
         title: youtubeResult.title || `${getPlatformName(platform)} video`,
         sourceUrl: url

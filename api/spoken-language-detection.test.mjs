@@ -24,4 +24,20 @@ if (realRussian.detectedLanguage !== 'ru') {
 
 const analysis = analyzeTranscriptLanguage('Hello world this is a test');
 console.log('analysis top', analysis.top, analysis.latinRatio);
+if (analysis.top !== 'en') {
+  console.error('FAIL: expected en for English sample');
+  process.exit(1);
+}
+
+const french = resolveSpokenLanguage(
+  'en',
+  'Tout le monde il est candidat mais personne ne le sait encore pour cette élection.',
+  [{ text: 'Tout le monde il est candidat' }]
+);
+console.log('french override', french.detectedLanguage, french.resolution);
+if (french.detectedLanguage !== 'fr') {
+  console.error('FAIL: expected fr for French transcript');
+  process.exit(1);
+}
+
 console.log('ok');

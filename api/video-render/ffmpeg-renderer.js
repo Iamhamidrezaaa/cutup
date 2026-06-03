@@ -116,13 +116,17 @@ export function resolveSubtitleRenderGeometry({
   const srcW = roundEven(sourceWidth || 1080);
   const srcH = roundEven(sourceHeight || 1920);
   const isVertical = Boolean(renderHints?.isVertical) || srcH > srcW * 1.05;
+  const isHorizontal = srcW > srcH * 1.15;
   const enc = resolveEncodeProfile(quality, renderHints);
+  const playResX = isVertical ? 1080 : srcW;
+  const playResY = isVertical ? 1920 : srcH;
 
   return {
     enc,
     isVertical,
-    playResX: 1080,
-    playResY: 1920,
+    isHorizontal,
+    playResX,
+    playResY,
     outputWidth: isVertical ? 1080 : srcW,
     outputHeight: isVertical ? 1920 : srcH,
     sourceWidth: srcW,

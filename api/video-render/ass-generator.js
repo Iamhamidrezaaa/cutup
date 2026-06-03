@@ -710,13 +710,13 @@ export function generateAssContent(segments, presetId, dims = {}) {
     const syncStart = Number(
       useSourceAlignedTimings
         ? enrichedCue.sourceStart ?? enrichedCue.start
-        : enrichedCue.sourceStart ?? enrichedCue.start ?? enrichedCue.renderStart
+        : enrichedCue.firstWordStart ?? enrichedCue.sourceStart ?? enrichedCue.start
     );
     const syncEnd = Number(
       useSourceAlignedTimings
         ? enrichedCue.sourceEnd ?? enrichedCue.end
         : Math.max(
-            Number(enrichedCue.sourceEnd ?? enrichedCue.end),
+            Number(enrichedCue.lastWordEnd ?? enrichedCue.sourceEnd ?? enrichedCue.end),
             Number(enrichedCue.renderEnd ?? enrichedCue.end)
           )
     );

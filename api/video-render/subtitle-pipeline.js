@@ -3,6 +3,7 @@
  * Styling layers must never mutate transcript semantics.
  */
 import { decodeSubtitleTextEntities } from '../subtitle-text-entities.js';
+import { layoutLines } from './text-layout.js';
 
 export const CAPTION_QUALITY_MODES = Object.freeze({
   ACCURATE: 'accurate',
@@ -350,6 +351,15 @@ function silenceGapThresholdSec(speechRate) {
   return 0.18;
 }
 
+/** Viral phrase split guard — one visual line per cue (stable burn position). */
+const VIRAL_PHRASE_LAYOUT = Object.freeze({
+  maxLines: 1,
+  wordsPerLineMin: 1,
+  wordsPerLineMax: 8,
+  maxCharsPerLine: 28,
+  mode: 'single'
+});
+
 const SYNC_PREROLL_MAX_SEC = 0.025;
 const SYNC_TAIL_MAX_SEC = 0.04;
 const SYNC_OVERLAP_GAP_SEC = 0.015;
@@ -383,14 +393,26 @@ function speechAnchorEnd(chunkMeta) {
   return pool[pool.length - 1].end;
 }
 
-function reanchorBlockTiming(block) {
+function reanchorBlockTiming(block, timingOpts = {}) {
   const meta = block.wordTimeline || [];
   if (!meta.length) return block;
   const speechAnchor = speechAnchorStart(meta);
   const lastWordEnd = speechAnchorEnd(meta);
   const speechRate = wordsPerSecond(meta.length, lastWordEnd - speechAnchor);
   const pad = adaptivePaddingFromSpeechRate(speechRate);
-  const phraseStartAfterReanchor = Math.max(0, speechAnchor - pad.preroll);
+  const useTightSync = timingOpts.tightSync !== false;
+  let phraseStartAfterReanchor = useTightSync
+    ? Math.max(0, speechAnchor)
+    : Math.max(0, speechAnchor - pad.preroll);
+  if (timingOpts.forceStartAtZero) {
+    phraseStartAfterReanchor = 0;
+  } else if (
+    Number.isFinite(Number(block.segmentStart)) &&
+    Number(block.segmentStart) <= 0.2 &&
+    speechAnchor <= 0.35
+  ) {
+    phraseStartAfterReanchor = 0;
+  }
   if (isPhraseTimingForensicCaptureActive()) {
     block._phraseTimingTrace = {
       ...(block._phraseTimingTrace || {}),
@@ -603,117 +625,351 @@ export function validateAndFixCaptionTimingForExport(captions) {
   return list;
 }
 
+function resolveSegmentIds(seg, index) {
+  const translatedSegmentId =
+    seg.translatedSegmentId != null
+      ? String(seg.translatedSegmentId)
+      : seg.id != null
+        ? String(seg.id)
+        : `translated_${index}`;
+  const sourceSegmentId =
+    seg.sourceSegmentId != null
+      ? String(seg.sourceSegmentId)
+      : seg.sourceId != null
+        ? String(seg.sourceId)
+        : translatedSegmentId;
+  return { sourceSegmentId, translatedSegmentId, segmentIndex: index };
+}
+
+function collapseProgressiveTranslatedSegments(rawSegments) {
+  const out = [];
+  for (let i = 0; i < rawSegments.length; i++) {
+    const seg = rawSegments[i];
+    if (!seg || typeof seg.start !== 'number' || typeof seg.end !== 'number' || seg.end <= seg.start) {
+      continue;
+    }
+    const text = normalizeCueText(seg.text || '');
+    if (!text) continue;
+    const prev = out[out.length - 1];
+    if (prev) {
+      const prevNorm = normalizeForAccumulation(prev.text);
+      const nextNorm = normalizeForAccumulation(text);
+      const growing = nextNorm.startsWith(prevNorm) && nextNorm.length > prevNorm.length;
+      const near = Number(seg.start) <= Number(prev.end) + 0.3;
+      if (growing && near) {
+        prev.end = Math.max(Number(prev.end), Number(seg.end));
+        prev.text = text;
+        if (Array.isArray(seg.words) && seg.words.length) prev.words = seg.words;
+        continue;
+      }
+    }
+    out.push({ ...seg, text });
+  }
+  return out;
+}
+
+function phraseVisualLineCount(text, layout = VIRAL_PHRASE_LAYOUT) {
+  const lines = layoutLines(normalizeCueText(text), layout);
+  return lines.filter(Boolean).length;
+}
+
+function buildSegmentTextOrderedTimeline(seg) {
+  const segStart = Number(seg.start);
+  const segEnd = Number(seg.end);
+  const text = normalizeCueText(seg.text || '');
+  const tokens = cueWords(text);
+  if (!tokens.length) return [];
+
+  const minWordDur = 0.06;
+  const sourceWords = Array.isArray(seg.words) && seg.words.length ? seg.words : null;
+  const out = [];
+
+  if (sourceWords) {
+    let srcIdx = 0;
+    for (let ti = 0; ti < tokens.length; ti++) {
+      const token = tokens[ti];
+      while (
+        srcIdx < sourceWords.length &&
+        normalizeWord(sourceWords[srcIdx]?.word || sourceWords[srcIdx]?.text) !== normalizeWord(token)
+      ) {
+        srcIdx += 1;
+      }
+      const raw = sourceWords[srcIdx] || null;
+      let ws = Number(raw?.start);
+      let we = Number(raw?.end);
+      if (!Number.isFinite(ws)) ws = segStart;
+      if (!Number.isFinite(we)) we = ws + minWordDur;
+      ws = Math.max(segStart, ws);
+      we = Math.min(segEnd, Math.max(ws + minWordDur, we));
+      out.push({
+        word: token,
+        cleanWord: normalizeWord(token),
+        start: ws,
+        end: we,
+        duration: Number((we - ws).toFixed(3)),
+        confidence: Number.isFinite(Number(raw?.confidence)) ? Number(raw.confidence) : null
+      });
+      if (raw) srcIdx += 1;
+    }
+  } else {
+    const dur = Math.max(minWordDur * tokens.length, segEnd - segStart);
+    const per = dur / tokens.length;
+    for (let i = 0; i < tokens.length; i++) {
+      const ws = segStart + i * per;
+      const we = Math.min(segEnd, Math.max(ws + minWordDur, segStart + (i + 1) * per));
+      out.push({
+        word: tokens[i],
+        cleanWord: normalizeWord(tokens[i]),
+        start: ws,
+        end: we,
+        duration: Number((we - ws).toFixed(3)),
+        confidence: null
+      });
+    }
+  }
+
+  for (let i = 1; i < out.length; i++) {
+    const prev = out[i - 1];
+    const cur = out[i];
+    if (cur.start < prev.end - 0.01) cur.start = prev.end - 0.01;
+    cur.end = Math.max(cur.start + minWordDur, cur.end);
+    cur.duration = Number((cur.end - cur.start).toFixed(3));
+  }
+  return out;
+}
+
+function subdividePhraseSpec(spec, allWords, layout = VIRAL_PHRASE_LAYOUT) {
+  const subTokens = allWords.slice(spec.tokenStart, spec.tokenEnd + 1);
+  if (subTokens.length <= 1) {
+    return [{ ...spec, boundaryReason: spec.boundaryReason || 'max_one_line' }];
+  }
+  const pivot = Math.max(1, Math.round(subTokens.length / 2));
+  const left = {
+    text: subTokens.slice(0, pivot).join(' '),
+    tokenStart: spec.tokenStart,
+    tokenEnd: spec.tokenStart + pivot - 1,
+    boundaryReason: 'max_one_line_split'
+  };
+  const right = {
+    text: subTokens.slice(pivot).join(' '),
+    tokenStart: spec.tokenStart + pivot,
+    tokenEnd: spec.tokenEnd,
+    boundaryReason: 'max_one_line_split'
+  };
+  const out = [];
+  for (const part of [left, right]) {
+    if (phraseVisualLineCount(part.text, layout) > 1 && cueWords(part.text).length > 1) {
+      out.push(...subdividePhraseSpec(part, allWords, layout));
+    } else {
+      out.push(part);
+    }
+  }
+  return out;
+}
+
+function splitSegmentTextIntoPhrases(segmentText, opts = {}) {
+  const text = normalizeCueText(segmentText);
+  const w = cueWords(text);
+  if (!w.length) return [];
+
+  const baseMaxWords = Math.max(2, Math.min(5, Number(opts.maxWordsPerPhrase ?? opts.maxWordsPerBlock ?? 4)));
+  const layout = opts.phraseLayout || VIRAL_PHRASE_LAYOUT;
+  const rawPieces = [];
+  let bucketStart = 0;
+
+  for (let i = 0; i < w.length; i++) {
+    const token = w[i];
+    const chunkLen = i - bucketStart + 1;
+    const hitPunctStrong = /[.!?…]["']?$/.test(token);
+    const hitPunctSoft = /[,;:]["']?$/.test(token) && chunkLen >= 2;
+    const hitMaxWords = chunkLen >= baseMaxWords;
+    const atEnd = i === w.length - 1;
+
+    if (hitPunctStrong || hitPunctSoft || hitMaxWords || atEnd) {
+      rawPieces.push({
+        text: w.slice(bucketStart, i + 1).join(' '),
+        tokenStart: bucketStart,
+        tokenEnd: i,
+        boundaryReason: hitPunctStrong
+          ? 'punctuation'
+          : hitPunctSoft
+            ? 'punctuation_soft'
+            : hitMaxWords
+              ? 'max_words'
+              : 'segment_end'
+      });
+      bucketStart = i + 1;
+    }
+  }
+
+  const final = [];
+  for (const piece of rawPieces) {
+    if (phraseVisualLineCount(piece.text, layout) > 1) {
+      final.push(...subdividePhraseSpec(piece, w, layout));
+    } else {
+      final.push(piece);
+    }
+  }
+  return final;
+}
+
+function clampFirstPhraseCueTiming(smoothed, firstSeg) {
+  if (!smoothed.length) return;
+  const fc = smoothed[0];
+  const meta0 = fc.wordTimeline?.[0];
+  if (meta0 && Number.isFinite(Number(meta0.start)) && Number(meta0.start) < fc.start - 0.02) {
+    const anchor = Math.max(0, Number(meta0.start));
+    fc.start = anchor;
+    fc.adjustedStart = anchor;
+    fc.firstWordStart = anchor;
+  }
+  const fw = Number(fc.firstWordStart ?? fc.start);
+  if (fw <= 0.25) {
+    fc.start = 0;
+    fc.adjustedStart = 0;
+    fc.firstWordStart = Math.max(0, fw);
+  }
+  if (
+    firstSeg &&
+    meta0 &&
+    Number(firstSeg.start) > 0.5 &&
+    Number(meta0.start) < Number(firstSeg.start) - 0.15
+  ) {
+    const anchor = Math.max(0, Number(meta0.start));
+    fc.start = anchor;
+    fc.adjustedStart = anchor;
+    fc.firstWordStart = anchor;
+  }
+}
+
+function splitLongPhraseByDuration(spec, allWords, timeline, maxDurationSec) {
+  const meta = timeline.slice(spec.tokenStart, spec.tokenEnd + 1);
+  if (!meta.length || meta[meta.length - 1].end - meta[0].start <= maxDurationSec) {
+    return [spec];
+  }
+  const parts = [];
+  let chunkStart = 0;
+  for (let i = 0; i < meta.length; i++) {
+    const span = meta[i].end - meta[chunkStart].start;
+    const atEnd = i === meta.length - 1;
+    const gap = i < meta.length - 1 ? meta[i + 1].start - meta[i].end : 0;
+    const boundary =
+      atEnd ||
+      span >= maxDurationSec ||
+      (gap >= silenceGapThresholdSec(3) && i - chunkStart >= 1);
+    if (!boundary) continue;
+    const absStart = spec.tokenStart + chunkStart;
+    const absEnd = spec.tokenStart + i;
+    parts.push({
+      text: allWords.slice(absStart, absEnd + 1).join(' '),
+      tokenStart: absStart,
+      tokenEnd: absEnd,
+      boundaryReason: 'max_duration'
+    });
+    chunkStart = i + 1;
+  }
+  return parts.length ? parts : [spec];
+}
+
 function composeRhythmBlocks(rawSegments, opts = {}) {
-  const baseMaxWords = Math.max(3, Math.min(5, Number(opts.maxWordsPerBlock ?? 5)));
   const minDurationSec = Math.max(0.4, Number(opts.minDurationSec ?? 0.7));
   const maxDurationSec = Math.max(minDurationSec, Number(opts.maxDurationSec ?? 2.6));
-  const overlapGuardSec = Math.max(0, Number(opts.overlapGuardSec ?? SYNC_OVERLAP_GAP_SEC));
-  const timelineResult = normalizeWordTimeline(rawSegments, opts);
-  const timeline = timelineResult.words;
-  const globalRate = globalSpeechRateWps(timeline);
+  const segments = collapseProgressiveTranslatedSegments(Array.isArray(rawSegments) ? rawSegments : []);
   const blocks = [];
-  let i = 0;
-  while (i < timeline.length) {
-    const chunkMeta = [timeline[i]];
-    let j = i + 1;
-    let boundaryReason = null;
-    let boundaryGap = null;
+  let isFirstExportCue = true;
 
-    while (j < timeline.length) {
-      const prev = chunkMeta[chunkMeta.length - 1];
-      const next = timeline[j];
-      const gap = next.start - prev.end;
-      const localRate = wordsPerSecond(chunkMeta.length, prev.end - chunkMeta[0].start);
-      const dynamicMaxWords = localRate > 3.8 ? 3 : localRate > 2.7 ? 4 : baseMaxWords;
-      const decision = shouldForceCaptionBoundary(prev, next, gap, globalRate, chunkMeta.length, dynamicMaxWords);
-      boundaryGap = gap;
-      if (decision.break) {
-        boundaryReason = decision.reason;
-        break;
+  for (let segIndex = 0; segIndex < segments.length; segIndex++) {
+    const seg = segments[segIndex];
+    const segmentText = normalizeCueText(seg.text || '');
+    if (!segmentText) continue;
+
+    const { sourceSegmentId, translatedSegmentId } = resolveSegmentIds(seg, segIndex);
+    const tokenTimeline = buildSegmentTextOrderedTimeline(seg);
+    const allWords = cueWords(segmentText);
+    let phraseSpecs = splitSegmentTextIntoPhrases(segmentText, opts);
+
+    const expandedSpecs = [];
+    for (const spec of phraseSpecs) {
+      const sub = splitLongPhraseByDuration(spec, allWords, tokenTimeline, maxDurationSec);
+      for (const s of sub) {
+        if (phraseVisualLineCount(s.text) > 1) {
+          expandedSpecs.push(...subdividePhraseSpec(s, allWords));
+        } else {
+          expandedSpecs.push(s);
+        }
       }
-      chunkMeta.push(next);
-      if (/[.!?]$/.test(String(next.word)) && chunkMeta.length >= 2) {
-        boundaryReason = 'punctuation';
-        j += 1;
-        break;
-      }
-      j += 1;
     }
+    phraseSpecs = expandedSpecs;
 
-    const text = normalizeCueText(chunkMeta.map((w) => w.word).join(' '));
-    blocks.push(
-      reanchorBlockTiming({
+    for (const spec of phraseSpecs) {
+      const text = normalizeCueText(spec.text);
+      if (!text) continue;
+      const chunkMeta = tokenTimeline.slice(spec.tokenStart, spec.tokenEnd + 1);
+      const firstWordAt = Number(chunkMeta[0]?.start ?? seg.start);
+      const forceZero =
+        isFirstExportCue &&
+        (Number(seg.start) <= 0.2 || firstWordAt <= 0.2) &&
+        firstWordAt <= 0.35;
+
+      const baseBlock = {
         text,
         words: cueWords(text),
         wordTimeline: chunkMeta,
-        boundaryReason,
-        boundaryGap: boundaryGap != null ? Number(boundaryGap.toFixed(4)) : null
-      })
-    );
-    i = j;
-  }
+        boundaryReason: spec.boundaryReason ?? null,
+        sourceSegmentId,
+        translatedSegmentId,
+        segmentIndex: segIndex,
+        segmentStart: Number(seg.start),
+        segmentEnd: Number(seg.end)
+      };
 
-  // Remove progressive accumulation patterns by replacing previous growing text.
-  const collapsed = [];
-  for (const b of blocks) {
-    const prev = collapsed[collapsed.length - 1];
-    if (!prev) {
-      collapsed.push({ ...b });
-      continue;
+      if (!chunkMeta.length) {
+        const segStart = Number(seg.start);
+        const segEnd = Number(seg.end);
+        blocks.push({
+          ...baseBlock,
+          start: forceZero ? 0 : segStart,
+          end: segEnd,
+          adjustedStart: forceZero ? 0 : segStart,
+          adjustedEnd: segEnd,
+          firstWordStart: forceZero ? 0 : segStart,
+          lastWordEnd: segEnd,
+          speechRate: 3
+        });
+      } else {
+        blocks.push(reanchorBlockTiming(baseBlock, { forceStartAtZero: forceZero }));
+      }
+      isFirstExportCue = false;
     }
-    const prevNorm = normalizeForAccumulation(prev.text);
-    const nextNorm = normalizeForAccumulation(b.text);
-    const growing = nextNorm.startsWith(prevNorm) && nextNorm.length > prevNorm.length;
-    const near = b.start <= prev.end + 0.25;
-    if (growing && near) {
-      prev.text = b.text;
-      prev.words = b.words;
-      prev.wordTimeline = [...(prev.wordTimeline || []), ...(b.wordTimeline || [])];
-      const merged = reanchorBlockTiming(prev);
-      Object.assign(prev, merged);
-      continue;
-    }
-    collapsed.push({ ...b });
-  }
-
-  const bounded = [];
-  for (const b of collapsed) {
-    const splits = splitLongBlockOnWordBoundaries(b, maxDurationSec);
-    bounded.push(...splits);
   }
 
   const smoothed = [];
-  for (const block of bounded) {
+  for (const block of blocks) {
     const cur = reanchorBlockTiming({ ...block });
     const prev = smoothed[smoothed.length - 1];
-    if (prev) {
-      const prevDur = prev.end - prev.start;
-      if (prevDur < minDurationSec) {
-        prev.text = `${prev.text} ${cur.text}`.trim();
-        prev.words = cueWords(prev.text);
-        prev.wordTimeline = [...(prev.wordTimeline || []), ...(cur.wordTimeline || [])];
-        Object.assign(prev, reanchorBlockTiming(prev));
-        continue;
+    if (prev && cur.end - cur.start < minDurationSec) {
+      const extendedEnd = Math.max(prev.end, cur.start - SYNC_OVERLAP_GAP_SEC);
+      if (extendedEnd > prev.start + 0.08) {
+        prev.end = extendedEnd;
+        prev.adjustedEnd = prev.end;
       }
     }
     smoothed.push(cur);
   }
-  if (smoothed.length > 1) {
-    const last = smoothed[smoothed.length - 1];
-    const prev = smoothed[smoothed.length - 2];
-    if (last.end - last.start < minDurationSec) {
-      prev.text = `${prev.text} ${last.text}`.trim();
-      prev.words = cueWords(prev.text);
-      prev.wordTimeline = [...(prev.wordTimeline || []), ...(last.wordTimeline || [])];
-      Object.assign(prev, reanchorBlockTiming(prev));
-      smoothed.pop();
-    }
-  }
 
   eliminateCaptionOverlaps(smoothed, SYNC_OVERLAP_GAP_SEC);
-  detectAndCorrectDrift(smoothed);
   applySpeechRatePersistence(smoothed);
   eliminateCaptionOverlaps(smoothed, SYNC_OVERLAP_GAP_SEC);
+  clampFirstPhraseCueTiming(smoothed, segments[0]);
+
+  const firstSeg = segments[0];
+  if (smoothed.length && firstSeg && Number(firstSeg.start) <= 0.2) {
+    smoothed[0].start = 0;
+    smoothed[0].adjustedStart = 0;
+    if (Number(smoothed[0].firstWordStart) > 0.2) {
+      smoothed[0].firstWordStart = Math.min(Number(smoothed[0].firstWordStart), 0);
+    }
+  }
 
   if (isPhraseTimingForensicCaptureActive()) {
     for (let i = 0; i < smoothed.length; i++) {
@@ -722,6 +978,8 @@ function composeRhythmBlocks(rawSegments, opts = {}) {
       _phraseTimingComposeForensicRows.push({
         phraseIndex: i,
         phraseText: normalizeCueText(b.text),
+        sourceSegmentId: b.sourceSegmentId ?? null,
+        translatedSegmentId: b.translatedSegmentId ?? null,
         firstWordStart: Number(b.firstWordStart ?? trace.firstWordStart ?? null),
         speechAnchorStart: Number(trace.speechAnchorStart ?? b.firstWordStart ?? null),
         phraseStartBeforeReanchor: Number(trace.phraseStartBeforeReanchor ?? b.firstWordStart ?? null),
@@ -753,6 +1011,9 @@ function composeRhythmBlocks(rawSegments, opts = {}) {
     boundaryReason: b.boundaryReason ?? null,
     boundaryGap: b.boundaryGap ?? null,
     driftCorrectionApplied: b.driftCorrectionApplied ?? 0,
+    sourceSegmentId: b.sourceSegmentId ?? null,
+    translatedSegmentId: b.translatedSegmentId ?? null,
+    segmentIndex: Number.isFinite(Number(b.segmentIndex)) ? Number(b.segmentIndex) : null,
     _words: b.words
   }));
   logCaptionSyncDebug(out);
@@ -763,13 +1024,11 @@ function composeRhythmBlocks(rawSegments, opts = {}) {
     cur.emphasisWords = cur.emphasisWords.filter((w) => !prev.emphasisWords.includes(w)).slice(0, 2);
   }
   console.log(
-    '[asr-stabilization-debug]',
-    timelineResult.logs
-  );
-  console.log(
     '[word-timing-debug]',
     out.map((c) => ({
       words: c.words,
+      sourceSegmentId: c.sourceSegmentId,
+      translatedSegmentId: c.translatedSegmentId,
       firstWordStart: c.firstWordStart,
       lastWordEnd: c.lastWordEnd,
       adjustedStart: c.adjustedStart,
@@ -790,7 +1049,10 @@ function cloneCue(cue) {
     text: cue.text,
     words: cue.words,
     duration: cue.duration,
-    emphasisWords: cue.emphasisWords
+    emphasisWords: cue.emphasisWords,
+    sourceSegmentId: cue.sourceSegmentId ?? null,
+    translatedSegmentId: cue.translatedSegmentId ?? null,
+    segmentIndex: cue.segmentIndex ?? null
   };
 }
 
@@ -1194,6 +1456,15 @@ export function applyVisualReadabilityWindows(visualCues, opts = {}) {
     cue.renderEnd = Number(cue.renderEnd ?? cue.end ?? cue.sourceEnd);
     cue.sourceStart = Number(cue.sourceStart ?? cue.start);
     cue.sourceEnd = Number(cue.sourceEnd ?? cue.end);
+
+    if (i === 0) {
+      const fw = Number(cue.firstWordStart ?? cue.start);
+      if (fw <= 0.25) {
+        cue.sourceStart = 0;
+        cue.renderStart = 0;
+        cue.start = 0;
+      }
+    }
 
     const minEndByFrame = cue.renderStart + Math.max(0.04, minCueDurationSec);
     if (cue.renderEnd < minEndByFrame) cue.renderEnd = minEndByFrame;

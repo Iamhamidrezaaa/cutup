@@ -63,10 +63,13 @@ export function pickSubtitleLanguageFromMetadata({
 
   const preferred =
     userHint ||
+    pickMetadataAlignedLanguage(detectedLanguage, all) ||
     (detectedLanguage && !shouldIgnoreDetectedLanguage(detectedLanguage, all)
       ? detectedLanguage
       : null) ||
+    pickPreferredSubtitleLanguage(all, detectedLanguage || null) ||
     inferEnglishIfPresent(all) ||
+    all[0] ||
     'en';
 
   return pickPreferredSubtitleLanguage(all, preferred);
@@ -87,6 +90,22 @@ function inferEnglishIfPresent(available) {
   return en || null;
 }
 
+function inferLanguagePrefix(available, prefix) {
+  const p = norm(prefix);
+  if (!p) return null;
+  return available.map(norm).find((l) => l === p || l.startsWith(`${p}-`)) || null;
+}
+
+/** Prefer video metadata language over incidental English auto-caption tracks. */
+function pickMetadataAlignedLanguage(metadataLang, available) {
+  const meta = norm(metadataLang);
+  if (!meta) return null;
+  const hit = inferLanguagePrefix(available, meta);
+  if (hit) return hit;
+  if (!shouldIgnoreDetectedLanguage(meta, available)) return meta;
+  return null;
+}
+
 /**
  * Normalize detected language from video metadata (not first auto-caption key).
  */
@@ -95,5 +114,15 @@ export function resolveDetectedLanguage(metadataLang, autoCaptionKeys, manualCap
   const all = [...new Set([...(autoCaptionKeys || []), ...(manualCaptionKeys || [])].map(norm))];
 
   if (meta && !shouldIgnoreDetectedLanguage(meta, all)) return meta;
-  return inferEnglishIfPresent(all) || pickPreferredSubtitleLanguage(all, 'en');
+
+  const metaAligned = pickMetadataAlignedLanguage(meta, all);
+  if (metaAligned) return metaAligned;
+
+  const localePriority = ['fr', 'de', 'es', 'it', 'pt', 'en'];
+  for (const code of localePriority) {
+    const hit = inferLanguagePrefix(all, code);
+    if (hit) return hit;
+  }
+
+  return pickPreferredSubtitleLanguage(all, meta || all[0] || 'en');
 }

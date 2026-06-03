@@ -135,10 +135,14 @@ export function buildTimelineBurnPlan(probe, subtitleCues = [], opts = {}) {
 
     if (speechLeadSec > 0.25 && speechLeadSec < 10) {
       const speechDelta = speech - cueStart;
-      const anchorBlend = Math.max(
-        0.25,
-        Math.min(1, Number(process.env.RENDER_BURN_SPEECH_ANCHOR_BLEND || 0.55))
-      );
+      const envBlend = Number(process.env.RENDER_BURN_SPEECH_ANCHOR_BLEND);
+      const anchorBlend = Number.isFinite(envBlend)
+        ? Math.max(0.25, Math.min(1, envBlend))
+        : speechLeadSec >= 1.2
+          ? 1
+          : speechLeadSec >= 0.6
+            ? 0.92
+            : 0.75;
       videoPtsShiftSec = 0;
       assShiftSec = Number((speechDelta * anchorBlend).toFixed(4));
       logFfmpegTimelineDebug({

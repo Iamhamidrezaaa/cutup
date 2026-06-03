@@ -12,10 +12,15 @@ import { cuesAreMostlyRtl, isRtlText, resolveCaptionTypography } from './rtl-tex
  */
 export function resolveCueLineLayout(baseLayout, cueText) {
   const layout = { ...(baseLayout || {}) };
-  if (!isRtlText(cueText)) return layout;
+  if (isRtlText(cueText)) {
+    layout.mode = 'single';
+    layout.maxLines = 1;
+    layout.maxCharsPerLine = Math.max(Number(layout.maxCharsPerLine) || 36, 72);
+    return layout;
+  }
   layout.mode = 'single';
   layout.maxLines = 1;
-  layout.maxCharsPerLine = Math.max(Number(layout.maxCharsPerLine) || 36, 72);
+  layout.maxCharsPerLine = Math.max(Number(layout.maxCharsPerLine) || 28, 42);
   return layout;
 }
 

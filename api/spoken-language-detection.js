@@ -6,6 +6,9 @@
 const EN_STOPWORDS =
   /\b(the|and|is|are|was|were|you|your|i|we|they|this|that|with|for|to|of|in|on|it|a|an|have|has|had|do|does|did|will|would|can|could|should|nice|good|like|just|what|when|where|how|why|who|my|our|their|been|being|don't|it's|i'm|we're|you're|not|but|if|so|as|at|be|he|she|his|her|them|us|me|him|all|one|get|got|go|going|want|know|think|see|make|made|time|way|very|really|deadlift|squat|bench|workout|business|money|sales|marketing)\b/gi;
 
+const FR_STOPWORDS =
+  /\b(le|la|les|de|du|des|et|est|un|une|dans|pour|que|qui|avec|sur|pas|plus|nous|vous|ils|elles|elle|mais|ou|donc|car|ce|cette|ces|son|sa|ses|leur|leurs|tout|tous|toute|toutes|comme|très|bien|aussi|encore|déjà|être|avoir|fait|faire|dit|dire|peut|peu|très|ici|là|chez|entre|sans|sous|vers|après|avant|pendant|depuis|alors|ainsi|même|tous|toute|mon|ton|son|notre|votre|leur|quoi|quand|comment|pourquoi|où|je|tu|il|on|ne|se|me|te|lui|eux|ça|c'est|n'est|d'un|d'une|l'|qu')\b/gi;
+
 const LANG_ALIASES = {
   english: 'en',
   en: 'en',
@@ -66,11 +69,15 @@ export function analyzeTranscriptLanguage(text, segments = []) {
   const hangul = (corpus.match(/[\uAC00-\uD7AF]/g) || []).length;
   const japanese = (corpus.match(/[\u3040-\u30FF]/g) || []).length;
 
+  const wordCount = Math.max(1, corpus.split(/\s+/).filter(Boolean).length);
   const enWordHits = (corpus.match(EN_STOPWORDS) || []).length;
-  const enWordDensity = enWordHits / Math.max(1, corpus.split(/\s+/).filter(Boolean).length);
+  const enWordDensity = enWordHits / wordCount;
+  const frWordHits = (corpus.match(FR_STOPWORDS) || []).length;
+  const frWordDensity = frWordHits / wordCount;
 
   const scores = {
-    en: latin / len + enWordDensity * 0.45,
+    en: enWordDensity * 0.55,
+    fr: frWordDensity * 0.62,
     ru: cyrillic / len,
     fa: arabicScript / len,
     ar: arabicScript / len * 0.35,
@@ -78,6 +85,9 @@ export function analyzeTranscriptLanguage(text, segments = []) {
     ja: japanese / len,
     ko: hangul / len
   };
+  if (frWordDensity < 0.02 && latin / len > 0.35 && enWordDensity < 0.04) {
+    scores.en += latin / len * 0.12;
+  }
 
   const ranked = Object.entries(scores)
     .filter(([, v]) => v > 0.001)
@@ -98,6 +108,8 @@ export function analyzeTranscriptLanguage(text, segments = []) {
     arabicScriptRatio: Number((arabicScript / len).toFixed(4)),
     enWordHits,
     enWordDensity: Number(enWordDensity.toFixed(4)),
+    frWordHits,
+    frWordDensity: Number(frWordDensity.toFixed(4)),
     scores,
     top,
     confidence: Number(confidence.toFixed(4)),
@@ -125,8 +137,33 @@ export function resolveSpokenLanguage(whisperLanguage, text, segments = []) {
   let resolution = 'whisper';
 
   const enScore = analysis.scores.en || 0;
+  const frScore = analysis.scores.fr || 0;
   const ruScore = analysis.scores.ru || 0;
   const faScore = analysis.scores.fa || 0;
+
+  if (whisperNorm === 'fr' && frScore >= 0.03) {
+    detectedLanguage = 'fr';
+    confidence = Math.min(0.98, Math.max(analysis.confidence, 0.82));
+    resolution = 'whisper_french_confirmed';
+  } else if (
+    (whisperNorm === 'en' || whisperNorm === 'unknown') &&
+    contentTop === 'fr' &&
+    analysis.frWordDensity >= 0.06 &&
+    frScore > enScore * 1.25
+  ) {
+    detectedLanguage = 'fr';
+    confidence = analysis.confidence;
+    resolution = 'transcript_content_french';
+  } else if (
+    whisperNorm === 'en' &&
+    contentTop === 'fr' &&
+    analysis.frWordDensity >= 0.04 &&
+    frScore > enScore * 1.1
+  ) {
+    detectedLanguage = 'fr';
+    confidence = analysis.confidence;
+    resolution = 'transcript_content_override_french';
+  }
 
   // Accented English often tagged as Russian by acoustic models.
   if (
