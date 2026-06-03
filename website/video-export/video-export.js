@@ -168,20 +168,36 @@
     global.CutupSubtitleStyles?.refreshPreview?.();
   }
 
+  function buildFreshExportDocument(presetId) {
+    const segments = getSourceTruthSegments();
+    if (!segments.length || !global.CutupStyleExport?.buildExportDocument) return null;
+    return global.CutupStyleExport.buildExportDocument(segments, presetId);
+  }
+
+  function segmentsFromExportDoc(doc) {
+    if (!doc || doc.format !== 'cutup-style-v1' || !Array.isArray(doc.cues)) return [];
+    return doc.cues.map((c) => ({
+      start: Number(c.start),
+      end: Number(c.end),
+      text: String(c.text || (Array.isArray(c.lines) ? c.lines.join(' ') : '')).trim()
+    }));
+  }
+
   function getExportPayload() {
-    const doc = global.cutupStyleExportDoc;
     const presetId = getSelectedPresetId();
     const segments = getSourceTruthSegments();
-    if (doc && doc.format === 'cutup-style-v1' && segments.length) {
-      return { exportDoc: doc, segments, presetId };
+    if (!segments.length) return null;
+
+    const exportDoc = buildFreshExportDocument(presetId);
+    if (exportDoc?.format === 'cutup-style-v1' && exportDoc.cues?.length) {
+      global.cutupStyleExportDoc = exportDoc;
+      return {
+        exportDoc,
+        segments: segmentsFromExportDoc(exportDoc),
+        presetId
+      };
     }
-    if (segments.length) {
-      return { segments, presetId };
-    }
-    if (doc && doc.format === 'cutup-style-v1') {
-      return { exportDoc: doc, presetId: doc.preset?.id || presetId };
-    }
-    return null;
+    return { segments, presetId };
   }
 
   function resolveSourceUrl() {
@@ -630,6 +646,7 @@
       return;
     }
     applyStyleSelectionToPreset(styleSelection);
+    global.CutupSubtitleStyles?.refreshPreview?.();
     const selectedPresetId = styleSelection.selectedPresetId || styleSelection.presetId;
     const captionMode = styleSelection.captionMode;
     const styleMode = styleSelection.styleMode;

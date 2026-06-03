@@ -602,7 +602,26 @@ async function runJob(job) {
 
     let assResult;
     assTiming.start = Date.now();
-    if (job.segments?.length) {
+    const previewExportDoc =
+      job.exportDoc?.format === 'cutup-style-v1' && Array.isArray(job.exportDoc.cues) && job.exportDoc.cues.length
+        ? job.exportDoc
+        : null;
+    const usePreviewBurn =
+      previewExportDoc && String(job.captionMode || 'viral').toLowerCase() !== 'accurate';
+
+    if (usePreviewBurn) {
+      setSubStage(job, 'Applying cinematic layout…', 44);
+      job.burnFromPreviewExportDoc = true;
+      assResult = generateAssFromExportDoc(previewExportDoc, {
+        ...assOpts,
+        presetIdOverride: job.presetId
+      });
+      job.segments = (previewExportDoc.cues || []).map((c) => ({
+        start: Number(c.start),
+        end: Number(c.end),
+        text: String(c.text || (Array.isArray(c.lines) ? c.lines.join(' ') : '')).trim()
+      }));
+    } else if (job.segments?.length) {
       setSubStage(job, 'Applying cinematic layout…', 44);
       assResult = generateAssContent(job.segments, job.presetId, assOpts);
     } else if (job.exportDoc) {
@@ -776,11 +795,22 @@ async function runJob(job) {
     ffmpegStartedAt.at = Date.now();
 
     try {
-      const subtitleCues = (job.segments || []).map((s) => ({
-        start: s.start,
-        end: s.end,
-        text: String(s.text || '')
-      }));
+      const assBurnCues = parseAssDialogueTimes(job.assPath, 500);
+      const subtitleCues = assBurnCues.length
+        ? assBurnCues
+        : (job.segments || []).map((s) => ({
+            start: s.start,
+            end: s.end,
+            text: String(s.text || '')
+          }));
+      if (assBurnCues.length) {
+        console.log('[burn-subtitle-cues]', {
+          source: 'ass-dialogues',
+          cueCount: assBurnCues.length,
+          firstCue: assBurnCues[0],
+          previewExportDoc: Boolean(job.burnFromPreviewExportDoc)
+        });
+      }
 
       const singlePassExport =
         String(process.env.RENDER_SINGLE_PASS ?? '1').toLowerCase() !== '0';
@@ -871,6 +901,7 @@ async function runJob(job) {
         durationSec: burnDurationSec,
         subtitleCues,
         inputAlreadyNormalized,
+        trustPreviewTimings: Boolean(job.burnFromPreviewExportDoc),
         signal: job.ffmpegAbort.signal,
         onProgress: (info) => {
           const pct = Number(info?.pct || 0);

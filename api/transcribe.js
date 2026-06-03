@@ -37,6 +37,7 @@ import {
 } from './infrastructure/guards.js';
 import { transcribeDebug } from './infrastructure/observability.js';
 import { buildLanguageConfidence } from './spoken-language-detection.js';
+import { applyWhisperLeadingOffsetIfNeeded } from './whisper-leading-offset.js';
 
 export default async function handler(req, res) {
   const requestId = req.headers['x-request-id'] || `req_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -468,10 +469,25 @@ export default async function handler(req, res) {
       s.text && 
       s.text.trim().length > 0
     );
+
+    const { segments: timelineSegments, offsetSec: whisperLeadingOffsetSec } =
+      applyWhisperLeadingOffsetIfNeeded(validSegments);
+    if (whisperLeadingOffsetSec > 0) {
+      console.log('[whisper-leading-offset]', {
+        traceId,
+        offsetSec: whisperLeadingOffsetSec,
+        firstStartBefore: Number(validSegments[0]?.start),
+        firstStartAfter: Number(timelineSegments[0]?.start)
+      });
+      traceLog(traceId, 'whisper_leading_offset', {
+        offsetSec: whisperLeadingOffsetSec,
+        firstStartAfter: timelineSegments[0]?.start
+      });
+    }
     
     logSubtitleTextForensicStage(
       'whisper_final',
-      validSegments.map((seg, i) => ({
+      timelineSegments.map((seg, i) => ({
         id: `whisper-final-${i}`,
         text: String(seg?.text || '')
       })),
@@ -479,21 +495,21 @@ export default async function handler(req, res) {
     );
 
     // Log segment information for debugging
-    console.log('TRANSCRIBE: Final segments count:', validSegments.length);
-    if (validSegments.length > 0) {
+    console.log('TRANSCRIBE: Final segments count:', timelineSegments.length);
+    if (timelineSegments.length > 0) {
       console.log('TRANSCRIBE: First segment:', {
-        start: validSegments[0].start,
-        end: validSegments[0].end,
-        text: validSegments[0].text.substring(0, 50)
+        start: timelineSegments[0].start,
+        end: timelineSegments[0].end,
+        text: timelineSegments[0].text.substring(0, 50)
       });
       console.log('TRANSCRIBE: Last segment:', {
-        start: validSegments[validSegments.length - 1].start,
-        end: validSegments[validSegments.length - 1].end,
-        text: validSegments[validSegments.length - 1].text.substring(0, 50)
+        start: timelineSegments[timelineSegments.length - 1].start,
+        end: timelineSegments[timelineSegments.length - 1].end,
+        text: timelineSegments[timelineSegments.length - 1].text.substring(0, 50)
       });
     }
 
-    const billedMinutes = billingMinutesFromWhisperSegments(validSegments);
+    const billedMinutes = billingMinutesFromWhisperSegments(timelineSegments);
     const sourceUrl =
       typeof req.body === 'object' && req.body && typeof req.body.audioUrl === 'string'
         ? req.body.audioUrl
@@ -523,12 +539,18 @@ export default async function handler(req, res) {
       platform: requestMetadata.platform || guessedPlatform,
       title: requestMetadata.title || null,
       sourceUrl: requestMetadata.sourceUrl || sourceUrl || null,
-      durationSeconds: validSegments.length ? Math.ceil(validSegments[validSegments.length - 1].end || 0) : null,
+      durationSeconds: timelineSegments.length
+        ? Math.ceil(timelineSegments[timelineSegments.length - 1].end || 0)
+        : null,
       ...requestMetadata
     });
     console.log('[transcript-provider]', { traceId, stage: 'whisper_complete', billedMinutes });
-    traceLog(traceId, 'transcription', { phase: 'segments_ready', segmentCount: validSegments.length, billedMinutes });
-    traceLog(traceId, 'srt', { phase: 'timestamps_ready', cues: validSegments.length });
+    traceLog(traceId, 'transcription', {
+      phase: 'segments_ready',
+      segmentCount: timelineSegments.length,
+      billedMinutes
+    });
+    traceLog(traceId, 'srt', { phase: 'timestamps_ready', cues: timelineSegments.length });
     if (respondConsumeFailure(res, consumed, req)) {
       console.log('[transcript-failed]', { traceId, reason: 'quota_consume_denied', consumed });
       return;
@@ -541,10 +563,10 @@ export default async function handler(req, res) {
           stage: 'full',
           transcript: {
             text: correctedText,
-            segments: validSegments,
+            segments: timelineSegments,
             language: transcript.language || 'unknown'
           },
-          subtitleBlocks: validSegments,
+          subtitleBlocks: timelineSegments,
           metadata: requestMetadata,
           reusedAssets: ['transcript']
         },
@@ -555,7 +577,7 @@ export default async function handler(req, res) {
     const languageConfidence = buildLanguageConfidence(
       transcript.language,
       correctedText,
-      validSegments
+      timelineSegments
     );
     const resolvedLanguage = languageConfidence.language || transcript.language || 'unknown';
 
@@ -569,7 +591,8 @@ export default async function handler(req, res) {
               transcript.segments || []
             ),
             afterGptCorrectionFirst10: buildTranscribeApiWhisperForensicSnapshot(correctedSegments || []),
-            afterValidFilterFirst10: buildTranscribeApiWhisperForensicSnapshot(validSegments)
+            afterValidFilterFirst10: buildTranscribeApiWhisperForensicSnapshot(timelineSegments),
+            whisperLeadingOffsetSec: whisperLeadingOffsetSec || undefined
           }
         : undefined;
 
@@ -577,7 +600,8 @@ export default async function handler(req, res) {
       requestId,
       text: correctedText,
       language: resolvedLanguage,
-      segments: validSegments,
+      segments: timelineSegments,
+      ...(whisperLeadingOffsetSec > 0 ? { whisperLeadingOffsetSec } : {}),
       ...(whisperTimingForensics ? { whisperTimingForensics } : {}),
       languageDetection: {
         detectedLanguage: resolvedLanguage,

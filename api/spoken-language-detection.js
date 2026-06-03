@@ -1,51 +1,68 @@
 /**
  * Spoken-language resolution from transcript content (accent-safe).
- * Whisper/acoustic detection can mis-label accented English as Russian, etc.
+ * Covers all site-supported languages (see supported-languages.js).
  */
+import {
+  SUPPORTED_LANGUAGE_CODES,
+  isSupportedLanguageCode,
+  normalizeLanguageCode
+} from './supported-languages.js';
 
-const EN_STOPWORDS =
-  /\b(the|and|is|are|was|were|you|your|i|we|they|this|that|with|for|to|of|in|on|it|a|an|have|has|had|do|does|did|will|would|can|could|should|nice|good|like|just|what|when|where|how|why|who|my|our|their|been|being|don't|it's|i'm|we're|you're|not|but|if|so|as|at|be|he|she|his|her|them|us|me|him|all|one|get|got|go|going|want|know|think|see|make|made|time|way|very|really|deadlift|squat|bench|workout|business|money|sales|marketing)\b/gi;
-
-const FR_STOPWORDS =
-  /\b(le|la|les|de|du|des|et|est|un|une|dans|pour|que|qui|avec|sur|pas|plus|nous|vous|ils|elles|elle|mais|ou|donc|car|ce|cette|ces|son|sa|ses|leur|leurs|tout|tous|toute|toutes|comme|très|bien|aussi|encore|déjà|être|avoir|fait|faire|dit|dire|peut|peu|très|ici|là|chez|entre|sans|sous|vers|après|avant|pendant|depuis|alors|ainsi|même|tous|toute|mon|ton|son|notre|votre|leur|quoi|quand|comment|pourquoi|où|je|tu|il|on|ne|se|me|te|lui|eux|ça|c'est|n'est|d'un|d'une|l'|qu')\b/gi;
-
-const LANG_ALIASES = {
-  english: 'en',
-  en: 'en',
-  eng: 'en',
-  russian: 'ru',
-  ru: 'ru',
-  rus: 'ru',
-  persian: 'fa',
-  farsi: 'fa',
-  fa: 'fa',
-  fas: 'fa',
-  per: 'fa',
-  arabic: 'ar',
-  ar: 'ar',
-  german: 'de',
-  de: 'de',
-  french: 'fr',
-  fr: 'fr',
-  spanish: 'es',
-  es: 'es',
-  turkish: 'tr',
-  tr: 'tr',
-  chinese: 'zh',
-  zh: 'zh',
-  japanese: 'ja',
-  ja: 'ja',
-  korean: 'ko',
-  ko: 'ko'
+const LATIN_STOPWORD_PATTERNS = {
+  en: /\b(the|and|is|are|was|were|you|your|this|that|with|for|to|of|in|on|it|a|an|have|has|had|do|not|but|if|so|as|at|be|he|she|they|we|my|our|their|been|being|don't|it's|what|when|where|how|why|who|can|will|would|should|could|just|like|know|think|see|want|get|going|time|very|really)\b/gi,
+  fr: /\b(le|la|les|de|du|des|et|est|un|une|dans|pour|que|qui|avec|sur|pas|plus|nous|vous|ils|elles|elle|mais|ou|donc|ce|cette|ces|son|sa|ses|leur|tout|comme|très|bien|aussi|encore|être|avoir|fait|faire|dit|peut|ici|chez|sans|sous|vers|après|avant|pendant|depuis|alors|ainsi|même|mon|ton|notre|votre|quoi|quand|comment|pourquoi|où|je|tu|il|on|ne|se|me|te|lui|eux|ça|c'est|n'est|qu')\b/gi,
+  es: /\b(el|la|los|las|de|del|y|es|un|una|en|por|para|que|con|su|sus|no|se|le|lo|como|más|pero|si|al|ya|muy|bien|también|este|esta|esto|ese|esa|eso|aquí|hay|ser|estar|tener|hacer|puede|porque|cuando|donde|qué|quién|nos|vos|les|me|te|lo|muy|todo|todos)\b/gi,
+  de: /\b(der|die|das|und|ist|ein|eine|einen|einem|einer|nicht|auch|auf|mit|für|von|zu|im|am|an|als|wie|noch|nach|bei|nur|oder|aber|wenn|dann|schon|sehr|mehr|wir|ihr|sie|er|es|ich|du|man|den|dem|des|dass|kann|werden|wurde|haben|hat|sein|sind|war|waren|hier|dort|heute|morgen)\b/gi,
+  it: /\b(il|lo|la|i|gli|le|di|del|della|dei|e|è|un|una|uno|in|per|che|con|su|non|si|come|più|ma|se|al|anche|questo|questa|questi|sono|era|essere|avere|fare|dire|può|perché|quando|dove|chi|noi|voi|loro|io|tu|lui|lei|molto|bene|tutto|tutti)\b/gi,
+  pt: /\b(o|a|os|as|de|do|da|dos|das|e|é|um|uma|em|por|para|que|com|se|não|como|mais|mas|se|ao|também|este|esta|isso|esse|essa|aqui|há|ser|estar|ter|fazer|pode|porque|quando|onde|quem|nós|vos|eles|elas|eu|tu|ele|ela|muito|bem|tudo|todos)\b/gi,
+  nl: /\b(de|het|een|en|is|van|in|op|met|voor|te|dat|die|dit|deze|niet|ook|als|maar|om|aan|er|hier|daar|hebben|heeft|zijn|was|waren|kunnen|worden|wordt|naar|bij|nog|al|zeer|meer|wij|jullie|zij|hij|zij|ik|jij|u|goed|alle|alleen)\b/gi,
+  pl: /\b(i|w|z|na|do|to|nie|jest|że|się|o|jak|ale|czy|co|kto|gdzie|kiedy|dlaczego|ten|ta|to|ci|te|tych|mój|twój|jego|jej|nasz|wasz|ich|ja|ty|on|ona|my|wy|oni|one|być|mieć|może|bardzo|dobrze|już|też|lub|albo)\b/gi,
+  tr: /\b(bir|ve|bu|da|de|için|ile|mi|mu|mı|mü|ne|nasıl|neden|nerede|kim|ben|sen|o|biz|siz|onlar|var|yok|değil|çok|daha|en|gibi|kadar|olan|olarak|ama|veya|eğer|ise|şu|o|burada|şimdi|sonra|önce|her|hiç)\b/gi,
+  ro: /\b(să|și|cu|pe|la|în|un|o|nu|este|sunt|era|fost|fi|avea|are|au|pentru|că|ce|care|cum|unde|când|de|din|dar|sau|dacă|mai|foarte|bun|bine|tot|toate|eu|tu|el|ea|noi|voi|ei|ele|acest|aceast|aceasta)\b/gi,
+  id: /\b(yang|dan|di|ke|dari|ini|itu|untuk|dengan|pada|adalah|tidak|akan|ada|juga|atau|jika|karena|saya|kamu|dia|kita|mereka|ini|itu|sudah|belum|bisa|boleh|sangat|lebih|semua|hanya|saja|sini|sana|apa|siapa|kapan|dimana|kenapa)\b/gi,
+  vi: /\b(của|và|là|một|các|cho|với|trong|trên|đến|từ|không|có|đã|sẽ|này|đó|những|người|tôi|bạn|anh|chị|em|họ|chúng|ta|nó|rất|nhiều|khi|nếu|thì|vì|mà|để|ở|tại|đây|đó|sao|gì|ai|nào|như|vẫn|còn|được|bị)\b/gi,
+  sv: /\b(och|att|det|som|en|är|av|för|på|med|till|från|den|de|inte|han|hon|vi|ni|de|jag|du|man|var|varit|vara|har|hade|kan|skulle|kommer|mycket|mer|alla|när|hur|vad|varför|där|här|också|men|eller|om|så)\b/gi
 };
 
+const SCRIPT_SCORERS = [
+  { lang: 'ja', weight: 1, test: (c) => (c.match(/[\u3040-\u30FF]/g) || []).length },
+  { lang: 'ko', weight: 1, test: (c) => (c.match(/[\uAC00-\uD7AF]/g) || []).length },
+  { lang: 'zh', weight: 0.95, test: (c) => (c.match(/[\u4E00-\u9FFF]/g) || []).length },
+  { lang: 'ru', weight: 1, test: (c) => (c.match(/[\u0400-\u04FF]/g) || []).length },
+  { lang: 'uk', weight: 0.35, test: (c) => (c.match(/[\u0400-\u04FF]/g) || []).length },
+  { lang: 'he', weight: 1, test: (c) => (c.match(/[\u0590-\u05FF]/g) || []).length },
+  { lang: 'th', weight: 1, test: (c) => (c.match(/[\u0E00-\u0E7F]/g) || []).length },
+  { lang: 'my', weight: 1, test: (c) => (c.match(/[\u1000-\u109F]/g) || []).length },
+  { lang: 'ka', weight: 1, test: (c) => (c.match(/[\u10A0-\u10FF]/g) || []).length },
+  { lang: 'hy', weight: 1, test: (c) => (c.match(/[\u0530-\u058F]/g) || []).length },
+  { lang: 'el', weight: 1, test: (c) => (c.match(/[\u0370-\u03FF]/g) || []).length },
+  { lang: 'hi', weight: 0.85, test: (c) => (c.match(/[\u0900-\u097F]/g) || []).length },
+  { lang: 'mr', weight: 0.5, test: (c) => (c.match(/[\u0900-\u097F]/g) || []).length },
+  { lang: 'ne', weight: 0.4, test: (c) => (c.match(/[\u0900-\u097F]/g) || []).length },
+  { lang: 'bn', weight: 1, test: (c) => (c.match(/[\u0980-\u09FF]/g) || []).length },
+  { lang: 'ta', weight: 1, test: (c) => (c.match(/[\u0B80-\u0BFF]/g) || []).length },
+  { lang: 'te', weight: 1, test: (c) => (c.match(/[\u0C00-\u0C7F]/g) || []).length },
+  { lang: 'kn', weight: 1, test: (c) => (c.match(/[\u0C80-\u0CFF]/g) || []).length },
+  { lang: 'ml', weight: 1, test: (c) => (c.match(/[\u0D00-\u0D7F]/g) || []).length },
+  { lang: 'gu', weight: 1, test: (c) => (c.match(/[\u0A80-\u0AFF]/g) || []).length },
+  { lang: 'pa', weight: 1, test: (c) => (c.match(/[\u0A00-\u0A7F]/g) || []).length },
+  { lang: 'or', weight: 1, test: (c) => (c.match(/[\u0B00-\u0B7F]/g) || []).length },
+  { lang: 'si', weight: 1, test: (c) => (c.match(/[\u0D80-\u0DFF]/g) || []).length },
+  { lang: 'km', weight: 1, test: (c) => (c.match(/[\u1780-\u17FF]/g) || []).length },
+  { lang: 'lo', weight: 1, test: (c) => (c.match(/[\u0E80-\u0EFF]/g) || []).length }
+];
+
+function scorePersianVsArabic(corpus) {
+  const arabic = (corpus.match(/[\u0600-\u06FF]/g) || []).length;
+  if (!arabic) return { fa: 0, ar: 0 };
+  const persianMarkers = (corpus.match(/[\u067E\u0686\u0698\u06AF\u06CC\u06A9\u06BE]/g) || []).length;
+  const fa = arabic / Math.max(1, corpus.length) + (persianMarkers / Math.max(1, arabic)) * 0.35;
+  const ar = arabic / Math.max(1, corpus.length) * (persianMarkers < arabic * 0.02 ? 1 : 0.45);
+  return { fa, ar };
+}
+
 function normalizeWhisperLang(code) {
-  const raw = String(code || '')
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z]/g, '');
-  if (!raw || raw === 'unknown') return 'unknown';
-  return LANG_ALIASES[raw] || raw.slice(0, 2);
+  return normalizeLanguageCode(code);
 }
 
 /**
@@ -61,32 +78,43 @@ export function analyzeTranscriptLanguage(text, segments = []) {
   if (text) parts.push(String(text));
   const corpus = parts.join(' ').trim();
   const len = Math.max(1, corpus.length);
-
-  const latin = (corpus.match(/[A-Za-z]/g) || []).length;
-  const cyrillic = (corpus.match(/[\u0400-\u04FF]/g) || []).length;
-  const arabicScript = (corpus.match(/[\u0600-\u06FF]/g) || []).length;
-  const han = (corpus.match(/[\u4E00-\u9FFF]/g) || []).length;
-  const hangul = (corpus.match(/[\uAC00-\uD7AF]/g) || []).length;
-  const japanese = (corpus.match(/[\u3040-\u30FF]/g) || []).length;
-
   const wordCount = Math.max(1, corpus.split(/\s+/).filter(Boolean).length);
-  const enWordHits = (corpus.match(EN_STOPWORDS) || []).length;
-  const enWordDensity = enWordHits / wordCount;
-  const frWordHits = (corpus.match(FR_STOPWORDS) || []).length;
-  const frWordDensity = frWordHits / wordCount;
 
-  const scores = {
-    en: enWordDensity * 0.55,
-    fr: frWordDensity * 0.62,
-    ru: cyrillic / len,
-    fa: arabicScript / len,
-    ar: arabicScript / len * 0.35,
-    zh: han / len,
-    ja: japanese / len,
-    ko: hangul / len
-  };
-  if (frWordDensity < 0.02 && latin / len > 0.35 && enWordDensity < 0.04) {
-    scores.en += latin / len * 0.12;
+  const scores = {};
+  for (const code of SUPPORTED_LANGUAGE_CODES) scores[code] = 0;
+
+  const latin = (corpus.match(/[A-Za-zÀ-ÿ]/g) || []).length;
+  const densities = {};
+
+  for (const [lang, pattern] of Object.entries(LATIN_STOPWORD_PATTERNS)) {
+    const hits = (corpus.match(pattern) || []).length;
+    const density = hits / wordCount;
+    densities[`${lang}WordDensity`] = Number(density.toFixed(4));
+    if (isSupportedLanguageCode(lang)) {
+      scores[lang] = Math.max(scores[lang] || 0, density * 0.62);
+    }
+  }
+
+  for (const { lang, weight, test } of SCRIPT_SCORERS) {
+    const count = test(corpus);
+    if (count > 0 && isSupportedLanguageCode(lang)) {
+      scores[lang] = Math.max(scores[lang] || 0, (count / len) * weight);
+    }
+  }
+
+  const { fa, ar } = scorePersianVsArabic(corpus);
+  if (fa > 0) scores.fa = Math.max(scores.fa || 0, fa);
+  if (ar > 0) scores.ar = Math.max(scores.ar || 0, ar);
+
+  const urduMarkers = (corpus.match(/[\u0679\u0688\u0691\u06BA\u06D2]/g) || []).length;
+  if (urduMarkers > 2) scores.ur = Math.max(scores.ur || 0, urduMarkers / len);
+
+  let maxLatinDensity = 0;
+  for (const lang of Object.keys(LATIN_STOPWORD_PATTERNS)) {
+    maxLatinDensity = Math.max(maxLatinDensity, densities[`${lang}WordDensity`] || 0);
+  }
+  if (maxLatinDensity < 0.03 && latin / len > 0.3) {
+    scores.en = Math.max(scores.en || 0, latin / len * 0.08);
   }
 
   const ranked = Object.entries(scores)
@@ -104,17 +132,23 @@ export function analyzeTranscriptLanguage(text, segments = []) {
   return {
     corpusLength: len,
     latinRatio: Number((latin / len).toFixed(4)),
-    cyrillicRatio: Number((cyrillic / len).toFixed(4)),
-    arabicScriptRatio: Number((arabicScript / len).toFixed(4)),
-    enWordHits,
-    enWordDensity: Number(enWordDensity.toFixed(4)),
-    frWordHits,
-    frWordDensity: Number(frWordDensity.toFixed(4)),
+    cyrillicRatio: Number(((corpus.match(/[\u0400-\u04FF]/g) || []).length / len).toFixed(4)),
+    arabicScriptRatio: Number(((corpus.match(/[\u0600-\u06FF]/g) || []).length / len).toFixed(4)),
+    wordCount,
+    densities,
     scores,
     top,
     confidence: Number(confidence.toFixed(4)),
-    ranked: ranked.map(([lang, score]) => ({ lang, score: Number(score.toFixed(4)) }))
+    ranked: ranked.slice(0, 8).map(([lang, score]) => ({ lang, score: Number(score.toFixed(4)) }))
   };
+}
+
+function scoreForLang(analysis, lang) {
+  return Number(analysis.scores?.[lang] || 0);
+}
+
+function latinDensity(analysis, lang) {
+  return Number(analysis.densities?.[`${lang}WordDensity`] || 0);
 }
 
 /**
@@ -132,38 +166,14 @@ export function resolveSpokenLanguage(whisperLanguage, text, segments = []) {
     .trim()
     .slice(0, 220);
 
-  let detectedLanguage = whisperNorm !== 'unknown' ? whisperNorm : contentTop;
+  let detectedLanguage =
+    whisperNorm !== 'unknown' && isSupportedLanguageCode(whisperNorm) ? whisperNorm : contentTop;
   let confidence = analysis.confidence;
-  let resolution = 'whisper';
+  let resolution = whisperNorm !== 'unknown' ? 'whisper' : 'transcript_content_only';
 
-  const enScore = analysis.scores.en || 0;
-  const frScore = analysis.scores.fr || 0;
-  const ruScore = analysis.scores.ru || 0;
-  const faScore = analysis.scores.fa || 0;
-
-  if (whisperNorm === 'fr' && frScore >= 0.03) {
-    detectedLanguage = 'fr';
-    confidence = Math.min(0.98, Math.max(analysis.confidence, 0.82));
-    resolution = 'whisper_french_confirmed';
-  } else if (
-    (whisperNorm === 'en' || whisperNorm === 'unknown') &&
-    contentTop === 'fr' &&
-    analysis.frWordDensity >= 0.06 &&
-    frScore > enScore * 1.25
-  ) {
-    detectedLanguage = 'fr';
-    confidence = analysis.confidence;
-    resolution = 'transcript_content_french';
-  } else if (
-    whisperNorm === 'en' &&
-    contentTop === 'fr' &&
-    analysis.frWordDensity >= 0.04 &&
-    frScore > enScore * 1.1
-  ) {
-    detectedLanguage = 'fr';
-    confidence = analysis.confidence;
-    resolution = 'transcript_content_override_french';
-  }
+  const enScore = scoreForLang(analysis, 'en');
+  const ruScore = scoreForLang(analysis, 'ru');
+  const faScore = scoreForLang(analysis, 'fa');
 
   // Accented English often tagged as Russian by acoustic models.
   if (
@@ -194,20 +204,51 @@ export function resolveSpokenLanguage(whisperLanguage, text, segments = []) {
     detectedLanguage = 'fa';
     confidence = analysis.confidence;
     resolution = 'transcript_content_override';
-  } else if (whisperNorm === 'unknown' && contentTop !== 'unknown') {
+  } else if (whisperNorm === 'unknown' && isSupportedLanguageCode(contentTop)) {
     detectedLanguage = contentTop;
     confidence = analysis.confidence;
     resolution = 'transcript_content_only';
-  } else if (contentTop === whisperNorm && whisperNorm !== 'unknown') {
+  } else if (
+    isSupportedLanguageCode(whisperNorm) &&
+    contentTop === whisperNorm &&
+    whisperNorm !== 'unknown'
+  ) {
     confidence = Math.min(0.98, analysis.confidence + 0.08);
     resolution = 'whisper_confirmed_by_text';
-  } else if (contentTop !== whisperNorm && whisperNorm !== 'unknown') {
-    // Low-confidence whisper vs clear text winner
-    if (analysis.confidence >= 0.55 && (analysis.scores[contentTop] || 0) > (analysis.scores[whisperNorm] || 0) * 1.35) {
+  } else if (
+    isSupportedLanguageCode(contentTop) &&
+    contentTop !== whisperNorm &&
+    whisperNorm !== 'unknown'
+  ) {
+    const topScore = scoreForLang(analysis, contentTop);
+    const whisperScore = scoreForLang(analysis, whisperNorm);
+    const density = latinDensity(analysis, contentTop);
+    const strongLatin = density >= 0.045;
+    const strongScript = topScore >= 0.12;
+    if (
+      analysis.confidence >= 0.48 &&
+      topScore > whisperScore * 1.15 &&
+      (strongLatin || strongScript || analysis.top === contentTop)
+    ) {
       detectedLanguage = contentTop;
       confidence = analysis.confidence;
       resolution = 'transcript_content_preferred';
     }
+  } else if (
+    isSupportedLanguageCode(whisperNorm) &&
+    !isSupportedLanguageCode(contentTop) &&
+    whisperNorm !== 'unknown'
+  ) {
+    detectedLanguage = whisperNorm;
+    resolution = 'whisper_supported_fallback';
+  }
+
+  if (!isSupportedLanguageCode(detectedLanguage)) {
+    detectedLanguage = isSupportedLanguageCode(contentTop)
+      ? contentTop
+      : isSupportedLanguageCode(whisperNorm)
+        ? whisperNorm
+        : 'unknown';
   }
 
   const payload = {
@@ -221,7 +262,6 @@ export function resolveSpokenLanguage(whisperLanguage, text, segments = []) {
       latinRatio: analysis.latinRatio,
       cyrillicRatio: analysis.cyrillicRatio,
       arabicScriptRatio: analysis.arabicScriptRatio,
-      enWordHits: analysis.enWordHits,
       ranked: analysis.ranked
     }
   };

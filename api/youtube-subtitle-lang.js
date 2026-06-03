@@ -1,6 +1,11 @@
 /**
- * YouTube subtitle language selection — avoid blindly picking first available track (e.g. "ab").
+ * YouTube subtitle language selection — avoid blindly picking English when metadata says otherwise.
  */
+import {
+  normalizeLanguageCode,
+  pickSupportedFromAvailableTracks,
+  isSupportedLanguageCode
+} from './supported-languages.js';
 
 function norm(code) {
   return String(code || '')
@@ -9,24 +14,21 @@ function norm(code) {
     .replace(/_/g, '-');
 }
 
-/** English preference order for creator content */
+/** English preference order when user/content explicitly targets English */
 const EN_PRIORITY = ['en-us', 'en-gb', 'en-orig', 'en', 'en-ca', 'en-in', 'en-au'];
 
 function scoreLang(code, preferredNorm) {
   const c = norm(code);
   if (!c) return -1000;
 
-  if (preferredNorm && (c === preferredNorm || c.startsWith(`${preferredNorm}-`))) return 500;
+  const pref = preferredNorm ? normalizeLanguageCode(preferredNorm) : 'unknown';
+  if (pref !== 'unknown' && (c === pref || c.startsWith(`${pref}-`))) return 500;
 
-  if (preferredNorm?.startsWith('en') || preferredNorm === 'en') {
+  if (pref === 'en' || String(preferredNorm || '').startsWith('en')) {
     const enIdx = EN_PRIORITY.indexOf(c);
     if (enIdx !== -1) return 400 - enIdx;
     if (c.startsWith('en-') || c === 'en') return 350;
-  }
-
-  // Deprioritize unrelated short codes when we're targeting English
-  if ((preferredNorm?.startsWith('en') || preferredNorm === 'en') && c.length === 2 && !c.startsWith('en')) {
-    return 10;
+    if (c.length === 2 && !c.startsWith('en')) return 10;
   }
 
   return 100;
@@ -35,17 +37,46 @@ function scoreLang(code, preferredNorm) {
 /**
  * Pick best subtitle language from yt-dlp language keys.
  * @param {string[]} available
- * @param {string} [preferred] e.g. en, en-US, fa
+ * @param {string|null} [preferred] e.g. en, fr, fa — null = no English bias
  * @returns {string|null}
  */
-export function pickPreferredSubtitleLanguage(available, preferred = 'en') {
+export function pickPreferredSubtitleLanguage(available, preferred = null) {
   const langs = [...new Set((available || []).map(norm).filter(Boolean))];
   if (!langs.length) return null;
 
-  const preferredNorm = norm(preferred);
+  const preferredNorm = preferred ? normalizeLanguageCode(preferred) : 'unknown';
+  if (preferredNorm !== 'unknown') {
+    const aligned = pickSupportedFromAvailableTracks(langs, preferredNorm);
+    if (aligned) return aligned;
+  }
 
   langs.sort((a, b) => scoreLang(b, preferredNorm) - scoreLang(a, preferredNorm));
   return langs[0];
+}
+
+function shouldIgnoreDetectedLanguage(detected, available) {
+  const d = norm(detected);
+  if (!d) return true;
+  if (d.startsWith('en')) return false;
+  const hasEnglish = available.some((l) => norm(l).startsWith('en'));
+  if (hasEnglish && d.length <= 3 && !d.startsWith('en')) return true;
+  return false;
+}
+
+function inferLanguagePrefix(available, prefix) {
+  const p = normalizeLanguageCode(prefix);
+  if (p === 'unknown') return null;
+  return available.map(norm).find((l) => l === p || l.startsWith(`${p}-`)) || null;
+}
+
+/** Prefer video metadata language over incidental auto-caption tracks. */
+function pickMetadataAlignedLanguage(metadataLang, available) {
+  const meta = normalizeLanguageCode(metadataLang);
+  if (meta === 'unknown') return null;
+  const hit = inferLanguagePrefix(available, meta);
+  if (hit) return hit;
+  if (!shouldIgnoreDetectedLanguage(meta, available)) return norm(metadataLang) || null;
+  return null;
 }
 
 /**
@@ -65,64 +96,33 @@ export function pickSubtitleLanguageFromMetadata({
     userHint ||
     pickMetadataAlignedLanguage(detectedLanguage, all) ||
     (detectedLanguage && !shouldIgnoreDetectedLanguage(detectedLanguage, all)
-      ? detectedLanguage
+      ? inferLanguagePrefix(all, detectedLanguage) || norm(detectedLanguage)
       : null) ||
+    pickSupportedFromAvailableTracks(all, detectedLanguage) ||
     pickPreferredSubtitleLanguage(all, detectedLanguage || null) ||
-    inferEnglishIfPresent(all) ||
     all[0] ||
-    'en';
+    null;
 
   return pickPreferredSubtitleLanguage(all, preferred);
-}
-
-function shouldIgnoreDetectedLanguage(detected, available) {
-  const d = norm(detected);
-  if (!d) return true;
-  if (d.startsWith('en')) return false;
-  const hasEnglish = available.some((l) => norm(l).startsWith('en'));
-  // Ignore metadata like "ab" when English tracks exist
-  if (hasEnglish && d.length <= 3 && !d.startsWith('en')) return true;
-  return false;
-}
-
-function inferEnglishIfPresent(available) {
-  const en = available.map(norm).find((l) => l.startsWith('en'));
-  return en || null;
-}
-
-function inferLanguagePrefix(available, prefix) {
-  const p = norm(prefix);
-  if (!p) return null;
-  return available.map(norm).find((l) => l === p || l.startsWith(`${p}-`)) || null;
-}
-
-/** Prefer video metadata language over incidental English auto-caption tracks. */
-function pickMetadataAlignedLanguage(metadataLang, available) {
-  const meta = norm(metadataLang);
-  if (!meta) return null;
-  const hit = inferLanguagePrefix(available, meta);
-  if (hit) return hit;
-  if (!shouldIgnoreDetectedLanguage(meta, available)) return meta;
-  return null;
 }
 
 /**
  * Normalize detected language from video metadata (not first auto-caption key).
  */
 export function resolveDetectedLanguage(metadataLang, autoCaptionKeys, manualCaptionKeys) {
-  const meta = norm(metadataLang);
+  const meta = normalizeLanguageCode(metadataLang);
   const all = [...new Set([...(autoCaptionKeys || []), ...(manualCaptionKeys || [])].map(norm))];
 
-  if (meta && !shouldIgnoreDetectedLanguage(meta, all)) return meta;
+  if (meta !== 'unknown' && !shouldIgnoreDetectedLanguage(meta, all)) {
+    const aligned = pickMetadataAlignedLanguage(meta, all);
+    return aligned || norm(metadataLang);
+  }
 
   const metaAligned = pickMetadataAlignedLanguage(meta, all);
   if (metaAligned) return metaAligned;
 
-  const localePriority = ['fr', 'de', 'es', 'it', 'pt', 'en'];
-  for (const code of localePriority) {
-    const hit = inferLanguagePrefix(all, code);
-    if (hit) return hit;
-  }
+  const fromTracks = pickSupportedFromAvailableTracks(all, meta !== 'unknown' ? meta : null);
+  if (fromTracks) return fromTracks;
 
-  return pickPreferredSubtitleLanguage(all, meta || all[0] || 'en');
+  return pickPreferredSubtitleLanguage(all, meta !== 'unknown' ? meta : null) || all[0] || null;
 }

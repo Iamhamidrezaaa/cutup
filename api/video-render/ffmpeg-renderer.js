@@ -221,6 +221,7 @@ export async function burnSubtitles(opts) {
     timelineTrace = null,
     jobDir = null,
     inputAlreadyNormalized = false,
+    trustPreviewTimings = false,
     onProgress,
     signal
   } = opts;
@@ -244,17 +245,19 @@ export async function burnSubtitles(opts) {
   });
 
   const framePtsAtSeek = await probeVideoFramePtsAtSeconds(inputPath, [0, 1, 2, 3, 4]);
-  const speechAnchor = await detectFirstSpeechSec(inputPath);
+  const speechAnchor = trustPreviewTimings ? null : await detectFirstSpeechSec(inputPath);
   logBurnInputVerification(timelineTrace, inputPath, framePtsAtSeek, speechAnchor);
 
   const inputProbe = await probeMediaTimeline(inputPath);
   const preferMinimalCorrection =
+    trustPreviewTimings ||
     String(process.env.RENDER_BURN_USE_SOURCE_TIMINGS ?? '1').toLowerCase() !== '0';
   const timelinePlan = buildTimelineBurnPlan(inputProbe, subtitleCues, {
     framePtsAtSeek,
     inputAlreadyNormalized,
     preferMinimalCorrection,
-    firstSpeechSec: speechAnchor?.firstSpeechSec ?? null
+    firstSpeechSec: trustPreviewTimings ? null : speechAnchor?.firstSpeechSec ?? null,
+    trustClientSubtitleTiming: trustPreviewTimings
   });
   if (timelinePlan.offsetDetected) {
     logStreamOffsetDetected({

@@ -89,13 +89,15 @@ export function computeFramePtsLeadSec(framePtsAtSeek) {
  * @param {boolean} [opts.inputAlreadyNormalized]
  * @param {boolean} [opts.preferMinimalCorrection] source-aligned ASS — avoid guessed shifts
  * @param {number|null} [opts.firstSpeechSec] silencedetect anchor for ASS-only correction
+ * @param {boolean} [opts.trustClientSubtitleTiming] skip guessed ASS shifts (preview/exportDoc timings)
  */
 export function buildTimelineBurnPlan(probe, subtitleCues = [], opts = {}) {
   const {
     framePtsAtSeek = null,
     inputAlreadyNormalized = false,
     preferMinimalCorrection = false,
-    firstSpeechSec = null
+    firstSpeechSec = null,
+    trustClientSubtitleTiming = false
   } = opts;
   const videoStart = num(probe?.video?.start_time, 0);
   const audioStart = num(probe?.audio?.start_time, 0);
@@ -116,7 +118,7 @@ export function buildTimelineBurnPlan(probe, subtitleCues = [], opts = {}) {
   let videoPtsShiftSec = 0;
   let assShiftSec = 0;
 
-  if (!inputAlreadyNormalized) {
+  if (!inputAlreadyNormalized && !trustClientSubtitleTiming) {
     const useFramePtsShift =
       String(process.env.RENDER_USE_FRAME_PTS_SHIFT || '0').toLowerCase() === '1';
     const streamLate = streamOffsetSec > STREAM_OFFSET_WARN_SEC ? streamOffsetSec : 0;

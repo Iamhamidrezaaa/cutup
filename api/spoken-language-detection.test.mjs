@@ -40,4 +40,15 @@ if (french.detectedLanguage !== 'fr') {
   process.exit(1);
 }
 
+const spanish = resolveSpokenLanguage(
+  'en',
+  'Todos los candidatos están aquí pero nadie lo sabe todavía para esta elección.',
+  [{ text: 'Todos los candidatos están aquí' }]
+);
+console.log('spanish override', spanish.detectedLanguage, spanish.resolution);
+if (spanish.detectedLanguage !== 'es') {
+  console.error('FAIL: expected es for Spanish transcript');
+  process.exit(1);
+}
+
 console.log('ok');

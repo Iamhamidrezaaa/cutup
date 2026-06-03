@@ -3,6 +3,7 @@
  * Styling layers must never mutate transcript semantics.
  */
 import { decodeSubtitleTextEntities } from '../subtitle-text-entities.js';
+import { applyWhisperLeadingOffsetIfNeeded } from '../whisper-leading-offset.js';
 import { layoutLines } from './text-layout.js';
 
 export const CAPTION_QUALITY_MODES = Object.freeze({
@@ -874,7 +875,17 @@ function splitLongPhraseByDuration(spec, allWords, timeline, maxDurationSec) {
 function composeRhythmBlocks(rawSegments, opts = {}) {
   const minDurationSec = Math.max(0.4, Number(opts.minDurationSec ?? 0.7));
   const maxDurationSec = Math.max(minDurationSec, Number(opts.maxDurationSec ?? 2.6));
-  const segments = collapseProgressiveTranslatedSegments(Array.isArray(rawSegments) ? rawSegments : []);
+  const collapsed = collapseProgressiveTranslatedSegments(Array.isArray(rawSegments) ? rawSegments : []);
+  const { segments, offsetSec: whisperLeadingOffsetSec } = applyWhisperLeadingOffsetIfNeeded(
+    collapsed,
+    { firstSpeechSec: opts.firstSpeechSec }
+  );
+  if (whisperLeadingOffsetSec > 0) {
+    console.log('[phrase-whisper-leading-offset]', {
+      offsetSec: whisperLeadingOffsetSec,
+      firstStartAfter: segments[0]?.start
+    });
+  }
   const blocks = [];
   let isFirstExportCue = true;
 
@@ -962,12 +973,16 @@ function composeRhythmBlocks(rawSegments, opts = {}) {
   eliminateCaptionOverlaps(smoothed, SYNC_OVERLAP_GAP_SEC);
   clampFirstPhraseCueTiming(smoothed, segments[0]);
 
-  const firstSeg = segments[0];
-  if (smoothed.length && firstSeg && Number(firstSeg.start) <= 0.2) {
-    smoothed[0].start = 0;
-    smoothed[0].adjustedStart = 0;
-    if (Number(smoothed[0].firstWordStart) > 0.2) {
-      smoothed[0].firstWordStart = Math.min(Number(smoothed[0].firstWordStart), 0);
+  if (smoothed.length) {
+    const fc = smoothed[0];
+    const shouldSnapFirstCueToZero =
+      whisperLeadingOffsetSec > 0 ||
+      Number(segments[0]?.start) <= 0.15 ||
+      Number(fc.start) <= 0.2;
+    if (shouldSnapFirstCueToZero) {
+      fc.start = 0;
+      fc.adjustedStart = 0;
+      fc.firstWordStart = 0;
     }
   }
 
@@ -1052,7 +1067,8 @@ function cloneCue(cue) {
     emphasisWords: cue.emphasisWords,
     sourceSegmentId: cue.sourceSegmentId ?? null,
     translatedSegmentId: cue.translatedSegmentId ?? null,
-    segmentIndex: cue.segmentIndex ?? null
+    segmentIndex: cue.segmentIndex ?? null,
+    previewLines: cue.previewLines ?? null
   };
 }
 
@@ -1252,6 +1268,43 @@ export function stabilizeBurnCueTiming(cues, opts = {}) {
 /** @deprecated use stabilizeBurnCueTiming */
 export function ensureBurnCueDurations(cues, minDurSec = MIN_BURN_CUE_VISIBLE_SEC) {
   return stabilizeBurnCueTiming(cues, { minVisibleSec: minDurSec, minReadSec: minDurSec });
+}
+
+/**
+ * Burn/export from UI preview exportDoc: one cue per segment, text/lines unchanged.
+ */
+export function buildPreviewAlignedSubtitles(rawSegments) {
+  const raw = Array.isArray(rawSegments) ? rawSegments : [];
+  const cues = [];
+  for (let i = 0; i < raw.length; i++) {
+    const seg = raw[i];
+    if (!seg || typeof seg.start !== 'number' || typeof seg.end !== 'number' || seg.end <= seg.start) {
+      continue;
+    }
+    const text = normalizeCueText(
+      seg.text || (Array.isArray(seg.previewLines) ? seg.previewLines.join(' ') : '')
+    );
+    if (!text) continue;
+    const start = Number(seg.start);
+    const end = Number(seg.end);
+    const previewLines =
+      Array.isArray(seg.previewLines) && seg.previewLines.length
+        ? seg.previewLines.map((l) => String(l))
+        : null;
+    cues.push({
+      id: `preview-${i}`,
+      index: i,
+      start,
+      end,
+      duration: Number((end - start).toFixed(3)),
+      text,
+      words: cueWords(text),
+      sourceStart: start,
+      sourceEnd: end,
+      previewLines
+    });
+  }
+  return cues;
 }
 
 /**

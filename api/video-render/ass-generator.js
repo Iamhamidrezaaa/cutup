@@ -6,6 +6,7 @@ import { buildCueLines } from './text-layout.js';
 import { analyzeTextWithEmphasis, shouldEmphasize, markSpokenWord } from './emphasis-engine.js';
 import {
   buildPhraseBurnSubtitles,
+  buildPreviewAlignedSubtitles,
   buildSourceAlignedSubtitles,
   buildVisualCueView,
   applyVisualReadabilityWindows,
@@ -368,14 +369,22 @@ export function generateAssContent(segments, presetId, dims = {}) {
   );
 
   const captionModeNorm = String(captionMode || 'viral').toLowerCase();
-  const useSourceAlignedTimings = captionModeNorm === 'accurate';
+  const burnFromPreviewCues = Boolean(dims.burnFromPreviewCues);
+  const useSourceAlignedTimings = captionModeNorm === 'accurate' || burnFromPreviewCues;
   const inputSegmentCount = finalOnlySegments.length;
-  const canonicalSubtitles = useSourceAlignedTimings
-    ? buildSourceAlignedSubtitles(finalOnlySegments)
-    : buildPhraseBurnSubtitles(finalOnlySegments);
+  const canonicalSubtitles = burnFromPreviewCues
+    ? buildPreviewAlignedSubtitles(finalOnlySegments)
+    : useSourceAlignedTimings
+      ? buildSourceAlignedSubtitles(finalOnlySegments)
+      : buildPhraseBurnSubtitles(finalOnlySegments);
   const exportPhraseCueCount = canonicalSubtitles.length;
+  const burnPath = burnFromPreviewCues
+    ? 'preview-export-doc'
+    : useSourceAlignedTimings
+      ? 'source-aligned-segment'
+      : 'phrase-rhythm';
   console.log('[burn-caption-export]', {
-    path: useSourceAlignedTimings ? 'source-aligned-segment' : 'phrase-rhythm',
+    path: burnPath,
     captionMode: captionModeNorm,
     inputSegmentCount,
     exportPhraseCueCount,
@@ -621,11 +630,14 @@ export function generateAssContent(segments, presetId, dims = {}) {
     const cueRtl = isRtlText(cueText);
     const layoutModeBefore = layout.layout?.mode;
     const cueLineLayout = resolveCueLineLayout(layout.layout, cueText);
-    const lines = buildCueLines(
-      enrichedCue,
-      cueLineLayout,
-      layout.useUppercase && !cueRtl
-    );
+    const useUppercase = layout.useUppercase && !cueRtl;
+    const previewLines = enrichedCue.previewLines;
+    const lines =
+      Array.isArray(previewLines) && previewLines.length
+        ? useUppercase
+          ? previewLines.map((l) => String(l).toUpperCase())
+          : previewLines.map((l) => String(l))
+        : buildCueLines(enrichedCue, cueLineLayout, useUppercase);
     if (cueRtl && !rtlLayoutDebugLogged) {
       rtlLayoutDebugLogged = true;
       console.log('[rtl-layout-debug]', {
@@ -871,7 +883,13 @@ export function generateAssFromExportDoc(exportDoc, dims = {}) {
   const segments = (exportDoc.cues || []).map((c) => ({
     start: c.start,
     end: c.end,
-    text: c.text || (c.lines || []).join(' ')
+    text: c.text || (c.lines || []).join(' '),
+    previewLines: Array.isArray(c.lines) && c.lines.length ? c.lines : null
   }));
-  return generateAssContent(segments, presetId, dims);
+  // Preview/exportDoc timings already match the UI and clean SRT — do not re-shift.
+  return generateAssContent(segments, presetId, {
+    ...dims,
+    burnFromPreviewCues: true,
+    skipWhisperLeadingOffset: true
+  });
 }
