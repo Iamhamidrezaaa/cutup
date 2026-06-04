@@ -3809,61 +3809,9 @@ body {
   align-items: center;
 }
 
-.fulltext-soft-lock-wrap {
-  position: relative;
-}
-
-.fulltext-soft-lock-scroll {
+#fulltext-tab .fulltext {
   max-height: 500px;
   overflow-y: auto;
-}
-
-.fulltext-soft-lock-wrap--locked .fulltext-soft-lock-scroll {
-  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 80%, transparent 100%);
-  mask-image: linear-gradient(to bottom, #000 0%, #000 80%, transparent 100%);
-}
-
-.fulltext-soft-lock-veil {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 22%;
-  min-height: 5.5rem;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding: var(--space-12);
-  background: linear-gradient(
-    to top,
-    rgba(248, 250, 252, 0.97) 0%,
-    rgba(248, 250, 252, 0.55) 45%,
-    transparent 100%
-  );
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(5px);
-  pointer-events: auto;
-  border-radius: 0 0 8px 8px;
-}
-
-.fulltext-soft-lock-veil-inner {
-  text-align: center;
-  width: 100%;
-  max-width: 420px;
-}
-
-.fulltext-soft-lock-heading {
-  margin: 0 0 var(--space-8);
-  font-size: 15px;
-  font-weight: 700;
-  color: #0f172a;
-}
-
-.fulltext-soft-lock-ctas {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-8);
-  justify-content: center;
 }
 
 .conversion-exit-modal {

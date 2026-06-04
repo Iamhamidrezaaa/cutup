@@ -1046,7 +1046,6 @@ function getResultCopyText() {
 
 /* ========== Conversion layer (save CTA, soft lock, exit intent, sticky modes) ========== */
 const CUTUP_LEAD_EMAIL_KEY = 'cutup_lead_email';
-const CUTUP_SOFT_UNLOCK_KEY = 'cutup_soft_unlock';
 
 function submitCutupLead(email, source) {
   const em = String(email || '')
@@ -1067,8 +1066,6 @@ function submitCutupLead(email, source) {
 }
 const CUTUP_EXIT_INTENT_KEY = 'cutup_exit_intent_once';
 const CUTUP_SAVE_DISMISS_PREFIX = 'cutup_save_dismissed:';
-const LONG_TRANSCRIPT_SOFT_LOCK_CHARS = 1700;
-
 let cutupStickyGeneratedAt = 0;
 let cutupStickyLastScrollAt = 0;
 let cutupStickyPrimaryState = 'download';
@@ -1085,6 +1082,11 @@ function cutupHasStoredSession() {
 
 /** Survives Google OAuth full-page redirect; mirrored on window for debugging */
 const CUTUP_PENDING_ACTION_KEY = 'cutup_pending_action';
+
+/** Pending upload blob survives OAuth full-page redirect (File objects do not). */
+const CUTUP_PENDING_UPLOAD_DB_NAME = 'cutup_pending_upload_v1';
+const CUTUP_PENDING_UPLOAD_DB_VERSION = 1;
+const CUTUP_PENDING_UPLOAD_RECORD_ID = 'pending';
 
 /** User intent through OAuth (localStorage); TTL 10m — see cutupParseLocalPendingAction */
 const PENDING_ACTION_LS_KEY = 'pending_action';
@@ -1131,6 +1133,8 @@ function cutupWriteLocalPendingActionForLogin(type, payload) {
   const { mode, fileFlow } = cutupMapPendingTypeToLocalMode(type);
   const inputVal = fileFlow ? '' : String(p.url != null ? p.url : getCurrentUrl()).trim();
   const platform = String(p.platform || currentPlatform || 'youtube').trim();
+  const activeTab =
+    p.activeTab || (p.mode === 'subtitle' || mode === 'subtitle' ? 'srt' : mode === 'summary' ? 'summary' : 'fulltext');
   const obj = {
     type: 'generate',
     payload: {
@@ -1138,6 +1142,7 @@ function cutupWriteLocalPendingActionForLogin(type, payload) {
       platform,
       mode,
       fileFlow,
+      activeTab
     },
     timestamp: Date.now(),
   };
@@ -1172,11 +1177,7 @@ async function cutupExecuteLocalPendingResume(data) {
     } catch (_e2) {
       /* ignore */
     }
-    const pendingFile = window.selectedFile;
-    if (pendingFile instanceof File && cutupIsLoggedIn()) {
-      await processFullTextFile(pendingFile, getCutupSessionId(), 'fulltext');
-      return;
-    }
+    if (await cutupResumePendingUploadAfterLogin(payload)) return;
     showMessage('Select your file again to transcribe.', 'info');
     return;
   }
@@ -1359,10 +1360,7 @@ async function resumeCutupPendingAction() {
       await handleSummarize();
     } else if (type === 'resume_upload_tab') {
       retentionSwitchPlatformWithUrl('audiofile', '');
-      const pendingFile = window.selectedFile;
-      if (pendingFile instanceof File) {
-        await processFullTextFile(pendingFile, getCutupSessionId(), 'fulltext');
-      } else {
+      if (!(await cutupResumePendingUploadAfterLogin(p))) {
         showMessage('Select your file again to transcribe.', 'info');
       }
     }
@@ -1491,23 +1489,6 @@ function setupLandingPricingCheckoutIntercept() {
   );
 }
 
-function cutupSoftUnlockSet() {
-  try {
-    sessionStorage.setItem(CUTUP_SOFT_UNLOCK_KEY, '1');
-  } catch {
-    /* ignore */
-  }
-}
-
-function cutupSoftUnlockActive() {
-  try {
-    if (cutupIsLoggedIn()) return true;
-    return sessionStorage.getItem(CUTUP_SOFT_UNLOCK_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
 function cutupConversionResultDismissKey() {
   const k = window.cutupLastTranscription?.cacheKey;
   return k ? `${CUTUP_SAVE_DISMISS_PREFIX}${k}` : '';
@@ -1588,8 +1569,6 @@ function runConversionSaveAction(source) {
   console.log('[conversion] save clicked', source || '');
   if (cutupIsLoggedIn()) {
     showMessage('You’re signed in—find this transcript in your dashboard history.', 'success');
-    cutupSoftUnlockSet();
-    updateFulltextSoftLockVeil();
     return;
   }
   const emailInput = document.getElementById('conversionSaveEmail');
@@ -1605,116 +1584,12 @@ function runConversionSaveAction(source) {
     /* ignore */
   }
   console.log('[conversion] email entered');
-  cutupSoftUnlockSet();
-  updateFulltextSoftLockVeil();
   submitCutupLead(email, 'soft_unlock');
   showMessage('Thanks—we saved your email on this device. Sign in anytime to sync history.', 'success');
 }
 
-function updateFulltextSoftLockVeil() {
-  const veil = document.getElementById('fulltextSoftLockVeil');
-  const wrap = document.getElementById('fulltextSoftLockWrap');
-  if (!veil || !wrap) return;
-
-  if (cutupSoftUnlockActive()) {
-    veil.hidden = true;
-    veil.setAttribute('aria-hidden', 'true');
-    wrap.classList.remove('fulltext-soft-lock-wrap--locked');
-    try {
-      console.log(
-        '[translate-auth-debug]',
-        JSON.stringify({
-          isAuthenticated: cutupIsLoggedIn(),
-          userPlan: window.userSubscription?.plan ?? null,
-          sessionLoaded: window.CutupApp.subscriptionHydration === 'ready',
-          resumeMode: cutupResumeModeActive(),
-          hasTranscript: ((document.getElementById('fulltext')?.textContent || '').trim().length || 0) > 0,
-          paywallTriggered: false,
-          renderBranch: 'soft_unlock_active'
-        })
-      );
-    } catch (_e) {
-      /* ignore */
-    }
-    return;
-  }
-
-  const len = (document.getElementById('fulltext')?.textContent || '').trim().length;
-  const sessionId = getCutupSessionId();
-  const lastOpts = window.cutupLastTranscription && window.cutupLastTranscription.lastDisplayOptions;
-  const previewModeFromState = !!(lastOpts && lastOpts.previewMode === true);
-  const previewBanner = document.getElementById('previewUpgradeBanner');
-  let previewBannerVisible = false;
-  if (previewBanner) {
-    try {
-      const cs = window.getComputedStyle(previewBanner);
-      previewBannerVisible =
-        !previewBanner.hidden &&
-        previewBanner.style.display !== 'none' &&
-        cs.display !== 'none' &&
-        cs.visibility !== 'hidden';
-    } catch (_e) {
-      previewBannerVisible = previewBanner.style.display === 'block';
-    }
-  }
-  const previewOn = previewModeFromState || previewBannerVisible;
-  const producedFullTranscript = !!(
-    lastOpts &&
-    (lastOpts.authenticatedResult === true || lastOpts.previewMode === false)
-  );
-  const planKey = normalizePlanKey(window.userSubscription && window.userSubscription.plan);
-  const paidPlanCached = planKey !== 'free';
-  const hydration = window.CutupApp.subscriptionHydration || 'idle';
-  const authenticated =
-    cutupIsLoggedIn() ||
-    cutupHasStoredSession() ||
-    producedFullTranscript;
-  const shouldLock =
-    !previewOn &&
-    !authenticated &&
-    !paidPlanCached &&
-    len >= LONG_TRANSCRIPT_SOFT_LOCK_CHARS;
-
-  try {
-    let renderBranch = 'authenticated_or_short_no_lock';
-    if (shouldLock) renderBranch = 'guest_soft_lock';
-    else if (previewOn) renderBranch = 'preview_suppresses_lock';
-    else if (authenticated) renderBranch = 'authenticated_suppresses_guest_lock';
-    else if (paidPlanCached) renderBranch = 'paid_plan_suppresses_guest_lock';
-    else if (hydration === 'pending' && sessionId) renderBranch = 'hydration_pending_session';
-    console.log(
-      '[translate-auth-debug]',
-      JSON.stringify({
-        isAuthenticated: cutupIsLoggedIn(),
-        hasStoredSession: cutupHasStoredSession(),
-        producedFullTranscript,
-        userPlan: window.userSubscription?.plan ?? null,
-        sessionLoaded: hydration === 'ready',
-        resumeMode: cutupResumeModeActive(),
-        hasTranscript: len > 0,
-        paywallTriggered: shouldLock,
-        renderBranch
-      })
-    );
-  } catch (_e) {
-    /* ignore */
-  }
-
-  if (!shouldLock) {
-    veil.hidden = true;
-    veil.setAttribute('aria-hidden', 'true');
-    wrap.classList.remove('fulltext-soft-lock-wrap--locked');
-    return;
-  }
-
-  veil.hidden = false;
-  veil.setAttribute('aria-hidden', 'false');
-  wrap.classList.add('fulltext-soft-lock-wrap--locked');
-}
-
 function initConversionLayerAfterResults() {
   showConversionSaveBlock();
-  updateFulltextSoftLockVeil();
   cutupStickyGeneratedAt = Date.now();
   cutupStickyLastScrollAt = Date.now();
   setStickyPrimaryMode('download');
@@ -1814,21 +1689,6 @@ function setupConversionLayerInteractions() {
   document.getElementById('conversionSkipSaveBtn')?.addEventListener('click', () => {
     hideConversionSaveBlockDismissed();
   });
-  document.getElementById('fulltextSoftLockLoginBtn')?.addEventListener('click', () => {
-    document.getElementById('loginBtn')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    setTimeout(() => document.getElementById('loginBtn')?.focus({ preventScroll: true }), 400);
-  });
-  document.getElementById('fulltextSoftLockSaveBtn')?.addEventListener('click', () => {
-    document.getElementById('conversionSaveBlock')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    setTimeout(() => {
-      if (!cutupIsLoggedIn()) {
-        document.getElementById('conversionSaveEmail')?.focus({ preventScroll: true });
-      } else {
-        document.getElementById('conversionSaveBtn')?.focus({ preventScroll: true });
-      }
-    }, 350);
-  });
-
   document.getElementById('conversionExitBackdrop')?.addEventListener('click', closeConversionExitModal);
   document.getElementById('conversionExitCloseBtn')?.addEventListener('click', closeConversionExitModal);
   document.getElementById('conversionExitSaveBtn')?.addEventListener('click', () => {
@@ -2376,6 +2236,23 @@ function replayCachedResultIfMatch(activeTab = 'fulltext', outputMode = 'fulltex
   return true;
 }
 
+function patchSummaryInResults(summary) {
+  const cached = window.cutupLastTranscription;
+  if (!cached) return;
+  cached.summary = summary;
+  const resultSection = document.getElementById('resultSection');
+  const activeTab =
+    resultSection?.querySelector('.tab-btn.active')?.dataset?.tab ||
+    cached.lastDisplayOptions?.activeTab ||
+    'srt';
+  displayResults(summary, cached.fullText, cached.segments || [], {
+    ...(cached.lastDisplayOptions || {}),
+    outputMode: 'unified',
+    activeTab,
+    cacheReplay: true
+  });
+}
+
 function applyResultOutputMode(resultSection, outputMode) {
   if (!resultSection) return;
   const fulltextBtn = resultSection.querySelector('.tab-btn[data-tab="fulltext"]');
@@ -2384,6 +2261,20 @@ function applyResultOutputMode(resultSection, outputMode) {
   const fulltextContent = document.getElementById('fulltext-tab');
   const summaryContent = document.getElementById('summary-tab');
   const srtContent = document.getElementById('srt-tab');
+
+  if (outputMode === 'unified') {
+    [fulltextBtn, summaryBtn, srtBtn].forEach((btn) => {
+      if (btn) {
+        btn.hidden = false;
+        btn.style.removeProperty('display');
+      }
+    });
+    [fulltextContent, summaryContent, srtContent].forEach((el) => {
+      if (el) el.style.display = '';
+    });
+    resultSection.dataset.outputMode = 'unified';
+    return;
+  }
 
   if (outputMode === 'srt') {
     if (fulltextBtn) {
@@ -2704,7 +2595,6 @@ async function loadUserProfile() {
         setCutupSession(sessionId, 'loadUserProfile_ok');
         cutupMarkSessionVerified(true, 'loadUserProfile_ok');
         showUserProfile(data.user);
-        updateFulltextSoftLockVeil();
         // Load subscription info and update UI
         await updateButtonsBasedOnSubscription(sessionId);
         await retentionMergeGuestIfNeeded(sessionId);
@@ -3357,13 +3247,11 @@ function showUserProfile(user) {
       clearCutupSession('logout');
       userProfile.classList.remove('active');
       showLoginButton();
-      updateFulltextSoftLockVeil();
       refreshConversionSaveBlockUI();
     });
   }
   
   console.log('[script] User profile displayed successfully');
-  updateFulltextSoftLockVeil();
   refreshConversionSaveBlockUI();
   if (typeof window.cutupMaybeTrackReferralSignup === 'function') {
     window.cutupMaybeTrackReferralSignup();
@@ -3969,7 +3857,6 @@ function initHeroPreviewTabs() {
     if (currentHeroPlatform === 'audiofile') {
       document.getElementById('tool')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       switchPlatform('audiofile');
-      if (!(await cutupGateUploadAuth(null))) return;
       const audioInput = document.getElementById('audioFileInput');
       if (audioInput) audioInput.click();
       return;
@@ -4246,7 +4133,7 @@ async function handleSummarize() {
     (currentPlatform === 'audiofile' ||
       !url ||
       (typeof url === 'string' && url.startsWith('📁')));
-  if (isFileFlow && !(await cutupGateUploadAuth(file))) {
+  if (isFileFlow && !(await cutupGateUploadAuth(file, { mode: 'summary', activeTab: 'summary' }))) {
     endPipelineRun();
     return;
   }
@@ -4305,6 +4192,16 @@ async function handleFullText(activeTab = 'fulltext') {
   const url = getCurrentUrl();
   const file = audioFileInput && audioFileInput.files[0];
   const requestedPlatform = resolveRequestedPlatform(url, file);
+
+  const isFileFlowFtEarly =
+    !!file &&
+    (currentPlatform === 'audiofile' ||
+      !url ||
+      (typeof url === 'string' && url.startsWith('📁')));
+  if (isFileFlowFtEarly && replayCachedResultIfMatch(activeTab, 'unified')) {
+    endPipelineRun();
+    return;
+  }
     
   if (!url && !file) {
     endPipelineRun();
@@ -4321,7 +4218,13 @@ async function handleFullText(activeTab = 'fulltext') {
     (currentPlatform === 'audiofile' ||
       !url ||
       (typeof url === 'string' && url.startsWith('📁')));
-  if (isFileFlowFt && !(await cutupGateUploadAuth(file))) {
+  if (
+    isFileFlowFt &&
+    !(await cutupGateUploadAuth(file, {
+      mode: activeTab === 'srt' ? 'subtitle' : 'fulltext',
+      activeTab
+    }))
+  ) {
     endPipelineRun();
     return;
   }
@@ -4394,7 +4297,7 @@ async function handleSrtSubtitles() {
     if (hasText || hasSeg) {
       displayResults(cached.summary, cached.fullText, cached.segments || [], {
         ...cached.lastDisplayOptions,
-        outputMode: 'srt',
+        outputMode: 'unified',
         activeTab: 'srt',
         cacheReplay: true
       });
@@ -4407,7 +4310,7 @@ async function handleSrtSubtitles() {
   if (hasSrt && resultSection && resultSection.style.display !== 'none' && cached && key && cached.cacheKey === key) {
     displayResults(cached.summary, cached.fullText, cached.segments || [], {
       ...cached.lastDisplayOptions,
-      outputMode: 'srt',
+      outputMode: 'unified',
       activeTab: 'srt',
       cacheReplay: true
     });
@@ -4818,12 +4721,26 @@ async function processSummarizeFile(file, sessionId) {
   }
 }
 
+/** One upload pass: transcribe once, show SRT + transcript tabs; summary fills in when ready. */
+async function startUploadFilePipeline(file) {
+  if (!(file instanceof File) || !cutupIsLoggedIn()) return;
+  if (!beginPipelineRun()) return;
+  try {
+    await processFullTextFile(file, getCutupSessionId(), 'srt');
+  } finally {
+    endPipelineRun();
+  }
+}
+
 // Process full text for file
 async function processFullTextFile(file, sessionId, activeTab = 'fulltext') {
   const isPreviewMode = !sessionId;
+  const showUnifiedTabs = !isPreviewMode;
+  const resultOutputMode = showUnifiedTabs ? 'unified' : activeTab === 'srt' ? 'srt' : 'fulltext';
+  const resultActiveTab = showUnifiedTabs ? 'srt' : activeTab === 'srt' ? 'srt' : 'fulltext';
   try {
     // Show progress bar
-    showProgressBar('Processing your file…', false);
+    showProgressBar('Extracting subtitles & transcript…', false);
     updateProgressBar(0, 0, 0, 'Checking file…');
     
     // Check file size (limit to 100MB like extension)
@@ -4860,37 +4777,55 @@ async function processFullTextFile(file, sessionId, activeTab = 'fulltext') {
       sourceUrl: 'upload://local-file'
     });
     stopProgressTracking(99, 'Transcription complete');
-    
-    // Summary is best-effort; transcript/SRT should still succeed if it fails
-    let summary = null;
-    try {
-      summary = await summarizeText(transcription.text, normalizeSummaryLanguage(transcription.language), sessionId, {
-        platform: 'upload',
-        title: file.name || 'Uploaded file',
-        sourceUrl: 'upload://local-file'
-      });
-    } catch (summaryErr) {
-      console.warn('Summary generation failed for file flow:', summaryErr);
-      summary = { unavailable: true, message: 'Summary could not be generated for this file.' };
-    }
+
+    const summaryPending = {
+      unavailable: true,
+      message: 'Summary is generating…'
+    };
 
     // Final update to 100%
     setTimeout(() => {
       updateProgressBar(0, 0, 100, 'All set');
     }, 350);
     
-    // Display results and keep all useful tabs available
-    displayResults(summary, transcription.text, transcription.segments || [], {
+    // One transcription → SRT + full text; show SRT first, transcript tab is instant from cache
+    displayResults(summaryPending, transcription.text, transcription.segments || [], {
       originalLanguage: transcription.language,
-      activeTab,
-      outputMode: activeTab === 'srt' ? 'srt' : 'fulltext',
+      activeTab: resultActiveTab,
+      outputMode: resultOutputMode,
       previewMode: isPreviewMode,
       videoDurationSeconds: estimatedDurationMinutes * 60,
       title: file.name || 'Uploaded file',
       platform: 'upload',
       sourceUrl: 'upload://local-file'
     });
-    trackEvent('transcript_generated', { mode: 'fulltext', source: 'file', auth: !!sessionId, preview: isPreviewMode });
+    trackEvent('transcript_generated', {
+      mode: showUnifiedTabs ? 'unified' : 'fulltext',
+      source: 'file',
+      auth: !!sessionId,
+      preview: isPreviewMode
+    });
+
+    if (sessionId && transcription.text) {
+      void summarizeText(
+        transcription.text,
+        normalizeSummaryLanguage(transcription.language),
+        sessionId,
+        {
+          platform: 'upload',
+          title: file.name || 'Uploaded file',
+          sourceUrl: 'upload://local-file'
+        }
+      )
+        .then((summary) => patchSummaryInResults(summary))
+        .catch((summaryErr) => {
+          console.warn('Summary generation failed for file flow:', summaryErr);
+          patchSummaryInResults({
+            unavailable: true,
+            message: 'Summary could not be generated for this file.'
+          });
+        });
+    }
     
     if (sessionId) {
     // Save to dashboard
@@ -4908,6 +4843,7 @@ async function processFullTextFile(file, sessionId, activeTab = 'fulltext') {
     
     // Hide progress bar
     hideProgressBar();
+    void cutupClearPendingUploadFile();
     
   } catch (error) {
     console.error('[PIPELINE ERROR][processFullTextFile]', error);
@@ -6091,7 +6027,10 @@ function displayResults(summary, fullText, segments = null, options = {}) {
   applyResultOutputMode(resultSection, outputMode);
 
   let targetTab = requestedTab;
-  if (outputMode === 'srt') {
+  if (outputMode === 'unified') {
+    targetTab =
+      requestedTab === 'fulltext' || requestedTab === 'summary' ? requestedTab : 'srt';
+  } else if (outputMode === 'srt') {
     targetTab = 'srt';
   } else if (targetTab === 'srt') {
     targetTab = summary ? 'summary' : 'fulltext';
@@ -6114,7 +6053,8 @@ function displayResults(summary, fullText, segments = null, options = {}) {
       isYouTubeSubtitle: options.isYouTubeSubtitle,
       availableLanguages: options.availableLanguages || [],
       previewMode: options.previewMode,
-      authenticatedResult: !options.previewMode && !!getCutupSessionId(),
+      outputMode,
+      activeTab: requestedTab,
       videoDurationSeconds: options.videoDurationSeconds,
       platform: normalizeCinematicPlatform(
         options.platform || (typeof currentPlatform !== 'undefined' ? currentPlatform : null)
@@ -6274,9 +6214,6 @@ function switchTab(tabName) {
   if (tabBtn) tabBtn.classList.add('active');
   if (tabContent) tabContent.classList.add('active');
 
-  if (tabName === 'fulltext') {
-    updateFulltextSoftLockVeil();
-  }
   if (tabName === 'srt') {
     window.CutupSubtitleVersions?.refreshVersionSelector?.();
     syncSrtRawPanel();
@@ -6486,7 +6423,6 @@ async function translateFulltextContent(sessionId, originalLanguage) {
       /* ignore */
     }
     if (stableSid) setCutupSession(stableSid, 'translate_fulltext_success');
-    updateFulltextSoftLockVeil();
     
   } catch (error) {
     console.error('[translate-error]', { kind: 'fulltext', message: error?.message, code: error?.errorCode });
@@ -7751,26 +7687,162 @@ function isAllowedUploadFile(file) {
   return ext ? UPLOAD_MEDIA_EXTENSIONS.has(ext) : false;
 }
 
+function cutupOpenPendingUploadDb() {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      reject(new Error('indexedDB unavailable'));
+      return;
+    }
+    const req = indexedDB.open(CUTUP_PENDING_UPLOAD_DB_NAME, CUTUP_PENDING_UPLOAD_DB_VERSION);
+    req.onerror = () => reject(req.error || new Error('indexedDB open failed'));
+    req.onsuccess = () => resolve(req.result);
+    req.onupgradeneeded = (ev) => {
+      const db = ev.target.result;
+      if (!db.objectStoreNames.contains('files')) {
+        db.createObjectStore('files');
+      }
+    };
+  });
+}
+
+async function cutupSavePendingUploadFile(file, meta = {}) {
+  if (!(file instanceof File)) return;
+  const db = await cutupOpenPendingUploadDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction('files', 'readwrite');
+    const store = tx.objectStore('files');
+    store.put(
+      {
+        blob: file,
+        name: file.name,
+        type: file.type,
+        lastModified: file.lastModified,
+        size: file.size,
+        meta: {
+          mode: meta.mode || 'fulltext',
+          activeTab: meta.activeTab || (meta.mode === 'subtitle' ? 'srt' : 'fulltext'),
+          savedAt: Date.now()
+        }
+      },
+      CUTUP_PENDING_UPLOAD_RECORD_ID
+    );
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error || new Error('indexedDB write failed'));
+    };
+  });
+}
+
+async function cutupLoadPendingUploadFile() {
+  try {
+    const db = await cutupOpenPendingUploadDb();
+    const record = await new Promise((resolve, reject) => {
+      const tx = db.transaction('files', 'readonly');
+      const req = tx.objectStore('files').get(CUTUP_PENDING_UPLOAD_RECORD_ID);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+      tx.oncomplete = () => db.close();
+    });
+    if (!record?.blob) return null;
+    const file = new File([record.blob], record.name || 'upload', {
+      type: record.type || '',
+      lastModified: record.lastModified || Date.now()
+    });
+    return { file, meta: record.meta || {} };
+  } catch (err) {
+    console.warn('[upload] pending file load failed:', err?.message || err);
+    return null;
+  }
+}
+
+async function cutupClearPendingUploadFile() {
+  try {
+    const db = await cutupOpenPendingUploadDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction('files', 'readwrite');
+      tx.objectStore('files').delete(CUTUP_PENDING_UPLOAD_RECORD_ID);
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onerror = () => {
+        db.close();
+        reject(tx.error);
+      };
+    });
+  } catch (_e) {
+    /* ignore */
+  }
+}
+
+function cutupBindFileToAudioInput(file) {
+  if (!audioFileInput || !(file instanceof File)) return;
+  try {
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    audioFileInput.files = dt.files;
+  } catch (_e) {
+    /* ignore — window.selectedFile still holds the File */
+  }
+}
+
+async function cutupResumePendingUploadAfterLogin(payload = {}) {
+  if (!cutupIsLoggedIn()) return false;
+  const activeTab =
+    payload.activeTab || (payload.mode === 'subtitle' || payload.mode === 'srt' ? 'srt' : 'fulltext');
+  let file = window.selectedFile;
+  if (!(file instanceof File)) {
+    const loaded = await cutupLoadPendingUploadFile();
+    if (loaded?.file) {
+      file = loaded.file;
+      window.selectedFile = file;
+    }
+  }
+  if (!(file instanceof File)) return false;
+
+  retentionSwitchPlatformWithUrl('audiofile', '');
+  cutupBindFileToAudioInput(file);
+  rememberSourceVideoFile(file);
+  updateAudioFileSelectedLabel(file);
+  checkInput();
+
+  await startUploadFilePipeline(file);
+  await cutupClearPendingUploadFile();
+  return true;
+}
+
 /**
  * Same auth gate as social links: overlay + Google OAuth before upload processing.
  * @returns {Promise<boolean>} true when user may continue
  */
-async function cutupGateUploadAuth(file = null) {
+async function cutupGateUploadAuth(file = null, meta = {}) {
   if (cutupIsLoggedIn()) return true;
   if (file instanceof File) {
     window.selectedFile = file;
     rememberSourceVideoFile(file);
+    cutupBindFileToAudioInput(file);
     updateAudioFileSelectedLabel(file);
     if (currentPlatform !== 'audiofile') switchPlatform('audiofile');
     checkInput();
+    try {
+      await cutupSavePendingUploadFile(file, meta);
+    } catch (err) {
+      console.warn('[upload] could not persist file before login:', err?.message || err);
+    }
   } else if (currentPlatform !== 'audiofile') {
     switchPlatform('audiofile');
   }
+  const activeTab = meta.activeTab || (meta.mode === 'subtitle' ? 'srt' : 'fulltext');
   try {
     await cutupTriggerLoginForPendingAction('resume_upload_tab', {
       platform: 'audiofile',
       fileFlow: true,
-      mode: 'fulltext'
+      mode: meta.mode || 'fulltext',
+      activeTab
     });
   } catch (_e) {
     cutupClearPendingAction();
@@ -7802,9 +7874,8 @@ function initUploadFileTab() {
   const chooseBtn = document.getElementById('audioFileChooseBtn');
   const dropZone = document.getElementById('audioFileDropZone');
 
-  const openPicker = async () => {
+  const openPicker = () => {
     if (currentPlatform !== 'audiofile') switchPlatform('audiofile');
-    if (!(await cutupGateUploadAuth(null))) return;
     audioFileInput.click();
   };
 
@@ -7812,22 +7883,12 @@ function initUploadFileTab() {
     chooseBtn.dataset.cutupBound = '1';
     chooseBtn.addEventListener('click', (e) => {
       e.preventDefault();
-      void openPicker();
+      openPicker();
     });
     chooseBtn.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        void openPicker();
-      }
-    });
-  }
-
-  if (dropZone) {
-    dropZone.addEventListener('click', (e) => {
-      if (e.target === audioFileInput) return;
-      if (!cutupIsLoggedIn()) {
-        e.preventDefault();
-        void cutupGateUploadAuth(null);
+        openPicker();
       }
     });
   }
@@ -7852,13 +7913,17 @@ function initUploadFileTab() {
     dropZone.addEventListener('drop', (e) => {
       const file = e.dataTransfer?.files?.[0];
       if (!file) return;
-      void processSelectedUploadFile(file);
+      void confirmSelectedUploadFile(file);
     });
   }
 }
 
-async function processSelectedUploadFile(file) {
-  if (!file) return;
+/**
+ * Validate + stage file after picker OK or drop. Guests are sent to Google login; processing resumes after return.
+ * @returns {Promise<boolean>}
+ */
+async function stageSelectedUploadFile(file) {
+  if (!file) return false;
 
   const maxSize = 100 * 1024 * 1024;
   if (file.size > maxSize) {
@@ -7869,7 +7934,7 @@ async function processSelectedUploadFile(file) {
     if (audioFileInput) audioFileInput.value = '';
     updateAudioFileSelectedLabel(null);
     checkInput();
-    return;
+    return false;
   }
 
   if (!isAllowedUploadFile(file)) {
@@ -7877,26 +7942,31 @@ async function processSelectedUploadFile(file) {
     if (audioFileInput) audioFileInput.value = '';
     updateAudioFileSelectedLabel(null);
     checkInput();
-    return;
+    return false;
   }
-
-  if (!(await cutupGateUploadAuth(file))) return;
 
   window.selectedFile = file;
   rememberSourceVideoFile(file);
   if (currentPlatform !== 'audiofile') switchPlatform('audiofile');
+  cutupBindFileToAudioInput(file);
   updateAudioFileSelectedLabel(file);
   checkInput();
+  return true;
+}
 
-  const sessionId = getCutupSessionId();
-  showMessage('Processing your file…', 'info');
-  try {
-    await processFullTextFile(file, sessionId, 'fulltext');
-  } catch (err) {
-    reportClientError('file_select_process', err);
-    const msg = err && typeof err.message === 'string' ? err.message : USER_ERROR_GENERIC;
-    showMessage(msg, 'error');
+/** After native file dialog OK: login if needed, else auto-run one transcription for SRT + transcript. */
+async function confirmSelectedUploadFile(file, meta = {}) {
+  if (!(await stageSelectedUploadFile(file))) return;
+  const pendingMeta = {
+    mode: 'subtitle',
+    activeTab: 'srt',
+    ...meta
+  };
+  if (!cutupIsLoggedIn()) {
+    await cutupGateUploadAuth(file, pendingMeta);
+    return;
   }
+  await startUploadFilePipeline(file);
 }
 
 async function handleFileSelect(e) {
@@ -7906,7 +7976,7 @@ async function handleFileSelect(e) {
     checkInput();
     return;
   }
-  await processSelectedUploadFile(file);
+  await confirmSelectedUploadFile(file, { mode: 'subtitle', activeTab: 'srt' });
 }
 
 // Get current URL input based on active tab
