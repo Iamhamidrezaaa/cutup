@@ -21,6 +21,7 @@ import {
   buildSubtitleBurnSyncReport
 } from './ffmpeg-timeline.js';
 import { runRtlBurnForensics } from './rtl-burn-forensics.js';
+import { resolveVideoEncoder, buildVideoEncodeArgs, isNvencCodec } from './video-encoder.js';
 import {
   isHardSyncTestEnabled,
   writeHardSyncTestAss,
@@ -313,9 +314,14 @@ export async function burnSubtitles(opts) {
     renderHints
   });
   const enc = geometry.enc;
+  const videoCodec = resolveVideoEncoder();
   const burnHwAccel =
-    String(process.env.VIDEO_RENDER_HWACCEL_ON_BURN || '0').toLowerCase() === '1';
+    String(process.env.VIDEO_RENDER_HWACCEL_ON_BURN || '0').toLowerCase() === '1' ||
+    isNvencCodec(videoCodec);
   const hwAccel = burnHwAccel ? await detectHardwareAcceleration() : { enabled: false };
+  const nvencCudaDecode =
+    isNvencCodec(videoCodec) &&
+    String(process.env.VIDEO_RENDER_NVENC_CUDA_DECODE || '1').toLowerCase() !== '0';
   const assDir = dirname(resolve(burnAssPath));
   const assName = basename(burnAssPath);
   const skipTimelineFilters = Boolean(timelinePlan.skipTimelineCorrection);
@@ -335,30 +341,14 @@ export async function burnSubtitles(opts) {
     '-progress',
     'pipe:2',
     ...inputFlags,
-    ...(hwAccel.enabled ? ['-hwaccel', 'auto'] : []),
+    ...(nvencCudaDecode && hwAccel.methods?.includes('cuda') ? ['-hwaccel', 'cuda'] : []),
+    ...(hwAccel.enabled && !nvencCudaDecode ? ['-hwaccel', 'auto'] : []),
     '-i',
     inputPath,
     '-vf',
     vf,
     ...audioFilters,
-    '-c:v',
-    'libx264',
-    '-preset',
-    enc.preset,
-    '-crf',
-    String(enc.crf),
-    '-maxrate',
-    String(enc.maxrate || (quality === 'hq' ? '10M' : '6M')),
-    '-bufsize',
-    String(enc.bufsize || (quality === 'hq' ? '16M' : '10M')),
-    '-g',
-    String(enc.gop || 48),
-    '-keyint_min',
-    String(Math.max(24, Math.round((enc.gop || 48) * 0.5))),
-    '-sc_threshold',
-    '0',
-    '-pix_fmt',
-    'yuv420p',
+    ...buildVideoEncodeArgs(videoCodec, enc, quality),
     '-movflags',
     String(enc.movflags || '+faststart+frag_keyframe+default_base_moof'),
     '-c:a',

@@ -1,0 +1,18 @@
+{
+  "name": "cutup-gpu-render-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "RunPod GPU FFmpeg burn-in worker for Cutup",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

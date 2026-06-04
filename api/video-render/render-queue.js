@@ -8,13 +8,17 @@ import { getStylePreset } from './style-presets.js';
 import { join, resolve } from 'path';
 import { generateAssContent, generateAssFromExportDoc } from './ass-generator.js';
 import {
-  burnSubtitles,
   probeVideo,
   checkFfmpegAvailable,
-  resolveSubtitleRenderGeometry,
-  normalizeVideoForBurn,
-  verifyNormalizedBurnSync
+  resolveSubtitleRenderGeometry
 } from './ffmpeg-renderer.js';
+import { executeBurnExportPhase } from './burn-export-phase.js';
+import {
+  isGpuRenderEnabled,
+  dispatchGpuRenderJob,
+  downloadGpuRenderOutput
+} from './gpu-render-client.js';
+import { registerGpuRenderArtifacts, purgeExpiredGpuArtifacts } from './gpu-render-artifacts.js';
 import {
   createJobDir,
   downloadVideoFromUrl,
@@ -816,194 +820,131 @@ async function runJob(job) {
     });
 
     const outputPath = join(job.jobDir, 'export.mp4');
-    const normalizedPath = join(job.jobDir, 'normalized.cfr.mp4');
     job.ffmpegAbort = new AbortController();
     startRenderHeartbeat(job, probe.durationSec);
     ffmpegStartedAt.at = Date.now();
 
     try {
-      const assBurnCues = parseAssDialogueTimes(job.assPath, 500);
-      const subtitleCues = assBurnCues.length
-        ? assBurnCues
-        : (job.segments || []).map((s) => ({
-            start: s.start,
-            end: s.end,
-            text: String(s.text || '')
-          }));
-      if (assBurnCues.length) {
-        console.log('[burn-subtitle-cues]', {
-          source: 'ass-dialogues',
-          cueCount: assBurnCues.length,
-          firstCue: assBurnCues[0],
-          previewExportDoc: Boolean(job.burnFromPreviewExportDoc)
-        });
-      }
-
-      const singlePassExport =
-        String(process.env.RENDER_SINGLE_PASS ?? '1').toLowerCase() !== '0';
-
       job.rawVideoPath = videoPath;
-      let burnInputPath = videoPath;
-      let burnDurationSec = probe.durationSec;
-      let inputAlreadyNormalized = false;
-      let normResult = { skipped: true, sourceTiming: null, normalizedTiming: null };
+      const burnDurationSec = probe.durationSec;
 
-      await recordFileStage(timelineTrace, videoPath, 'pre_burn_source');
+      const onBurnProgress = (info) => {
+        const pct = Number(info?.pct || 0);
+        if (typeof info?.speed === 'number' && Number.isFinite(info.speed) && info.speed > 0) {
+          ffmpegStats.speedSum += info.speed;
+          ffmpegStats.speedSamples += 1;
+          job.renderSpeedX = Number(info.speed.toFixed(2));
+        }
+        if (typeof info?.fps === 'number' && Number.isFinite(info.fps) && info.fps >= 0) {
+          ffmpegStats.fpsSum += info.fps;
+          ffmpegStats.fpsSamples += 1;
+          job.renderFps = Number(info.fps.toFixed(1));
+        }
+        if ((info?.phase === 'muxing' || pct >= 97) && job.stageKey !== 'muxing') {
+          setStage(job, 'muxing', {
+            stageLabel: 'Muxing',
+            subStageLabel: 'Muxing audio and video…',
+            progress: 93
+          });
+        }
 
-      if (singlePassExport) {
-        setSubStage(job, 'Encoding with synced subtitles…', 51);
-        traceRenderTimeline(timelineTrace, 'single_pass_export', {
-          burnInputPath: videoPath,
-          note:
-            'One ffmpeg pass: timeline correction + CFR + burn (avoids double setpts desync)'
+        const mapped =
+          info?.phase === 'muxing'
+            ? Math.min(97, 93 + Math.round(pct * 0.04))
+            : Math.min(92, 52 + Math.round(pct * 0.4));
+        bumpProgress(job, mapped);
+
+        if (typeof info?.etaSec === 'number' && Number.isFinite(info.etaSec)) {
+          job.etaSec = Math.max(1, Math.round(info.etaSec));
+        } else if (probe.durationSec > 0 && pct > 0) {
+          job.etaSec = Math.max(2, Math.round(((100 - pct) / 100) * probe.durationSec * 0.8));
+        }
+
+        if (info?.phase === 'rendering') {
+          job.ffmpegMsgIndex = (job.ffmpegMsgIndex + 1) % FFMPEG_STATUS_LINES.length;
+          job.subStageLabel = pct < 55 ? 'Encoding TikTok-ready MP4…' : FFMPEG_STATUS_LINES[job.ffmpegMsgIndex];
+        } else if (info?.phase === 'muxing') {
+          job.subStageLabel = 'Muxing audio and video…';
+        }
+      };
+
+      let burnResult = null;
+      let normResult = { skipped: true };
+
+      if (isGpuRenderEnabled()) {
+        setSubStage(job, 'Encoding on GPU worker…', 55);
+        purgeExpiredGpuArtifacts();
+        const artifacts = registerGpuRenderArtifacts(job, videoPath);
+        console.log('[gpu-render] dispatch', {
+          jobId: job.id,
+          preset: job.presetId,
+          videoUrl: artifacts.videoUrl.slice(0, 80) + '…'
+        });
+        const gpuResult = await dispatchGpuRenderJob({
+          jobId: job.id,
+          videoUrl: artifacts.videoUrl,
+          subtitleUrl: artifacts.subtitleUrl,
+          preset: job.presetId,
+          quality: job.quality,
+          durationSec: burnDurationSec,
+          trustPreviewTimings: Boolean(job.burnFromPreviewExportDoc),
+          renderHints: {
+            hqSafeguards,
+            isVertical,
+            sourceWidth: probe.width,
+            sourceHeight: probe.height
+          }
+        });
+        await downloadGpuRenderOutput(gpuResult.outputUrl, outputPath);
+        job.gpuRenderMs = gpuResult.renderMs;
+        job.burnAssPath = resolve(job.assPath);
+        job.exportAssPath = join(job.jobDir, 'export.ass');
+        copyFileSync(job.assPath, job.exportAssPath);
+        console.log('[gpu-render] complete', {
+          jobId: job.id,
+          renderMs: gpuResult.renderMs,
+          outputUrl: gpuResult.outputUrl
         });
       } else {
-        setSubStage(job, 'Normalizing video timeline (CFR)…', 51);
-        traceRenderTimeline(timelineTrace, 'normalize_cfr_start', {
-          rawSource: videoPath,
-          normalizedTarget: normalizedPath,
-          note: 'Two-pass mode: normalize then burn without re-applying setpts'
-        });
-
-        normResult = await normalizeVideoForBurn({
-          inputPath: videoPath,
-          outputPath: normalizedPath,
+        setSubStage(job, 'Encoding with synced subtitles…', 51);
+        const phase = await executeBurnExportPhase({
+          jobId: job.id,
+          jobDir: job.jobDir,
+          videoPath,
+          assPath: job.assPath,
+          outputPath,
+          quality: job.quality,
+          probe,
+          segments: job.segments,
+          assResult,
+          renderGeometry,
+          hqSafeguards,
+          isVertical,
+          trustPreviewTimings: Boolean(job.burnFromPreviewExportDoc),
+          burnFromPreviewExportDoc: Boolean(job.burnFromPreviewExportDoc),
+          timelineTrace,
           signal: job.ffmpegAbort.signal,
-          onProgress: (info) => {
-            bumpProgress(job, Math.min(51, 48 + Math.round((info?.renderedSec || 0) * 0.3)));
-          }
+          onProgress: onBurnProgress
         });
-
-        job.normalizedVideoPath = normResult.skipped ? videoPath : normalizedPath;
-        burnInputPath = normResult.skipped ? videoPath : normalizedPath;
-        burnDurationSec = normResult.normalizedTiming?.formatDuration || probe.durationSec;
-        inputAlreadyNormalized = !normResult.skipped;
-
-        if (!normResult.skipped) {
-          await recordFileStage(timelineTrace, normalizedPath, 'normalized_cfr_mp4');
-          await verifyNormalizedBurnSync(subtitleCues, burnInputPath);
-        }
-
-        traceRenderTimeline(timelineTrace, 'normalize_cfr_complete', {
-          skipped: normResult.skipped,
-          burnInputPath,
-          sourceIsVfr: normResult.sourceTiming?.isVfr,
-          durationDeltaSec: normResult.durationDeltaSec,
-          cfrFps: normResult.cfrFps
+        burnResult = phase.burnResult;
+        normResult = phase.normResult;
+        job.burnAssPath = phase.burnAssPath;
+        job.exportAssPath = phase.exportAssPath;
+        job.ffmpegCommandExact = burnResult?.ffmpegCommandExact || null;
+        job.ffmpegCwd = burnResult?.ffmpegCwd || null;
+        console.log('[export-ass-preserved]', {
+          exportMp4: resolve(outputPath),
+          exportAss: job.exportAssPath,
+          burnAssPath: job.burnAssPath,
+          generatorAssPath: resolve(job.assPath),
+          ffmpegCwd: job.ffmpegCwd,
+          ffmpegCommand: job.ffmpegCommandExact
         });
       }
 
-      const preBurnProbe = await recordFileStage(timelineTrace, burnInputPath, 'pre_burn_input');
-      logSubtitleBurnTarget(timelineTrace, {
-        subtitleSource: {
-          type: 'job.segments -> generateAssContent (unchanged at burn)',
-          assPath: job.assPath,
-          segmentFirstCue: summarizeSegmentTiming(job.segments),
-          assFirstDialogue: parseAssDialogueTimes(job.assPath, 1)[0] || null
-        },
-        burnTarget: {
-          rawSourcePath: videoPath,
-          normalizedPath: singlePassExport ? null : normResult.skipped ? null : normalizedPath,
-          burnInputPath,
-          outputPath,
-          singlePassExport,
-          burnsOnlyOnNormalized: inputAlreadyNormalized,
-          preBurnStreamOffsetSec: preBurnProbe?.streamOffsetSec
-        }
-      });
-
-      const burnResult = await burnSubtitles({
-        inputPath: burnInputPath,
-        assPath: job.assPath,
-        outputPath,
-        quality: job.quality,
-        jobDir: job.jobDir,
-        timelineTrace,
-        renderHints: {
-          hqSafeguards,
-          isVertical,
-          sourceWidth: probe.width,
-          sourceHeight: probe.height
-        },
-        durationSec: burnDurationSec,
-        subtitleCues,
-        inputAlreadyNormalized,
-        trustPreviewTimings: Boolean(job.burnFromPreviewExportDoc),
-        signal: job.ffmpegAbort.signal,
-        onProgress: (info) => {
-          const pct = Number(info?.pct || 0);
-          if (typeof info?.speed === 'number' && Number.isFinite(info.speed) && info.speed > 0) {
-            ffmpegStats.speedSum += info.speed;
-            ffmpegStats.speedSamples += 1;
-            job.renderSpeedX = Number(info.speed.toFixed(2));
-          }
-          if (typeof info?.fps === 'number' && Number.isFinite(info.fps) && info.fps >= 0) {
-            ffmpegStats.fpsSum += info.fps;
-            ffmpegStats.fpsSamples += 1;
-            job.renderFps = Number(info.fps.toFixed(1));
-          }
-          if ((info?.phase === 'muxing' || pct >= 97) && job.stageKey !== 'muxing') {
-            setStage(job, 'muxing', {
-              stageLabel: 'Muxing',
-              subStageLabel: 'Muxing audio and video…',
-              progress: 93
-            });
-          }
-
-          const mapped =
-            info?.phase === 'muxing'
-              ? Math.min(97, 93 + Math.round(pct * 0.04))
-              : Math.min(92, 52 + Math.round(pct * 0.4));
-          bumpProgress(job, mapped);
-
-          if (typeof info?.etaSec === 'number' && Number.isFinite(info.etaSec)) {
-            job.etaSec = Math.max(1, Math.round(info.etaSec));
-          } else if (probe.durationSec > 0 && pct > 0) {
-            job.etaSec = Math.max(2, Math.round(((100 - pct) / 100) * probe.durationSec * 0.8));
-          }
-
-          if (info?.phase === 'rendering') {
-            job.ffmpegMsgIndex = (job.ffmpegMsgIndex + 1) % FFMPEG_STATUS_LINES.length;
-            job.subStageLabel = pct < 55 ? 'Encoding TikTok-ready MP4…' : FFMPEG_STATUS_LINES[job.ffmpegMsgIndex];
-          } else if (info?.phase === 'muxing') {
-            job.subStageLabel = 'Muxing audio and video…';
-          }
-        }
-      });
       job.timelinePlan = burnResult?.timelinePlan || null;
       job.finalRenderSyncReport = burnResult?.finalRenderSyncReport || null;
       job.normalizeResult = normResult;
-      job.burnAssPath = burnResult?.burnAssPath || resolve(job.assPath);
-      job.ffmpegCommandExact = burnResult?.ffmpegCommandExact || null;
-      job.ffmpegCwd = burnResult?.ffmpegCwd || null;
-
-      const exportAssPath = join(job.jobDir, 'export.ass');
-      copyFileSync(job.burnAssPath, exportAssPath);
-      job.exportAssPath = resolve(exportAssPath);
-      console.log('[export-ass-preserved]', {
-        exportMp4: resolve(outputPath),
-        exportAss: job.exportAssPath,
-        burnAssPath: job.burnAssPath,
-        generatorAssPath: resolve(job.assPath),
-        ffmpegCwd: job.ffmpegCwd,
-        ffmpegCommand: job.ffmpegCommandExact
-      });
-
-      if (assResult?.timingAudit && isTimingForensicEnabled(job.segments?.[0]?.text || '')) {
-        logTimingForensics({
-          ...assResult.timingAudit,
-          timelinePlan: job.timelinePlan || null,
-          jobDir: job.jobDir,
-          jobId: job.id
-        });
-      }
-
-      if (assResult?.forensicBundle) {
-        logCaptionForensics({
-          ...assResult.forensicBundle,
-          timelinePlan: job.timelinePlan || null
-        });
-      }
 
     } finally {
       stopRenderHeartbeat(job);

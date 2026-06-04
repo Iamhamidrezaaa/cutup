@@ -9,6 +9,10 @@
  */
 import Busboy from 'busboy';
 import { createReadStream, statSync } from 'fs';
+import {
+  streamGpuArtifact,
+  purgeExpiredGpuArtifacts
+} from './video-render/gpu-render-artifacts.js';
 import { handleCORS, setCORSHeaders } from './cors.js';
 import { requireSessionEmail, enforceQuota } from './processing-enforcement.js';
 import { resolveTraceId } from './transcript-errors.js';
@@ -375,6 +379,32 @@ async function handlePreview(req, res, jobId, email) {
   streamJobMp4(req, res, jobId, job, 'inline');
 }
 
+async function handleGpuArtifact(req, res) {
+  const jobId = req.query?.jobId;
+  const kind = req.query?.kind;
+  const token = req.query?.token;
+  const workerToken = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+  const expected = String(process.env.GPU_RENDER_TOKEN || '').trim();
+
+  if (!jobId || !kind || !token) {
+    setCORSHeaders(res);
+    return res.status(400).json({ error: 'jobId, kind, and token required' });
+  }
+  if (!expected || workerToken !== expected) {
+    setCORSHeaders(res);
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  purgeExpiredGpuArtifacts();
+  setCORSHeaders(res);
+  const result = streamGpuArtifact(req, res, jobId, kind, token);
+  if (!result.ok) {
+    if (!res.headersSent) {
+      return res.status(result.status || 404).json({ error: 'artifact_not_found' });
+    }
+  }
+}
+
 async function handleCancel(req, res, email) {
   const body = req.body && typeof req.body === 'object' ? req.body : await parseJsonBody(req);
   const jobId = body.jobId || req.query?.jobId;
@@ -400,6 +430,10 @@ export default async function handler(req, res) {
     if (req.method === 'GET' && action === 'presets') {
       setCORSHeaders(res);
       return res.status(200).json({ presets: listStylePresets() });
+    }
+
+    if (req.method === 'GET' && action === 'gpu-artifact') {
+      return handleGpuArtifact(req, res);
     }
 
     if (req.method === 'POST' && !action) {
