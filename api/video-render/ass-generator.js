@@ -353,7 +353,6 @@ function resolveRtlPresetStyleName(presetId) {
 }
 
 /**
-<<<<<<< HEAD
  * RTL-safe style row: preset colors/outline/shadow/size; Vazirmatn + Encoding=0 + no stretch (proven burn).
  * Visual preset values come from `preset`; RTL-safe differs only in font + encoding + scaleY/spacing for libass.
  */
@@ -385,13 +384,6 @@ function buildRtlPresetStyleLine(styleName, preset, marginV) {
     marginV,
     ASS_STYLE_ENCODING_UNICODE
   ].join(',');
-=======
- * RTL dialogue body: escaped ASS from linesToAssText (preset Default style applies visuals).
- * @param {string} assBodyText
- */
-function buildRtlDialogueText(assBodyText) {
-  return String(assBodyText || '');
->>>>>>> cfb9d342370269416d4bcda4cad00ef3f35679ed
 }
 
 /**
@@ -633,15 +625,9 @@ export function generateAssContent(segments, presetId, dims = {}) {
   const glow = Number((basePreset.glow ?? signature.glow).toFixed(2));
 
   const hasRtlCues = visibleCues.some((c) => isRtlText(c.text));
-<<<<<<< HEAD
   const rtlPresetStyleName = resolveRtlPresetStyleName(selectedPresetId);
   const rtlBurnFont = layout.rtl ? resolveRtlFontName() : null;
   const burnFontName = rtlBurnFont || layout.fontName || basePreset.fontName || 'Arial';
-=======
-  const burnFontName = hasRtlCues
-    ? resolveRtlFontName()
-    : layout.fontName || basePreset.fontName || 'Arial';
->>>>>>> cfb9d342370269416d4bcda4cad00ef3f35679ed
 
   Object.assign(preset, {
     fontName: burnFontName,
@@ -668,12 +654,8 @@ export function generateAssContent(segments, presetId, dims = {}) {
   console.log('[preset-style-debug]', {
     requestedPreset: selectedPresetId,
     resolvedPreset: preset.id || selectedPresetId,
-<<<<<<< HEAD
     ltrStyleName: 'Default',
     rtlStyleName: hasRtlCues ? rtlPresetStyleName : null,
-=======
-    styleName: 'Default',
->>>>>>> cfb9d342370269416d4bcda4cad00ef3f35679ed
     fontName: preset.fontName,
     fontSize: preset.fontSize,
     outline: preset.outline,
@@ -684,14 +666,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
     primaryColor: preset.primaryColor,
     bold: preset.bold,
     hasRtlCues,
-<<<<<<< HEAD
     note: 'RTL cues use RTL_* style (Encoding=0, Vazirmatn); LTR cues use Default'
-=======
-    assEncoding: hasRtlCues ? ASS_STYLE_ENCODING_UNICODE : 1,
-    note: hasRtlCues
-      ? 'RTL cues use Default style (preset colours); not RTL_Default'
-      : 'LTR job'
->>>>>>> cfb9d342370269416d4bcda4cad00ef3f35679ed
   });
 
   const header = layout.rtl
@@ -732,10 +707,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
       { ...preset, fontSize: Math.round(preset.fontSize * 1.08), bold: true },
       hasRtlCues ? ASS_STYLE_ENCODING_UNICODE : 1
     ),
-<<<<<<< HEAD
     ...(hasRtlCues ? [buildRtlPresetStyleLine(rtlPresetStyleName, preset, layout.marginV)] : []),
-=======
->>>>>>> cfb9d342370269416d4bcda4cad00ef3f35679ed
     '',
     '[Events]',
     ASS_EVENTS_FORMAT
@@ -767,11 +739,8 @@ export function generateAssContent(segments, presetId, dims = {}) {
   let rtlMultilineLineOrderLogs = 0;
   const RTL_MULTILINE_FORENSIC_MAX = 5;
   let rtlLayoutDebugLogged = false;
-<<<<<<< HEAD
   const timingAuditRows = [];
-=======
   let rtlPunctuationDebugLogged = false;
->>>>>>> cfb9d342370269416d4bcda4cad00ef3f35679ed
 
   const dialogues = visibleCues.map((cue, segmentIndex) => {
     const enrichedCue = applyFutureVisualExtensions(cue, {
@@ -869,13 +838,9 @@ export function generateAssContent(segments, presetId, dims = {}) {
       if (forensicOn && segmentIndex < forensicCueCap) {
         forensicBeforeRtlDialogue.push({ id: cueKey, text: bodyResult.text });
       }
-<<<<<<< HEAD
       text = `${fsPrefix}${bodyResult.text}`;
       styleName = rtlPresetStyleName;
       dialogueMarginV = 0;
-=======
-      text = buildRtlDialogueText(bodyResult.text);
-      styleName = 'Default';
       if (!rtlPunctuationDebugLogged) {
         rtlPunctuationDebugLogged = true;
         console.log('[rtl-punctuation-debug]', {
@@ -885,7 +850,6 @@ export function generateAssContent(segments, presetId, dims = {}) {
           unicodeCodepoints: rtlPunctuationTailSample(text.replace(/\{[^}]*\}/g, ''))
         });
       }
->>>>>>> cfb9d342370269416d4bcda4cad00ef3f35679ed
     } else {
       const bottomAnchor = buildAssBottomAnchorTag(playResX, playResY, layout.marginV);
       const glowPrefix = preset.glow > 0 ? `{\\blur${Number(preset.glow).toFixed(2)}}` : '';

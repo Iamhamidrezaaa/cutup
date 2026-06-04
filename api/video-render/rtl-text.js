@@ -63,12 +63,7 @@ export function resolveCaptionTypography(preset, playResY, rtl) {
       rtl: false
     };
   }
-<<<<<<< HEAD
   // Proven libass RTL burn profile (test-fa.ass): Vazirmatn, no stretch, no extra spacing.
-  const minRtl = Math.max(56, Math.round(72 * (playResY / 1920)));
-=======
-  // RTL burn: Vazirmatn for shaping; keep preset spacing/scaleY (e.g. Hormozi).
->>>>>>> cfb9d342370269416d4bcda4cad00ef3f35679ed
   return {
     fontName: resolveRtlFontName(),
     fontSize: baseSize,
