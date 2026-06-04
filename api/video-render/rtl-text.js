@@ -63,15 +63,45 @@ export function resolveCaptionTypography(preset, playResY, rtl) {
       rtl: false
     };
   }
+<<<<<<< HEAD
   // Proven libass RTL burn profile (test-fa.ass): Vazirmatn, no stretch, no extra spacing.
   const minRtl = Math.max(56, Math.round(72 * (playResY / 1920)));
+=======
+  // RTL burn: Vazirmatn for shaping; keep preset spacing/scaleY (e.g. Hormozi).
+>>>>>>> cfb9d342370269416d4bcda4cad00ef3f35679ed
   return {
     fontName: resolveRtlFontName(),
-    fontSize: Math.max(baseSize, minRtl),
-    spacing: 0,
-    scaleY: 100,
+    fontSize: baseSize,
+    spacing: preset.useFixedTypography ? Number(preset.spacing) || 0 : 0,
+    scaleY: preset.useFixedTypography ? Number(preset.scaleY) || 100 : 100,
     rtl: true
   };
+}
+
+/** Trailing punctuation that should anchor to the RTL run (visual sentence end). */
+const TRAILING_NEUTRAL_PUNCT = /([.!?؟…]+|[،؛:]+)\s*$/u;
+
+/**
+ * Insert RLM (U+200F) before trailing punctuation so libass places it at the visual end.
+ * Logical order: …بعدی\u200F. — does not reshape letters or reorder words.
+ * @param {string} text
+ */
+export function anchorRtlPunctuation(text) {
+  const s = String(text || '');
+  if (!s || !isRtlText(s)) return s;
+  return s.replace(TRAILING_NEUTRAL_PUNCT, '\u200F$1');
+}
+
+export function rtlPunctuationTailSample(text) {
+  const s = String(text || '');
+  const tail = [...s].slice(-8);
+  return tail.map((ch) => {
+    const cp = ch.codePointAt(0);
+    if (cp === 0x200f) return 'U+200F';
+    if (ch === '.') return '.';
+    if (ch === '؟') return '؟';
+    return `U+${cp.toString(16).toUpperCase().padStart(4, '0')}`;
+  });
 }
 
 /** ASS override prefix for a dialogue line. */
