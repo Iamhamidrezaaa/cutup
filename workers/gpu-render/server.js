@@ -1,11 +1,7 @@
 /**
- * Cutup GPU render worker — FFmpeg burn-in only (ASS + video → MP4).
- * Run on RunPod with NVENC. Does not run subtitle/translation pipelines.
+ * Cutup GPU render worker (RunPod) — FFmpeg subtitle burn-in only.
+ * ASS/subtitle pipeline stays on the main VPS; this service only runs burn-export-phase.
  */
-process.env.GPU_RENDER_WORKER = '1';
-process.env.VIDEO_RENDER_VIDEO_CODEC =
-  process.env.VIDEO_RENDER_VIDEO_CODEC || 'h264_nvenc';
-
 import express from 'express';
 import { mkdir, writeFile, stat, copyFile } from 'fs/promises';
 import { createWriteStream, createReadStream } from 'fs';
@@ -14,8 +10,11 @@ import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
 import { randomBytes } from 'crypto';
 import { executeBurnExportPhase } from '../../api/video-render/burn-export-phase.js';
-import { probeVideo, checkFfmpegAvailable } from '../../api/video-render/ffmpeg-renderer.js';
-import { resolveVideoEncoder } from '../../api/video-render/video-encoder.js';
+import { checkFfmpegAvailable, probeVideo } from '../../api/video-render/ffmpeg-renderer.js';
+import {
+  initWorkerVideoEncoder,
+  resolveVideoEncoder
+} from '../../api/video-render/video-encoder.js';
 
 const PORT = Number(process.env.GPU_RENDER_PORT || process.env.PORT || 8787);
 const WORK_ROOT = process.env.GPU_RENDER_WORK_DIR || '/tmp/cutup-gpu-render';
@@ -24,7 +23,7 @@ const TOKEN = String(process.env.GPU_RENDER_TOKEN || '').trim();
 const PUBLIC_BASE = String(process.env.GPU_RENDER_PUBLIC_URL || '').replace(/\/$/, '');
 
 const app = express();
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '4mb' }));
 
 function requireAuth(req, res, next) {
   if (!TOKEN) {
@@ -37,12 +36,14 @@ function requireAuth(req, res, next) {
   next();
 }
 
+function authHeaders() {
+  return TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {};
+}
+
 async function downloadToFile(url, destPath) {
-  const res = await fetch(url, {
-    headers: TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}
-  });
+  const res = await fetch(url, { headers: authHeaders() });
   if (!res.ok) {
-    throw new Error(`Download failed (${res.status}): ${url.slice(0, 120)}`);
+    throw new Error(`Download failed (${res.status}): ${String(url).slice(0, 160)}`);
   }
   const body = res.body;
   const stream =
@@ -50,12 +51,27 @@ async function downloadToFile(url, destPath) {
   await pipeline(stream, createWriteStream(destPath));
 }
 
-app.get('/health', async (_req, res) => {
+async function downloadText(url) {
+  const res = await fetch(url, { headers: authHeaders() });
+  if (!res.ok) {
+    throw new Error(`ASS download failed (${res.status}): ${String(url).slice(0, 160)}`);
+  }
+  return res.text();
+}
+
+/** Liveness — contract: { ok: true } */
+app.get('/health', (_req, res) => {
+  res.json({ ok: true });
+});
+
+/** Readiness (optional detail) */
+app.get('/health/ready', async (_req, res) => {
   const ffmpegOk = await checkFfmpegAvailable();
+  const encoder = resolveVideoEncoder();
   res.json({
     ok: ffmpegOk,
-    encoder: resolveVideoEncoder(),
-    worker: true
+    ffmpeg: ffmpegOk,
+    encoder
   });
 });
 
@@ -72,6 +88,10 @@ app.get('/outputs/:jobId', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * POST /render
+ * Body: { jobId, videoUrl, subtitleUrl, preset, quality?, trustPreviewTimings?, renderHints? }
+ */
 app.post('/render', requireAuth, async (req, res) => {
   const started = Date.now();
   const body = req.body || {};
@@ -98,24 +118,22 @@ app.post('/render', requireAuth, async (req, res) => {
     await mkdir(jobDir, { recursive: true });
     await mkdir(OUTPUT_ROOT, { recursive: true });
 
-    console.log('[gpu-worker] download start', { jobId, preset });
+    console.log('[gpu-worker] download', { jobId, preset });
     await downloadToFile(videoUrl, videoPath);
-    const assText = await fetch(subtitleUrl, {
-      headers: TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}
-    }).then((r) => {
-      if (!r.ok) throw new Error(`ASS download failed (${r.status})`);
-      return r.text();
-    });
+    const assText = await downloadText(subtitleUrl);
     await writeFile(assPath, assText, 'utf8');
 
     const probe = await probeVideo(videoPath);
-    const renderHints = body.renderHints && typeof body.renderHints === 'object' ? body.renderHints : {};
-    const isVertical = Boolean(renderHints.isVertical) || probe.height > probe.width * 1.05;
+    const renderHints =
+      body.renderHints && typeof body.renderHints === 'object' ? body.renderHints : {};
+    const isVertical =
+      Boolean(renderHints.isVertical) || probe.height > probe.width * 1.05;
 
-    console.log('[gpu-worker] burn start', {
+    console.log('[gpu-worker] burn', {
       jobId,
       preset,
       encoder: resolveVideoEncoder(),
+      quality,
       durationSec: probe.durationSec
     });
 
@@ -134,7 +152,7 @@ app.post('/render', requireAuth, async (req, res) => {
       trustPreviewTimings: Boolean(body.trustPreviewTimings),
       timelineTrace: null,
       onProgress: (info) => {
-        if (info?.pct && info.pct % 10 < 1) {
+        if (info?.pct != null && Math.round(info.pct) % 20 === 0) {
           console.log('[gpu-worker] progress', { jobId, pct: info.pct, phase: info.phase });
         }
       }
@@ -146,14 +164,15 @@ app.post('/render', requireAuth, async (req, res) => {
       ? `${PUBLIC_BASE}/outputs/${encodeURIComponent(jobId)}`
       : `http://127.0.0.1:${PORT}/outputs/${encodeURIComponent(jobId)}`;
 
-    console.log('[gpu-worker] complete', { jobId, renderMs, outputUrl });
+    console.log('[gpu-worker] done', { jobId, renderMs, encoder: resolveVideoEncoder() });
 
     return res.status(200).json({
       success: true,
       jobId,
       outputUrl,
       renderMs,
-      preset
+      preset,
+      encoder: resolveVideoEncoder()
     });
   } catch (err) {
     console.error('[gpu-worker] failed', jobId, err?.message || err);
@@ -166,11 +185,25 @@ app.post('/render', requireAuth, async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log('[gpu-worker] listening', {
-    port: PORT,
-    encoder: resolveVideoEncoder(),
-    workRoot: WORK_ROOT,
-    publicBase: PUBLIC_BASE || '(local)'
+async function main() {
+  process.env.GPU_RENDER_WORKER = '1';
+  const ffmpegOk = await checkFfmpegAvailable();
+  if (!ffmpegOk) {
+    console.error('[gpu-worker] FFmpeg not found on PATH');
+    process.exit(1);
+  }
+  const encoder = await initWorkerVideoEncoder();
+  app.listen(PORT, () => {
+    console.log('[gpu-worker] listening', {
+      port: PORT,
+      encoder,
+      workRoot: WORK_ROOT,
+      publicBase: PUBLIC_BASE || `http://127.0.0.1:${PORT}`
+    });
   });
+}
+
+main().catch((err) => {
+  console.error('[gpu-worker] startup failed', err);
+  process.exit(1);
 });

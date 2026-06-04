@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "RunPod GPU FFmpeg burn-in worker for Cutup",
+  "description": "RunPod GPU FFmpeg burn-in worker for Cutup (NVENC with libx264 fallback)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
