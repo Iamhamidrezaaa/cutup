@@ -49,6 +49,12 @@ import { logLineLayoutForensics } from './line-layout-forensics.js';
 import { logFirstCaptionForensics } from './first-caption-forensics.js';
 import { logProductionAssDialogueDump } from './subtitle-text-forensics.js';
 import { trackExportStart, trackExportEnd } from './ffmpeg-job-tracker.js';
+import {
+  initExportStageTimings,
+  beginExportStage,
+  endExportStage,
+  printExportStageTimings
+} from './export-stage-timings.js';
 
 const MAX_CONCURRENT = Math.max(1, Math.min(3, Number(process.env.VIDEO_RENDER_CONCURRENCY || 1)));
 const JOB_TTL_MS = Number(process.env.VIDEO_RENDER_JOB_TTL_MS || 30 * 60 * 1000);
@@ -287,6 +293,7 @@ export function createRenderJob(payload) {
     segments: payload.segments || null,
     exportDoc: payload.exportDoc || null,
     captionForensics: payload.captionForensics || null,
+    upstreamStageTimings: payload.upstreamStageTimings || null,
     sourceUrl: payload.sourceUrl || null,
     localVideoPath: payload.localVideoPath || null,
     uploadBuffer: payload.uploadBuffer || null,
@@ -440,6 +447,7 @@ async function runJob(job) {
   job.timelineTrace = timelineTrace;
 
   trackExportStart(job.id);
+  initExportStageTimings(job.id, job.upstreamStageTimings);
 
   try {
     traceRenderTimeline(timelineTrace, 'job_start', {
@@ -456,24 +464,30 @@ async function runJob(job) {
 
     let rawVideoPath = null;
     if (job.localVideoPath) {
+        beginExportStage(job.id, 'normalize_staged_copy');
         videoPath = stageLocalPath(job.localVideoPath, job.jobDir);
+        endExportStage(job.id, 'normalize_staged_copy');
         rawVideoPath = videoPath;
         traceRenderTimeline(timelineTrace, 'source_local_staged', { path: videoPath });
       } else if (job.uploadBuffer) {
+        beginExportStage(job.id, 'normalize_staged_copy');
         videoPath = saveUploadedVideo({
           buffer: job.uploadBuffer,
           filename: job.uploadFilename || 'upload.mp4',
           jobDir: job.jobDir
         });
+        endExportStage(job.id, 'normalize_staged_copy');
         rawVideoPath = videoPath;
         traceRenderTimeline(timelineTrace, 'source_upload_saved', { path: videoPath });
       } else if (job.sourceUrl) {
         setSubStage(job, 'Downloading video for export…', 14);
+        beginExportStage(job.id, 'download_ytdlp_raw');
         const dl = await downloadVideoFromUrl({
           url: job.sourceUrl,
           userEmail: job.userEmail,
           traceId: job.traceId
         });
+        endExportStage(job.id, 'download_ytdlp_raw');
         videoPath = dl.videoPath;
         rawVideoPath = dl.videoPath;
         job.downloadJobDir = dl.jobDir;
@@ -494,7 +508,9 @@ async function runJob(job) {
     const stagedVideo = join(job.jobDir, 'source.mp4');
     const beforeStageProbe = await recordFileStage(timelineTrace, videoPath, 'pre_copy_to_job_source');
     if (videoPath !== stagedVideo) {
+      beginExportStage(job.id, 'normalize_staged_copy');
       copyFileSync(videoPath, stagedVideo);
+      endExportStage(job.id, 'normalize_staged_copy');
       videoPath = stagedVideo;
       traceRenderTimeline(timelineTrace, 'normalize_staged_copy', {
         from: rawVideoPath,
@@ -555,6 +571,7 @@ async function runJob(job) {
       subStageLabel: 'Optimizing captions…',
       progress: 34
     });
+    beginExportStage(job.id, 'caption_generation');
 
     const assOpts = {
       playResX: renderGeometry.playResX,
@@ -603,6 +620,8 @@ async function runJob(job) {
     setSubStage(job, 'Applying cinematic layout…', 40);
 
     let assResult;
+    endExportStage(job.id, 'caption_generation');
+    beginExportStage(job.id, 'ass_generation');
     assTiming.start = Date.now();
     const previewExportDoc =
         job.exportDoc?.format === 'cutup-style-v1' && Array.isArray(job.exportDoc.cues) && job.exportDoc.cues.length
@@ -675,6 +694,7 @@ async function runJob(job) {
     if (assStat.size < 200) {
       throw new Error('ASS file suspiciously small');
     }
+    endExportStage(job.id, 'ass_generation');
     console.log('[ass-write-verified]', { assPath: job.assPath, size: assStat.size });
 
     logProductionAssDialogueDump(verifyContent, {
@@ -870,6 +890,7 @@ async function runJob(job) {
       let burnResult = null;
       let normResult = { skipped: true };
 
+      beginExportStage(job.id, 'subtitle_burn_export');
       if (isGpuRenderEnabled()) {
         setSubStage(job, 'Encoding on GPU worker…', 55);
         purgeExpiredGpuArtifacts();
@@ -940,6 +961,7 @@ async function runJob(job) {
           ffmpegCommand: job.ffmpegCommandExact
         });
       }
+      endExportStage(job.id, 'subtitle_burn_export');
 
       job.timelinePlan = burnResult?.timelinePlan || null;
       job.finalRenderSyncReport = burnResult?.finalRenderSyncReport || null;
@@ -954,6 +976,7 @@ async function runJob(job) {
 
     await recordFileStage(timelineTrace, outputPath, 'post_burn_export');
 
+    beginExportStage(job.id, 'upload_final_mp4');
     setStage(job, 'finalizing', {
       stageLabel: 'Finalizing',
       subStageLabel: 'Packaging your viral clip…',
@@ -1029,6 +1052,7 @@ async function runJob(job) {
       progress: 100,
       etaSec: 0
     });
+    endExportStage(job.id, 'upload_final_mp4');
 
   } catch (err) {
     stopRenderHeartbeat(job);
@@ -1061,6 +1085,7 @@ async function runJob(job) {
     });
     throw err;
   } finally {
+    printExportStageTimings(job.id);
     trackExportEnd(job.id);
   }
 }

@@ -260,6 +260,12 @@ async function handleStart(req, res) {
 
   const captionForensics =
     body.captionForensics && typeof body.captionForensics === 'object' ? body.captionForensics : null;
+  const upstreamStageTimings =
+    body.upstreamStageTimings && typeof body.upstreamStageTimings === 'object'
+      ? body.upstreamStageTimings
+      : captionForensics?.upstreamStageTimings && typeof captionForensics.upstreamStageTimings === 'object'
+        ? captionForensics.upstreamStageTimings
+        : null;
   const selectedPresetFromUI =
     captionForensics?.selectedPresetFromUI ||
     body.selectedPresetId ||
@@ -293,6 +299,7 @@ async function handleStart(req, res) {
           selectedPresetFromUI,
           presetReceivedByAPI: presetId
         },
+    upstreamStageTimings,
     sourceUrl: sourceUrl && !String(sourceUrl).startsWith('upload://') ? sourceUrl : null,
     uploadBuffer: videoBuffer,
     uploadFilename: videoFilename,
