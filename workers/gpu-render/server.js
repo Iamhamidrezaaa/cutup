@@ -128,9 +128,14 @@ app.post('/render', requireAuth, async (req, res) => {
     await mkdir(OUTPUT_ROOT, { recursive: true });
 
     console.log('[gpu-worker] download', { jobId, preset });
-    await downloadToFile(videoUrl, videoPath);
-    const assText = await downloadText(subtitleUrl);
-    await writeFile(assPath, assText, 'utf8');
+    console.time('download');
+    try {
+      await downloadToFile(videoUrl, videoPath);
+      const assText = await downloadText(subtitleUrl);
+      await writeFile(assPath, assText, 'utf8');
+    } finally {
+      console.timeEnd('download');
+    }
 
     const probe = await probeVideo(videoPath);
     const renderHints =

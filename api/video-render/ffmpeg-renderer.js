@@ -464,12 +464,33 @@ export async function burnSubtitles(opts) {
 
   console.log('[ffmpeg-video-filter]\n' + vf);
 
+  console.time('ffmpeg-burn');
+
   return new Promise((resolve, reject) => {
     const proc = spawn('ffmpeg', args, { cwd: assDir, stdio: ['ignore', 'ignore', 'pipe'] });
     let stderr = '';
     let killed = false;
     let lastPct = 0;
     let phase = 'rendering';
+    let muxTimerStarted = false;
+    let pipelineTimersEnded = false;
+
+    const endPipelineTimers = () => {
+      if (pipelineTimersEnded) return;
+      pipelineTimersEnded = true;
+      if (muxTimerStarted) {
+        console.timeEnd('mux');
+        return;
+      }
+      console.timeEnd('ffmpeg-burn');
+    };
+
+    const startMuxTimer = () => {
+      if (muxTimerStarted) return;
+      muxTimerStarted = true;
+      console.timeEnd('ffmpeg-burn');
+      console.time('mux');
+    };
     let ffSpeed = null;
     let ffFps = null;
     let lastActivityAt = Date.now();
@@ -479,6 +500,7 @@ export async function burnSubtitles(opts) {
       if (settled) return;
       settled = true;
       killed = true;
+      endPipelineTimers();
       try {
         proc.kill('SIGKILL');
       } catch {
@@ -498,7 +520,10 @@ export async function burnSubtitles(opts) {
       const clamped = Math.min(99, Math.max(0, Number(pct) || 0));
       if (!force && clamped <= lastPct) return;
       lastPct = Math.max(lastPct, clamped);
-      if (clamped >= 97 && currentPhase === 'rendering') phase = 'muxing';
+      if (clamped >= 97 && currentPhase === 'rendering') {
+        phase = 'muxing';
+        startMuxTimer();
+      }
 
       let etaSec = null;
       if (durationSec > 0 && renderedSec != null) {
@@ -602,13 +627,16 @@ export async function burnSubtitles(opts) {
       if (code !== 0) {
         const tail = stderr.trim().split('\n').slice(-8).join('\n');
         console.error('[video-render] failed', { code, tail });
+        endPipelineTimers();
         if (!settled) reject(new Error(tail || `FFmpeg exited with code ${code}`));
         return;
       }
       if (!existsSync(outputPath)) {
+        endPipelineTimers();
         if (!settled) reject(new Error('FFMPEG_OUTPUT_MISSING'));
         return;
       }
+      endPipelineTimers();
       onProgress?.({
         pct: 100,
         etaSec: 0,

@@ -456,66 +456,71 @@ async function runJob(job) {
       progress: 10
     });
 
+    console.time('download');
     let rawVideoPath = null;
-    if (job.localVideoPath) {
-      videoPath = stageLocalPath(job.localVideoPath, job.jobDir);
-      rawVideoPath = videoPath;
-      traceRenderTimeline(timelineTrace, 'source_local_staged', { path: videoPath });
-    } else if (job.uploadBuffer) {
-      videoPath = saveUploadedVideo({
-        buffer: job.uploadBuffer,
-        filename: job.uploadFilename || 'upload.mp4',
-        jobDir: job.jobDir
-      });
-      rawVideoPath = videoPath;
-      traceRenderTimeline(timelineTrace, 'source_upload_saved', { path: videoPath });
-    } else if (job.sourceUrl) {
-      setSubStage(job, 'Downloading video for export…', 14);
-      const dl = await downloadVideoFromUrl({
-        url: job.sourceUrl,
-        userEmail: job.userEmail,
-        traceId: job.traceId
-      });
-      videoPath = dl.videoPath;
-      rawVideoPath = dl.videoPath;
-      job.downloadJobDir = dl.jobDir;
-      const dlProbe = await recordFileStage(timelineTrace, dl.videoPath, 'download_ytdlp_raw');
-      traceRenderTimeline(timelineTrace, 'source_download_complete', {
-        downloadJobDir: dl.jobDir,
-        fromCache: Boolean(dl.fromCache),
-        platform: dl.platform,
-        urlNormalized: dl.urlNormalized,
-        ...dlProbe
-      });
-    } else {
-      throw new Error('No video source provided (URL or upload required)');
-    }
-
-    if (job.cancelled) return;
-
-    const stagedVideo = join(job.jobDir, 'source.mp4');
-    const beforeStageProbe = await recordFileStage(timelineTrace, videoPath, 'pre_copy_to_job_source');
-    if (videoPath !== stagedVideo) {
-      copyFileSync(videoPath, stagedVideo);
-      videoPath = stagedVideo;
-      traceRenderTimeline(timelineTrace, 'normalize_staged_copy', {
-        from: rawVideoPath,
-        to: stagedVideo,
-        operation: 'copyFileSync',
-        trimStart: null,
-        trimEnd: null,
-        concat: false,
-        silenceRemoval: false,
-        introInsertion: false
-      });
-    }
-    const stagedProbe = await recordFileStage(timelineTrace, videoPath, 'staged_source_mp4');
-    if (beforeStageProbe && stagedProbe && !beforeStageProbe.missing && !stagedProbe.missing) {
-      const diff = diffTimelineStages(beforeStageProbe, stagedProbe);
-      if (diff && (Math.abs(diff.videoStartDelta) > 0.01 || Math.abs(diff.streamOffsetDelta) > 0.01)) {
-        timelineTrace.intermediateOffsets.push({ stage: 'staged_copy', diff });
-        traceRenderTimeline(timelineTrace, 'intermediate_offset_detected', diff);
+    try {
+      if (job.localVideoPath) {
+        videoPath = stageLocalPath(job.localVideoPath, job.jobDir);
+        rawVideoPath = videoPath;
+        traceRenderTimeline(timelineTrace, 'source_local_staged', { path: videoPath });
+      } else if (job.uploadBuffer) {
+        videoPath = saveUploadedVideo({
+          buffer: job.uploadBuffer,
+          filename: job.uploadFilename || 'upload.mp4',
+          jobDir: job.jobDir
+        });
+        rawVideoPath = videoPath;
+        traceRenderTimeline(timelineTrace, 'source_upload_saved', { path: videoPath });
+      } else if (job.sourceUrl) {
+        setSubStage(job, 'Downloading video for export…', 14);
+        const dl = await downloadVideoFromUrl({
+          url: job.sourceUrl,
+          userEmail: job.userEmail,
+          traceId: job.traceId
+        });
+        videoPath = dl.videoPath;
+        rawVideoPath = dl.videoPath;
+        job.downloadJobDir = dl.jobDir;
+        const dlProbe = await recordFileStage(timelineTrace, dl.videoPath, 'download_ytdlp_raw');
+        traceRenderTimeline(timelineTrace, 'source_download_complete', {
+          downloadJobDir: dl.jobDir,
+          fromCache: Boolean(dl.fromCache),
+          platform: dl.platform,
+          urlNormalized: dl.urlNormalized,
+          ...dlProbe
+        });
+      } else {
+        throw new Error('No video source provided (URL or upload required)');
       }
+
+      if (job.cancelled) return;
+
+      const stagedVideo = join(job.jobDir, 'source.mp4');
+      const beforeStageProbe = await recordFileStage(timelineTrace, videoPath, 'pre_copy_to_job_source');
+      if (videoPath !== stagedVideo) {
+        copyFileSync(videoPath, stagedVideo);
+        videoPath = stagedVideo;
+        traceRenderTimeline(timelineTrace, 'normalize_staged_copy', {
+          from: rawVideoPath,
+          to: stagedVideo,
+          operation: 'copyFileSync',
+          trimStart: null,
+          trimEnd: null,
+          concat: false,
+          silenceRemoval: false,
+          introInsertion: false
+        });
+      }
+      const stagedProbe = await recordFileStage(timelineTrace, videoPath, 'staged_source_mp4');
+      if (beforeStageProbe && stagedProbe && !beforeStageProbe.missing && !stagedProbe.missing) {
+        const diff = diffTimelineStages(beforeStageProbe, stagedProbe);
+        if (diff && (Math.abs(diff.videoStartDelta) > 0.01 || Math.abs(diff.streamOffsetDelta) > 0.01)) {
+          timelineTrace.intermediateOffsets.push({ stage: 'staged_copy', diff });
+          traceRenderTimeline(timelineTrace, 'intermediate_offset_detected', diff);
+        }
+      }
+    } finally {
+      console.timeEnd('download');
     }
 
     setSubStage(job, 'Analyzing video dimensions…', 24);
@@ -606,66 +611,73 @@ async function runJob(job) {
 
     let assResult;
     assTiming.start = Date.now();
-    const previewExportDoc =
-      job.exportDoc?.format === 'cutup-style-v1' && Array.isArray(job.exportDoc.cues) && job.exportDoc.cues.length
-        ? job.exportDoc
-        : null;
-    const usePreviewBurn =
-      Boolean(previewExportDoc) && String(job.captionMode || 'viral').toLowerCase() !== 'accurate';
-    if (previewExportDoc && !usePreviewBurn) {
-      console.log('[preview-burn-skipped]', {
-        jobId: job.id,
-        captionMode: job.captionMode,
-        reason: 'accurate/clean mode uses source-aligned ASS'
-      });
-    }
-    if (previewExportDoc && usePreviewBurn && job.segments?.length) {
-      const doc0 = previewExportDoc.cues[0];
-      const seg0 = job.segments[0];
-      const docText = String(doc0?.text || '').trim().toLowerCase();
-      const segText = String(seg0?.text || '').trim().toLowerCase();
-      if (docText && segText && docText !== segText) {
-        console.warn('[export-doc-segment-mismatch]', {
+    console.time('subtitle-generation');
+    try {
+      const previewExportDoc =
+        job.exportDoc?.format === 'cutup-style-v1' && Array.isArray(job.exportDoc.cues) && job.exportDoc.cues.length
+          ? job.exportDoc
+          : null;
+      const usePreviewBurn =
+        Boolean(previewExportDoc) && String(job.captionMode || 'viral').toLowerCase() !== 'accurate';
+      if (previewExportDoc && !usePreviewBurn) {
+        console.log('[preview-burn-skipped]', {
           jobId: job.id,
-          exportDocFirst: docText.slice(0, 80),
-          segmentFirst: segText.slice(0, 80)
+          captionMode: job.captionMode,
+          reason: 'accurate/clean mode uses source-aligned ASS'
         });
       }
+      if (previewExportDoc && usePreviewBurn && job.segments?.length) {
+        const doc0 = previewExportDoc.cues[0];
+        const seg0 = job.segments[0];
+        const docText = String(doc0?.text || '').trim().toLowerCase();
+        const segText = String(seg0?.text || '').trim().toLowerCase();
+        if (docText && segText && docText !== segText) {
+          console.warn('[export-doc-segment-mismatch]', {
+            jobId: job.id,
+            exportDocFirst: docText.slice(0, 80),
+            segmentFirst: segText.slice(0, 80)
+          });
+        }
+      }
+
+      if (usePreviewBurn) {
+        setSubStage(job, 'Applying cinematic layout…', 44);
+        job.burnFromPreviewExportDoc = true;
+        console.log('[preview-burn-source]', {
+          jobId: job.id,
+          exportDocCueCount: previewExportDoc.cues.length,
+          firstCue: previewExportDoc.cues[0],
+          lastCue: previewExportDoc.cues[previewExportDoc.cues.length - 1],
+          note: 'ASS uses clean-SRT timings 1:1 (no merge, no speech shift)'
+        });
+        assResult = generateAssFromExportDoc(previewExportDoc, {
+          ...assOpts,
+          presetIdOverride: job.presetId
+        });
+        job.segments = (previewExportDoc.cues || []).map((c) => ({
+          start: Number(c.start),
+          end: Number(c.end),
+          text: String(c.text || (Array.isArray(c.lines) ? c.lines.join(' ') : '')).trim()
+        }));
+      } else if (job.segments?.length) {
+        setSubStage(job, 'Applying cinematic layout…', 44);
+        assResult = generateAssContent(job.segments, job.presetId, assOpts);
+      } else if (job.exportDoc) {
+        assResult = generateAssFromExportDoc(job.exportDoc, {
+          ...assOpts,
+          presetIdOverride: job.presetId
+        });
+      } else {
+        throw new Error('No subtitle segments provided');
+      }
+      assTiming.end = Date.now();
+    } finally {
+      console.timeEnd('subtitle-generation');
     }
 
-    if (usePreviewBurn) {
-      setSubStage(job, 'Applying cinematic layout…', 44);
-      job.burnFromPreviewExportDoc = true;
-      console.log('[preview-burn-source]', {
-        jobId: job.id,
-        exportDocCueCount: previewExportDoc.cues.length,
-        firstCue: previewExportDoc.cues[0],
-        lastCue: previewExportDoc.cues[previewExportDoc.cues.length - 1],
-        note: 'ASS uses clean-SRT timings 1:1 (no merge, no speech shift)'
-      });
-      assResult = generateAssFromExportDoc(previewExportDoc, {
-        ...assOpts,
-        presetIdOverride: job.presetId
-      });
-      job.segments = (previewExportDoc.cues || []).map((c) => ({
-        start: Number(c.start),
-        end: Number(c.end),
-        text: String(c.text || (Array.isArray(c.lines) ? c.lines.join(' ') : '')).trim()
-      }));
-    } else if (job.segments?.length) {
-      setSubStage(job, 'Applying cinematic layout…', 44);
-      assResult = generateAssContent(job.segments, job.presetId, assOpts);
-    } else if (job.exportDoc) {
-      assResult = generateAssFromExportDoc(job.exportDoc, {
-        ...assOpts,
-        presetIdOverride: job.presetId
-      });
-    } else {
-      throw new Error('No subtitle segments provided');
-    }
-    assTiming.end = Date.now();
-
-    setSubStage(job, 'Building cinematic caption layer…', 50);
+    console.time('ass-render');
+    try {
+      setSubStage(job, 'Building cinematic caption layer…', 50);
     job.assPath = join(job.jobDir, 'subtitles.ass');
     const assContent = String(assResult.content || '').replace(/\r\n/g, '\n');
     await fsp.writeFile(job.assPath, assContent, 'utf8');
@@ -791,6 +803,9 @@ async function runJob(job) {
           jobDir: job.jobDir
         });
       }
+    } finally {
+      console.timeEnd('ass-render');
+    }
 
     const assDialoguesPreview = parseAssDialogueTimes(job.assPath, 3);
     traceRenderTimeline(timelineTrace, 'ass_written', {
