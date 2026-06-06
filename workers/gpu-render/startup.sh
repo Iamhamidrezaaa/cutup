@@ -41,6 +41,12 @@ ensure_node_on_path() {
   fi
 }
 
+extract_node_tarball() {
+  local archive="$1"
+  # RunPod/containers often cannot chown to tarball uid/gid (e.g. 1001:1001).
+  tar --no-same-owner --no-same-permissions -xJf "$archive" -C "$NODE_INSTALL_DIR" --strip-components=1
+}
+
 install_node_to_volume() {
   local platform tarball url tmp
   platform="$(node_platform)"
@@ -49,19 +55,24 @@ install_node_to_volume() {
 
   log "node missing — installing Node.js v${NODE_VERSION} to $NODE_INSTALL_DIR"
   mkdir -p "$NODE_INSTALL_DIR"
+  rm -rf "${NODE_INSTALL_DIR:?}"/*
 
   if command -v curl >/dev/null 2>&1; then
     tmp="$(mktemp)"
     curl -fsSL "$url" -o "$tmp"
-    tar -xJf "$tmp" -C "$NODE_INSTALL_DIR" --strip-components=1
+    extract_node_tarball "$tmp"
     rm -f "$tmp"
   elif command -v wget >/dev/null 2>&1; then
     tmp="$(mktemp)"
     wget -qO "$tmp" "$url"
-    tar -xJf "$tmp" -C "$NODE_INSTALL_DIR" --strip-components=1
+    extract_node_tarball "$tmp"
     rm -f "$tmp"
   else
     fail "curl or wget required to bootstrap Node.js"
+  fi
+
+  if [[ ! -x "$NODE_INSTALL_DIR/bin/node" ]]; then
+    fail "Node.js install incomplete — $NODE_INSTALL_DIR/bin/node not found"
   fi
 
   export PATH="$NODE_INSTALL_DIR/bin:$PATH"
