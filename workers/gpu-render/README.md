@@ -6,43 +6,142 @@ Dedicated **FFmpeg burn-in** service. Subtitle generation, translation, timing, 
 
 ```
 workers/gpu-render/
+├── Dockerfile
+├── .dockerignore
+├── auto-stop.js
 ├── package.json
 ├── server.js
-├── README.md
-└── .gitignore
+└── README.md
 ```
 
-The worker imports shared burn code from `api/video-render/burn-export-phase.js` (same pipeline as VPS, encoder only differs).
+Imports shared burn code from `api/video-render/` (copied into the Docker image at build time).
 
-## Requirements
+---
 
-- Node.js 18+
-- FFmpeg with **h264_nvenc** (falls back to **libx264** if NVENC is missing)
-- Full Cutup repo clone (imports `../../api/video-render/*`)
+## Docker image (production)
 
-## Install & run
+### Prerequisites
+
+- Docker 23+ (for `--ignorefile`) or copy `.dockerignore` to repo root before build
+- Build context: **repository root** (not `workers/gpu-render` alone)
+
+### Build
 
 ```bash
-cd workers/gpu-render
-npm install
+# From repository root
+cd /path/to/cutup
 
-export GPU_RENDER_TOKEN='your-shared-secret'
-export GPU_RENDER_PUBLIC_URL='https://your-runpod-host:8787'
-
-npm start
+docker build \
+  -f workers/gpu-render/Dockerfile \
+  --ignorefile workers/gpu-render/.dockerignore \
+  -t cutup-gpu-render:latest \
+  .
 ```
 
-## Environment
+Verify image:
 
-| Variable | Description |
-|----------|-------------|
-| `GPU_RENDER_TOKEN` | Bearer secret (required) |
-| `GPU_RENDER_PUBLIC_URL` | Public base URL for `outputUrl` in responses |
-| `GPU_RENDER_PORT` | Listen port (default `8787`) |
-| `GPU_RENDER_WORK_DIR` | Temp dir (default `/tmp/cutup-gpu-render`) |
-| `VIDEO_RENDER_VIDEO_CODEC` | Force `h264_nvenc`, `hevc_nvenc`, or `libx264` |
-| `VIDEO_RENDER_NVENC_PRESET` | NVENC preset (default `p4`) |
-| `VIDEO_RENDER_NVENC_CQ` | NVENC CQ (default `23`) |
+```bash
+docker run --rm cutup-gpu-render:latest node --version    # v22.x
+docker run --rm cutup-gpu-render:latest ffmpeg -version
+docker run --rm cutup-gpu-render:latest git --version
+```
+
+### Run locally (test)
+
+```bash
+docker run --rm -p 8787:8787 \
+  -e GPU_RENDER_TOKEN=dev-secret-change-me \
+  -e GPU_RENDER_PUBLIC_URL=http://127.0.0.1:8787 \
+  cutup-gpu-render:latest
+```
+
+```bash
+curl http://127.0.0.1:8787/health
+# {"ok":true}
+```
+
+### Push to registry
+
+```bash
+# Docker Hub example
+docker tag cutup-gpu-render:latest YOUR_DOCKER_USER/cutup-gpu-render:latest
+docker login
+docker push YOUR_DOCKER_USER/cutup-gpu-render:latest
+
+# GitHub Container Registry example
+docker tag cutup-gpu-render:latest ghcr.io/YOUR_ORG/cutup-gpu-render:latest
+docker push ghcr.io/YOUR_ORG/cutup-gpu-render:latest
+```
+
+---
+
+## RunPod deployment
+
+### 1. Build and push image
+
+Build on your machine or CI, push to Docker Hub / GHCR (see above).
+
+### 2. Create RunPod GPU Pod template
+
+| Setting | Value |
+|---------|--------|
+| **Container image** | `YOUR_DOCKER_USER/cutup-gpu-render:latest` |
+| **GPU** | NVIDIA RTX A4000 (or any GPU with NVENC) |
+| **Container disk** | ≥ 20 GB |
+| **Volume** | Optional — `/tmp` is used for render jobs |
+| **Expose HTTP ports** | `8787` |
+| **Start command** | *(empty — image CMD runs `node server.js`)* |
+
+### 3. Environment variables (RunPod pod / template)
+
+| Variable | Required | Example |
+|----------|----------|---------|
+| `GPU_RENDER_TOKEN` | Yes | `long-random-shared-secret` |
+| `GPU_RENDER_PUBLIC_URL` | Yes | `https://YOUR_POD_ID-8787.proxy.runpod.net` |
+| `GPU_RENDER_PORT` | No | `8787` (default) |
+| `GPU_RENDER_WORK_DIR` | No | `/tmp/cutup-gpu-render` |
+| `VIDEO_RENDER_VIDEO_CODEC` | No | `h264_nvenc` (auto-fallback to `libx264`) |
+| `RUNPOD_API_KEY` | For auto-stop | RunPod REST API key |
+| `RUNPOD_POD_ID` | For auto-stop | This pod’s ID (stops itself after 5 min idle) |
+
+Use the **same** `GPU_RENDER_TOKEN` on the main VPS (`GPU_RENDER_URL` points to this pod).
+
+### Auto-stop (idle shutdown)
+
+When both `RUNPOD_API_KEY` and `RUNPOD_POD_ID` are set, the worker:
+
+1. Tracks active `/render` jobs and last activity time.
+2. Every 30s, if **no jobs are running** and **no new jobs for 5 minutes**, calls `POST https://rest.runpod.io/v1/pods/{podId}/stop`.
+3. Logs: `[auto-stop] idle detected`, `[auto-stop] stopping pod`, `[auto-stop] stop successful`.
+
+Set `RUNPOD_POD_ID` to the pod’s own ID (RunPod console → Pod details). Without these vars, auto-stop is disabled.
+
+### 4. Main VPS (cutup.shop)
+
+```env
+GPU_RENDER_ENABLED=1
+GPU_RENDER_URL=https://YOUR_POD_PROXY:8787
+GPU_RENDER_TOKEN=long-random-shared-secret
+GPU_RENDER_ARTIFACT_BASE_URL=https://cutup.shop
+```
+
+### 5. Health check after pod starts
+
+```bash
+curl https://YOUR_POD_PROXY:8787/health
+# {"ok":true}
+
+curl https://YOUR_POD_PROXY:8787/health/ready
+# {"ok":true,"ffmpeg":true,"encoder":"h264_nvenc"}
+```
+
+### 6. Updating the worker
+
+Rebuild image → push → restart RunPod pod (or set template to `:latest` and restart).
+
+No manual `npm install`, `apt install ffmpeg`, or `git clone` on the pod — everything is in the image.
+
+---
 
 ## API
 
@@ -89,22 +188,16 @@ Response:
 
 Download rendered MP4 (Bearer token required).
 
-## Main VPS integration
+---
 
-```env
-GPU_RENDER_ENABLED=1
-GPU_RENDER_URL=https://your-runpod-host:8787
-GPU_RENDER_TOKEN=your-shared-secret
-GPU_RENDER_ARTIFACT_BASE_URL=https://cutup.shop
+## Manual install (without Docker)
+
+```bash
+cd workers/gpu-render
+npm install
+export GPU_RENDER_TOKEN='your-shared-secret'
+export GPU_RENDER_PUBLIC_URL='https://your-runpod-host:8787'
+npm start
 ```
 
-When `GPU_RENDER_ENABLED=0`, the VPS uses local FFmpeg (`libx264`) unchanged.
-
-Integration modules (VPS):
-
-- `api/video-render/gpu-render-client.js`
-- `api/video-render/gpu-render-artifacts.js`
-- `api/video-render/burn-export-phase.js`
-- `api/video-render/video-encoder.js`
-- `api/video-render/render-queue.js` (dispatch when enabled)
-- `api/export-video.js` (`action=gpu-artifact` for worker downloads)
+Requires full repo clone (imports `../../api/video-render/*`).

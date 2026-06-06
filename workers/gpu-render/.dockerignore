@@ -1,0 +1,47 @@
+# Git / editor
+.git
+.gitignore
+**/.git
+**/.DS_Store
+**/.cursor
+**/.vscode
+**/*.swp
+**/*.swo
+
+# Dependencies (reinstalled in image)
+**/node_modules
+npm-debug.log*
+yarn-error.log*
+
+# Not needed for GPU burn worker
+website
+public
+blog
+forensic-rtl-sample
+instalogist
+docs
+scripts
+tests
+**/*.test.mjs
+**/*.test.js
+**/__tests__
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Large / local artifacts
+**/*.mp4
+**/*.mov
+**/*.mkv
+**/*.wav
+**/*.mp3
+**/tmp
+**/temp
+**/.cache
+
+# Other workers / unrelated API routes
+api/upload.js
+api/transcribe.js
+api/export-video.js

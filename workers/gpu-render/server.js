@@ -15,6 +15,12 @@ import {
   initWorkerVideoEncoder,
   resolveVideoEncoder
 } from '../../api/video-render/video-encoder.js';
+import {
+  noteRenderJobStarted,
+  noteRenderJobFinished,
+  startAutoStopScheduler,
+  getAutoStopState
+} from './auto-stop.js';
 
 const PORT = Number(process.env.GPU_RENDER_PORT || process.env.PORT || 8787);
 const WORK_ROOT = process.env.GPU_RENDER_WORK_DIR || '/tmp/cutup-gpu-render';
@@ -71,7 +77,8 @@ app.get('/health/ready', async (_req, res) => {
   res.json({
     ok: ffmpegOk,
     ffmpeg: ffmpegOk,
-    encoder
+    encoder,
+    autoStop: getAutoStopState()
   });
 });
 
@@ -107,6 +114,8 @@ app.post('/render', requireAuth, async (req, res) => {
       error: 'videoUrl and subtitleUrl are required'
     });
   }
+
+  noteRenderJobStarted();
 
   const jobDir = join(WORK_ROOT, 'jobs', jobId);
   const videoPath = join(jobDir, 'source.mp4');
@@ -182,6 +191,8 @@ app.post('/render', requireAuth, async (req, res) => {
       message: err?.message || 'GPU render failed',
       jobId
     });
+  } finally {
+    noteRenderJobFinished();
   }
 });
 
@@ -193,6 +204,7 @@ async function main() {
     process.exit(1);
   }
   const encoder = await initWorkerVideoEncoder();
+  startAutoStopScheduler();
   app.listen(PORT, () => {
     console.log('[gpu-worker] listening', {
       port: PORT,
