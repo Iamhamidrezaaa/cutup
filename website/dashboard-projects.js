@@ -98,7 +98,10 @@
         `${state.apiBase}/api/projects?${q.toString()}`,
         { headers: { 'X-Session-Id': state.session } }
       );
-      if (!response.ok) throw new Error(data?.error || 'load_failed');
+      if (!response.ok) {
+        const msg = [data?.message, data?.hint, data?.error].filter(Boolean).join(' — ') || 'load_failed';
+        throw new Error(msg);
+      }
       state.items = data.items || [];
       state.total = data.total || 0;
       state.totalPages = data.totalPages || 1;

@@ -2,6 +2,7 @@
  * Projects + export history persistence.
  */
 import { getPool, isBillingDbConfigured } from './db/pool.js';
+import { ensureProjectsSchema } from './db/ensure-projects-schema.js';
 import { ensureUserByEmail } from './billing-repository.js';
 
 const EXPORT_FILE_TTL_DAYS = Number(process.env.PROJECT_EXPORT_TTL_DAYS || 14);
@@ -201,6 +202,7 @@ export async function linkSavedOutputToProject(outputId, projectId) {
 }
 
 export async function listProjectsDb(email, opts = {}) {
+  await ensureProjectsSchema();
   const userId = await resolveUserId(email);
   if (!userId) return { items: [], total: 0, page: 1, limit: 20 };
 

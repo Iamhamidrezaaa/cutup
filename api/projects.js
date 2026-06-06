@@ -11,6 +11,7 @@
  */
 import { setCORSHeaders } from './cors.js';
 import { sessions } from './auth.js';
+import { ensureProjectsSchema } from './db/ensure-projects-schema.js';
 import {
   isProjectsDbConfigured,
   listProjectsDb,
@@ -54,6 +55,8 @@ export default async function handler(req, res) {
   const userEmail = session.user.email;
 
   try {
+    await ensureProjectsSchema();
+
     if (method === 'GET' && action === 'list') {
       const result = await listProjectsDb(userEmail, {
         filter: query.filter || 'all',
@@ -121,8 +124,16 @@ export default async function handler(req, res) {
 
     return res.status(404).json({ error: 'Not found' });
   } catch (error) {
-    console.error('[projects]', error);
+    console.error('[projects]', error?.stack || error);
     setCORSHeaders(res);
-    return res.status(500).json({ error: 'Projects error', message: error.message });
+    return res.status(500).json({
+      error: 'Projects error',
+      message: error.message,
+      code: error.code || null,
+      hint:
+        error.code === '42P01'
+          ? 'Run: node api/db/migrate.mjs (schema-projects.sql)'
+          : undefined
+    });
   }
 }

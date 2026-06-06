@@ -76,7 +76,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bangers&family=Bebas+Neue&family=Cormorant+Garamond:wght@500;600&family=Inter:wght@600&family=Lato:wght@600&family=Montserrat:wght@800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="subtitle-styles/subtitle-styles.css?v=20260528-styles">
   <link rel="stylesheet" href="responsive-global.css?v=1">
-  <link rel="stylesheet" href="landing-page.css?v=20260602-landing">
+  <link rel="stylesheet" href="landing-page.css?v=20260603-premium">
   <script>
     (function cutupEarlyAuthRedirect() {
       try {
@@ -136,7 +136,7 @@
   <main>
     <!-- SECTION 1 — Hero -->
     <section class="lp-hero" id="top" aria-labelledby="lp-hero-title">
-      <div class="lp-hero__glow" aria-hidden="true"></div>
+      <div class="lp-hero__mesh" aria-hidden="true"></div>
       <div class="container lp-hero__inner">
         <div class="lp-hero__copy">
           <p class="lp-hero__eyebrow">AI viral shorts · Creator captions</p>
@@ -144,17 +144,29 @@
           <p class="lp-hero__sub">Generate cinematic captions, creator-inspired styles and social-ready exports in minutes.</p>
           <div class="lp-hero__cta">
             <a href="/login.html?redirect=home&amp;source=hero" class="lp-btn lp-btn--primary" id="lpHeroStartFree" data-lp-start-free>Start Free</a>
-            <a href="#how-it-works" class="lp-btn lp-btn--ghost">See how it works</a>
+            <a href="#tool" class="lp-btn lp-btn--ghost">Try it now</a>
           </div>
-          <p class="lp-hero__micro">No credit card · Preview in your browser · YouTube, TikTok, Instagram &amp; file upload</p>
-          <div class="lp-hero__quick hero-quick-tool">
-            <label for="heroUrlInput" class="visually-hidden">Paste a video URL</label>
-            <input type="url" id="heroUrlInput" class="hero-url-input" placeholder="Paste YouTube, TikTok or Instagram URL…" autocomplete="url" inputmode="url">
-            <button type="button" id="heroGenerateBtn" class="lp-btn lp-btn--primary hero-primary-btn" style="width:100%;margin-top:12px;">Generate Subtitles</button>
-          </div>
+          <p class="lp-hero__micro">No credit card · Paste a link below · YouTube, TikTok, Instagram &amp; file upload</p>
+          <ul class="lp-hero__proof-chips" aria-label="Product outcomes">
+            <li>AI timed captions</li>
+            <li>Creator styles</li>
+            <li>MP4 export</li>
+          </ul>
         </div>
-        <div class="lp-hero__visual" aria-hidden="true">
-          <p class="lp-hero__visual-demo">THIS is your <em>viral hook</em></p>
+        <div class="lp-hero__device" id="lpHeroDevice" aria-label="Product preview: original clip to viral export">
+          <div class="lp-hero__pipeline" id="lpHeroPipeline" role="list">
+            <span class="lp-hero__pipe-step is-active" data-step="0" role="listitem">Original clip</span>
+            <span class="lp-hero__pipe-arrow" aria-hidden="true">→</span>
+            <span class="lp-hero__pipe-step" data-step="1" role="listitem">Generated subtitles</span>
+            <span class="lp-hero__pipe-arrow" aria-hidden="true">→</span>
+            <span class="lp-hero__pipe-step" data-step="2" role="listitem">Viral clip</span>
+          </div>
+          <div class="lp-hero__phone">
+            <div class="lp-hero__phone-notch" aria-hidden="true"></div>
+            <div class="lp-hero__phone-bg" aria-hidden="true"></div>
+            <div id="lpHeroPreview" class="cutup-subtitle-stage lp-hero__stage" aria-live="polite"></div>
+          </div>
+          <div class="lp-hero__style-pills" id="lpHeroStylePills" role="group" aria-label="Live style switcher"></div>
         </div>
       </div>
     </section>
@@ -344,14 +356,14 @@
     </section>
 
     <!-- SECTION 2 — Social proof -->
-    <section class="lp-section lp-social-proof creator-wall" id="social-proof" aria-labelledby="social-proof-title">
+    <section class="lp-section lp-social-proof" id="social-proof" aria-labelledby="social-proof-title">
       <div class="container">
-        <header class="creator-wall__header">
-          <p class="lp-section__eyebrow">Social proof</p>
-          <h2 class="lp-section__title section-text" id="social-proof-title">Creators ship viral clips with Cutup</h2>
-          <p class="lp-section__lede section-text">Real exports, real retention-focused captions — see what the community publishes every day.</p>
+        <header class="lp-proof__header">
+          <p class="lp-section__eyebrow">Trusted by creators</p>
+          <h2 class="lp-section__title section-text" id="social-proof-title">Real exports. Real retention.</h2>
+          <p class="lp-section__lede section-text">Thousands of creators turn long-form into scroll-stopping shorts with Cutup every week.</p>
         </header>
-        <div class="creator-wall__metrics" aria-label="Platform activity">
+        <div class="lp-proof__stats creator-wall__metrics" aria-label="Platform activity">
           <div class="creator-wall__metric-tile">
             <span class="creator-wall__metric-value" data-cw-stat-videos>12,584</span>
             <span class="creator-wall__metric-label">Exports generated</span>
@@ -369,17 +381,34 @@
             <span class="creator-wall__metric-label">AI highlights</span>
           </div>
         </div>
-        <div class="creator-wall__ticker" aria-live="polite" aria-atomic="true">
-          <span class="creator-wall__ticker-prefix" aria-hidden="true">Live</span>
-          <span class="creator-wall__ticker-viewport">
-            <span class="creator-wall__ticker-line creator-wall__ticker-line--active" id="creatorWallTickerA">+ Processing creator exports worldwide…</span>
-            <span class="creator-wall__ticker-line" id="creatorWallTickerB"></span>
-          </span>
+        <div class="lp-proof__testimonials" aria-label="Creator testimonials">
+          <blockquote class="lp-proof__quote">
+            <p>“Cutup cut my caption workflow from 40 minutes to under five. The Hormozi style just hits.”</p>
+            <footer><cite>YouTube creator</cite> · 180K subs</footer>
+          </blockquote>
+          <blockquote class="lp-proof__quote">
+            <p>“I batch Shorts from podcast clips — upload, style, export MP4. No timeline wrestling.”</p>
+            <footer><cite>Podcast editor</cite> · agency workflow</footer>
+          </blockquote>
+          <blockquote class="lp-proof__quote">
+            <p>“Multi-language subtitles in one pass. We ship the same clip to three markets now.”</p>
+            <footer><cite>Growth lead</cite> · SaaS brand</footer>
+          </blockquote>
         </div>
-        <div class="creator-wall__showcase" id="creatorWallShowcase" aria-live="polite" aria-busy="true"></div>
-        <noscript>
-          <p class="creator-wall__lede">Creators worldwide publish with Cutup — viral caption styles for TikTok, YouTube, and Reels.</p>
-        </noscript>
+        <div class="lp-proof__wall creator-wall" id="creator-wall">
+          <div class="lp-proof__wall-head">
+            <h3 class="lp-proof__wall-title">Creator Wall <span class="creator-wall__live-dot" aria-hidden="true"></span></h3>
+            <p class="lp-proof__wall-sub">Recent viral exports from the community</p>
+          </div>
+          <div class="creator-wall__ticker" aria-live="polite" aria-atomic="true">
+            <span class="creator-wall__ticker-prefix" aria-hidden="true">Live</span>
+            <span class="creator-wall__ticker-viewport">
+              <span class="creator-wall__ticker-line creator-wall__ticker-line--active" id="creatorWallTickerA">+ Processing creator exports worldwide…</span>
+              <span class="creator-wall__ticker-line" id="creatorWallTickerB"></span>
+            </span>
+          </div>
+          <div class="creator-wall__showcase" id="creatorWallShowcase" aria-live="polite" aria-busy="true"></div>
+        </div>
       </div>
     </section>
 
@@ -420,10 +449,18 @@
         <p class="lp-section__eyebrow">Creator styles</p>
         <h2 class="lp-section__title section-text" id="styles-title">Subtitle styles built for retention</h2>
         <p class="lp-section__lede section-text">Tap a style — preview updates instantly. Same presets used in viral MP4 export.</p>
-        <div class="lp-styles__showcase" id="landingStyleShowcase">
-          <div class="lp-styles__tabs" id="landingStyleTabs" role="group" aria-label="Subtitle style previews"></div>
-          <div class="lp-styles__phone">
-            <div id="landingStylePreview" class="cutup-subtitle-stage lp-styles__stage" aria-label="Interactive style preview"></div>
+        <div class="lp-styles__layout" id="landingStyleShowcase">
+          <div class="lp-styles__sidebar">
+            <h3 class="lp-styles__sidebar-title">Pick a creator style</h3>
+            <p class="lp-styles__sidebar-sub">Same presets used in viral MP4 export — switch instantly.</p>
+            <div class="lp-styles__list" id="landingStyleTabs" role="group" aria-label="Subtitle style previews"></div>
+          </div>
+          <div class="lp-styles__preview-col">
+            <div class="lp-styles__phone">
+              <div class="lp-styles__phone-notch" aria-hidden="true"></div>
+              <div class="lp-styles__phone-bg" aria-hidden="true"></div>
+              <div id="landingStylePreview" class="cutup-subtitle-stage lp-styles__stage" aria-label="Interactive style preview"></div>
+            </div>
           </div>
         </div>
         <div class="lp-styles__cta">
@@ -462,6 +499,11 @@
             <div class="lp-feature__icon" aria-hidden="true">⚡</div>
             <h3 class="lp-feature__title">Fast rendering</h3>
             <p class="lp-feature__desc">Fast preview for iteration, HQ cinematic export when you are ready to publish.</p>
+          </article>
+          <article class="lp-feature">
+            <div class="lp-feature__icon" aria-hidden="true">📂</div>
+            <h3 class="lp-feature__title">Project history</h3>
+            <p class="lp-feature__desc">Reopen transcripts, continue editing, and download your latest export from one dashboard.</p>
           </article>
         </div>
       </div>
@@ -675,7 +717,7 @@
   <script src="creator-wall/creator-wall.js?v=20260520-live"></script>
   <script src="demo-live-micro.js?v=20260520-live"></script>
   <script src="script.js?v=20260526-placement-versions"></script>
-  <script src="landing-page.js?v=20260602-landing" defer></script>
+  <script src="landing-page.js?v=20260603-premium" defer></script>
   <script>
     document.addEventListener('DOMContentLoaded', async function () {
       if (!window.CutupOffersResolver) return;
