@@ -24,6 +24,18 @@ function cutupPendingActionValidForHomeRedirect() {
     return false;
   }
 }
+
+function cutupShouldResumeOnHomepage() {
+  if (cutupPendingActionValidForHomeRedirect()) return true;
+  try {
+    const pendingUrl = localStorage.getItem('cutup_pending_url');
+    if (pendingUrl && String(pendingUrl).trim()) return true;
+    if (sessionStorage.getItem('cutup_pending_action')) return true;
+  } catch {
+    /* noop */
+  }
+  return false;
+}
 let cutupDashboardPricingViewedSent = false;
 
 function peekPaymentRetryPlanKey() {
@@ -1419,9 +1431,15 @@ function getSessionFromLocation() {
 
   if (authSuccess === 'success' && sessionId) {
     localStorage.setItem('cutup_session', sessionId);
-    if (cutupPendingActionValidForHomeRedirect()) {
+    if (cutupShouldResumeOnHomepage()) {
       window.location.replace(`${window.location.origin}/?resume=1`);
       return { activeSession: sessionId, paymentReturn, bouncingHome: true };
+    }
+    const checkoutAfterAuth = window.CutupPlanCheckout?.resolvePostLoginRedirect?.();
+    if (checkoutAfterAuth) {
+      console.log('[checkout-after-oauth]', { url: checkoutAfterAuth, from: 'dashboard_callback' });
+      window.location.replace(checkoutAfterAuth);
+      return { activeSession: sessionId, paymentReturn, bouncingCheckout: true };
     }
   }
 
@@ -1548,8 +1566,8 @@ async function initDashboard() {
     return { ok: false };
   }
 
-  const { activeSession, paymentReturn, bouncingHome } = getSessionFromLocation();
-  if (bouncingHome) {
+  const { activeSession, paymentReturn, bouncingHome, bouncingCheckout } = getSessionFromLocation();
+  if (bouncingHome || bouncingCheckout) {
     return { ok: false };
   }
   currentSession = activeSession;

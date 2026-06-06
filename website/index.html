@@ -77,6 +77,57 @@
   <link rel="stylesheet" href="subtitle-styles/subtitle-styles.css?v=20260528-styles">
   <link rel="stylesheet" href="responsive-global.css?v=1">
   <link rel="stylesheet" href="landing-page.css?v=20260602-landing">
+  <script>
+    (function cutupEarlyAuthRedirect() {
+      try {
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('auth') !== 'success' || !params.get('session')) return;
+        document.documentElement.classList.add('cutup-auth-pending');
+        var session = params.get('session');
+        try { localStorage.setItem('cutup_session', session); } catch (_e) { /* ignore */ }
+        var resume = false;
+        try {
+          var pendingUrl = localStorage.getItem('cutup_pending_url');
+          if (pendingUrl && String(pendingUrl).trim()) resume = true;
+          var pendingRaw = localStorage.getItem('pending_action');
+          if (pendingRaw) {
+            var pending = JSON.parse(pendingRaw);
+            var ts = pending && pending.timestamp ? pending.timestamp : 0;
+            if (ts && Date.now() - ts <= 600000) resume = true;
+          }
+          if (sessionStorage.getItem('cutup_pending_action')) resume = true;
+        } catch (_e2) { /* ignore */ }
+        var checkout = null;
+        try {
+          var pendingPlan = sessionStorage.getItem('cutup_pending_plan_after_auth');
+          if (pendingPlan) {
+            var plan = String(pendingPlan).toLowerCase();
+            if (plan === 'starter' || plan === 'pro' || plan === 'business') {
+              checkout = '/checkout.html?plan=' + encodeURIComponent(plan) + '&source=checkout';
+            }
+          }
+        } catch (_e3) { /* ignore */ }
+        if (!checkout && params.get('redirect') === 'checkout') {
+          var qPlan = String(params.get('plan') || '').toLowerCase();
+          if (qPlan === 'starter' || qPlan === 'pro' || qPlan === 'business') {
+            checkout = '/checkout.html?plan=' + encodeURIComponent(qPlan) + '&source=checkout';
+          }
+        }
+        if (checkout && !resume) {
+          window.location.replace(checkout);
+          return;
+        }
+        if (resume) {
+          window.location.replace(window.location.origin + '/?resume=1');
+          return;
+        }
+        window.location.replace(window.location.origin + '/dashboard.html?auth=success&session=' + encodeURIComponent(session));
+      } catch (_err) { /* allow fallback in script.js */ }
+    })();
+  </script>
+  <style>
+    html.cutup-auth-pending body { visibility: hidden; }
+  </style>
 </head>
 <body class="cutup-home">
   <script src="site-chrome.js"></script>

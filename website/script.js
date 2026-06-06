@@ -2237,10 +2237,16 @@ if (authSuccess === 'success' && sessionId) {
   const pendingUrl = localStorage.getItem('cutup_pending_url');
   const pendingPlatform = localStorage.getItem('cutup_pending_platform');
   const hasResumeIntent =
-    pendingLsSnapshot.valid || !!(pendingUrl && String(pendingUrl).trim());
+    pendingLsSnapshot.valid ||
+    !!(pendingUrl && String(pendingUrl).trim()) ||
+    !!sessionStorage.getItem(CUTUP_PENDING_ACTION_KEY);
 
-  console.log('[oauth-return]', { auth: 'success', hasResumeIntent });
-  hideAuthTransition();
+  console.log('[oauth-return]', { auth: 'success', hasResumeIntent, surface: 'homepage_fallback' });
+  showAuthTransition({
+    title: 'Signing you in',
+    text: hasResumeIntent ? 'Restoring your project…' : 'Opening your dashboard…',
+    sub: ''
+  });
   const checkoutAfterAuth = window.CutupPlanCheckout?.resolvePostLoginRedirect?.();
   if (checkoutAfterAuth && !hasResumeIntent) {
     console.log('[checkout-after-oauth]', { url: checkoutAfterAuth });

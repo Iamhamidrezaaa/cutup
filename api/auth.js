@@ -142,8 +142,8 @@ export default async function handler(req, res) {
       // Clean up expired sessions
       cleanupExpiredSessions();
 
-      // Homepage handles pending_action resume; dashboard is for sign-ins without tool intent
-      return res.redirect(`${FRONTEND_URL}/?auth=success&session=${sessionId}`);
+      // Dashboard is default post-login; client checks localStorage for tool resume → homepage
+      return res.redirect(`${FRONTEND_URL}/dashboard.html?auth=success&session=${sessionId}`);
     }
 
     // Get current user
