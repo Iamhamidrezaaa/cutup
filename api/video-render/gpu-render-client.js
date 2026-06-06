@@ -5,6 +5,7 @@ import { createWriteStream } from 'fs';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
 import nodeFetch from 'node-fetch';
+import { ensureGpuWorkerReady } from './gpu-start.js';
 
 const fetchFn = typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : nodeFetch;
 
@@ -32,6 +33,8 @@ function gpuTimeoutMs() {
  * @param {object} payload
  */
 export async function dispatchGpuRenderJob(payload) {
+  await ensureGpuWorkerReady();
+
   const base = gpuRenderUrl();
   const res = await fetchFn(`${base}/render`, {
     method: 'POST',

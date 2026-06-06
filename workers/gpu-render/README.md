@@ -101,8 +101,8 @@ Build on your machine or CI, push to Docker Hub / GHCR (see above).
 | `GPU_RENDER_PORT` | No | `8787` (default) |
 | `GPU_RENDER_WORK_DIR` | No | `/tmp/cutup-gpu-render` |
 | `VIDEO_RENDER_VIDEO_CODEC` | No | `h264_nvenc` (auto-fallback to `libx264`) |
-| `RUNPOD_API_KEY` | For auto-stop | RunPod REST API key |
-| `RUNPOD_POD_ID` | For auto-stop | This pod’s ID (stops itself after 5 min idle) |
+| `RUNPOD_API_KEY` | For auto-stop | RunPod REST API key (also set on VPS for auto-start) |
+| `RUNPOD_POD_ID` | For auto-stop | This pod’s ID (also set on VPS for auto-start) |
 
 Use the **same** `GPU_RENDER_TOKEN` on the main VPS (`GPU_RENDER_URL` points to this pod).
 
@@ -123,7 +123,11 @@ GPU_RENDER_ENABLED=1
 GPU_RENDER_URL=https://YOUR_POD_PROXY:8787
 GPU_RENDER_TOKEN=long-random-shared-secret
 GPU_RENDER_ARTIFACT_BASE_URL=https://cutup.shop
+RUNPOD_API_KEY=rpa_xxxxxxxx
+RUNPOD_POD_ID=your-pod-id
 ```
+
+**Auto-start (VPS):** Before each GPU render, the VPS checks `GET /health`. If the worker is offline, it calls `POST /pods/{podId}/start`, polls `/health` every 5s (5 min timeout), then dispatches the job. Logs: `[gpu-start] pod offline`, `[gpu-start] starting pod`, `[gpu-start] waiting for worker`, `[gpu-start] worker ready`.
 
 ### 5. Health check after pod starts
 
