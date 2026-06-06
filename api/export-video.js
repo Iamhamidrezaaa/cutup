@@ -25,6 +25,7 @@ import {
   getQueueStats,
   isJobReady
 } from './video-render/render-queue.js';
+import { subscribeExportJob } from './video-render/export-events.js';
 import { schedulePostDownloadCleanup } from './video-render/temp-cleanup.js';
 import { listStylePresets } from './video-render/style-presets.js';
 import { decodeSubtitleTextEntities } from './subtitle-text-entities.js';
@@ -348,6 +349,67 @@ async function handleStatus(req, res, jobId, email) {
   return res.status(200).json({ success: true, ...publicStatus(job) });
 }
 
+function handleStream(req, res, jobId, email) {
+  const job = getJob(jobId);
+  if (!job) {
+    setCORSHeaders(res);
+    return res.status(404).json({ error: 'not_found', message: 'Render job not found.' });
+  }
+  if (job.userEmail !== email) {
+    setCORSHeaders(res);
+    return res.status(403).json({ error: 'forbidden' });
+  }
+
+  setCORSHeaders(res);
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  if (typeof res.flushHeaders === 'function') res.flushHeaders();
+
+  const send = (payload) => {
+    try {
+      res.write(`event: status\ndata: ${JSON.stringify({ type: 'status', ...payload })}\n\n`);
+    } catch {
+      /* client disconnected */
+    }
+  };
+
+  send(publicStatus(job));
+
+  const unsub = subscribeExportJob(jobId, send);
+  const queueRefresh = setInterval(() => {
+    const current = getJob(jobId);
+    if (!current) {
+      clearInterval(queueRefresh);
+      try {
+        res.end();
+      } catch {
+        /* noop */
+      }
+      return;
+    }
+    if (current.stageKey === 'queued' || current.stageKey === 'ready_to_download' || current.stageKey === 'failed') {
+      send(publicStatus(current));
+    }
+    if (isJobReady(current) || current.stageKey === 'failed' || current.stageKey === 'cancelled') {
+      clearInterval(queueRefresh);
+      setTimeout(() => {
+        try {
+          res.end();
+        } catch {
+          /* noop */
+        }
+      }, 1200);
+    }
+  }, 3000);
+
+  req.on('close', () => {
+    clearInterval(queueRefresh);
+    unsub();
+  });
+}
+
 function streamJobMp4(req, res, jobId, job, disposition, { onComplete } = {}) {
   const stat = statSync(job.outputPath);
   setCORSHeaders(res);
@@ -506,6 +568,10 @@ export default async function handler(req, res) {
 
     if (req.method === 'GET' && action === 'preview') {
       return handlePreview(req, res, jobId, email);
+    }
+
+    if (req.method === 'GET' && action === 'stream') {
+      return handleStream(req, res, jobId, email);
     }
 
     if (req.method === 'GET') {

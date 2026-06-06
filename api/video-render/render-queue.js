@@ -56,6 +56,8 @@ import {
   endExportStage,
   printExportStageTimings
 } from './export-stage-timings.js';
+import { publishExportJobUpdate } from './export-events.js';
+import { PIPELINE_STAGES, resolvePipelineStep, formatEtaIso } from './export-pipeline.js';
 
 const MAX_CONCURRENT = Math.max(1, Math.min(3, Number(process.env.VIDEO_RENDER_CONCURRENCY || 1)));
 const JOB_TTL_MS = Number(process.env.VIDEO_RENDER_JOB_TTL_MS || 30 * 60 * 1000);
@@ -235,6 +237,40 @@ function bumpProgress(job, target) {
   if (t > job.progress) {
     job.progress = t;
     job.updatedAt = Date.now();
+    notifyJobChanged(job);
+  }
+}
+
+export function getQueuePositionForJob(jobId) {
+  const idx = waitQueue.indexOf(jobId);
+  if (idx >= 0) {
+    return {
+      position: idx + 1,
+      jobsAhead: idx,
+      isQueued: true,
+      isActive: false
+    };
+  }
+  const job = jobs.get(jobId);
+  if (job && job.stageKey !== 'queued' && !isJobReady(job) && job.stageKey !== 'failed' && job.stageKey !== 'cancelled') {
+    return { position: 0, jobsAhead: 0, isQueued: false, isActive: true };
+  }
+  return { position: 0, jobsAhead: 0, isQueued: false, isActive: false };
+}
+
+function notifyAllQueuedJobs() {
+  for (const id of waitQueue) {
+    const job = jobs.get(id);
+    if (job) notifyJobChanged(job);
+  }
+}
+
+function notifyJobChanged(job) {
+  if (!job?.id) return;
+  try {
+    publishExportJobUpdate(job.id, publicStatus(job));
+  } catch {
+    /* ignore publish errors */
   }
 }
 
@@ -247,6 +283,7 @@ function setStage(job, stage, extra = {}) {
   job.updatedAt = Date.now();
   Object.assign(job, extra);
   syncProjectExportRecord(job);
+  notifyJobChanged(job);
 }
 
 function syncProjectExportRecord(job) {
@@ -260,7 +297,12 @@ function syncProjectExportRecord(job) {
 
 function setSubStage(job, label, progress) {
   job.subStageLabel = label;
+  const prev = job.progress || 0;
   bumpProgress(job, progress);
+  if (job.progress === prev) {
+    job.updatedAt = Date.now();
+    notifyJobChanged(job);
+  }
 }
 
 export function getJob(jobId) {
@@ -289,9 +331,10 @@ export function createRenderJob(payload) {
     updatedAt: Date.now(),
     stage: 'queued',
     stageKey: 'queued',
+    exportPhase: 'queued',
     stageLabel: 'Queued',
-    subStageLabel: 'Starting export engine…',
-    progress: 3,
+    subStageLabel: 'Waiting for an export slot…',
+    progress: 0,
     error: null,
     outputPath: null,
     outputFilename: 'cutup-viral-export.mp4',
@@ -328,6 +371,8 @@ export function createRenderJob(payload) {
   jobs.set(id, job);
   waitQueue.push(id);
   job.queueEtaSec = estimateQueueWaitSecFor(id, job.quality);
+  notifyJobChanged(job);
+  notifyAllQueuedJobs();
   pumpQueue();
   return { jobId: id, status: publicStatus(job) };
 }
@@ -346,49 +391,20 @@ export function cancelJob(jobId, userEmail) {
   return { ok: true };
 }
 
-function startRenderHeartbeat(job, durationSec) {
-  if (job.progressTimer) clearInterval(job.progressTimer);
-  const estMs = Math.max(25000, (durationSec || 60) * (job.quality === 'hq' ? 2000 : 1100));
-  const started = Date.now();
-  let tick = 0;
-
-  job.progressTimer = setInterval(() => {
-    if (job.stageKey !== 'rendering' && job.stageKey !== 'muxing') return;
-    tick += 1;
-    const elapsed = Date.now() - started;
-    const ratio = Math.min(1, elapsed / estMs);
-    const micro = 52 + Math.round(ratio * 36);
-    bumpProgress(job, micro);
-
-    job.ffmpegMsgIndex = tick % FFMPEG_STATUS_LINES.length;
-    job.subStageLabel = FFMPEG_STATUS_LINES[job.ffmpegMsgIndex];
-    job.updatedAt = Date.now();
-    job.etaSec = Math.max(3, Math.round((estMs - elapsed) / 1000));
-
-    if (micro < 88 && tick % 2 === 0) {
-      bumpProgress(job, micro + 1);
-    }
-  }, 1400);
-  job.progressTimer.unref?.();
-}
-
-function stopRenderHeartbeat(job) {
-  if (job.progressTimer) {
-    clearInterval(job.progressTimer);
-    job.progressTimer = null;
-  }
-}
-
 export function publicStatus(job) {
   if (!job) return null;
   const ready = isJobReady(job);
-  const queued = !ready && job.stageKey === 'queued';
+  const queueInfo = getQueuePositionForJob(job.id);
+  const queued = !ready && (job.stageKey === 'queued' || queueInfo.isQueued);
   const queueEtaSec = queued ? estimateQueueWaitSecFor(job.id, job.quality) : 0;
+  const renderEtaSec = ready ? 0 : Math.max(0, Number(job.etaSec) || 0);
+  const totalEtaSec = queued ? queueEtaSec + renderEtaSec : renderEtaSec;
+  const pipeline = resolvePipelineStep(job);
   const stageLabel = ready
-    ? job.subStageLabel || 'Your viral clip is ready'
-    : queued && queueEtaSec > 0
-      ? `Queued (~${queueEtaSec}s wait)`
-      : job.subStageLabel || job.stageLabel || job.stage;
+    ? pipeline.label
+    : queued && queueInfo.position > 0
+      ? `You are #${queueInfo.position} in queue`
+      : job.subStageLabel || job.stageLabel || pipeline.label;
   return {
     jobId: job.id,
     stage: ready ? 'ready_to_download' : job.stageKey || job.stage,
@@ -396,9 +412,20 @@ export function publicStatus(job) {
     subStageLabel: job.subStageLabel || null,
     progress: ready ? 100 : job.progress,
     error: job.error,
-    etaSec: ready ? 0 : job.etaSec,
+    etaSec: renderEtaSec,
     queueWaitSec: job.queueWaitSec || 0,
     queueEtaSec,
+    queuePosition: queueInfo.position,
+    jobsAhead: queueInfo.jobsAhead,
+    isQueued: queueInfo.isQueued,
+    isActive: queueInfo.isActive,
+    estimatedWaitSec: queueEtaSec,
+    estimatedTotalSec: totalEtaSec,
+    estimatedCompletionAt: formatEtaIso(totalEtaSec),
+    pipelineStep: pipeline.step,
+    pipelineLabel: pipeline.label,
+    pipelineKey: pipeline.key,
+    pipelineStages: PIPELINE_STAGES,
     renderSpeedX: ready ? job.renderSpeedX : job.renderSpeedX || null,
     renderFps: ready ? job.renderFps : job.renderFps || null,
     outputReady: ready,
@@ -414,7 +441,8 @@ export function publicStatus(job) {
     selectedVersion: job.selectedVersion || 'original',
     presetId: job.presetId,
     presetName: job.presetDisplayName || job.presetId,
-    quality: job.quality
+    quality: job.quality,
+    updatedAt: job.updatedAt
   };
 }
 
@@ -424,6 +452,7 @@ function pumpQueue() {
     const job = jobs.get(id);
     if (!job || job.cancelled) continue;
     activeCount += 1;
+    notifyAllQueuedJobs();
     runJob(job)
       .catch((err) => {
         console.error('[video-render] job failed:', job.id, err?.message || err);
@@ -432,6 +461,7 @@ function pumpQueue() {
       })
       .finally(() => {
         activeCount -= 1;
+        notifyAllQueuedJobs();
         pumpQueue();
       });
   }
@@ -577,10 +607,11 @@ async function runJob(job) {
     });
     job.etaSec = Math.max(10, Math.round(probe.durationSec * (job.quality === 'hq' ? 1.45 : 0.9)));
 
-    setStage(job, 'subtitle_layout', {
-      stageLabel: 'Subtitle layout',
+    job.exportPhase = 'generating_captions';
+    setStage(job, 'generating_captions', {
+      stageLabel: 'Generating captions',
       subStageLabel: 'Optimizing captions…',
-      progress: 34
+      progress: 28
     });
     beginExportStage(job.id, 'caption_generation');
 
@@ -636,6 +667,12 @@ async function runJob(job) {
 
     let assResult;
     endExportStage(job.id, 'caption_generation');
+    job.exportPhase = 'building_layout';
+    setStage(job, 'subtitle_layout', {
+      stageLabel: 'Building subtitle layout',
+      subStageLabel: 'Applying cinematic layout…',
+      progress: 38
+    });
     beginExportStage(job.id, 'ass_generation');
     assTiming.start = Date.now();
     const previewExportDoc =
@@ -853,16 +890,16 @@ async function runJob(job) {
 
     if (job.cancelled) return;
 
+    job.exportPhase = 'rendering';
     job.renderStartedAt = Date.now();
     setStage(job, 'rendering', {
-      stageLabel: 'Rendering',
+      stageLabel: 'Rendering video',
       subStageLabel: 'Encoding TikTok-ready MP4…',
       progress: 52
     });
 
     const outputPath = join(job.jobDir, 'export.mp4');
     job.ffmpegAbort = new AbortController();
-    startRenderHeartbeat(job, probe.durationSec);
     ffmpegStartedAt.at = Date.now();
 
     try {
@@ -992,7 +1029,6 @@ async function runJob(job) {
       job.normalizeResult = normResult;
 
     } finally {
-      stopRenderHeartbeat(job);
       job.ffmpegAbort = null;
     }
 
@@ -1001,6 +1037,7 @@ async function runJob(job) {
     await recordFileStage(timelineTrace, outputPath, 'post_burn_export');
 
     beginExportStage(job.id, 'upload_final_mp4');
+    job.exportPhase = 'finalizing';
     setStage(job, 'finalizing', {
       stageLabel: 'Finalizing',
       subStageLabel: 'Packaging your viral clip…',
@@ -1070,6 +1107,7 @@ async function runJob(job) {
       renderSec: job.renderDurationSec
     });
 
+    job.exportPhase = 'ready';
     setStage(job, 'ready_to_download', {
       stageLabel: 'Ready to download',
       subStageLabel: 'Your viral clip is ready',
@@ -1079,7 +1117,6 @@ async function runJob(job) {
     endExportStage(job.id, 'upload_final_mp4');
 
   } catch (err) {
-    stopRenderHeartbeat(job);
     job.error = toSafeRenderError(err);
     setStage(job, 'failed', { stageLabel: 'Export failed', progress: 0 });
     try {

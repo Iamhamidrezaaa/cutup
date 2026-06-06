@@ -4,10 +4,10 @@
 (function (global) {
   'use strict';
 
-  const POLL_MS = 1500;
   const STALL_MS = 420000;
   const HQ_NOTICE_MS = 90000;
   const HQ_SUGGEST_FAST_MS = 150000;
+  const HISTORY_KEY = 'cutup_export_history_v1';
   const STAGE_LABELS = {
     queued: 'Queued',
     preparing: 'Preparing',
@@ -36,14 +36,15 @@
     podcast: { label: 'Podcast', presetId: 'podcast', captionMode: 'viral', styleMode: 'safe' }
   });
 
-  let pollTimer = null;
+  let exportEventSource = null;
+  let stallWatchTimer = null;
+  let lastServerEventAt = 0;
   let activeJobId = null;
   let exportStartedAt = 0;
   let lastProgressAt = 0;
   let lastProgressVal = 0;
   let completedHandled = false;
-  let displayedPct = 0;
-  let smoothRaf = null;
+  let exportHistory = [];
 
   function getSessionId() {
     if (typeof global.getCutupSessionId === 'function') return global.getCutupSessionId();
@@ -303,6 +304,16 @@
             <button type="button" class="cutup-viral-export__btn" id="cutupExportMp4Btn">Export MP4</button>
           </div>
         </div>
+        <div class="cutup-export-queue-panel" id="cutupExportQueuePanel" hidden aria-live="polite">
+          <p class="cutup-export-queue-panel__headline" id="cutupExportQueueHeadline"></p>
+          <dl class="cutup-export-queue-panel__stats">
+            <div><dt>Position</dt><dd id="cutupExportQueuePosition">—</dd></div>
+            <div><dt>Jobs ahead</dt><dd id="cutupExportQueueAhead">—</dd></div>
+            <div><dt>Est. wait</dt><dd id="cutupExportQueueWait">—</dd></div>
+            <div><dt>Est. done</dt><dd id="cutupExportQueueDone">—</dd></div>
+          </dl>
+        </div>
+        <ol class="cutup-export-pipeline" id="cutupExportPipeline" aria-label="Export stages"></ol>
         <div class="cutup-viral-export__progress" id="cutupExportProgress" aria-live="polite">
           <div class="cutup-viral-export__stage">
             <span id="cutupExportStageLabel">Starting…</span>
@@ -311,6 +322,10 @@
           <div class="cutup-viral-export__bar"><div class="cutup-viral-export__fill" id="cutupExportFill"></div></div>
           <p class="cutup-viral-export__eta" id="cutupExportEta" hidden></p>
           <p class="cutup-viral-export__eta" id="cutupExportNotice" hidden></p>
+        </div>
+        <div class="cutup-export-history" id="cutupExportHistory" hidden>
+          <h5 class="cutup-export-history__title">Export history</h5>
+          <ul class="cutup-export-history__list" id="cutupExportHistoryList"></ul>
         </div>
         <p class="cutup-viral-export__error" id="cutupExportError" hidden role="alert"></p>
         <div class="cutup-viral-export__ready" id="cutupExportReady" hidden>
@@ -650,11 +665,133 @@
     btn.title = check.ok ? 'Render MP4 with burned-in subtitles' : check.reason;
   }
 
-  function stopSmoothProgress() {
-    if (smoothRaf) {
-      cancelAnimationFrame(smoothRaf);
-      smoothRaf = null;
+  function loadExportHistory() {
+    try {
+      const raw = global.localStorage?.getItem(HISTORY_KEY);
+      exportHistory = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(exportHistory)) exportHistory = [];
+    } catch {
+      exportHistory = [];
     }
+  }
+
+  function saveExportHistory() {
+    try {
+      global.localStorage?.setItem(HISTORY_KEY, JSON.stringify(exportHistory.slice(0, 20)));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function upsertHistoryEntry(data) {
+    const id = data.jobId;
+    if (!id) return;
+    const idx = exportHistory.findIndex((e) => e.jobId === id);
+    const entry = {
+      jobId: id,
+      stage: data.stage,
+      pipelineLabel: data.pipelineLabel || data.stageLabel,
+      presetName: data.presetName || data.presetId,
+      quality: data.quality,
+      progress: data.progress,
+      status:
+        data.stage === 'failed' || data.stage === 'cancelled'
+          ? 'failed'
+          : data.outputReady || data.stage === 'ready_to_download'
+            ? 'completed'
+            : 'processing',
+      updatedAt: Date.now(),
+      error: data.error || null
+    };
+    if (idx >= 0) exportHistory[idx] = { ...exportHistory[idx], ...entry };
+    else exportHistory.unshift(entry);
+    exportHistory = exportHistory.slice(0, 20);
+    saveExportHistory();
+  }
+
+  function formatClock(iso) {
+    if (!iso) return '—';
+    try {
+      return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return '—';
+    }
+  }
+
+  function formatWait(sec) {
+    const s = Math.max(0, Math.round(Number(sec) || 0));
+    if (!s) return '—';
+    if (s < 60) return `~${s}s`;
+    const m = Math.ceil(s / 60);
+    return `~${m} min`;
+  }
+
+  function renderQueuePanel(container, data) {
+    const panel = container.querySelector('#cutupExportQueuePanel');
+    if (!panel) return;
+    const queued = data.isQueued && data.queuePosition > 0;
+    panel.hidden = !queued;
+    if (!queued) return;
+    const headline = container.querySelector('#cutupExportQueueHeadline');
+    const pos = container.querySelector('#cutupExportQueuePosition');
+    const ahead = container.querySelector('#cutupExportQueueAhead');
+    const wait = container.querySelector('#cutupExportQueueWait');
+    const done = container.querySelector('#cutupExportQueueDone');
+    if (headline) headline.textContent = `You are #${data.queuePosition} in queue`;
+    if (pos) pos.textContent = String(data.queuePosition);
+    if (ahead) ahead.textContent = String(data.jobsAhead ?? 0);
+    if (wait) wait.textContent = formatWait(data.estimatedWaitSec ?? data.queueEtaSec);
+    if (done) done.textContent = formatClock(data.estimatedCompletionAt);
+  }
+
+  function renderPipelineSteps(container, data) {
+    const list = container.querySelector('#cutupExportPipeline');
+    if (!list) return;
+    const stages = Array.isArray(data.pipelineStages) ? data.pipelineStages : [];
+    const step = Number(data.pipelineStep) || 0;
+    if (!stages.length) {
+      list.innerHTML = '';
+      list.hidden = true;
+      return;
+    }
+    list.hidden = false;
+    list.innerHTML = stages
+      .map((s) => {
+        const done = step > s.step;
+        const active = step === s.step;
+        const cls = done ? 'is-done' : active ? 'is-active' : '';
+        return `<li class="cutup-export-pipeline__item ${cls}"><span class="cutup-export-pipeline__dot" aria-hidden="true"></span>${s.label}</li>`;
+      })
+      .join('');
+  }
+
+  function renderHistoryPanel(container) {
+    const wrap = container.querySelector('#cutupExportHistory');
+    const list = container.querySelector('#cutupExportHistoryList');
+    if (!wrap || !list) return;
+    if (!exportHistory.length) {
+      wrap.hidden = true;
+      return;
+    }
+    wrap.hidden = false;
+    list.innerHTML = exportHistory
+      .map((e) => {
+        const badge =
+          e.status === 'completed' ? 'completed' : e.status === 'failed' ? 'failed' : 'processing';
+        const retry =
+          e.status === 'failed'
+            ? `<button type="button" class="cutup-export-history__retry" data-retry-job="${e.jobId}">Retry</button>`
+            : '';
+        return `<li class="cutup-export-history__row cutup-export-history__row--${badge}">
+          <span class="cutup-export-history__label">${e.presetName || 'Export'} · ${e.pipelineLabel || e.stage}</span>
+          <span class="cutup-export-history__badge">${badge}</span>
+          ${retry}
+        </li>`;
+      })
+      .join('');
+    list.querySelectorAll('[data-retry-job]').forEach((btn) => {
+      btn.addEventListener('click', () => startExport(container));
+    });
   }
 
   function setProgress(container, stage, progress, etaSec, labelText) {
@@ -678,26 +815,63 @@
     }
   }
 
-  function animateProgressTo(container, stage, targetPct, etaSec, labelText) {
-    if (isExportReady({ stage, outputReady: stage === 'ready_to_download' })) {
+  function applyExportStatus(container, sessionId, data) {
+    if (!data) return;
+    lastServerEventAt = Date.now();
+    upsertHistoryEntry(data);
+    renderQueuePanel(container, data);
+    renderPipelineSteps(container, data);
+    renderHistoryPanel(container);
+
+    if (isExportReady(data)) {
+      if (completedHandled) return;
+      completedHandled = true;
+      const jobIdForDownload = data.jobId || activeJobId;
+      stopStream();
+      showNotice(container, '');
+      showReadyInstant(container, sessionId, jobIdForDownload, data);
+      container.dataset.readyJobId = jobIdForDownload;
+      global.CutupWorkspaceAutosave?.scheduleSave?.();
+      const btn = container.querySelector('#cutupExportMp4Btn');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Export again';
+      }
+      activeJobId = null;
+      refreshExportButton();
       return;
     }
-    stopSmoothProgress();
-    const tick = () => {
-      const diff = targetPct - displayedPct;
-      if (Math.abs(diff) < 0.6) {
-        displayedPct = targetPct;
-      } else {
-        displayedPct += diff * 0.28;
-      }
-      setProgress(container, stage, displayedPct, etaSec, labelText);
-      if (Math.abs(targetPct - displayedPct) > 0.5) {
-        smoothRaf = requestAnimationFrame(tick);
-      } else {
-        smoothRaf = null;
-      }
-    };
-    smoothRaf = requestAnimationFrame(tick);
+
+    if (data.stage === 'failed' || data.stage === 'cancelled') {
+      stopStream();
+      showError(container, toFriendlyRenderError(data.error || 'Render failed'));
+      const btn = container.querySelector('#cutupExportMp4Btn');
+      if (btn) btn.disabled = false;
+      activeJobId = null;
+      refreshExportButton();
+      return;
+    }
+
+    if (typeof data.progress === 'number' && data.progress > lastProgressVal) {
+      lastProgressVal = data.progress;
+      lastProgressAt = Date.now();
+    }
+    const label = data.pipelineLabel || data.stageLabel || data.subStageLabel || STAGE_LABELS[data.stage] || data.stage;
+    const etaForUi = data.isQueued
+      ? data.estimatedTotalSec ?? data.queueEtaSec ?? data.etaSec
+      : data.etaSec;
+    setProgress(container, data.stage, data.progress, etaForUi, label);
+
+    const elapsed = Date.now() - exportStartedAt;
+    if (
+      container.dataset.exportQuality === 'hq' &&
+      elapsed >= HQ_NOTICE_MS &&
+      !isExportReady(data) &&
+      data.stage !== 'failed' &&
+      data.stage !== 'cancelled'
+    ) {
+      showNotice(container, 'HQ cinematic rendering takes longer for premium exports.');
+    }
   }
 
   function showError(container, msg) {
@@ -726,11 +900,64 @@
     return text || 'Export failed. Please try again.';
   }
 
-  function stopPoll() {
-    if (pollTimer) {
-      clearInterval(pollTimer);
-      pollTimer = null;
+  function stopStream() {
+    if (exportEventSource) {
+      exportEventSource.close();
+      exportEventSource = null;
     }
+    if (stallWatchTimer) {
+      clearInterval(stallWatchTimer);
+      stallWatchTimer = null;
+    }
+  }
+
+  function connectExportStream(container, sessionId, jobId) {
+    stopStream();
+    const url = `/api/export-video?action=stream&jobId=${encodeURIComponent(jobId)}&session=${encodeURIComponent(sessionId)}`;
+    const es = new EventSource(url);
+    exportEventSource = es;
+    lastServerEventAt = Date.now();
+
+    es.addEventListener('status', (ev) => {
+      try {
+        const data = JSON.parse(ev.data);
+        applyExportStatus(container, sessionId, data);
+      } catch (err) {
+        console.warn('[video-export] SSE parse', err);
+      }
+    });
+    es.onerror = () => {
+      if (completedHandled || !activeJobId) {
+        stopStream();
+        return;
+      }
+      stopStream();
+      pollStatusOnce(container, sessionId).catch(() => {});
+    };
+
+    stallWatchTimer = setInterval(() => {
+      if (!activeJobId || completedHandled) return;
+      if (Date.now() - lastServerEventAt > STALL_MS) {
+        stopStream();
+        showError(
+          container,
+          'Render is taking longer than expected. Try Fast preview or a shorter clip, then export again.'
+        );
+        const btn = container.querySelector('#cutupExportMp4Btn');
+        if (btn) btn.disabled = false;
+        activeJobId = null;
+      }
+    }, 15000);
+  }
+
+  async function pollStatusOnce(container, sessionId) {
+    if (!activeJobId) return;
+    const res = await fetch(
+      `/api/export-video?action=status&jobId=${encodeURIComponent(activeJobId)}&session=${encodeURIComponent(sessionId)}`,
+      { headers: { 'X-Session-Id': sessionId } }
+    );
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) applyExportStatus(container, sessionId, data);
   }
 
   async function startExport(container) {
@@ -768,10 +995,11 @@
     delete container.dataset.readyJobId;
     completedHandled = false;
     if (btn) btn.disabled = true;
-    stopPoll();
-    stopSmoothProgress();
-    displayedPct = 2;
-    setProgress(container, 'queued', 2, null, 'Starting export engine…');
+    stopStream();
+    loadExportHistory();
+    lastProgressVal = 0;
+    container.querySelector('#cutupExportPipeline')?.removeAttribute('hidden');
+    setProgress(container, 'queued', 0, null, 'Joining export queue…');
 
     try {
       let res;
@@ -854,108 +1082,13 @@
       activeJobId = data.jobId;
       exportStartedAt = Date.now();
       lastProgressAt = exportStartedAt;
-      lastProgressVal = 2;
-      pollTimer = setInterval(() => pollStatus(container, sessionId), POLL_MS);
-      await pollStatus(container, sessionId);
+      if (data.status) applyExportStatus(container, sessionId, data.status);
+      connectExportStream(container, sessionId, data.jobId);
     } catch (err) {
       console.error('[video-export]', err);
       showError(container, toFriendlyRenderError(err.message || 'Export failed'));
       if (btn) btn.disabled = false;
       refreshExportButton();
-    }
-  }
-
-  async function pollStatus(container, sessionId) {
-    if (!activeJobId) return;
-    try {
-      const res = await fetch(
-        `/api/export-video?action=status&jobId=${encodeURIComponent(activeJobId)}&session=${encodeURIComponent(sessionId)}`,
-        { headers: { 'X-Session-Id': sessionId } }
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.message || 'Status check failed');
-
-      if (isExportReady(data)) {
-        if (completedHandled) return;
-        completedHandled = true;
-        const jobIdForDownload = activeJobId;
-        stopPoll();
-        stopSmoothProgress();
-        showNotice(container, '');
-        showReadyInstant(container, sessionId, jobIdForDownload, data);
-        container.dataset.readyJobId = jobIdForDownload;
-        global.CutupWorkspaceAutosave?.scheduleSave?.();
-        const btn = container.querySelector('#cutupExportMp4Btn');
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = 'Export again';
-        }
-        activeJobId = null;
-        refreshExportButton();
-        return;
-      }
-
-      if (typeof data.progress === 'number' && data.progress > lastProgressVal) {
-        lastProgressVal = data.progress;
-        lastProgressAt = Date.now();
-      }
-      const label = data.stageLabel || data.subStageLabel || STAGE_LABELS[data.stage] || data.stage;
-      const etaForUi = data.stage === 'queued' ? data.queueEtaSec || data.etaSec : data.etaSec;
-      animateProgressTo(container, data.stage, data.progress, etaForUi, label);
-
-      const elapsed = Date.now() - exportStartedAt;
-      if (
-        container.dataset.exportQuality === 'hq' &&
-        elapsed >= HQ_NOTICE_MS &&
-        !isExportReady(data) &&
-        data.stage !== 'failed' &&
-        data.stage !== 'cancelled'
-      ) {
-        showNotice(container, 'HQ cinematic rendering takes longer for premium exports.');
-      }
-      if (
-        container.dataset.exportQuality === 'hq' &&
-        elapsed >= HQ_SUGGEST_FAST_MS &&
-        container.dataset.hqFastSuggestion !== '1' &&
-        !isExportReady(data)
-      ) {
-        const qualitySelect = container.querySelector('#cutupExportQuality');
-        if (qualitySelect) qualitySelect.value = 'fast';
-        container.dataset.hqFastSuggestion = '1';
-        showNotice(
-          container,
-          'For reliability, next retry is switched to Fast preview. You can keep HQ if needed.'
-        );
-      }
-
-      if (
-        (data.stage === 'rendering' || data.stage === 'muxing' || data.stage === 'rendering_video' || data.progress >= 52) &&
-        Date.now() - lastProgressAt > STALL_MS
-      ) {
-        stopPoll();
-        showError(
-          container,
-          'Render is taking longer than expected. Try Fast preview or a shorter clip, then export again.'
-        );
-        const btn = container.querySelector('#cutupExportMp4Btn');
-        if (btn) btn.disabled = false;
-        activeJobId = null;
-        return;
-      }
-
-      if (data.stage === 'failed' || data.stage === 'cancelled') {
-        stopPoll();
-        showError(container, toFriendlyRenderError(data.error || 'Render failed'));
-        const btn = container.querySelector('#cutupExportMp4Btn');
-        if (btn) btn.disabled = false;
-        activeJobId = null;
-        refreshExportButton();
-      }
-    } catch (err) {
-      stopPoll();
-      showError(container, toFriendlyRenderError(err.message));
-      const btn = container.querySelector('#cutupExportMp4Btn');
-      if (btn) btn.disabled = false;
     }
   }
 
@@ -967,12 +1100,13 @@
       mount(container);
       container.dataset.mounted = '1';
     }
+    loadExportHistory();
+    renderHistoryPanel(container);
     refreshExportButton();
   }
 
   function destroy() {
-    stopPoll();
-    stopSmoothProgress();
+    stopStream();
     activeJobId = null;
     const mountEl = document.getElementById('cutupViralExportMount');
     if (mountEl) {
