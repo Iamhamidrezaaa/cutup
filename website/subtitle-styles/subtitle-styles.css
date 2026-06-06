@@ -18,11 +18,14 @@
 
 .cutup-preset-scroll {
   display: flex;
+  flex-wrap: nowrap;
   gap: 0.55rem;
   overflow-x: auto;
+  overflow-y: hidden;
   padding: 0.2rem 0.1rem 0.5rem;
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 
 .cutup-preset-scroll::-webkit-scrollbar {
@@ -31,6 +34,8 @@
 
 .cutup-preset-card {
   flex: 0 0 118px;
+  width: 118px;
+  max-width: 118px;
   scroll-snap-align: start;
   border: 2px solid #e2e8f0;
   border-radius: 14px;
@@ -388,9 +393,24 @@
   }
 }
 
+@media (max-width: 768px) {
+  .cutup-preset-scroll {
+    gap: 0.45rem;
+    padding-bottom: 0.65rem;
+  }
+
+  .cutup-preset-card {
+    flex: 0 0 108px;
+    width: 108px;
+    max-width: 108px;
+  }
+}
+
 @media (max-width: 520px) {
   .cutup-preset-card {
     flex: 0 0 104px;
+    width: 104px;
+    max-width: 104px;
   }
 
   .cutup-subtitle-stage {

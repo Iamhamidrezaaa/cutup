@@ -176,6 +176,7 @@ function clearCutupSession(reason) {
   } catch (_e) {
     /* ignore */
   }
+  window.CutupWorkspaceAutosave?.clear?.();
   currentSession = null;
   cutupMarkSessionVerified(false, reason || 'cleared');
   try {
@@ -1064,12 +1065,9 @@ function submitCutupLead(email, source) {
     /* ignore */
   }
 }
-const CUTUP_EXIT_INTENT_KEY = 'cutup_exit_intent_once';
-const CUTUP_SAVE_DISMISS_PREFIX = 'cutup_save_dismissed:';
 let cutupStickyGeneratedAt = 0;
 let cutupStickyLastScrollAt = 0;
 let cutupStickyPrimaryState = 'download';
-let cutupExitIntentTimer = null;
 
 function cutupIsLoggedIn() {
   return !!getCutupSessionId() && cutupSessionIsVerified();
@@ -1489,33 +1487,6 @@ function setupLandingPricingCheckoutIntercept() {
   );
 }
 
-function cutupConversionResultDismissKey() {
-  const k = window.cutupLastTranscription?.cacheKey;
-  return k ? `${CUTUP_SAVE_DISMISS_PREFIX}${k}` : '';
-}
-
-function refreshConversionSaveBlockUI() {
-  const emailRow = document.getElementById('conversionSaveEmailRow');
-  const hint = document.getElementById('conversionSaveHintLoggedIn');
-  const emailInput = document.getElementById('conversionSaveEmail');
-  if (cutupIsLoggedIn()) {
-    if (emailRow) emailRow.hidden = true;
-    if (hint) hint.hidden = false;
-  } else {
-    if (emailRow) emailRow.hidden = false;
-    if (hint) hint.hidden = true;
-    if (emailInput) {
-      try {
-        const saved = localStorage.getItem(CUTUP_LEAD_EMAIL_KEY);
-        if (saved && !emailInput.value) emailInput.value = saved;
-      } catch {
-        /* ignore */
-      }
-    }
-  }
-  updateCutupSocialAuthHints();
-}
-
 function updateCutupSocialAuthHints() {
   const loggedIn = cutupIsLoggedIn();
   document.querySelectorAll('.cutup-inline-auth-hint').forEach((el) => {
@@ -1523,129 +1494,30 @@ function updateCutupSocialAuthHints() {
   });
 }
 
-function showConversionSaveBlock() {
-  const block = document.getElementById('conversionSaveBlock');
-  if (!block) return;
-  const dismissKey = cutupConversionResultDismissKey();
-  try {
-    if (dismissKey && sessionStorage.getItem(dismissKey) === '1') {
-      block.hidden = true;
-      return;
-    }
-  } catch {
-    /* ignore */
-  }
-  block.hidden = false;
-  refreshConversionSaveBlockUI();
-}
-
-function hideConversionSaveBlockDismissed() {
-  const block = document.getElementById('conversionSaveBlock');
-  if (block) block.hidden = true;
-  const dismissKey = cutupConversionResultDismissKey();
-  if (dismissKey) {
-    try {
-      sessionStorage.setItem(dismissKey, '1');
-    } catch {
-      /* ignore */
-    }
-  }
-}
-
-function copyConversionTranscript() {
-  const text = getResultCopyText();
-  if (!text) {
-    showMessage('Nothing to copy on this tab yet.', 'info');
-    return;
-  }
-  navigator.clipboard.writeText(text).then(() => {
-    showMessage('Copied to clipboard.', 'success');
-  }).catch(() => {
-    showMessage('Copy failed.', 'error');
-  });
-}
-
-function runConversionSaveAction(source) {
-  console.log('[conversion] save clicked', source || '');
-  if (cutupIsLoggedIn()) {
-    showMessage('You’re signed in—find this transcript in your dashboard history.', 'success');
-    return;
-  }
-  const emailInput = document.getElementById('conversionSaveEmail');
-  const email = String(emailInput?.value || '').trim().toLowerCase();
-  if (!emailInput || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    showMessage('Add a valid email so we can remind you where to find this later.', 'info');
-    emailInput?.focus();
-    return;
-  }
-  try {
-    localStorage.setItem(CUTUP_LEAD_EMAIL_KEY, email);
-  } catch {
-    /* ignore */
-  }
-  console.log('[conversion] email entered');
-  submitCutupLead(email, 'soft_unlock');
-  showMessage('Thanks—we saved your email on this device. Sign in anytime to sync history.', 'success');
-}
-
-function initConversionLayerAfterResults() {
-  showConversionSaveBlock();
+function initStickyLayerAfterResults() {
   cutupStickyGeneratedAt = Date.now();
   cutupStickyLastScrollAt = Date.now();
   setStickyPrimaryMode('download');
 }
 
-function cutupResultSectionVisible() {
+function cutupTryRestoreWorkspace() {
+  if (cutupLocalResumeStarted) return false;
+  const pending = cutupParseLocalPendingAction();
+  if (pending.valid) return false;
   const resultSection = document.getElementById('resultSection');
-  return !!(resultSection && resultSection.style.display !== 'none');
-}
-
-function closeConversionExitModal() {
-  const modal = document.getElementById('conversionExitModal');
-  if (!modal) return;
-  modal.hidden = true;
-  modal.setAttribute('aria-hidden', 'true');
-  const prev = modal._cutupPrevFocus;
-  if (prev && typeof prev.focus === 'function') {
-    try {
-      prev.focus({ preventScroll: true });
-    } catch {
-      /* ignore */
-    }
+  if (
+    resultSection &&
+    resultSection.style.display !== 'none' &&
+    resultSection.textContent.trim().length > 0
+  ) {
+    return false;
   }
-  modal._cutupPrevFocus = null;
-}
-
-function openConversionExitModal() {
-  if (window.innerWidth < 768) return;
-  if (!window.matchMedia('(pointer: fine)').matches) return;
-  if (!cutupResultSectionVisible()) return;
-  try {
-    if (sessionStorage.getItem(CUTUP_EXIT_INTENT_KEY) === '1') return;
-  } catch {
-    return;
-  }
-  const modal = document.getElementById('conversionExitModal');
-  const panel = modal?.querySelector('.conversion-exit-modal__panel');
-  if (!modal || !panel) return;
-  try {
-    sessionStorage.setItem(CUTUP_EXIT_INTENT_KEY, '1');
-  } catch {
-    /* ignore */
-  }
-  console.log('[conversion] exit intent shown');
-  modal._cutupPrevFocus = document.activeElement;
-  modal.hidden = false;
-  modal.setAttribute('aria-hidden', 'false');
-  try {
-    panel.focus({ preventScroll: true });
-  } catch {
-    /* ignore */
-  }
+  if (!window.CutupWorkspaceAutosave?.tryRestore) return false;
+  return window.CutupWorkspaceAutosave.tryRestore();
 }
 
 function setStickyPrimaryMode(mode) {
-  const allowed = ['download', 'tryAnother', 'saveResult'];
+  const allowed = ['download', 'tryAnother'];
   if (!allowed.includes(mode)) return;
   cutupStickyPrimaryState = mode;
   const btn = document.getElementById('stickyDownloadBtn');
@@ -1653,7 +1525,6 @@ function setStickyPrimaryMode(mode) {
   const labels = {
     download: 'Download',
     tryAnother: 'Try another video',
-    saveResult: 'Save your result',
   };
   btn.textContent = labels[mode];
   btn.setAttribute('aria-label', labels[mode]);
@@ -1673,63 +1544,9 @@ function refreshStickyPrimaryMode() {
 
   if (sinceGen < 4000) {
     setStickyPrimaryMode('download');
-  } else if (sinceScroll < 2200) {
-    setStickyPrimaryMode('tryAnother');
-  } else if (sinceScroll > 7500) {
-    setStickyPrimaryMode('saveResult');
   } else {
     setStickyPrimaryMode('tryAnother');
   }
-}
-
-function setupConversionLayerInteractions() {
-  document.getElementById('conversionSaveBtn')?.addEventListener('click', () => {
-    runConversionSaveAction('save_block');
-  });
-  document.getElementById('conversionSkipSaveBtn')?.addEventListener('click', () => {
-    hideConversionSaveBlockDismissed();
-  });
-  document.getElementById('conversionExitBackdrop')?.addEventListener('click', closeConversionExitModal);
-  document.getElementById('conversionExitCloseBtn')?.addEventListener('click', closeConversionExitModal);
-  document.getElementById('conversionExitSaveBtn')?.addEventListener('click', () => {
-    closeConversionExitModal();
-    runConversionSaveAction('exit_modal');
-    document.getElementById('conversionSaveBlock')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  });
-  document.getElementById('conversionExitCopyBtn')?.addEventListener('click', () => {
-    copyConversionTranscript();
-    closeConversionExitModal();
-  });
-
-  document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') return;
-    const modal = document.getElementById('conversionExitModal');
-    if (modal && !modal.hidden) {
-      e.preventDefault();
-      closeConversionExitModal();
-    }
-  });
-
-  document.addEventListener(
-    'mousemove',
-    (e) => {
-      if (window.innerWidth < 768) return;
-      if (!window.matchMedia('(pointer: fine)').matches) return;
-      if (!cutupResultSectionVisible()) return;
-      try {
-        if (sessionStorage.getItem(CUTUP_EXIT_INTENT_KEY) === '1') return;
-      } catch {
-        return;
-      }
-      if (e.clientY > 20) return;
-      if (cutupExitIntentTimer) clearTimeout(cutupExitIntentTimer);
-      cutupExitIntentTimer = setTimeout(() => {
-        cutupExitIntentTimer = null;
-        openConversionExitModal();
-      }, 380);
-    },
-    { passive: true }
-  );
 }
 
 /* ========== Retention: recent activity, usage stats, upgrade hint ========== */
@@ -2405,6 +2222,7 @@ if (authSuccess === 'success' && sessionId) {
         await restorePendingUrl(pendingUrl, pendingPlatform);
       }
       await resumeCutupPendingAction();
+      cutupTryRestoreWorkspace();
     });
 
     setTimeout(() => {
@@ -2475,6 +2293,7 @@ window.addEventListener('DOMContentLoaded', () => {
             await restorePendingUrl(pu, pp);
           }
           await resumeCutupPendingAction();
+          cutupTryRestoreWorkspace();
         });
       }, 100);
     }
@@ -3247,12 +3066,12 @@ function showUserProfile(user) {
       clearCutupSession('logout');
       userProfile.classList.remove('active');
       showLoginButton();
-      refreshConversionSaveBlockUI();
+      updateCutupSocialAuthHints();
     });
   }
   
   console.log('[script] User profile displayed successfully');
-  refreshConversionSaveBlockUI();
+  updateCutupSocialAuthHints();
   if (typeof window.cutupMaybeTrackReferralSignup === 'function') {
     window.cutupMaybeTrackReferralSignup();
   }
@@ -6069,7 +5888,8 @@ function displayResults(summary, fullText, segments = null, options = {}) {
   const habitHint = document.getElementById('retentionHabitHint');
   if (habitHint) habitHint.hidden = false;
 
-  initConversionLayerAfterResults();
+  initStickyLayerAfterResults();
+  window.CutupWorkspaceAutosave?.scheduleSave?.();
 
   if (!options.cacheReplay) {
     recordRetentionAfterResults({
@@ -6114,6 +5934,8 @@ function displayResults(summary, fullText, segments = null, options = {}) {
     resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, 100);
 }
+
+window.displayResults = displayResults;
 
 async function persistSavedOutputs(sessionId, payload) {
   if (!sessionId || !payload) return;
@@ -6219,6 +6041,7 @@ function switchTab(tabName) {
     syncSrtRawPanel();
     refreshCutupSubtitleStyles();
   }
+  window.CutupWorkspaceAutosave?.scheduleSave?.();
 }
 
 // Generate SRT from segments
@@ -6579,6 +6402,7 @@ async function translateSrtContent(sessionId, originalLanguage) {
     showMessage(`✓ ${langName} subtitles ready`, 'success');
     console.log('[translate-render]', { kind: 'srt', chars: translatedSrt.length, targetLanguage });
     if (stableSid) setCutupSession(stableSid, 'translate_srt_success');
+    window.CutupWorkspaceAutosave?.scheduleSave?.();
   } catch (error) {
     console.error('[translate-error]', { kind: 'srt', message: error?.message, code: error?.errorCode });
     reportClientError('translate', error);
@@ -8371,17 +8195,6 @@ function setupMobileStickyActions() {
       refreshStickyPrimaryMode();
       return;
     }
-    if (cutupStickyPrimaryState === 'saveResult') {
-      document.getElementById('conversionSaveBlock')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      setTimeout(() => {
-        if (!cutupIsLoggedIn()) {
-          document.getElementById('conversionSaveEmail')?.focus({ preventScroll: true });
-        } else {
-          document.getElementById('conversionSaveBtn')?.focus({ preventScroll: true });
-        }
-      }, 400);
-      return;
-    }
     const active = document.querySelector('#resultSection .tab-content.active');
     if (!active) return;
     if (active.id === 'summary-tab') {
@@ -8424,7 +8237,6 @@ function setupMobileStickyActions() {
 window.addEventListener('DOMContentLoaded', () => {
   setupMobileHeaderMenu();
   setupMobileStickyActions();
-  setupConversionLayerInteractions();
   setupRetentionInteractions();
   setupMonetizationPaywallUi();
 });

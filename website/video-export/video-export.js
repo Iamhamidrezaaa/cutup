@@ -496,6 +496,34 @@
     }
   }
 
+  async function restoreReadyExport(container, jobId) {
+    const sessionId = getSessionId();
+    if (!sessionId || !jobId || !container) return false;
+    if (!container.dataset.mounted) {
+      mount(container);
+      container.dataset.mounted = '1';
+    }
+    try {
+      const res = await fetch(
+        `/api/export-video?action=status&jobId=${encodeURIComponent(jobId)}&session=${encodeURIComponent(sessionId)}`,
+        { headers: { 'X-Session-Id': sessionId } }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !isExportReady(data)) return false;
+      container.dataset.readyJobId = jobId;
+      showReadyInstant(container, sessionId, jobId, data);
+      const btn = container.querySelector('#cutupExportMp4Btn');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Export again';
+      }
+      refreshExportButton();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   function hideDownloadReady(container) {
     hideCreatorWallOptIn(container);
     const ready = container.querySelector('#cutupExportReady');
@@ -856,6 +884,7 @@
         showNotice(container, '');
         showReadyInstant(container, sessionId, jobIdForDownload, data);
         container.dataset.readyJobId = jobIdForDownload;
+        global.CutupWorkspaceAutosave?.scheduleSave?.();
         const btn = container.querySelector('#cutupExportMp4Btn');
         if (btn) {
           btn.disabled = false;
@@ -958,6 +987,7 @@
     mount,
     initAfterResults,
     refreshExportButton,
+    restoreReadyExport,
     destroy,
     canExport
   };

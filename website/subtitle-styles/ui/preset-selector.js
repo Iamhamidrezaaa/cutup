@@ -43,7 +43,9 @@
 
   function mount(container, { onChange } = {}) {
     if (!container || !global.CutupStylePresets) return;
-    const presets = global.CutupStylePresets.listPresets();
+    const presets = global.CutupStylePresets.listCarouselPresets
+      ? global.CutupStylePresets.listCarouselPresets()
+      : global.CutupStylePresets.listPresets().filter((p) => p.id !== 'clean-srt');
     let active = getActivePresetId();
     setActivePresetId(active, 'init');
 

@@ -272,6 +272,8 @@
     'clean-srt'
   ];
 
+  const CAROUSEL_ORDER = ORDER.filter((id) => id !== 'clean-srt');
+
   function getPreset(id) {
     return PRESETS[id] || PRESETS.hormozi;
   }
@@ -280,9 +282,15 @@
     return ORDER.map((id) => PRESETS[id]);
   }
 
+  /** Creator style cards only — Clean SRT stays in export dropdown. */
+  function listCarouselPresets() {
+    return CAROUSEL_ORDER.map((id) => PRESETS[id]);
+  }
+
   global.CutupStylePresets = {
     getPreset,
     listPresets,
+    listCarouselPresets,
     PRESETS,
     DEFAULT_PRESET_ID: 'hormozi'
   };

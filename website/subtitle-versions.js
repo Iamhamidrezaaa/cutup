@@ -157,6 +157,7 @@
     store.activeKey = key;
     syncGlobalsFromVersion(store.versions[key]);
     refreshVersionSelector();
+    global.CutupWorkspaceAutosave?.scheduleSave?.();
     return key;
   }
 
@@ -188,6 +189,7 @@
         if (global.CutupViralExport?.refreshExportButton) {
           global.CutupViralExport.refreshExportButton();
         }
+        global.CutupWorkspaceAutosave?.scheduleSave?.();
       }
     });
   }
