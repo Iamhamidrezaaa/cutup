@@ -101,13 +101,32 @@ bash /app/workers/gpu-render/startup.sh
 
 Or leave empty — the image `CMD` runs `startup.sh` automatically.
 
-**RunPod start command (git clone on volume):**
+**RunPod start command (git clone on volume — recommended):**
 
 ```bash
-cd /workspace/cutup/workers/gpu-render && bash startup.sh
+cd /workspace/cutup && git pull origin main && cd workers/gpu-render && GPU_RENDER_GIT_PULL=0 bash startup.sh
 ```
 
-`startup.sh` installs `node_modules` when missing, verifies `ffmpeg` and NVENC, logs diagnostics, then starts `server.js`. Safe after a fresh pod boot when volume data survives but container disk was reset.
+Or set **Start command** in the RunPod template to the one-liner above.
+
+`startup.sh` on volume boot:
+
+1. Optionally `git pull` when `GPU_RENDER_GIT_PULL=1`
+2. Installs **Node.js 22** to `/workspace/.cutup-node` if `node` is missing (persists on volume)
+3. Runs `npm install` if `node_modules` is missing
+4. Installs **ffmpeg** via `apt` if missing
+5. Probes NVENC, logs diagnostics, starts `server.js`
+
+> **Why `node: command not found`?** The Dockerfile only applies when you deploy the **Docker image**. A generic RunPod template with a git clone on `/workspace` does not include Node — `startup.sh` bootstraps it to the volume.
+
+**Verify files after `git pull`:**
+
+```bash
+cd /workspace/cutup
+git rev-parse HEAD
+git ls-tree -r HEAD --name-only | grep workers/gpu-render/startup.sh
+ls -la workers/gpu-render/
+```
 
 ### 3. Environment variables (RunPod pod / template)
 
@@ -120,6 +139,9 @@ cd /workspace/cutup/workers/gpu-render && bash startup.sh
 | `VIDEO_RENDER_VIDEO_CODEC` | No | `h264_nvenc` (auto-fallback to `libx264`) |
 | `RUNPOD_API_KEY` | For auto-stop | RunPod REST API key (also set on VPS for auto-start) |
 | `RUNPOD_POD_ID` | For auto-stop | This pod’s ID (also set on VPS for auto-start) |
+| `GPU_RENDER_NODE_DIR` | No | Node install on volume (default `/workspace/.cutup-node`) |
+| `GPU_RENDER_NODE_VERSION` | No | Node version to bootstrap (default `22.14.0`) |
+| `GPU_RENDER_GIT_PULL` | No | Set `1` to `git pull origin main` before boot |
 
 Use the **same** `GPU_RENDER_TOKEN` on the main VPS (`GPU_RENDER_URL` points to this pod).
 
