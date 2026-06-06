@@ -21,6 +21,12 @@ export function isTimelineTraceEnabled() {
   return v !== '0' && v !== 'false';
 }
 
+/** When false, production export skips silencedetect FFmpeg passes. */
+export function isDebugExportEnabled() {
+  const v = String(process.env.DEBUG_EXPORT || '').trim().toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
 function num(v, fallback = null) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;

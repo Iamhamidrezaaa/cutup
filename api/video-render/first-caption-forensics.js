@@ -12,7 +12,7 @@ import {
   buildVisualCueView,
   applyVisualReadabilityWindows
 } from './subtitle-pipeline.js';
-import { detectFirstSpeechSec } from './render-timeline-trace.js';
+import { detectFirstSpeechSec, isDebugExportEnabled } from './render-timeline-trace.js';
 import { buildWhisperStarttimeForensicsReport } from './whisper-starttime-forensics.js';
 
 export function isFirstCaptionForensicEnabled() {
@@ -44,7 +44,7 @@ export async function buildFirstCaptionForensicsReport(opts = {}) {
   const videoDurationSec = roundSec(probe.durationSec ?? probe.formatDuration);
 
   let firstSpeechDetected = null;
-  if (opts.videoPath) {
+  if (opts.videoPath && isDebugExportEnabled()) {
     try {
       firstSpeechDetected = await detectFirstSpeechSec(opts.videoPath, opts.jobId || null);
     } catch (err) {

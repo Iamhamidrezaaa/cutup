@@ -24,6 +24,7 @@ import { runRtlBurnForensics } from './rtl-burn-forensics.js';
 import { resolveVideoEncoder, buildVideoEncodeArgs, isNvencCodec } from './video-encoder.js';
 import {
   isHardSyncTestEnabled,
+  isDebugExportEnabled,
   writeHardSyncTestAss,
   probeVideoFramePtsAtSeconds,
   detectFirstSpeechSec,
@@ -248,7 +249,9 @@ export async function burnSubtitles(opts) {
   });
 
   const framePtsAtSeek = await probeVideoFramePtsAtSeconds(inputPath, [0, 1, 2, 3, 4]);
-  const speechAnchor = await detectFirstSpeechSec(inputPath, jobId);
+  const speechAnchor = isDebugExportEnabled()
+    ? await detectFirstSpeechSec(inputPath, jobId)
+    : null;
   logBurnInputVerification(timelineTrace, inputPath, framePtsAtSeek, speechAnchor);
   const inputProbe = await probeMediaTimeline(inputPath);
   const preferMinimalCorrection =
