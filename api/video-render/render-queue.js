@@ -803,6 +803,12 @@ async function runJob(job) {
           jobDir: job.jobDir
         });
       }
+
+      const assDebugPath = join(job.jobDir, 'subtitles.final.ass');
+      await fsp.writeFile(assDebugPath, verifyContent, 'utf8');
+      job.assDebugPath = assDebugPath;
+      const assDebug = extractAssDebugInfo(verifyContent);
+      job.assDebug = assDebug;
     } finally {
       console.timeEnd('ass-render');
     }
@@ -816,11 +822,6 @@ async function runJob(job) {
       hardSyncTestWillApply: isHardSyncTestEnabled()
     });
 
-    const assDebugPath = join(job.jobDir, 'subtitles.final.ass');
-    await fsp.writeFile(assDebugPath, verifyContent, 'utf8');
-    job.assDebugPath = assDebugPath;
-    const assDebug = extractAssDebugInfo(verifyContent);
-    job.assDebug = assDebug;
     job.renderProfile = assResult.renderProfile?.id || null;
     const adaptiveSafeguards = Boolean(assResult.renderProfile?.safeguardsActive);
     job.adaptiveSafeguards = adaptiveSafeguards;
