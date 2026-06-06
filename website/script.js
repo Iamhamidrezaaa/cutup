@@ -1500,7 +1500,45 @@ function initStickyLayerAfterResults() {
   setStickyPrimaryMode('download');
 }
 
-function cutupTryRestoreWorkspace() {
+async function cutupRestoreProjectFromApi(projectId) {
+  const sessionId = getCutupSessionId();
+  if (!sessionId || !projectId || !cutupSessionIsVerified()) return false;
+  try {
+    const res = await fetch(
+      `${API_BASE_URL}/api/projects?action=restore&id=${encodeURIComponent(projectId)}&session=${encodeURIComponent(sessionId)}`,
+      { headers: { 'X-Session-Id': sessionId } }
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.payload) return false;
+    const p = data.payload;
+    if (p.sourceUrl) {
+      retentionSwitchPlatformWithUrl(p.platform || 'youtube', p.sourceUrl);
+    }
+    if (typeof displayResults === 'function') {
+      displayResults(p.summary, p.fullText, p.segments || [], {
+        title: p.title,
+        platform: p.platform,
+        sourceUrl: p.sourceUrl,
+        originalLanguage: p.language,
+        activeTab: 'srt',
+        outputMode: 'unified',
+        cacheReplay: true
+      });
+    }
+    if (p.srt) {
+      window.currentSrtContent = p.srt;
+      window.originalSrtContent = p.srt;
+      syncSrtRawPanel?.();
+    }
+    window.CutupWorkspaceAutosave?.scheduleSave?.();
+    return true;
+  } catch (err) {
+    console.warn('[script] cutupRestoreProjectFromApi failed:', err?.message || err);
+    return false;
+  }
+}
+
+async function cutupTryRestoreWorkspace() {
   if (cutupLocalResumeStarted) return false;
   const pending = cutupParseLocalPendingAction();
   if (pending.valid) return false;
@@ -1512,8 +1550,10 @@ function cutupTryRestoreWorkspace() {
   ) {
     return false;
   }
-  if (!window.CutupWorkspaceAutosave?.tryRestore) return false;
-  return window.CutupWorkspaceAutosave.tryRestore();
+  if (window.CutupWorkspaceAutosave?.tryRestore?.()) return true;
+  const projectId = new URLSearchParams(window.location.search).get('project');
+  if (projectId) return cutupRestoreProjectFromApi(projectId);
+  return false;
 }
 
 function setStickyPrimaryMode(mode) {
@@ -2222,7 +2262,7 @@ if (authSuccess === 'success' && sessionId) {
         await restorePendingUrl(pendingUrl, pendingPlatform);
       }
       await resumeCutupPendingAction();
-      cutupTryRestoreWorkspace();
+      await cutupTryRestoreWorkspace();
     });
 
     setTimeout(() => {
@@ -2293,7 +2333,7 @@ window.addEventListener('DOMContentLoaded', () => {
             await restorePendingUrl(pu, pp);
           }
           await resumeCutupPendingAction();
-          cutupTryRestoreWorkspace();
+          await cutupTryRestoreWorkspace();
         });
       }, 100);
     }
@@ -5913,6 +5953,7 @@ function displayResults(summary, fullText, segments = null, options = {}) {
         platform: options.platform || (typeof currentPlatform !== 'undefined' ? currentPlatform : null),
         sourceUrl: options.sourceUrl || (typeof getCurrentUrl === 'function' ? getCurrentUrl() : null),
         language: options.originalLanguage || null,
+        thumbnailUrl: options.thumbnailUrl || options.lastDisplayOptions?.thumbnailUrl || null,
         transcript: previewFullText || '',
         summary,
         srt: window.currentSrtContent || ''
@@ -5942,7 +5983,8 @@ async function persistSavedOutputs(sessionId, payload) {
   const baseMeta = {
     platform: payload.platform || 'unknown',
     sourceUrl: payload.sourceUrl || '',
-    title: payload.title || null
+    title: payload.title || null,
+    thumbnailUrl: payload.thumbnailUrl || null
   };
   const queue = [];
   if (payload.transcript && payload.transcript.trim()) {

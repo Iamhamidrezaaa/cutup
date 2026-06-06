@@ -32,6 +32,9 @@ async function main() {
   const blogHtml = readFileSync(join(__dirname, 'schema-blog-html-path.sql'), 'utf8');
   await getPool().query(blogHtml);
   console.log('Migration applied: schema-blog-html-path.sql');
+  const projectsSql = readFileSync(join(__dirname, 'schema-projects.sql'), 'utf8');
+  await getPool().query(projectsSql);
+  console.log('Migration applied: schema-projects.sql');
   await closePool();
 }
 

@@ -123,7 +123,7 @@ app.get('/api/system-health', async (req, res) => {
 app.get('/sitemap.xml', async (req, res) => sitemapHandler(req, res));
 
 // Import and use API routes
-let uploadHandler, adminCmsMediaHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, oauthGoogleStartHandler, generateDocxHandler, exportVideoHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, paymentCallbackHandler, paymentRetryHandler, invoicesHandler, invoiceByIdHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler, userProfileHandler, accountSecurityHandler, auditEventHandler, adminAuditSummaryHandler, adminAuditListHandler, adminAuditUserTimelineHandler, adminAuditChartsHandler, adminAuditFunnelHandler, adminAuditAlertsHandler, adminAuditEvaluateAlertsHandler, adminAuditSeedHandler, adminAuditDashboardHandler, adminAuditJourneyHandler, adminAuditNotesHandler, adminAuditExportHandler, offersHandler, adminOffersHandler, creatorWallHandler, adminCreatorWallHandler, systemHealthHandler, adminOpsStateHandler, adminProvidersHandler;
+let uploadHandler, adminCmsMediaHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, projectsHandler, oauthGoogleStartHandler, generateDocxHandler, exportVideoHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, paymentCallbackHandler, paymentRetryHandler, invoicesHandler, invoiceByIdHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler, userProfileHandler, accountSecurityHandler, auditEventHandler, adminAuditSummaryHandler, adminAuditListHandler, adminAuditUserTimelineHandler, adminAuditChartsHandler, adminAuditFunnelHandler, adminAuditAlertsHandler, adminAuditEvaluateAlertsHandler, adminAuditSeedHandler, adminAuditDashboardHandler, adminAuditJourneyHandler, adminAuditNotesHandler, adminAuditExportHandler, offersHandler, adminOffersHandler, creatorWallHandler, adminCreatorWallHandler, systemHealthHandler, adminOpsStateHandler, adminProvidersHandler;
 
 async function loadRoutes() {
   try {
@@ -176,6 +176,15 @@ async function loadRoutes() {
     // Subscription endpoint
     const subscriptionModule = await import('./api/subscription.js');
     subscriptionHandler = subscriptionModule.default;
+
+    try {
+      const projectsModule = await import('./api/projects.js');
+      projectsHandler = projectsModule.default;
+      console.log('✅ Projects handler loaded');
+    } catch (err) {
+      console.error('❌ Failed to load projects handler:', err.message);
+      projectsHandler = null;
+    }
     
     // Generate DOCX endpoint
     try {
@@ -506,6 +515,20 @@ app.post('/api/subscription', async (req, res) => {
     return res.status(500).json({ error: 'Subscription handler not loaded' });
   }
   return subscriptionHandler(req, res);
+});
+
+app.get('/api/projects', async (req, res) => {
+  if (!projectsHandler) {
+    return res.status(503).json({ error: 'Projects handler not loaded' });
+  }
+  return projectsHandler(req, res);
+});
+
+app.post('/api/projects', async (req, res) => {
+  if (!projectsHandler) {
+    return res.status(503).json({ error: 'Projects handler not loaded' });
+  }
+  return projectsHandler(req, res);
 });
 
 app.post('/api/stripe/create-checkout-session', async (req, res) => {

@@ -788,7 +788,8 @@ export async function saveOutputDb(email, payload = {}) {
     sourceUrl = null,
     language = null,
     content,
-    metadata = {}
+    metadata = {},
+    projectId: explicitProjectId = null
   } = payload;
 
   if (!email || !type || !content) return null;
@@ -797,6 +798,25 @@ export async function saveOutputDb(email, payload = {}) {
   const userRes = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
   if (!userRes.rows.length) return null;
   const userId = userRes.rows[0].id;
+
+  let projectId = explicitProjectId || metadata.projectId || null;
+  try {
+    const { upsertProjectFromSaveOutput, linkSavedOutputToProject } = await import(
+      './projects-repository.js'
+    );
+    projectId = await upsertProjectFromSaveOutput(email, {
+      type,
+      title,
+      platform,
+      sourceUrl,
+      language,
+      content,
+      metadata,
+      projectId
+    });
+  } catch (err) {
+    console.warn('[saveOutputDb] project upsert skipped:', err?.message || err);
+  }
 
   const dedupeWindowMinutes = 120;
   const existing = await pool.query(
@@ -811,29 +831,51 @@ export async function saveOutputDb(email, payload = {}) {
     [userId, type, sourceUrl, title, dedupeWindowMinutes]
   );
 
+  let outputId;
   if (existing.rows.length > 0) {
-    const id = existing.rows[0].id;
+    outputId = existing.rows[0].id;
     await pool.query(
       `UPDATE saved_outputs
        SET platform = $2,
            language = $3,
            content = $4,
            metadata = $5::jsonb,
+           project_id = COALESCE($6, project_id),
            updated_at = NOW()
        WHERE id = $1`,
-      [id, platform, language, content, JSON.stringify(metadata || {})]
+      [outputId, platform, language, content, JSON.stringify(metadata || {}), projectId]
     );
-    return String(id);
+  } else {
+    const inserted = await pool.query(
+      `INSERT INTO saved_outputs
+        (user_id, project_id, type, title, platform, source_url, language, content, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+       RETURNING id`,
+      [
+        userId,
+        projectId,
+        type,
+        title,
+        platform,
+        sourceUrl,
+        language,
+        content,
+        JSON.stringify(metadata || {})
+      ]
+    );
+    outputId = inserted.rows[0].id;
   }
 
-  const inserted = await pool.query(
-    `INSERT INTO saved_outputs
-      (user_id, type, title, platform, source_url, language, content, metadata)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
-     RETURNING id`,
-    [userId, type, title, platform, sourceUrl, language, content, JSON.stringify(metadata || {})]
-  );
-  return String(inserted.rows[0].id);
+  if (projectId && outputId) {
+    try {
+      const { linkSavedOutputToProject } = await import('./projects-repository.js');
+      await linkSavedOutputToProject(String(outputId), projectId);
+    } catch {
+      /* noop */
+    }
+  }
+
+  return String(outputId);
 }
 
 export async function getSavedOutputsDb(email, limit = 100) {

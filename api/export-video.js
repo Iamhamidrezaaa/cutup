@@ -306,6 +306,24 @@ async function handleStart(req, res) {
     traceId
   });
 
+  try {
+    const { recordExportStartDb } = await import('./projects-repository.js');
+    await recordExportStartDb(email, {
+      jobId: result.jobId,
+      projectId: body.projectId || body.project_id || null,
+      presetId,
+      presetName: body.presetName || presetId,
+      quality,
+      captionMode,
+      sourceUrl: sourceUrl && !String(sourceUrl).startsWith('upload://') ? sourceUrl : null,
+      platform: body.platform || null,
+      title: body.title || null,
+      metadata: { traceId, selectedVersion }
+    });
+  } catch (err) {
+    console.warn('[export-video] project export record skipped:', err?.message || err);
+  }
+
   setCORSHeaders(res);
   return res.status(202).json({
     success: true,

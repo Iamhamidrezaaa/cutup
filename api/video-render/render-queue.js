@@ -246,6 +246,16 @@ function setStage(job, stage, extra = {}) {
   if (extra.progress != null) bumpProgress(job, extra.progress);
   job.updatedAt = Date.now();
   Object.assign(job, extra);
+  syncProjectExportRecord(job);
+}
+
+function syncProjectExportRecord(job) {
+  if (!job?.id || !job?.userEmail) return;
+  const terminal = new Set(['ready_to_download', 'completed', 'failed', 'cancelled', 'rendering', 'muxing']);
+  if (!terminal.has(job.stageKey)) return;
+  import('../projects-repository.js')
+    .then((m) => m.updateExportFromJobDb(job))
+    .catch(() => {});
 }
 
 function setSubStage(job, label, progress) {
