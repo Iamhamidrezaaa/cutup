@@ -44,15 +44,15 @@ let hwAccelProbePromise = null;
 
 export const ENCODE_PRESETS = {
   fast: {
-    preset: 'veryfast',
+    preset: 'ultrafast',
     crf: 27,
-    maxWidth: 1280,
+    maxWidth: 720,
     audioBitrate: '128k',
     gop: 48,
     label: 'Fast preview'
   },
   hq: {
-    preset: 'faster',
+    preset: 'veryfast',
     crf: 20,
     maxWidth: null,
     audioBitrate: '192k',
@@ -60,6 +60,14 @@ export const ENCODE_PRESETS = {
     label: 'High quality'
   }
 };
+
+/** Vertical export output (TikTok 9:16). Fast preview = 720p, HQ = 1080p. */
+export function resolveExportOutputSize(quality = 'fast') {
+  if (quality === 'hq') {
+    return { width: 1080, height: 1920 };
+  }
+  return { width: 720, height: 1280 };
+}
 
 export function resolveEncodeProfile(quality = 'fast', renderHints = {}) {
   const base = ENCODE_PRESETS[quality] || ENCODE_PRESETS.fast;
@@ -79,7 +87,10 @@ export function resolveEncodeProfile(quality = 'fast', renderHints = {}) {
   }
   if (renderHints?.isVertical) {
     enc.gop = quality === 'hq' ? 48 : 40;
-    if (quality !== 'hq') enc.maxWidth = Math.min(Number(enc.maxWidth || 1080), 1080);
+    if (quality !== 'hq') {
+      const fastOut = resolveExportOutputSize('fast');
+      enc.maxWidth = Math.min(Number(enc.maxWidth || fastOut.width), fastOut.width);
+    }
   }
   return enc;
 }
@@ -121,8 +132,9 @@ export function resolveSubtitleRenderGeometry({
   const isVertical = Boolean(renderHints?.isVertical) || srcH > srcW * 1.05;
   const isHorizontal = srcW > srcH * 1.15;
   const enc = resolveEncodeProfile(quality, renderHints);
-  const playResX = isVertical ? 1080 : srcW;
-  const playResY = isVertical ? 1920 : srcH;
+  const exportSize = resolveExportOutputSize(quality);
+  const playResX = isVertical ? exportSize.width : srcW;
+  const playResY = isVertical ? exportSize.height : srcH;
 
   return {
     enc,
@@ -130,8 +142,8 @@ export function resolveSubtitleRenderGeometry({
     isHorizontal,
     playResX,
     playResY,
-    outputWidth: isVertical ? 1080 : srcW,
-    outputHeight: isVertical ? 1920 : srcH,
+    outputWidth: isVertical ? exportSize.width : srcW,
+    outputHeight: isVertical ? exportSize.height : srcH,
     sourceWidth: srcW,
     sourceHeight: srcH,
     filters: []
@@ -389,7 +401,7 @@ export async function burnSubtitles(opts) {
     vsync: 'cfr',
     setpts: timelinePlan.videoPtsShiftSec > 0 ? `PTS-STARTPTS-${timelinePlan.videoPtsShiftSec}/TB` : 'PTS-STARTPTS',
     asetpts: 'PTS-STARTPTS',
-    scaleStage: 'scale=1080:1920 before ass filter (PlayRes in ASS handles layout)',
+    scaleStage: `scale=${geometry.playResX}:${geometry.playResY} before ass filter (PlayRes in ASS handles layout)`,
     burnStageInputFile: inputPath,
     burnStageOutputFile: outputPath
   });

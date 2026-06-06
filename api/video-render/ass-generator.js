@@ -2,6 +2,7 @@
  * ASS subtitle file generator for FFmpeg burn-in.
  */
 import { getStylePreset, resolvePresetIdOrThrow } from './style-presets.js';
+import { resolveExportOutputSize } from './ffmpeg-renderer.js';
 import { buildCueLines } from './text-layout.js';
 import {
   analyzeText,
@@ -394,13 +395,14 @@ function buildRtlPresetStyleLine(styleName, preset, marginV) {
 export function generateAssContent(segments, presetId, dims = {}) {
   const selectedPresetId = resolvePresetIdOrThrow(presetId);
   const basePreset = getStylePreset(selectedPresetId);
+  const durationSec = dims.durationSec || 0;
+  const quality = dims.quality === 'hq' ? 'hq' : 'fast';
   const requestedPlayResX = Number(dims.playResX || basePreset.playResX || 1080);
   const requestedPlayResY = Number(dims.playResY || basePreset.playResY || 1920);
   const requestedIsVertical = requestedPlayResY > requestedPlayResX * 1.05;
-  const playResX = requestedIsVertical ? 1080 : requestedPlayResX;
-  const playResY = requestedIsVertical ? 1920 : requestedPlayResY;
-  const durationSec = dims.durationSec || 0;
-  const quality = dims.quality === 'hq' ? 'hq' : 'fast';
+  const verticalOut = resolveExportOutputSize(quality);
+  const playResX = requestedIsVertical ? verticalOut.width : requestedPlayResX;
+  const playResY = requestedIsVertical ? verticalOut.height : requestedPlayResY;
   const captionMode = dims.captionMode || dims.qualityMode || 'viral';
   const visualFeatureFlags = resolveVisualFeatureFlags(dims.renderHints || {});
 
