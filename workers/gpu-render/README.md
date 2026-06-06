@@ -11,6 +11,7 @@ workers/gpu-render/
 ├── auto-stop.js
 ├── package.json
 ├── server.js
+├── startup.sh
 └── README.md
 ```
 
@@ -90,7 +91,23 @@ Build on your machine or CI, push to Docker Hub / GHCR (see above).
 | **Container disk** | ≥ 20 GB |
 | **Volume** | Optional — `/tmp` is used for render jobs |
 | **Expose HTTP ports** | `8787` |
-| **Start command** | *(empty — image CMD runs `node server.js`)* |
+| **Start command** | See below |
+
+**RunPod start command (Docker image):**
+
+```bash
+bash /app/workers/gpu-render/startup.sh
+```
+
+Or leave empty — the image `CMD` runs `startup.sh` automatically.
+
+**RunPod start command (git clone on volume):**
+
+```bash
+cd /workspace/cutup/workers/gpu-render && bash startup.sh
+```
+
+`startup.sh` installs `node_modules` when missing, verifies `ffmpeg` and NVENC, logs diagnostics, then starts `server.js`. Safe after a fresh pod boot when volume data survives but container disk was reset.
 
 ### 3. Environment variables (RunPod pod / template)
 
