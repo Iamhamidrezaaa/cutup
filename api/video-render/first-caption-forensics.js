@@ -46,7 +46,7 @@ export async function buildFirstCaptionForensicsReport(opts = {}) {
   let firstSpeechDetected = null;
   if (opts.videoPath) {
     try {
-      firstSpeechDetected = await detectFirstSpeechSec(opts.videoPath);
+      firstSpeechDetected = await detectFirstSpeechSec(opts.videoPath, opts.jobId || null);
     } catch (err) {
       firstSpeechDetected = { firstSpeechSec: null, error: err?.message };
     }

@@ -5,7 +5,7 @@ import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { probeMediaTimeline } from './ffmpeg-timeline.js';
 import { probeVideoFramePtsAtSeconds } from './render-timeline-trace.js';
-import { logFfmpegStart } from './ffmpeg-spawn-log.js';
+import { trackFfmpegStart, trackFfmpegEnd } from './ffmpeg-job-tracker.js';
 
 const NORMALIZE_TIMEOUT_MS = Number(process.env.RENDER_NORMALIZE_TIMEOUT_MS || 600000);
 const CFR_FPS = Math.max(15, Math.min(60, Number(process.env.RENDER_NORMALIZE_CFR_FPS || 30)));
@@ -69,7 +69,7 @@ export function logNormalizedTimelineDebug(payload) {
  * @param {object} opts
  */
 export async function normalizeVideoForBurn(opts) {
-  const { inputPath, outputPath, signal, onProgress } = opts;
+  const { inputPath, outputPath, signal, onProgress, jobId = null } = opts;
   if (!existsSync(inputPath)) {
     throw new Error('NORMALIZE_INPUT_MISSING');
   }
@@ -154,7 +154,7 @@ export async function normalizeVideoForBurn(opts) {
     outputPath
   ];
 
-  await runFfmpegNormalize(args, { signal, onProgress, timeoutMs: NORMALIZE_TIMEOUT_MS });
+  await runFfmpegNormalize(args, { signal, onProgress, timeoutMs: NORMALIZE_TIMEOUT_MS, jobId });
 
   if (!existsSync(outputPath)) {
     throw new Error('NORMALIZE_OUTPUT_MISSING');
@@ -227,14 +227,22 @@ function parseFfmpegProgressLines(text) {
   return out;
 }
 
-function runFfmpegNormalize(args, { signal, onProgress, timeoutMs }) {
-  logFfmpegStart('normalize-cfr', 'ffmpeg', args);
+function runFfmpegNormalize(args, { signal, onProgress, timeoutMs, jobId = null }) {
+  const purpose = 'normalize-cfr';
+  const trackId = trackFfmpegStart(jobId, purpose, 'ffmpeg', args);
+  let trackEnded = false;
+  const endTrack = () => {
+    if (trackEnded) return;
+    trackEnded = true;
+    trackFfmpegEnd(jobId, trackId, purpose);
+  };
   return new Promise((resolve, reject) => {
     const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
     let settled = false;
     const fail = (err) => {
       if (settled) return;
       settled = true;
+      endTrack();
       try {
         proc.kill('SIGKILL');
       } catch {
@@ -260,12 +268,14 @@ function runFfmpegNormalize(args, { signal, onProgress, timeoutMs }) {
     proc.on('error', (err) => {
       clearTimeout(timer);
       if (signal) signal.removeEventListener('abort', onAbort);
+      endTrack();
       fail(err);
     });
 
     proc.on('close', (code) => {
       clearTimeout(timer);
       if (signal) signal.removeEventListener('abort', onAbort);
+      endTrack();
       if (code !== 0) {
         fail(new Error(`Normalize ffmpeg exited with code ${code}`));
         return;

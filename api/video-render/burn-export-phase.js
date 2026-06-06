@@ -110,7 +110,8 @@ export async function executeBurnExportPhase(opts) {
       inputPath: videoPath,
       outputPath: normalizedPath,
       signal,
-      onProgress
+      onProgress,
+      jobId
     });
 
     burnInputPath = normResult.skipped ? videoPath : normalizedPath;
@@ -150,6 +151,7 @@ export async function executeBurnExportPhase(opts) {
     assPath,
     outputPath,
     quality,
+    jobId,
     jobDir,
     timelineTrace,
     renderHints: {

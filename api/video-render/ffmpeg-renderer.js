@@ -32,7 +32,7 @@ import {
   traceRenderTimeline,
   emitFinalRenderSyncReport
 } from './render-timeline-trace.js';
-import { logFfmpegStart } from './ffmpeg-spawn-log.js';
+import { trackFfmpegStart, trackFfmpegEnd } from './ffmpeg-job-tracker.js';
 
 const execFileAsync = promisify(execFile);
 const RENDER_TIMEOUT_MS = Number(process.env.VIDEO_RENDER_TIMEOUT_MS || 600000);
@@ -221,6 +221,7 @@ export async function burnSubtitles(opts) {
     renderHints = {},
     subtitleCues = [],
     timelineTrace = null,
+    jobId = null,
     jobDir = null,
     inputAlreadyNormalized = false,
     trustPreviewTimings = false,
@@ -246,18 +247,10 @@ export async function burnSubtitles(opts) {
       : 'WARNING: burning non-normalized source'
   });
 
-  console.time('verification');
-  let framePtsAtSeek;
-  let speechAnchor;
-  let inputProbe;
-  try {
-    framePtsAtSeek = await probeVideoFramePtsAtSeconds(inputPath, [0, 1, 2, 3, 4]);
-    speechAnchor = await detectFirstSpeechSec(inputPath);
-    logBurnInputVerification(timelineTrace, inputPath, framePtsAtSeek, speechAnchor);
-    inputProbe = await probeMediaTimeline(inputPath);
-  } finally {
-    console.timeEnd('verification');
-  }
+  const framePtsAtSeek = await probeVideoFramePtsAtSeconds(inputPath, [0, 1, 2, 3, 4]);
+  const speechAnchor = await detectFirstSpeechSec(inputPath, jobId);
+  logBurnInputVerification(timelineTrace, inputPath, framePtsAtSeek, speechAnchor);
+  const inputProbe = await probeMediaTimeline(inputPath);
   const preferMinimalCorrection =
     trustPreviewTimings ||
     String(process.env.RENDER_BURN_USE_SOURCE_TIMINGS ?? '1').toLowerCase() !== '0';
@@ -472,8 +465,14 @@ export async function burnSubtitles(opts) {
 
   console.log('[ffmpeg-video-filter]\n' + vf);
 
-  console.time('ffmpeg-burn');
-  logFfmpegStart('subtitle-burn-export', 'ffmpeg', args, resolve(assDir));
+  const burnPurpose = 'subtitle-burn-export';
+  const burnTrackId = trackFfmpegStart(jobId, burnPurpose, 'ffmpeg', args, resolve(assDir));
+  let burnTrackEnded = false;
+  const endBurnTrack = () => {
+    if (burnTrackEnded) return;
+    burnTrackEnded = true;
+    trackFfmpegEnd(jobId, burnTrackId, burnPurpose);
+  };
 
   return new Promise((resolve, reject) => {
     const proc = spawn('ffmpeg', args, { cwd: assDir, stdio: ['ignore', 'ignore', 'pipe'] });
@@ -481,25 +480,6 @@ export async function burnSubtitles(opts) {
     let killed = false;
     let lastPct = 0;
     let phase = 'rendering';
-    let muxTimerStarted = false;
-    let pipelineTimersEnded = false;
-
-    const endPipelineTimers = () => {
-      if (pipelineTimersEnded) return;
-      pipelineTimersEnded = true;
-      if (muxTimerStarted) {
-        console.timeEnd('mux');
-        return;
-      }
-      console.timeEnd('ffmpeg-burn');
-    };
-
-    const startMuxTimer = () => {
-      if (muxTimerStarted) return;
-      muxTimerStarted = true;
-      console.timeEnd('ffmpeg-burn');
-      console.time('mux');
-    };
     let ffSpeed = null;
     let ffFps = null;
     let lastActivityAt = Date.now();
@@ -509,7 +489,7 @@ export async function burnSubtitles(opts) {
       if (settled) return;
       settled = true;
       killed = true;
-      endPipelineTimers();
+      endBurnTrack();
       try {
         proc.kill('SIGKILL');
       } catch {
@@ -531,7 +511,6 @@ export async function burnSubtitles(opts) {
       lastPct = Math.max(lastPct, clamped);
       if (clamped >= 97 && currentPhase === 'rendering') {
         phase = 'muxing';
-        startMuxTimer();
       }
 
       let etaSec = null;
@@ -624,6 +603,7 @@ export async function burnSubtitles(opts) {
       clearInterval(stallTimer);
       clearTimeout(timer);
       if (signal) signal.removeEventListener('abort', onAbort);
+      endBurnTrack();
       if (!settled) reject(err);
     });
 
@@ -636,16 +616,16 @@ export async function burnSubtitles(opts) {
       if (code !== 0) {
         const tail = stderr.trim().split('\n').slice(-8).join('\n');
         console.error('[video-render] failed', { code, tail });
-        endPipelineTimers();
+        endBurnTrack();
         if (!settled) reject(new Error(tail || `FFmpeg exited with code ${code}`));
         return;
       }
       if (!existsSync(outputPath)) {
-        endPipelineTimers();
+        endBurnTrack();
         if (!settled) reject(new Error('FFMPEG_OUTPUT_MISSING'));
         return;
       }
-      endPipelineTimers();
+      endBurnTrack();
       onProgress?.({
         pct: 100,
         etaSec: 0,
@@ -656,7 +636,6 @@ export async function burnSubtitles(opts) {
       });
       console.log('[video-render] ffmpeg completed', { outputPath: basename(outputPath) });
       try {
-        console.time('verification');
         const outputProbe = await probeMediaTimeline(outputPath);
         const assDialogues = parseAssDialogueTimes(burnAssPath, 10);
         const syncReport = buildSubtitleBurnSyncReport({
@@ -713,8 +692,6 @@ export async function burnSubtitles(opts) {
         return;
       } catch (syncErr) {
         console.warn('[subtitle-burn-sync] verification skipped', syncErr?.message || syncErr);
-      } finally {
-        console.timeEnd('verification');
       }
       if (!settled) {
         settled = true;

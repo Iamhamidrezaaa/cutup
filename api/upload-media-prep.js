@@ -6,7 +6,7 @@ import { mkdtemp, writeFile, readFile, rm } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { checkFfmpegAvailable } from './video-render/ffmpeg-renderer.js';
-import { logFfmpegStart } from './video-render/ffmpeg-spawn-log.js';
+import { trackFfmpegStart, trackFfmpegEnd } from './video-render/ffmpeg-job-tracker.js';
 
 const VIDEO_EXT = new Set(['mp4', 'webm', 'mkv', 'mov', 'm4v', 'avi']);
 
@@ -41,14 +41,19 @@ function runFfmpegExtractAudio(inputPath, outputPath) {
       '4',
       outputPath
     ];
-    logFfmpegStart('upload-audio-extract', 'ffmpeg', args);
+    const purpose = 'upload-audio-extract';
+    const trackId = trackFfmpegStart(null, purpose, 'ffmpeg', args);
     const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let err = '';
     proc.stderr.on('data', (d) => {
       err += d.toString();
     });
-    proc.on('error', reject);
+    proc.on('error', (spawnErr) => {
+      trackFfmpegEnd(null, trackId, purpose);
+      reject(spawnErr);
+    });
     proc.on('close', (code) => {
+      trackFfmpegEnd(null, trackId, purpose);
       if (code === 0) resolve();
       else reject(new Error(err.trim() || `ffmpeg exited ${code}`));
     });

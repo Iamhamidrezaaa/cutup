@@ -398,15 +398,7 @@ async function handlePreview(req, res, jobId, email) {
     });
   }
 
-  console.time('preview-generation');
-  let previewTimed = false;
-  const endPreviewTimer = () => {
-    if (previewTimed) return;
-    previewTimed = true;
-    console.timeEnd('preview-generation');
-  };
-  res.on('close', endPreviewTimer);
-  streamJobMp4(req, res, jobId, job, 'inline', { onComplete: endPreviewTimer });
+  streamJobMp4(req, res, jobId, job, 'inline');
 }
 
 async function handleGpuArtifact(req, res) {

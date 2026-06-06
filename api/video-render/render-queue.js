@@ -48,6 +48,7 @@ import { logCaptionPositionForensics } from './caption-position-forensics.js';
 import { logLineLayoutForensics } from './line-layout-forensics.js';
 import { logFirstCaptionForensics } from './first-caption-forensics.js';
 import { logProductionAssDialogueDump } from './subtitle-text-forensics.js';
+import { trackExportStart, trackExportEnd } from './ffmpeg-job-tracker.js';
 
 const MAX_CONCURRENT = Math.max(1, Math.min(3, Number(process.env.VIDEO_RENDER_CONCURRENCY || 1)));
 const JOB_TTL_MS = Number(process.env.VIDEO_RENDER_JOB_TTL_MS || 30 * 60 * 1000);
@@ -438,12 +439,9 @@ async function runJob(job) {
   const timelineTrace = createRenderTimelineTrace(job.id, job.traceId);
   job.timelineTrace = timelineTrace;
 
-  try {
-    console.log('[video-render] started', {
-      jobId: job.id,
-      quality: job.quality
-    });
+  trackExportStart(job.id);
 
+  try {
     traceRenderTimeline(timelineTrace, 'job_start', {
       sourceType: job.localVideoPath ? 'local' : job.uploadBuffer ? 'upload' : job.sourceUrl ? 'url' : 'unknown',
       sourceUrl: job.sourceUrl ? String(job.sourceUrl).slice(0, 120) : null,
@@ -456,10 +454,8 @@ async function runJob(job) {
       progress: 10
     });
 
-    console.time('download');
     let rawVideoPath = null;
-    try {
-      if (job.localVideoPath) {
+    if (job.localVideoPath) {
         videoPath = stageLocalPath(job.localVideoPath, job.jobDir);
         rawVideoPath = videoPath;
         traceRenderTimeline(timelineTrace, 'source_local_staged', { path: videoPath });
@@ -489,38 +485,35 @@ async function runJob(job) {
           urlNormalized: dl.urlNormalized,
           ...dlProbe
         });
-      } else {
-        throw new Error('No video source provided (URL or upload required)');
-      }
+    } else {
+      throw new Error('No video source provided (URL or upload required)');
+    }
 
-      if (job.cancelled) return;
+    if (job.cancelled) return;
 
-      const stagedVideo = join(job.jobDir, 'source.mp4');
-      const beforeStageProbe = await recordFileStage(timelineTrace, videoPath, 'pre_copy_to_job_source');
-      if (videoPath !== stagedVideo) {
-        copyFileSync(videoPath, stagedVideo);
-        videoPath = stagedVideo;
-        traceRenderTimeline(timelineTrace, 'normalize_staged_copy', {
-          from: rawVideoPath,
-          to: stagedVideo,
-          operation: 'copyFileSync',
-          trimStart: null,
-          trimEnd: null,
-          concat: false,
-          silenceRemoval: false,
-          introInsertion: false
-        });
+    const stagedVideo = join(job.jobDir, 'source.mp4');
+    const beforeStageProbe = await recordFileStage(timelineTrace, videoPath, 'pre_copy_to_job_source');
+    if (videoPath !== stagedVideo) {
+      copyFileSync(videoPath, stagedVideo);
+      videoPath = stagedVideo;
+      traceRenderTimeline(timelineTrace, 'normalize_staged_copy', {
+        from: rawVideoPath,
+        to: stagedVideo,
+        operation: 'copyFileSync',
+        trimStart: null,
+        trimEnd: null,
+        concat: false,
+        silenceRemoval: false,
+        introInsertion: false
+      });
+    }
+    const stagedProbe = await recordFileStage(timelineTrace, videoPath, 'staged_source_mp4');
+    if (beforeStageProbe && stagedProbe && !beforeStageProbe.missing && !stagedProbe.missing) {
+      const diff = diffTimelineStages(beforeStageProbe, stagedProbe);
+      if (diff && (Math.abs(diff.videoStartDelta) > 0.01 || Math.abs(diff.streamOffsetDelta) > 0.01)) {
+        timelineTrace.intermediateOffsets.push({ stage: 'staged_copy', diff });
+        traceRenderTimeline(timelineTrace, 'intermediate_offset_detected', diff);
       }
-      const stagedProbe = await recordFileStage(timelineTrace, videoPath, 'staged_source_mp4');
-      if (beforeStageProbe && stagedProbe && !beforeStageProbe.missing && !stagedProbe.missing) {
-        const diff = diffTimelineStages(beforeStageProbe, stagedProbe);
-        if (diff && (Math.abs(diff.videoStartDelta) > 0.01 || Math.abs(diff.streamOffsetDelta) > 0.01)) {
-          timelineTrace.intermediateOffsets.push({ stage: 'staged_copy', diff });
-          traceRenderTimeline(timelineTrace, 'intermediate_offset_detected', diff);
-        }
-      }
-    } finally {
-      console.timeEnd('download');
     }
 
     setSubStage(job, 'Analyzing video dimensions…', 24);
@@ -611,9 +604,7 @@ async function runJob(job) {
 
     let assResult;
     assTiming.start = Date.now();
-    console.time('subtitle-generation');
-    try {
-      const previewExportDoc =
+    const previewExportDoc =
         job.exportDoc?.format === 'cutup-style-v1' && Array.isArray(job.exportDoc.cues) && job.exportDoc.cues.length
           ? job.exportDoc
           : null;
@@ -670,14 +661,9 @@ async function runJob(job) {
       } else {
         throw new Error('No subtitle segments provided');
       }
-      assTiming.end = Date.now();
-    } finally {
-      console.timeEnd('subtitle-generation');
-    }
+    assTiming.end = Date.now();
 
-    console.time('ass-render');
-    try {
-      setSubStage(job, 'Building cinematic caption layer…', 50);
+    setSubStage(job, 'Building cinematic caption layer…', 50);
     job.assPath = join(job.jobDir, 'subtitles.ass');
     const assContent = String(assResult.content || '').replace(/\r\n/g, '\n');
     await fsp.writeFile(job.assPath, assContent, 'utf8');
@@ -808,10 +794,7 @@ async function runJob(job) {
       await fsp.writeFile(assDebugPath, verifyContent, 'utf8');
       job.assDebugPath = assDebugPath;
       const assDebug = extractAssDebugInfo(verifyContent);
-      job.assDebug = assDebug;
-    } finally {
-      console.timeEnd('ass-render');
-    }
+    job.assDebug = assDebug;
 
     const assDialoguesPreview = parseAssDialogueTimes(job.assPath, 3);
     traceRenderTimeline(timelineTrace, 'ass_written', {
@@ -1047,23 +1030,6 @@ async function runJob(job) {
       etaSec: 0
     });
 
-    console.log('[video-render] completed', {
-      jobId: job.id,
-      preset: job.presetId,
-      cues: assResult.cueCount,
-      subtitleIntegrity: assResult.cueIntegrity,
-      continuity: assResult.continuity,
-      visibility: assResult.visibility,
-      readabilityScore: assResult.readabilityScore,
-      placement: assResult.placement,
-      durationSec: probe.durationSec,
-      adaptiveSafeguards,
-      renderProfile: assResult.renderProfile?.id || null,
-      subtitleCount,
-      mem: memorySnapshotMb(),
-      queueWaitSec: job.queueWaitSec,
-      renderSec: Math.max(1, Math.round((Date.now() - job.renderStartedAt) / 1000))
-    });
   } catch (err) {
     stopRenderHeartbeat(job);
     job.error = toSafeRenderError(err);
@@ -1094,6 +1060,8 @@ async function runJob(job) {
       message: err?.message || String(err)
     });
     throw err;
+  } finally {
+    trackExportEnd(job.id);
   }
 }
 
