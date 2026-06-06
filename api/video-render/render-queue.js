@@ -35,7 +35,8 @@ import {
   summarizeSegmentTiming,
   diffTimelineStages,
   emitFinalRenderSyncReport,
-  isHardSyncTestEnabled
+  isHardSyncTestEnabled,
+  isDebugExportEnabled
 } from './render-timeline-trace.js';
 import { parseAssDialogueTimes } from './ffmpeg-timeline.js';
 import { isTimingForensicEnabled, logTimingForensics } from './timing-forensics.js';
@@ -599,23 +600,27 @@ async function runJob(job) {
       }
     };
 
-    console.log('[caption-forensics-preset-lineage]', {
-      traceId: job.traceId || null,
-      jobId: job.id,
-      selectedPresetFromUI: job.captionForensics?.selectedPresetFromUI || null,
-      presetReceivedByAPI: job.captionForensics?.presetReceivedByAPI || null,
-      presetReceivedByRenderQueue: job.presetId
-    });
+    if (isDebugExportEnabled()) {
+      console.log('[caption-forensics-preset-lineage]', {
+        traceId: job.traceId || null,
+        jobId: job.id,
+        selectedPresetFromUI: job.captionForensics?.selectedPresetFromUI || null,
+        presetReceivedByAPI: job.captionForensics?.presetReceivedByAPI || null,
+        presetReceivedByRenderQueue: job.presetId
+      });
+    }
 
-    console.log('[preset-style-debug]', {
-      requestedPreset: job.presetId,
-      resolvedPreset: job.presetId,
-      presetDisplayName: job.presetDisplayName || job.presetId,
-      captionMode: job.captionMode,
-      styleMode: job.styleMode,
-      segmentCount: job.segments?.length || job.exportDoc?.cues?.length || 0,
-      note: 'Full style fields logged in generateAssContent [preset-style-debug]'
-    });
+    if (isDebugExportEnabled()) {
+      console.log('[preset-style-debug]', {
+        requestedPreset: job.presetId,
+        resolvedPreset: job.presetId,
+        presetDisplayName: job.presetDisplayName || job.presetId,
+        captionMode: job.captionMode,
+        styleMode: job.styleMode,
+        segmentCount: job.segments?.length || job.exportDoc?.cues?.length || 0,
+        note: 'Full style fields logged in generateAssContent [preset-style-debug]'
+      });
+    }
 
     setSubStage(job, 'Applying cinematic layout…', 40);
 
@@ -629,7 +634,7 @@ async function runJob(job) {
           : null;
       const usePreviewBurn =
         Boolean(previewExportDoc) && String(job.captionMode || 'viral').toLowerCase() !== 'accurate';
-      if (previewExportDoc && !usePreviewBurn) {
+      if (isDebugExportEnabled() && previewExportDoc && !usePreviewBurn) {
         console.log('[preview-burn-skipped]', {
           jobId: job.id,
           captionMode: job.captionMode,
@@ -653,13 +658,15 @@ async function runJob(job) {
       if (usePreviewBurn) {
         setSubStage(job, 'Applying cinematic layout…', 44);
         job.burnFromPreviewExportDoc = true;
-        console.log('[preview-burn-source]', {
-          jobId: job.id,
-          exportDocCueCount: previewExportDoc.cues.length,
-          firstCue: previewExportDoc.cues[0],
-          lastCue: previewExportDoc.cues[previewExportDoc.cues.length - 1],
-          note: 'ASS uses clean-SRT timings 1:1 (no merge, no speech shift)'
-        });
+        if (isDebugExportEnabled()) {
+          console.log('[preview-burn-source]', {
+            jobId: job.id,
+            exportDocCueCount: previewExportDoc.cues.length,
+            firstCue: previewExportDoc.cues[0],
+            lastCue: previewExportDoc.cues[previewExportDoc.cues.length - 1],
+            note: 'ASS uses clean-SRT timings 1:1 (no merge, no speech shift)'
+          });
+        }
         assResult = generateAssFromExportDoc(previewExportDoc, {
           ...assOpts,
           presetIdOverride: job.presetId
@@ -695,14 +702,18 @@ async function runJob(job) {
       throw new Error('ASS file suspiciously small');
     }
     endExportStage(job.id, 'ass_generation');
-    console.log('[ass-write-verified]', { assPath: job.assPath, size: assStat.size });
+    if (isDebugExportEnabled()) {
+      console.log('[ass-write-verified]', { assPath: job.assPath, size: assStat.size });
+    }
 
-    logProductionAssDialogueDump(verifyContent, {
-      jobId: job.id,
-      traceId: job.traceId || null
-    });
+    if (isDebugExportEnabled()) {
+      logProductionAssDialogueDump(verifyContent, {
+        jobId: job.id,
+        traceId: job.traceId || null
+      });
+    }
 
-    if (job.segments?.length) {
+    if (isDebugExportEnabled() && job.segments?.length) {
       logExportRootCauseForensics({
         rawSegments: job.segments,
         assResult,
@@ -810,11 +821,12 @@ async function runJob(job) {
         });
       }
 
+    if (isDebugExportEnabled()) {
       const assDebugPath = join(job.jobDir, 'subtitles.final.ass');
       await fsp.writeFile(assDebugPath, verifyContent, 'utf8');
       job.assDebugPath = assDebugPath;
-      const assDebug = extractAssDebugInfo(verifyContent);
-    job.assDebug = assDebug;
+      job.assDebug = extractAssDebugInfo(verifyContent);
+    }
 
     const assDialoguesPreview = parseAssDialogueTimes(job.assPath, 3);
     traceRenderTimeline(timelineTrace, 'ass_written', {
@@ -952,14 +964,16 @@ async function runJob(job) {
         job.exportAssPath = phase.exportAssPath;
         job.ffmpegCommandExact = burnResult?.ffmpegCommandExact || null;
         job.ffmpegCwd = burnResult?.ffmpegCwd || null;
-        console.log('[export-ass-preserved]', {
-          exportMp4: resolve(outputPath),
-          exportAss: job.exportAssPath,
-          burnAssPath: job.burnAssPath,
-          generatorAssPath: resolve(job.assPath),
-          ffmpegCwd: job.ffmpegCwd,
-          ffmpegCommand: job.ffmpegCommandExact
-        });
+        if (isDebugExportEnabled()) {
+          console.log('[export-ass-preserved]', {
+            exportMp4: resolve(outputPath),
+            exportAss: job.exportAssPath,
+            burnAssPath: job.burnAssPath,
+            generatorAssPath: resolve(job.assPath),
+            ffmpegCwd: job.ffmpegCwd,
+            ffmpegCommand: job.ffmpegCommandExact
+          });
+        }
       }
       endExportStage(job.id, 'subtitle_burn_export');
 

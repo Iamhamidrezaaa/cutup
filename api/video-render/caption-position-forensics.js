@@ -7,6 +7,7 @@
 import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { getStylePreset, resolvePresetIdOrThrow } from './style-presets.js';
+import { isDebugExportEnabled } from './export-debug.js';
 import { isRtlText } from './rtl-text.js';
 import {
   buildPhraseBurnSubtitles,
@@ -23,7 +24,7 @@ import { buildCueLines } from './text-layout.js';
 const MAX_CUES = 20;
 
 export function isCaptionPositionForensicEnabled() {
-  return String(process.env.CAPTION_POSITION_FORENSIC ?? '1') !== '0';
+  return isDebugExportEnabled() && String(process.env.CAPTION_POSITION_FORENSIC ?? '1') !== '0';
 }
 
 function stripAssTags(text) {

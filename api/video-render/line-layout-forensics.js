@@ -7,6 +7,7 @@
 import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { getStylePreset, resolvePresetIdOrThrow } from './style-presets.js';
+import { isDebugExportEnabled } from './export-debug.js';
 import { isRtlText } from './rtl-text.js';
 import {
   buildPhraseBurnSubtitles,
@@ -25,7 +26,7 @@ import { isSemanticSegmentationProductionEnabled } from '../segmentation-quality
 const MAX_CUES = 50;
 
 export function isLineLayoutForensicEnabled() {
-  return String(process.env.LINE_LAYOUT_FORENSIC ?? '1') !== '0';
+  return isDebugExportEnabled() && String(process.env.LINE_LAYOUT_FORENSIC ?? '1') !== '0';
 }
 
 function lineFields(lines) {

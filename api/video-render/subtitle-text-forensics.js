@@ -4,10 +4,12 @@
  * Optional: RENDER_SUBTITLE_FORENSIC_MAX=10 (default 8 cues per stage)
  */
 import { isRtlText } from './rtl-text.js';
+import { isDebugExportEnabled } from './export-debug.js';
 
 const BIDI_MARK_RE = /[\u200E\u200F\u202A-\u202E\u2066-\u2069]/;
 
 export function isSubtitleTextForensicEnabled(sampleText = '') {
+  if (!isDebugExportEnabled()) return false;
   const flag = String(process.env.RENDER_SUBTITLE_FORENSIC || '').toLowerCase();
   if (flag === '1' || flag === 'true' || flag === 'yes') return true;
   if (flag === '0' || flag === 'false' || flag === 'no') return false;

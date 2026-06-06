@@ -8,6 +8,7 @@ import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { getStylePreset, resolvePresetIdOrThrow } from './style-presets.js';
 import { isRtlText } from './rtl-text.js';
+import { isDebugExportEnabled } from './export-debug.js';
 import { buildPhraseBurnSubtitles } from './subtitle-pipeline.js';
 import { buildCueLines } from './text-layout.js';
 import { resolveCueLineLayout } from './layout-engine.js';
@@ -16,7 +17,7 @@ import { forensicTraceRtlPhraseText } from './ass-generator.js';
 const MAX_CUES = 20;
 
 export function isRtlPhraseOrderForensicEnabled() {
-  return String(process.env.RTL_PHRASE_ORDER_FORENSIC ?? '1') !== '0';
+  return isDebugExportEnabled() && String(process.env.RTL_PHRASE_ORDER_FORENSIC ?? '1') !== '0';
 }
 
 function wordsList(text) {

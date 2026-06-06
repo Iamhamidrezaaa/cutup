@@ -4,6 +4,7 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { readFileSync, writeFileSync } from 'fs';
+import { isDebugExportEnabled } from './export-debug.js';
 
 const execFileAsync = promisify(execFile);
 const MAX_BUFFER = 8 * 1024 * 1024;
@@ -190,14 +191,17 @@ export function buildTimelineBurnPlan(probe, subtitleCues = [], opts = {}) {
 }
 
 export function logFfmpegTimelineDebug(payload) {
+  if (!isDebugExportEnabled()) return;
   console.log('[ffmpeg-timeline-debug]', payload);
 }
 
 export function logStreamOffsetDetected(payload) {
+  if (!isDebugExportEnabled()) return;
   console.log('[stream-offset-detected]', payload);
 }
 
 export function logSubtitleBurnSync(entries) {
+  if (!isDebugExportEnabled()) return;
   console.log('[subtitle-burn-sync]', entries);
 }
 

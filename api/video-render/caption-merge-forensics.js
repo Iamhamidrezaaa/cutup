@@ -15,9 +15,10 @@ import {
   MIN_BURN_CUE_VISIBLE_SEC,
   MIN_BURN_PHRASE_READ_SEC
 } from './subtitle-pipeline.js';
+import { isDebugExportEnabled } from './export-debug.js';
 
 export function isCaptionMergeForensicEnabled() {
-  return String(process.env.CAPTION_MERGE_FORENSIC ?? '1') !== '0';
+  return isDebugExportEnabled() && String(process.env.CAPTION_MERGE_FORENSIC ?? '1') !== '0';
 }
 
 function normText(t) {

@@ -12,11 +12,12 @@ import {
   buildVisualCueView,
   applyVisualReadabilityWindows
 } from './subtitle-pipeline.js';
-import { detectFirstSpeechSec, isDebugExportEnabled } from './render-timeline-trace.js';
+import { detectFirstSpeechSec } from './render-timeline-trace.js';
+import { isDebugExportEnabled } from './export-debug.js';
 import { buildWhisperStarttimeForensicsReport } from './whisper-starttime-forensics.js';
 
 export function isFirstCaptionForensicEnabled() {
-  return String(process.env.FIRST_CAPTION_FORENSIC ?? '1') !== '0';
+  return isDebugExportEnabled() && String(process.env.FIRST_CAPTION_FORENSIC ?? '1') !== '0';
 }
 
 function roundSec(v) {

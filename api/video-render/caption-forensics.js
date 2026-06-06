@@ -8,13 +8,14 @@ import { join } from 'path';
 import { getStylePreset, resolvePresetIdOrThrow } from './style-presets.js';
 import { layoutLinesLegacyStack } from './text-layout.js';
 import { BURN_LEAD_DELAY_SEC } from './subtitle-pipeline.js';
+import { isDebugExportEnabled } from './export-debug.js';
 
 export const CAPTION_FORENSIC_MAX = 10;
 
 const SAMPLE_SEGMENTATION_TEXT = 'این بچه تو یه چالش شرکت کرده بود...';
 
 export function isCaptionForensicEnabled() {
-  return String(process.env.CAPTION_FORENSIC ?? '1') !== '0';
+  return isDebugExportEnabled() && String(process.env.CAPTION_FORENSIC ?? '1') !== '0';
 }
 
 function num(v, fallback = null) {

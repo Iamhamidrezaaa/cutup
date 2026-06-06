@@ -7,6 +7,7 @@
 import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { getStylePreset, resolvePresetIdOrThrow } from './style-presets.js';
+import { isDebugExportEnabled } from './export-debug.js';
 import { isRtlText } from './rtl-text.js';
 import {
   buildPhraseBurnSubtitles,
@@ -19,7 +20,7 @@ import { buildCueLines } from './text-layout.js';
 const MAX_CUES = 12;
 
 export function isExportRootCauseForensicEnabled() {
-  return String(process.env.EXPORT_ROOT_CAUSE_FORENSIC ?? '1') !== '0';
+  return isDebugExportEnabled() && String(process.env.EXPORT_ROOT_CAUSE_FORENSIC ?? '1') !== '0';
 }
 
 function roundSec(v) {

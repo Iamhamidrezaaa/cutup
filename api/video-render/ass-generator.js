@@ -62,6 +62,7 @@ import {
   logSubtitleTextForensicStage,
   forensicMaxCues
 } from './subtitle-text-forensics.js';
+import { isDebugExportEnabled } from './export-debug.js';
 
 function escapeAssText(text) {
   return String(text || '')
@@ -430,15 +431,17 @@ export function generateAssContent(segments, presetId, dims = {}) {
     if (seg.isFinal === false) return false;
     return true;
   });
-  console.log(
-    '[caption-final-blocks]',
-    finalOnlySegments.map((seg, index) => ({
-      index,
-      start: Number(seg.start) || 0,
-      end: Number(seg.end) || 0,
-      text: String(seg.text || '').trim()
-    }))
-  );
+  if (isDebugExportEnabled()) {
+    console.log(
+      '[caption-final-blocks]',
+      finalOnlySegments.map((seg, index) => ({
+        index,
+        start: Number(seg.start) || 0,
+        end: Number(seg.end) || 0,
+        text: String(seg.text || '').trim()
+      }))
+    );
+  }
 
   const captionModeNorm = String(captionMode || 'viral').toLowerCase();
   const burnFromPreviewCues = Boolean(dims.burnFromPreviewCues);
@@ -463,14 +466,16 @@ export function generateAssContent(segments, presetId, dims = {}) {
     : useSourceAlignedTimings
       ? 'source-aligned-segment'
       : 'phrase-rhythm';
-  console.log('[burn-caption-export]', {
-    path: burnPath,
-    captionMode: captionModeNorm,
-    inputSegmentCount,
-    exportPhraseCueCount,
-    assDialogueCount: exportPhraseCueCount,
-    coalesceSkipped: !useSourceAlignedTimings
-  });
+  if (isDebugExportEnabled()) {
+    console.log('[burn-caption-export]', {
+      path: burnPath,
+      captionMode: captionModeNorm,
+      inputSegmentCount,
+      exportPhraseCueCount,
+      assDialogueCount: exportPhraseCueCount,
+      coalesceSkipped: !useSourceAlignedTimings
+    });
+  }
   if (isSubtitleTextForensicEnabled(forensicSample)) {
     logSubtitleTextForensicStage(
       'after_subtitle_pipeline_normalization',
@@ -484,24 +489,26 @@ export function generateAssContent(segments, presetId, dims = {}) {
   if (!canonicalSubtitles.length) {
     throw new Error('SUBTITLE_CANONICAL_EMPTY');
   }
-  console.log('[ass-timing-path]', {
-    useSourceAlignedTimings,
-    captionMode,
-    cueCount: canonicalSubtitles.length,
-    note: useSourceAlignedTimings
-      ? 'ASS Dialogue times match input segments (SRT/preview)'
-      : 'ASS uses rhythm blocks from composeRhythmBlocks'
-  });
-  console.log(
-    '[canonical-caption-blocks]',
-    canonicalSubtitles.map((b) => ({
-      text: b.text,
-      wordCount: Array.isArray(b.words) ? b.words.length : String(b.text || '').split(/\s+/).filter(Boolean).length,
-      start: Number(b.start) || 0,
-      end: Number(b.end) || 0,
-      duration: Number(b.duration != null ? b.duration : (Number(b.end) - Number(b.start)).toFixed(3))
-    }))
-  );
+  if (isDebugExportEnabled()) {
+    console.log('[ass-timing-path]', {
+      useSourceAlignedTimings,
+      captionMode,
+      cueCount: canonicalSubtitles.length,
+      note: useSourceAlignedTimings
+        ? 'ASS Dialogue times match input segments (SRT/preview)'
+        : 'ASS uses rhythm blocks from composeRhythmBlocks'
+    });
+    console.log(
+      '[canonical-caption-blocks]',
+      canonicalSubtitles.map((b) => ({
+        text: b.text,
+        wordCount: Array.isArray(b.words) ? b.words.length : String(b.text || '').split(/\s+/).filter(Boolean).length,
+        start: Number(b.start) || 0,
+        end: Number(b.end) || 0,
+        duration: Number(b.duration != null ? b.duration : (Number(b.end) - Number(b.start)).toFixed(3))
+      }))
+    );
+  }
   const cues = buildVisualCueView(canonicalSubtitles, captionMode);
   const integrityReport = assertCueIntegrity(canonicalSubtitles, cues, {
     maxTimingDriftMs: 0,
@@ -653,23 +660,25 @@ export function generateAssContent(segments, presetId, dims = {}) {
     }
   });
 
-  console.log('[preset-style-debug]', {
-    requestedPreset: selectedPresetId,
-    resolvedPreset: preset.id || selectedPresetId,
-    ltrStyleName: 'Default',
-    rtlStyleName: hasRtlCues ? rtlPresetStyleName : null,
-    fontName: preset.fontName,
-    fontSize: preset.fontSize,
-    outline: preset.outline,
-    shadow: preset.shadow,
-    alignment: preset.alignment,
-    spacing: preset.spacing,
-    scaleY: preset.scaleY,
-    primaryColor: preset.primaryColor,
-    bold: preset.bold,
-    hasRtlCues,
-    note: 'RTL cues use RTL_* style (Encoding=0, Vazirmatn); LTR cues use Default'
-  });
+  if (isDebugExportEnabled()) {
+    console.log('[preset-style-debug]', {
+      requestedPreset: selectedPresetId,
+      resolvedPreset: preset.id || selectedPresetId,
+      ltrStyleName: 'Default',
+      rtlStyleName: hasRtlCues ? rtlPresetStyleName : null,
+      fontName: preset.fontName,
+      fontSize: preset.fontSize,
+      outline: preset.outline,
+      shadow: preset.shadow,
+      alignment: preset.alignment,
+      spacing: preset.spacing,
+      scaleY: preset.scaleY,
+      primaryColor: preset.primaryColor,
+      bold: preset.bold,
+      hasRtlCues,
+      note: 'RTL cues use RTL_* style (Encoding=0, Vazirmatn); LTR cues use Default'
+    });
+  }
 
   const header = layout.rtl
     ? [
@@ -770,7 +779,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
             : builtLines,
           cueText
         );
-    if (cueRtl && !rtlLayoutDebugLogged) {
+    if (isDebugExportEnabled() && cueRtl && !rtlLayoutDebugLogged) {
       rtlLayoutDebugLogged = true;
       console.log('[rtl-layout-debug]', {
         text: cueText,
@@ -799,6 +808,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
     // With {\an2\pos} bottom anchor, first \N line is the top row — match preview top→bottom order.
     const assLines = lines;
     if (
+      isDebugExportEnabled() &&
       cueRtl &&
       lines.length > 1 &&
       rtlMultilineLineOrderLogs < RTL_MULTILINE_FORENSIC_MAX
@@ -843,7 +853,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
       text = `${fsPrefix}${bodyResult.text}`;
       styleName = rtlPresetStyleName;
       dialogueMarginV = 0;
-      if (!rtlPunctuationDebugLogged) {
+      if (isDebugExportEnabled() && !rtlPunctuationDebugLogged) {
         rtlPunctuationDebugLogged = true;
         console.log('[rtl-punctuation-debug]', {
           originalText,
@@ -861,7 +871,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
     if (forensicOn && segmentIndex < forensicCueCap) {
       forensicFinalDialogue.push({ id: cueKey, text, styleName });
     }
-    if (cueRtl) {
+    if (isDebugExportEnabled() && cueRtl) {
       console.log('[rtl-emphasis-fix]', {
         cueRtl,
         disableEmphasis,

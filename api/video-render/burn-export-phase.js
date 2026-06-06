@@ -18,6 +18,7 @@ import {
 } from './render-timeline-trace.js';
 import { isTimingForensicEnabled, logTimingForensics } from './timing-forensics.js';
 import { logCaptionForensics } from './caption-forensics.js';
+import { isDebugExportEnabled } from './export-debug.js';
 
 /**
  * @param {object} opts
@@ -76,7 +77,7 @@ export async function executeBurnExportPhase(opts) {
         text: String(s.text || '')
       }));
 
-  if (assBurnCues.length) {
+  if (isDebugExportEnabled() && assBurnCues.length) {
     console.log('[burn-subtitle-cues]', {
       source: 'ass-dialogues',
       cueCount: assBurnCues.length,

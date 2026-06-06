@@ -13,11 +13,12 @@ import {
   buildVisualCueView,
   applyVisualReadabilityWindows
 } from './subtitle-pipeline.js';
+import { isDebugExportEnabled } from './export-debug.js';
 
 const MAX_PHRASES = 20;
 
 export function isPhraseTimingForensicEnabled() {
-  return String(process.env.PHRASE_TIMING_FORENSIC ?? '1') !== '0';
+  return isDebugExportEnabled() && String(process.env.PHRASE_TIMING_FORENSIC ?? '1') !== '0';
 }
 
 function roundSec(v) {

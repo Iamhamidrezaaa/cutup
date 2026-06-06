@@ -15,11 +15,12 @@ import {
   roundTimingSec,
   timingDeltaMs
 } from './segment-timing-lineage.js';
+import { isDebugExportEnabled } from './export-debug.js';
 
 const MAX = 10;
 
 export function isWhisperStarttimeForensicEnabled() {
-  return String(process.env.WHISPER_STARTTIME_FORENSIC ?? '1') !== '0';
+  return isDebugExportEnabled() && String(process.env.WHISPER_STARTTIME_FORENSIC ?? '1') !== '0';
 }
 
 function startAt(snapshot, index) {

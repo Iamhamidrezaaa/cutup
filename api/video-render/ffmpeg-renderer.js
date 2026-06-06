@@ -260,11 +260,15 @@ export async function burnSubtitles(opts) {
       : 'WARNING: burning non-normalized source'
   });
 
-  const framePtsAtSeek = await probeVideoFramePtsAtSeconds(inputPath, [0, 1, 2, 3, 4]);
+  const framePtsAtSeek = isDebugExportEnabled()
+    ? await probeVideoFramePtsAtSeconds(inputPath, [0, 1, 2, 3, 4])
+    : null;
   const speechAnchor = isDebugExportEnabled()
     ? await detectFirstSpeechSec(inputPath, jobId)
     : null;
-  logBurnInputVerification(timelineTrace, inputPath, framePtsAtSeek, speechAnchor);
+  if (isDebugExportEnabled()) {
+    logBurnInputVerification(timelineTrace, inputPath, framePtsAtSeek, speechAnchor);
+  }
   const inputProbe = await probeMediaTimeline(inputPath);
   const preferMinimalCorrection =
     trustPreviewTimings ||
@@ -280,7 +284,7 @@ export async function burnSubtitles(opts) {
     timelinePlan.assShiftSec = 0;
     timelinePlan.videoPtsShiftSec = 0;
   }
-  if (timelinePlan.offsetDetected) {
+  if (timelinePlan.offsetDetected && isDebugExportEnabled()) {
     logStreamOffsetDetected({
       streamOffsetSec: timelinePlan.streamOffsetSec,
       framePtsLeadSec: timelinePlan.framePtsLeadSec,
@@ -406,7 +410,8 @@ export async function burnSubtitles(opts) {
     burnStageOutputFile: outputPath
   });
 
-  logFfmpegTimelineDebug({
+  if (isDebugExportEnabled()) {
+    logFfmpegTimelineDebug({
     videoStreamStartTime: timelinePlan.videoStart,
     audioStreamStartTime: timelinePlan.audioStart,
     formatStartTime: timelinePlan.formatStart,
@@ -433,7 +438,8 @@ export async function burnSubtitles(opts) {
     cwd: assDir,
     input: basename(inputPath),
     assFile: assName
-  });
+    });
+  }
 
   const burnAssAbsolute = resolve(burnAssPath);
   const ffmpegCommandExact = ['ffmpeg', ...args]
@@ -443,12 +449,14 @@ export async function burnSubtitles(opts) {
     })
     .join(' ');
 
-  console.log('[video-render] ffmpeg-burn-ass-path', { burnAssAbsolute });
-  console.log('[video-render] ffmpeg-command-exact', {
-    cwd: resolve(assDir),
-    burnAssAbsolute,
-    command: ffmpegCommandExact
-  });
+  if (isDebugExportEnabled()) {
+    console.log('[video-render] ffmpeg-burn-ass-path', { burnAssAbsolute });
+    console.log('[video-render] ffmpeg-command-exact', {
+      cwd: resolve(assDir),
+      burnAssAbsolute,
+      command: ffmpegCommandExact
+    });
+  }
 
   console.log('[video-render] started', {
     quality,
@@ -468,7 +476,7 @@ export async function burnSubtitles(opts) {
     timelinePlan
   });
 
-  if (jobDir) {
+  if (jobDir && isDebugExportEnabled()) {
     await runRtlBurnForensics({
       burnAssPath: burnAssAbsolute,
       jobDir,
@@ -478,7 +486,9 @@ export async function burnSubtitles(opts) {
     });
   }
 
-  console.log('[ffmpeg-video-filter]\n' + vf);
+  if (isDebugExportEnabled()) {
+    console.log('[ffmpeg-video-filter]\n' + vf);
+  }
 
   const burnPurpose = 'subtitle-burn-export';
   const burnTrackId = trackFfmpegStart(jobId, burnPurpose, 'ffmpeg', args, resolve(assDir));
@@ -650,63 +660,51 @@ export async function burnSubtitles(opts) {
         phase: 'finalizing'
       });
       console.log('[video-render] ffmpeg completed', { outputPath: basename(outputPath) });
-      try {
-        const outputProbe = await probeMediaTimeline(outputPath);
-        const assDialogues = parseAssDialogueTimes(burnAssPath, 10);
-        const syncReport = buildSubtitleBurnSyncReport({
-          plan: timelinePlan,
-          sourceCues: subtitleCues,
-          assDialogues,
-          outputProbe
-        });
-        logSubtitleBurnSync(syncReport);
-
-        const firstCue = subtitleCues[0];
-        const firstAss = assDialogues[0];
-        const finalRenderSyncReport = emitFinalRenderSyncReport(timelineTrace, {
-          sourceSpeechStart: speechAnchor?.firstSpeechSec ?? null,
-          speechAnchorMethod: speechAnchor?.method || null,
-          subtitleFirstCueStart: firstCue?.start ?? firstAss?.start ?? null,
-          subtitleFirstAssBurnStart: firstAss?.start ?? null,
-          burnTargetVideoStart: timelinePlan.videoStart,
-          burnTargetAudioStart: timelinePlan.audioStart,
-          effectiveRenderOffsetSec: Number(
-            (timelinePlan.videoPtsShiftSec + timelinePlan.assShiftSec).toFixed(4)
-          ),
-          streamOffsetAtBurnInput: timelinePlan.streamOffsetSec,
-          intermediateFileOffsets: timelineTrace?.intermediateOffsets || [],
-          framePtsAtSeekBeforeBurn: framePtsAtSeek,
-          hardSyncTestEnabled: isHardSyncTestEnabled(),
-          hardSyncInterpretation: isHardSyncTestEnabled()
-            ? 'First ASS forced to 0:00:00.00 — if output still ~4s late, video PTS/editlist is the cause'
-            : null,
-          burnInputAlreadyDelayed:
-            framePtsAtSeek?.some((f) => f.deltaFromSeek != null && Math.abs(f.deltaFromSeek) > 0.5) ||
-            Math.abs(timelinePlan.streamOffsetSec) > 0.1,
-          outputStreamOffsetSec: Number(
-            (
-              Number(outputProbe?.video?.start_time || 0) - Number(outputProbe?.audio?.start_time || 0)
-            ).toFixed(4)
-          ),
-          subtitleBurnSync: syncReport
-        });
-
-        if (!settled) {
-          settled = true;
-          resolve({
-            outputPath,
-            quality,
-            preset: enc,
-            timelinePlan,
-            finalRenderSyncReport,
-            burnAssPath: burnAssAbsolute,
-            ffmpegCommandExact,
-            ffmpegCwd: resolve(assDir)
+      let finalRenderSyncReport = null;
+      if (isDebugExportEnabled()) {
+        try {
+          const outputProbe = await probeMediaTimeline(outputPath);
+          const assDialogues = parseAssDialogueTimes(burnAssPath, 10);
+          const syncReport = buildSubtitleBurnSyncReport({
+            plan: timelinePlan,
+            sourceCues: subtitleCues,
+            assDialogues,
+            outputProbe
           });
+          logSubtitleBurnSync(syncReport);
+
+          const firstCue = subtitleCues[0];
+          const firstAss = assDialogues[0];
+          finalRenderSyncReport = emitFinalRenderSyncReport(timelineTrace, {
+            sourceSpeechStart: speechAnchor?.firstSpeechSec ?? null,
+            speechAnchorMethod: speechAnchor?.method || null,
+            subtitleFirstCueStart: firstCue?.start ?? firstAss?.start ?? null,
+            subtitleFirstAssBurnStart: firstAss?.start ?? null,
+            burnTargetVideoStart: timelinePlan.videoStart,
+            burnTargetAudioStart: timelinePlan.audioStart,
+            effectiveRenderOffsetSec: Number(
+              (timelinePlan.videoPtsShiftSec + timelinePlan.assShiftSec).toFixed(4)
+            ),
+            streamOffsetAtBurnInput: timelinePlan.streamOffsetSec,
+            intermediateFileOffsets: timelineTrace?.intermediateOffsets || [],
+            framePtsAtSeekBeforeBurn: framePtsAtSeek,
+            hardSyncTestEnabled: isHardSyncTestEnabled(),
+            hardSyncInterpretation: isHardSyncTestEnabled()
+              ? 'First ASS forced to 0:00:00.00 — if output still ~4s late, video PTS/editlist is the cause'
+              : null,
+            burnInputAlreadyDelayed:
+              framePtsAtSeek?.some((f) => f.deltaFromSeek != null && Math.abs(f.deltaFromSeek) > 0.5) ||
+              Math.abs(timelinePlan.streamOffsetSec) > 0.1,
+            outputStreamOffsetSec: Number(
+              (
+                Number(outputProbe?.video?.start_time || 0) - Number(outputProbe?.audio?.start_time || 0)
+              ).toFixed(4)
+            ),
+            subtitleBurnSync: syncReport
+          });
+        } catch (syncErr) {
+          console.warn('[subtitle-burn-sync] verification skipped', syncErr?.message || syncErr);
         }
-        return;
-      } catch (syncErr) {
-        console.warn('[subtitle-burn-sync] verification skipped', syncErr?.message || syncErr);
       }
       if (!settled) {
         settled = true;
@@ -715,7 +713,7 @@ export async function burnSubtitles(opts) {
           quality,
           preset: enc,
           timelinePlan,
-          finalRenderSyncReport: null,
+          finalRenderSyncReport,
           burnAssPath: burnAssAbsolute,
           ffmpegCommandExact,
           ffmpegCwd: resolve(assDir)

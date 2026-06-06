@@ -5,6 +5,7 @@
 
 import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import { isDebugExportEnabled } from './export-debug.js';
 
 const DEFAULT_MAX = Math.min(
   30,
@@ -12,10 +13,11 @@ const DEFAULT_MAX = Math.min(
 );
 
 export function isTimingForensicEnabled(sampleText = '') {
+  if (!isDebugExportEnabled()) return false;
   const flag = String(process.env.TIMING_FORENSIC || '').toLowerCase();
   if (flag === '1' || flag === 'true' || flag === 'yes') return true;
   if (flag === '0' || flag === 'false' || flag === 'no') return false;
-  return /[\u0600-\u06FF]/.test(String(sampleText || ''));
+  return false;
 }
 
 function num(v, fallback = 0) {

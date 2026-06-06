@@ -5,6 +5,7 @@ import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { probeMediaTimeline } from './ffmpeg-timeline.js';
 import { probeVideoFramePtsAtSeconds } from './render-timeline-trace.js';
+import { isDebugExportEnabled } from './export-debug.js';
 import { trackFfmpegStart, trackFfmpegEnd } from './ffmpeg-job-tracker.js';
 
 const NORMALIZE_TIMEOUT_MS = Number(process.env.RENDER_NORMALIZE_TIMEOUT_MS || 600000);
@@ -292,6 +293,7 @@ function runFfmpegNormalize(args, { signal, onProgress, timeoutMs, jobId = null 
  * Post-normalize sync check: subtitle cues vs normalized video frame PTS.
  */
 export async function verifyNormalizedBurnSync(subtitleCues, normalizedPath) {
+  if (!isDebugExportEnabled()) return { skipped: true };
   const framePts = await probeVideoFramePtsAtSeconds(normalizedPath, [0, 1, 2, 3, 4]);
   const firstCue = subtitleCues[0];
   const report = {

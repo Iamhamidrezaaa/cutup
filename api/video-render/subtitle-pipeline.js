@@ -7,6 +7,7 @@ import { applyWhisperLeadingOffsetIfNeeded } from '../whisper-leading-offset.js'
 import { layoutLines } from './text-layout.js';
 import { splitWordsByCharBudget } from './subtitle-width-fit.js';
 import { isRtlText } from './rtl-text.js';
+import { isDebugExportEnabled } from './export-debug.js';
 
 export const CAPTION_QUALITY_MODES = Object.freeze({
   ACCURATE: 'accurate',
@@ -550,6 +551,7 @@ function splitLongBlockOnWordBoundaries(block, maxDurationSec) {
 }
 
 function logCaptionSyncDebug(captions) {
+  if (!isDebugExportEnabled()) return;
   console.log(
     '[caption-sync-debug]',
     captions.map((c) => {
@@ -622,7 +624,7 @@ export function validateAndFixCaptionTimingForExport(captions) {
     }
   }
 
-  if (report.fixed.length || report.warnings.length) {
+  if (isDebugExportEnabled() && (report.fixed.length || report.warnings.length)) {
     console.log('[caption-sync-validation]', report);
   }
   return list;
@@ -882,7 +884,7 @@ function composeRhythmBlocks(rawSegments, opts = {}) {
     collapsed,
     { firstSpeechSec: opts.firstSpeechSec }
   );
-  if (whisperLeadingOffsetSec > 0) {
+  if (isDebugExportEnabled() && whisperLeadingOffsetSec > 0) {
     console.log('[phrase-whisper-leading-offset]', {
       offsetSec: whisperLeadingOffsetSec,
       firstStartAfter: segments[0]?.start
@@ -1033,27 +1035,31 @@ function composeRhythmBlocks(rawSegments, opts = {}) {
     segmentIndex: Number.isFinite(Number(b.segmentIndex)) ? Number(b.segmentIndex) : null,
     _words: b.words
   }));
-  logCaptionSyncDebug(out);
+  if (isDebugExportEnabled()) {
+    logCaptionSyncDebug(out);
+  }
   for (let i = 1; i < out.length; i++) {
     const prev = out[i - 1];
     const cur = out[i];
     if (!prev.emphasisWords?.length || !cur.emphasisWords?.length) continue;
     cur.emphasisWords = cur.emphasisWords.filter((w) => !prev.emphasisWords.includes(w)).slice(0, 2);
   }
-  console.log(
-    '[word-timing-debug]',
-    out.map((c) => ({
-      words: c.words,
-      sourceSegmentId: c.sourceSegmentId,
-      translatedSegmentId: c.translatedSegmentId,
-      firstWordStart: c.firstWordStart,
-      lastWordEnd: c.lastWordEnd,
-      adjustedStart: c.adjustedStart,
-      adjustedEnd: c.adjustedEnd,
-      speechRate: c.speechRate,
-      chunkWordCount: Array.isArray(c.words) ? c.words.length : 0
-    }))
-  );
+  if (isDebugExportEnabled()) {
+    console.log(
+      '[word-timing-debug]',
+      out.map((c) => ({
+        words: c.words,
+        sourceSegmentId: c.sourceSegmentId,
+        translatedSegmentId: c.translatedSegmentId,
+        firstWordStart: c.firstWordStart,
+        lastWordEnd: c.lastWordEnd,
+        adjustedStart: c.adjustedStart,
+        adjustedEnd: c.adjustedEnd,
+        speechRate: c.speechRate,
+        chunkWordCount: Array.isArray(c.words) ? c.words.length : 0
+      }))
+    );
+  }
   return out;
 }
 
@@ -1396,12 +1402,14 @@ export function buildCleanSrtExactSubtitles(rawSegments) {
     })
     .filter(Boolean);
 
-  console.log('[clean-srt-exact-burn]', {
-    cueCount: cues.length,
-    firstCue: cues[0]
-      ? { start: cues[0].start, end: cues[0].end, text: String(cues[0].text).slice(0, 80) }
-      : null
-  });
+  if (isDebugExportEnabled()) {
+    console.log('[clean-srt-exact-burn]', {
+      cueCount: cues.length,
+      firstCue: cues[0]
+        ? { start: cues[0].start, end: cues[0].end, text: String(cues[0].text).slice(0, 80) }
+        : null
+    });
+  }
   return cues;
 }
 
@@ -1440,12 +1448,14 @@ export function applyCleanSrtFirstCueLeadIn(cues, opts = {}) {
   }
 
   list[0] = { ...first, renderStart, renderEnd };
-  console.log('[clean-srt-first-lead-in]', {
-    sourceStart,
-    renderStart,
-    renderEnd,
-    nextStart
-  });
+  if (isDebugExportEnabled()) {
+    console.log('[clean-srt-first-lead-in]', {
+      sourceStart,
+      renderStart,
+      renderEnd,
+      nextStart
+    });
+  }
   return list;
 }
 
@@ -1522,7 +1532,7 @@ export function expandCueVisualChunks(cues, opts = {}) {
     }
   }
 
-  if (out.length > (Array.isArray(cues) ? cues.length : 0)) {
+  if (isDebugExportEnabled() && out.length > (Array.isArray(cues) ? cues.length : 0)) {
     console.log('[clean-srt-visual-chunks]', {
       inputCues: cues.length,
       outputCues: out.length,
@@ -1554,12 +1564,14 @@ export function buildPreviewAlignedSubtitles(rawSegments) {
       previewLines: null
     };
   });
-  console.log('[preview-burn-clean-srt]', {
-    cueCount: cues.length,
-    firstCue: cues[0]
-      ? { start: cues[0].start, end: cues[0].end, text: String(cues[0].text).slice(0, 80) }
-      : null
-  });
+  if (isDebugExportEnabled()) {
+    console.log('[preview-burn-clean-srt]', {
+      cueCount: cues.length,
+      firstCue: cues[0]
+        ? { start: cues[0].start, end: cues[0].end, text: String(cues[0].text).slice(0, 80) }
+        : null
+    });
+  }
   return cues;
 }
 
@@ -1599,7 +1611,7 @@ export function buildSourceAlignedSubtitles(rawSegments) {
   const merged = mergeRollingCaptionChains(cues);
   const coalesced = coalesceBurnPhrases(merged);
   const stabilized = stabilizeBurnCueTiming(coalesced);
-  if (raw.length !== stabilized.length) {
+  if (isDebugExportEnabled() && raw.length !== stabilized.length) {
     console.log('[burn-caption-collapse]', {
       inputCues: raw.length,
       afterRollingMerge: merged.length,

@@ -8,6 +8,9 @@ import { existsSync, readFileSync, writeFileSync, statSync } from 'fs';
 import { basename, resolve } from 'path';
 import { probeMediaTimeline, parseAssDialogueTimes } from './ffmpeg-timeline.js';
 import { trackFfmpegStart, trackFfmpegEnd } from './ffmpeg-job-tracker.js';
+import { isDebugExportEnabled } from './export-debug.js';
+
+export { isDebugExportEnabled } from './export-debug.js';
 
 const execFileAsync = promisify(execFile);
 const MAX_BUFFER = 12 * 1024 * 1024;
@@ -17,14 +20,7 @@ export function isHardSyncTestEnabled() {
 }
 
 export function isTimelineTraceEnabled() {
-  const v = String(process.env.RENDER_TIMELINE_TRACE || '1').toLowerCase();
-  return v !== '0' && v !== 'false';
-}
-
-/** When false, production export skips silencedetect FFmpeg passes. */
-export function isDebugExportEnabled() {
-  const v = String(process.env.DEBUG_EXPORT || '').trim().toLowerCase();
-  return v === '1' || v === 'true' || v === 'yes';
+  return isDebugExportEnabled();
 }
 
 function num(v, fallback = null) {
@@ -228,7 +224,7 @@ export function logSubtitleBurnTarget(ctx, payload) {
 }
 
 export function auditFfmpegInvocation(ctx, payload) {
-  if (!ctx) return payload;
+  if (!ctx || !isDebugExportEnabled()) return payload;
   const entry = {
     at: new Date().toISOString(),
     ...payload
@@ -253,6 +249,7 @@ export function auditFfmpegInvocation(ctx, payload) {
 }
 
 export function logBurnInputVerification(ctx, inputPath, framePts, speechAnchor) {
+  if (!isDebugExportEnabled()) return;
   traceRenderTimeline(ctx, 'burn_input_frame_probe', {
     burnInputFile: inputPath,
     framePtsAtSeek: framePts,
@@ -269,6 +266,7 @@ export function logBurnInputVerification(ctx, inputPath, framePts, speechAnchor)
  * @param {object} reportParts
  */
 export function emitFinalRenderSyncReport(ctx, reportParts) {
+  if (!isDebugExportEnabled()) return null;
   const report = {
     jobId: ctx?.jobId,
     traceId: ctx?.traceId,
@@ -305,6 +303,7 @@ export function diffTimelineStages(before, after) {
 }
 
 export async function recordFileStage(ctx, filePath, stageKey) {
+  if (!isDebugExportEnabled()) return null;
   const snap = await probeFileTimelineStage(filePath, stageKey);
   if (ctx) {
     ctx.files[stageKey] = snap;
