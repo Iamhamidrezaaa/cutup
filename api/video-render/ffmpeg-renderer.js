@@ -32,6 +32,7 @@ import {
   traceRenderTimeline,
   emitFinalRenderSyncReport
 } from './render-timeline-trace.js';
+import { logFfmpegStart } from './ffmpeg-spawn-log.js';
 
 const execFileAsync = promisify(execFile);
 const RENDER_TIMEOUT_MS = Number(process.env.VIDEO_RENDER_TIMEOUT_MS || 600000);
@@ -245,11 +246,18 @@ export async function burnSubtitles(opts) {
       : 'WARNING: burning non-normalized source'
   });
 
-  const framePtsAtSeek = await probeVideoFramePtsAtSeconds(inputPath, [0, 1, 2, 3, 4]);
-  const speechAnchor = await detectFirstSpeechSec(inputPath);
-  logBurnInputVerification(timelineTrace, inputPath, framePtsAtSeek, speechAnchor);
-
-  const inputProbe = await probeMediaTimeline(inputPath);
+  console.time('verification');
+  let framePtsAtSeek;
+  let speechAnchor;
+  let inputProbe;
+  try {
+    framePtsAtSeek = await probeVideoFramePtsAtSeconds(inputPath, [0, 1, 2, 3, 4]);
+    speechAnchor = await detectFirstSpeechSec(inputPath);
+    logBurnInputVerification(timelineTrace, inputPath, framePtsAtSeek, speechAnchor);
+    inputProbe = await probeMediaTimeline(inputPath);
+  } finally {
+    console.timeEnd('verification');
+  }
   const preferMinimalCorrection =
     trustPreviewTimings ||
     String(process.env.RENDER_BURN_USE_SOURCE_TIMINGS ?? '1').toLowerCase() !== '0';
@@ -465,6 +473,7 @@ export async function burnSubtitles(opts) {
   console.log('[ffmpeg-video-filter]\n' + vf);
 
   console.time('ffmpeg-burn');
+  logFfmpegStart('subtitle-burn-export', 'ffmpeg', args, resolve(assDir));
 
   return new Promise((resolve, reject) => {
     const proc = spawn('ffmpeg', args, { cwd: assDir, stdio: ['ignore', 'ignore', 'pipe'] });
@@ -647,6 +656,7 @@ export async function burnSubtitles(opts) {
       });
       console.log('[video-render] ffmpeg completed', { outputPath: basename(outputPath) });
       try {
+        console.time('verification');
         const outputProbe = await probeMediaTimeline(outputPath);
         const assDialogues = parseAssDialogueTimes(burnAssPath, 10);
         const syncReport = buildSubtitleBurnSyncReport({
@@ -703,6 +713,8 @@ export async function burnSubtitles(opts) {
         return;
       } catch (syncErr) {
         console.warn('[subtitle-burn-sync] verification skipped', syncErr?.message || syncErr);
+      } finally {
+        console.timeEnd('verification');
       }
       if (!settled) {
         settled = true;

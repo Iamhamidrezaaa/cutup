@@ -6,6 +6,7 @@ import { mkdtemp, writeFile, readFile, rm } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { checkFfmpegAvailable } from './video-render/ffmpeg-renderer.js';
+import { logFfmpegStart } from './video-render/ffmpeg-spawn-log.js';
 
 const VIDEO_EXT = new Set(['mp4', 'webm', 'mkv', 'mov', 'm4v', 'avi']);
 
@@ -40,6 +41,7 @@ function runFfmpegExtractAudio(inputPath, outputPath) {
       '4',
       outputPath
     ];
+    logFfmpegStart('upload-audio-extract', 'ffmpeg', args);
     const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let err = '';
     proc.stderr.on('data', (d) => {

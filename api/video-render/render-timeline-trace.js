@@ -7,6 +7,7 @@ import { promisify } from 'util';
 import { existsSync, readFileSync, writeFileSync, statSync } from 'fs';
 import { basename, resolve } from 'path';
 import { probeMediaTimeline, parseAssDialogueTimes } from './ffmpeg-timeline.js';
+import { logFfmpegStart } from './ffmpeg-spawn-log.js';
 
 const execFileAsync = promisify(execFile);
 const MAX_BUFFER = 12 * 1024 * 1024;
@@ -146,21 +147,22 @@ export async function probeVideoFramePtsAtSeconds(inputPath, seconds = [0, 1, 2,
  * First audible speech via silencedetect (waveform anchor).
  */
 export async function detectFirstSpeechSec(inputPath) {
+  const speechArgs = [
+    '-hide_banner',
+    '-i',
+    inputPath,
+    '-af',
+    'silencedetect=noise=-35dB:d=0.2',
+    '-f',
+    'null',
+    '-'
+  ];
   try {
-    const { stderr } = await execFileAsync(
-      'ffmpeg',
-      [
-        '-hide_banner',
-        '-i',
-        inputPath,
-        '-af',
-        'silencedetect=noise=-35dB:d=0.2',
-        '-f',
-        'null',
-        '-'
-      ],
-      { timeout: 120000, maxBuffer: MAX_BUFFER }
-    );
+    logFfmpegStart('silencedetect-first-speech', 'ffmpeg', speechArgs);
+    const { stderr } = await execFileAsync('ffmpeg', speechArgs, {
+      timeout: 120000,
+      maxBuffer: MAX_BUFFER
+    });
     const text = String(stderr || '');
     const silenceEnds = [...text.matchAll(/silence_end:\s*([\d.]+)/g)].map((m) => Number(m[1]));
     const silenceStarts = [...text.matchAll(/silence_start:\s*([\d.]+)/g)].map((m) => Number(m[1]));

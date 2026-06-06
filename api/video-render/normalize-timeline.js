@@ -5,6 +5,7 @@ import { spawn } from 'child_process';
 import { existsSync } from 'fs';
 import { probeMediaTimeline } from './ffmpeg-timeline.js';
 import { probeVideoFramePtsAtSeconds } from './render-timeline-trace.js';
+import { logFfmpegStart } from './ffmpeg-spawn-log.js';
 
 const NORMALIZE_TIMEOUT_MS = Number(process.env.RENDER_NORMALIZE_TIMEOUT_MS || 600000);
 const CFR_FPS = Math.max(15, Math.min(60, Number(process.env.RENDER_NORMALIZE_CFR_FPS || 30)));
@@ -227,6 +228,7 @@ function parseFfmpegProgressLines(text) {
 }
 
 function runFfmpegNormalize(args, { signal, onProgress, timeoutMs }) {
+  logFfmpegStart('normalize-cfr', 'ffmpeg', args);
   return new Promise((resolve, reject) => {
     const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
     let settled = false;

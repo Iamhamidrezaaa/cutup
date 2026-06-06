@@ -25,6 +25,7 @@ import {
   getQueueStats,
   isJobReady
 } from './video-render/render-queue.js';
+import { schedulePostDownloadCleanup } from './video-render/temp-cleanup.js';
 import { listStylePresets } from './video-render/style-presets.js';
 import { decodeSubtitleTextEntities } from './subtitle-text-entities.js';
 import { logSubtitleTextForensicStage } from './video-render/subtitle-text-forensics.js';
@@ -322,7 +323,7 @@ async function handleStatus(req, res, jobId, email) {
   return res.status(200).json({ success: true, ...publicStatus(job) });
 }
 
-function streamJobMp4(req, res, jobId, job, disposition) {
+function streamJobMp4(req, res, jobId, job, disposition, { onComplete } = {}) {
   const stat = statSync(job.outputPath);
   setCORSHeaders(res);
   res.setHeader('Content-Type', 'video/mp4');
@@ -333,12 +334,27 @@ function streamJobMp4(req, res, jobId, job, disposition) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Export-Job-Id', jobId);
 
+  job.activeStreams = Number(job.activeStreams || 0) + 1;
+  let streamFinished = false;
+
+  const releaseStream = () => {
+    if (streamFinished) return;
+    streamFinished = true;
+    job.activeStreams = Math.max(0, Number(job.activeStreams || 0) - 1);
+  };
+
   const stream = createReadStream(job.outputPath);
   stream.on('error', (err) => {
+    releaseStream();
     console.error('[export-video] stream error', jobId, err?.message);
     if (!res.headersSent) res.status(500).json({ error: 'stream_failed' });
     else res.end();
   });
+  stream.on('end', () => {
+    releaseStream();
+    onComplete?.();
+  });
+  stream.on('close', releaseStream);
   stream.pipe(res);
 }
 
@@ -358,7 +374,13 @@ async function handleDownload(req, res, jobId, email) {
   }
 
   console.log('[export-video] download', { jobId, bytes: job.fileSizeBytes, disposition: 'attachment' });
-  streamJobMp4(req, res, jobId, job, 'attachment');
+  job.stageKey = 'completed';
+  streamJobMp4(req, res, jobId, job, 'attachment', {
+    onComplete: () => {
+      console.log('[export-video] download complete', { jobId });
+      schedulePostDownloadCleanup(job);
+    }
+  });
 }
 
 async function handlePreview(req, res, jobId, email) {
@@ -376,7 +398,15 @@ async function handlePreview(req, res, jobId, email) {
     });
   }
 
-  streamJobMp4(req, res, jobId, job, 'inline');
+  console.time('preview-generation');
+  let previewTimed = false;
+  const endPreviewTimer = () => {
+    if (previewTimed) return;
+    previewTimed = true;
+    console.timeEnd('preview-generation');
+  };
+  res.on('close', endPreviewTimer);
+  streamJobMp4(req, res, jobId, job, 'inline', { onComplete: endPreviewTimer });
 }
 
 async function handleGpuArtifact(req, res) {
