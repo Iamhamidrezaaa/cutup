@@ -82,17 +82,21 @@
     var list = document.getElementById('cutupNotifDropdownList');
     if (!list) return;
     if (!state.dropdownItems.length) {
-      list.innerHTML = '<div class="cutup-notif-empty">No notifications yet.</div>';
+      list.innerHTML = '<div class="cutup-notif-empty">You&apos;re all caught up.</div>';
       return;
     }
     list.innerHTML = state.dropdownItems
       .map(function (item) {
         var unread = !item.is_read ? ' is-unread' : '';
+        var href = notificationHref(item);
         return (
-          '<button type="button" class="cutup-notif-item' + unread + '" data-notif-id="' + esc(item.id) + '">' +
+          '<button type="button" class="cutup-notif-item' + unread + '" data-notif-id="' + esc(item.id) + '" data-notif-href="' + esc(href) + '">' +
             '<span class="cutup-notif-item__icon" aria-hidden="true">' + esc(item.icon || '⚙️') + '</span>' +
-            '<span>' +
-              '<p class="cutup-notif-item__title">' + esc(item.title) + '</p>' +
+            '<span class="cutup-notif-item__body">' +
+              '<span class="cutup-notif-item__row">' +
+                '<p class="cutup-notif-item__title">' + esc(item.title) + '</p>' +
+                (!item.is_read ? '<span class="cutup-notif-item__dot" aria-label="Unread"></span>' : '') +
+              '</span>' +
               '<p class="cutup-notif-item__msg">' + esc(item.message) + '</p>' +
               '<span class="cutup-notif-item__time">' + esc(relTime(item.created_at)) + '</span>' +
             '</span>' +
@@ -152,21 +156,24 @@
   }
 
   function mountBell() {
-    var actions = document.querySelector('.header-actions');
-    if (!actions || document.getElementById('cutupNotifBell')) return;
+    var profile = document.getElementById('userProfileHeader');
+    if (!profile || document.getElementById('cutupNotifBell')) return;
 
     var wrap = document.createElement('div');
     wrap.className = 'cutup-notif-bell-wrap';
     wrap.innerHTML =
-      '<button type="button" class="cutup-notif-bell" id="cutupNotifBell" aria-label="Notifications" aria-expanded="false" aria-haspopup="true">🔔</button>' +
+      '<button type="button" class="cutup-notif-bell" id="cutupNotifBell" aria-label="Notifications" aria-expanded="false" aria-haspopup="true">' +
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13.73 21a2 2 0 01-3.46 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>' +
+      '</button>' +
       '<span class="cutup-notif-badge" id="cutupNotifBadge" hidden>0</span>' +
       '<div class="cutup-notif-dropdown" id="cutupNotifDropdown" hidden role="menu">' +
-        '<div class="cutup-notif-dropdown__head"><strong>Notifications</strong></div>' +
+        '<div class="cutup-notif-dropdown__head"><strong>Notifications</strong><a href="#notifications" id="cutupNotifViewAll" class="cutup-notif-dropdown__link">View all</a></div>' +
         '<div class="cutup-notif-dropdown__list" id="cutupNotifDropdownList"></div>' +
-        '<div class="cutup-notif-dropdown__foot"><a href="#notifications" id="cutupNotifViewAll">View All Notifications</a></div>' +
       '</div>';
 
-    actions.insertBefore(wrap, actions.firstChild);
+    var logout = document.getElementById('logoutBtnHeader');
+    if (logout) profile.insertBefore(wrap, logout);
+    else profile.appendChild(wrap);
 
     document.getElementById('cutupNotifBell')?.addEventListener('click', function (e) {
       e.stopPropagation();

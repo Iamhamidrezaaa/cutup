@@ -1,43 +1,53 @@
+/* Notification bell — aligned with profile, Linear-style dropdown */
+
+.user-profile-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .cutup-notif-bell-wrap {
   position: relative;
-  margin-right: 8px;
+  flex-shrink: 0;
 }
 
 .cutup-notif-bell {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border: 1px solid #e5e7eb;
-  border-radius: 12px;
+  border-radius: 10px;
   background: #fff;
+  color: #475569;
   cursor: pointer;
-  font-size: 18px;
   line-height: 1;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
 }
 
 .cutup-notif-bell:hover,
 .cutup-notif-bell[aria-expanded="true"] {
-  border-color: #635bff;
-  box-shadow: 0 0 0 3px rgba(99, 91, 255, 0.12);
+  border-color: #c7d2fe;
+  background: #fafaff;
+  color: #4338ca;
 }
 
 .cutup-notif-badge {
   position: absolute;
-  top: -4px;
-  right: -4px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
+  top: -5px;
+  right: -5px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
   border-radius: 999px;
   background: #635bff;
   color: #fff;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  line-height: 18px;
+  line-height: 17px;
   text-align: center;
+  border: 2px solid #fff;
 }
 
 .cutup-notif-badge[hidden] {
@@ -46,13 +56,14 @@
 
 .cutup-notif-dropdown {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 10px);
   right: 0;
-  width: min(380px, calc(100vw - 24px));
+  width: 360px;
+  max-width: calc(100vw - 24px);
   background: #fff;
   border: 1px solid #e5e7eb;
-  border-radius: 16px;
-  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.12);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.04);
   z-index: 1200;
   overflow: hidden;
 }
@@ -65,33 +76,50 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 16px;
+  padding: 12px 14px;
   border-bottom: 1px solid #f1f5f9;
 }
 
 .cutup-notif-dropdown__head strong {
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 600;
   color: #0f172a;
+  letter-spacing: -0.01em;
+}
+
+.cutup-notif-dropdown__link {
+  font-size: 12px;
+  font-weight: 600;
+  color: #635bff;
+  text-decoration: none;
+}
+
+.cutup-notif-dropdown__link:hover {
+  text-decoration: underline;
 }
 
 .cutup-notif-dropdown__list {
-  max-height: 360px;
-  overflow: auto;
+  max-height: 380px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .cutup-notif-item {
   display: grid;
-  grid-template-columns: 36px 1fr;
-  gap: 12px;
-  padding: 14px 16px;
+  grid-template-columns: 32px 1fr;
+  gap: 10px;
+  padding: 12px 14px;
+  border: none;
   border-bottom: 1px solid #f8fafc;
   cursor: pointer;
   text-align: left;
   width: 100%;
-  border-left: none;
-  border-right: none;
-  border-top: none;
   background: #fff;
+  font-family: inherit;
+}
+
+.cutup-notif-item:last-child {
+  border-bottom: none;
 }
 
 .cutup-notif-item:hover {
@@ -99,66 +127,80 @@
 }
 
 .cutup-notif-item.is-unread {
+  background: #fafaff;
+}
+
+.cutup-notif-item.is-unread:hover {
   background: #f5f3ff;
 }
 
 .cutup-notif-item__icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   background: #f1f5f9;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  font-size: 16px;
+}
+
+.cutup-notif-item.is-unread .cutup-notif-item__icon {
+  background: #eef2ff;
+}
+
+.cutup-notif-item__body {
+  min-width: 0;
+}
+
+.cutup-notif-item__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
 }
 
 .cutup-notif-item__title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: #0f172a;
-  margin: 0 0 4px;
+  margin: 0;
+  line-height: 1.3;
+}
+
+.cutup-notif-item__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #635bff;
+  flex-shrink: 0;
 }
 
 .cutup-notif-item__msg {
-  font-size: 13px;
+  font-size: 12px;
   color: #64748b;
-  margin: 0 0 6px;
+  margin: 0 0 4px;
   line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .cutup-notif-item__time {
-  font-size: 12px;
+  font-size: 11px;
   color: #94a3b8;
 }
 
-.cutup-notif-dropdown__foot {
-  padding: 12px 16px;
-  border-top: 1px solid #f1f5f9;
-}
-
-.cutup-notif-dropdown__foot a,
-.cutup-notif-dropdown__foot button {
-  width: 100%;
-  text-align: center;
-  font-size: 13px;
-  font-weight: 600;
-  color: #635bff;
-  background: none;
-  border: none;
-  cursor: pointer;
-  text-decoration: none;
-  display: block;
-  padding: 8px;
-}
-
 .cutup-notif-empty {
-  padding: 28px 16px;
+  padding: 32px 16px;
   text-align: center;
   color: #64748b;
-  font-size: 14px;
+  font-size: 13px;
 }
 
+/* Full notifications page */
 .cutup-notif-page__toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -169,12 +211,12 @@
 
 .cutup-notif-page__filters {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 
 .cutup-notif-filter-btn {
-  padding: 8px 14px;
-  border-radius: 999px;
+  padding: 7px 12px;
+  border-radius: 8px;
   border: 1px solid #e5e7eb;
   background: #fff;
   font-size: 13px;
@@ -191,19 +233,18 @@
 .cutup-notif-page__list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .cutup-notif-page-card {
   display: grid;
-  grid-template-columns: 44px 1fr auto;
-  gap: 14px;
+  grid-template-columns: 40px 1fr auto;
+  gap: 12px;
   align-items: start;
-  padding: 16px 18px;
+  padding: 14px 16px;
   border: 1px solid #e5e7eb;
-  border-radius: 16px;
+  border-radius: 12px;
   background: #fff;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
 .cutup-notif-page-card.is-unread {
@@ -212,41 +253,41 @@
 }
 
 .cutup-notif-page-card__icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
   background: #f1f5f9;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
+  font-size: 18px;
 }
 
 .cutup-notif-page-card__title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: #0f172a;
-  margin: 0 0 6px;
+  margin: 0 0 4px;
 }
 
 .cutup-notif-page-card__msg {
-  font-size: 14px;
+  font-size: 13px;
   color: #64748b;
-  margin: 0 0 8px;
-  line-height: 1.5;
+  margin: 0 0 6px;
+  line-height: 1.45;
 }
 
 .cutup-notif-page-card__time {
-  font-size: 12px;
+  font-size: 11px;
   color: #94a3b8;
 }
 
 .cutup-notif-page-card__action {
-  padding: 8px 12px;
-  border-radius: 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
   border: 1px solid #e5e7eb;
   background: #fff;
-  font-size: 12px;
+  font-size: 11px;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -256,4 +297,24 @@
   gap: 12px;
   align-items: center;
   margin-top: 20px;
+}
+
+@media (max-width: 640px) {
+  .cutup-notif-dropdown {
+    position: fixed;
+    top: 56px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-width: none;
+  }
+
+  .user-profile-header {
+    gap: 8px;
+  }
+
+  .cutup-notif-bell {
+    width: 34px;
+    height: 34px;
+  }
 }

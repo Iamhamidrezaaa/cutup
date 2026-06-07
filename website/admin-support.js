@@ -75,18 +75,25 @@
     var s = document.createElement('style');
     s.id = 'cutup-admin-support-css';
     s.textContent =
-      '.admin-support-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin:16px 0 20px}' +
-      '.admin-support-kpi{padding:14px 16px;border:1px solid #e5e7eb;border-radius:12px;background:#fff}' +
-      '.admin-support-kpi span{display:block;font-size:11px;color:#64748b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em}' +
-      '.admin-support-kpi strong{font-size:22px;color:#0f172a}' +
-      '.admin-support-filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center}' +
-      '.admin-support-filters select,.admin-support-filters input{padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px}' +
-      '.admin-support-table-wrap{overflow:auto;border:1px solid #e5e7eb;border-radius:12px}' +
-      '.admin-support-table{width:100%;min-width:720px;border-collapse:collapse;font-size:13px}' +
-      '.admin-support-table th,.admin-support-table td{padding:10px 12px;border-bottom:1px solid #f1f5f9;text-align:left}' +
-      '.admin-support-table th{font-size:11px;text-transform:uppercase;color:#64748b;background:#f8fafc}' +
-      '.admin-support-table tbody tr{cursor:pointer}' +
-      '.admin-support-table tbody tr:hover{background:#f8fafc}' +
+      '.admin-support>header{margin-bottom:16px}.admin-support>header h2{margin:0 0 4px;font-size:1.25rem;letter-spacing:-.02em}.admin-support>header .admin-muted{margin:0;font-size:13px}' +
+      '.admin-support-kpis{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}' +
+      '.admin-support-kpi{display:inline-flex;align-items:center;gap:8px;padding:7px 12px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;font-size:12px;color:#64748b}' +
+      '.admin-support-kpi strong{font-size:14px;font-weight:700;color:#0f172a}' +
+      '.admin-support-filters{display:grid;grid-template-columns:1fr repeat(4,minmax(0,140px)) auto;gap:8px;margin-bottom:14px;align-items:center}' +
+      '.admin-support-filters input{grid-column:1/-1}' +
+      '.admin-support-filters select,.admin-support-filters input{padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;background:#fff}' +
+      '.admin-support-issues{display:flex;flex-direction:column;gap:6px}' +
+      '.admin-support-issue{display:grid;grid-template-columns:1fr auto;gap:8px 12px;padding:12px 14px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;cursor:pointer;transition:border-color .15s,background .15s;text-align:left;font-family:inherit;width:100%;box-sizing:border-box}' +
+      '.admin-support-issue:hover{border-color:#c7d2fe;background:#fafaff}' +
+      '.admin-support-issue__main{min-width:0}' +
+      '.admin-support-issue__top{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:4px}' +
+      '.admin-support-issue__id{font-size:11px;font-weight:600;color:#64748b;font-variant-numeric:tabular-nums}' +
+      '.admin-support-issue__subject{margin:0 0 4px;font-size:14px;font-weight:600;color:#0f172a;line-height:1.35;letter-spacing:-.01em}' +
+      '.admin-support-issue__meta{font-size:11px;color:#94a3b8;display:flex;flex-wrap:wrap;gap:6px}' +
+      '.admin-support-issue__side{display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex-shrink:0}' +
+      '.admin-support-quick{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end}' +
+      '.admin-support-quick button{padding:4px 8px;border:1px solid #e5e7eb;border-radius:6px;background:#fff;font-size:10px;font-weight:600;color:#475569;cursor:pointer;white-space:nowrap}' +
+      '.admin-support-quick button:hover{border-color:#c7d2fe;background:#f5f3ff;color:#4338ca}' +
       '.admin-support-badge{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:10px;font-weight:600;text-transform:uppercase}' +
       '.admin-support-badge--open{background:#dbeafe;color:#1d4ed8}' +
       '.admin-support-badge--in_progress{background:#e0e7ff;color:#4338ca}' +
@@ -98,10 +105,23 @@
       '.admin-support-badge--high{background:#ffedd5;color:#c2410c}' +
       '.admin-support-badge--urgent{background:#fee2e2;color:#b91c1c}' +
       '.admin-support-detail{display:grid;grid-template-columns:1fr 300px;gap:20px;align-items:start}' +
-      '.admin-support-thread{display:flex;flex-direction:column;gap:10px;padding:16px;border:1px solid #e5e7eb;border-radius:12px;background:#f8fafc;max-height:420px;overflow-y:auto}' +
-      '.admin-support-msg{max-width:88%;padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.45;white-space:pre-wrap}' +
-      '.admin-support-msg--user{align-self:flex-end;background:#6366f1;color:#fff}' +
-      '.admin-support-msg--admin{align-self:flex-start;background:#fff;border:1px solid #e2e8f0}' +
+      '.admin-support-thread{display:flex;flex-direction:column;gap:20px;padding:24px 20px;border:1px solid #e5e7eb;border-radius:12px;background:#f8fafc;max-height:480px;overflow-y:auto;-webkit-overflow-scrolling:touch}' +
+      '.admin-support-msg{display:flex;gap:10px;max-width:min(82%,520px);align-items:flex-end}' +
+      '.admin-support-msg--user{align-self:flex-end;flex-direction:row-reverse}' +
+      '.admin-support-msg--admin{align-self:flex-start;flex-direction:row}' +
+      '.admin-support-msg__avatar{width:36px;height:36px;border-radius:50%;flex-shrink:0;object-fit:cover;border:1px solid #e2e8f0;background:#fff}' +
+      '.admin-support-msg--user .admin-support-msg__avatar{border-color:rgba(99,91,255,.25)}' +
+      '.admin-support-msg__body{display:flex;flex-direction:column;gap:6px;min-width:0;flex:1}' +
+      '.admin-support-msg__head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}' +
+      '.admin-support-msg--user .admin-support-msg__head{justify-content:flex-end}' +
+      '.admin-support-msg__name{font-size:13px;font-weight:600;color:#0f172a}' +
+      '.admin-support-msg__time{font-size:11px;color:#94a3b8;white-space:nowrap}' +
+      '.admin-support-msg__bubble{padding:12px 16px;border-radius:18px;font-size:15px;line-height:1.55;white-space:pre-wrap;word-break:break-word;box-shadow:0 1px 2px rgba(15,23,42,.04)}' +
+      '.admin-support-msg--user .admin-support-msg__bubble{background:#635bff;color:#fff;border-bottom-right-radius:6px}' +
+      '.admin-support-msg--admin .admin-support-msg__bubble{background:#f4f4f5;color:#0f172a;border:1px solid #e4e4e7;border-bottom-left-radius:6px}' +
+      '.admin-support-system{align-self:center;display:flex;flex-direction:column;align-items:center;gap:4px;width:100%;padding:4px 0}' +
+      '.admin-support-system__pill{display:inline-block;padding:6px 14px;border-radius:999px;background:#fff;border:1px solid #e2e8f0;font-size:12px;font-weight:500;color:#64748b;text-align:center;max-width:92%}' +
+      '.admin-support-system__time{font-size:11px;color:#94a3b8}' +
       '.admin-support-side{display:flex;flex-direction:column;gap:14px}' +
       '.admin-support-panel{padding:14px;border:1px solid #e5e7eb;border-radius:12px;background:#fff}' +
       '.admin-support-panel h4{margin:0 0 10px;font-size:13px}' +
@@ -111,23 +131,20 @@
       '.admin-support-note{padding:8px 0;border-bottom:1px solid #f1f5f9}' +
       '.admin-support-timeline{font-size:12px;color:#64748b}' +
       '.admin-support-timeline li{margin-bottom:6px}' +
-      '@media(max-width:900px){.admin-support-detail{grid-template-columns:1fr}}';
+      '.admin-support-empty{padding:32px;text-align:center;color:#64748b;font-size:13px;border:1px dashed #e5e7eb;border-radius:10px}' +
+      '@media(max-width:900px){.admin-support-detail{grid-template-columns:1fr}.admin-support-filters{grid-template-columns:1fr 1fr}.admin-support-filters input{grid-column:1/-1}.admin-support-issue{grid-template-columns:1fr}.admin-support-issue__side{align-items:flex-start}}';
     document.head.appendChild(s);
   }
 
   function renderAnalytics() {
     var a = state.analytics || {};
-    var dept = (a.departmentDistribution || []).map(function (d) {
-      return esc(deptLabel(d.department)) + ': ' + esc(d.count);
-    }).join(' · ') || '—';
     return (
       '<div class="admin-support-kpis">' +
         '<article class="admin-support-kpi"><span>Open</span><strong>' + esc(a.openTickets || 0) + '</strong></article>' +
-        '<article class="admin-support-kpi"><span>Avg first response</span><strong>' + esc(fmtDuration(a.avgFirstResponseMs)) + '</strong></article>' +
-        '<article class="admin-support-kpi"><span>Avg resolution</span><strong>' + esc(fmtDuration(a.avgResolutionMs)) + '</strong></article>' +
-        '<article class="admin-support-kpi"><span>Last 24h</span><strong>' + esc(a.tickets24h || 0) + '</strong></article>' +
-        '<article class="admin-support-kpi"><span>Last 7 days</span><strong>' + esc(a.tickets7d || 0) + '</strong></article>' +
-        '<article class="admin-support-kpi" style="grid-column:span 2"><span>Departments</span><strong style="font-size:14px;font-weight:500">' + dept + '</strong></article>' +
+        '<article class="admin-support-kpi"><span>First response</span><strong>' + esc(fmtDuration(a.avgFirstResponseMs)) + '</strong></article>' +
+        '<article class="admin-support-kpi"><span>Resolution</span><strong>' + esc(fmtDuration(a.avgResolutionMs)) + '</strong></article>' +
+        '<article class="admin-support-kpi"><span>24h</span><strong>' + esc(a.tickets24h || 0) + '</strong></article>' +
+        '<article class="admin-support-kpi"><span>7d</span><strong>' + esc(a.tickets7d || 0) + '</strong></article>' +
       '</div>'
     );
   }
@@ -157,47 +174,169 @@
     );
   }
 
-  function renderTable() {
-    if (!state.tickets.length) return '<p class="admin-muted">No tickets match your filters.</p>';
+  function quickActionsForTicket(t) {
+    var actions = [];
+    var s = t.status;
+    if (s === 'OPEN') actions.push({ status: 'IN_PROGRESS', label: 'Start' });
+    if (s === 'IN_PROGRESS') actions.push({ status: 'WAITING_FOR_USER', label: 'Waiting' });
+    if (s === 'WAITING_FOR_USER') actions.push({ status: 'IN_PROGRESS', label: 'Resume' });
+    if (['OPEN', 'IN_PROGRESS', 'WAITING_FOR_USER'].includes(s)) {
+      actions.push({ status: 'RESOLVED', label: 'Resolve' });
+    }
+    if (s === 'RESOLVED') actions.push({ status: 'CLOSED', label: 'Close' });
+    return actions;
+  }
+
+  function renderQuickActions(t) {
+    var actions = quickActionsForTicket(t);
+    if (!actions.length) return '';
     return (
-      '<div class="admin-support-table-wrap"><table class="admin-support-table">' +
-        '<thead><tr><th>Ticket</th><th>User</th><th>Dept</th><th>Priority</th><th>Status</th><th>Assigned</th><th>Last activity</th><th>Created</th></tr></thead><tbody>' +
-        state.tickets.map(function (t) {
-          return (
-            '<tr data-ticket="' + esc(t.ticket_number) + '">' +
-              '<td><strong>' + esc(t.ticket_number) + '</strong></td>' +
-              '<td>' + esc(t.user_email || '—') + '</td>' +
-              '<td>' + esc(deptLabel(t.department)) + '</td>' +
-              '<td>' + badge(String(t.priority || 'normal').toLowerCase(), t.priority) + '</td>' +
-              '<td>' + badge(String(t.status || '').toLowerCase(), t.status.replace(/_/g, ' ')) + '</td>' +
-              '<td>' + esc(t.assigned_admin_email || '—') + '</td>' +
-              '<td>' + esc(fmtDate(t.last_activity_at || t.updated_at)) + '</td>' +
-              '<td>' + esc(fmtDate(t.created_at)) + '</td>' +
-            '</tr>'
-          );
-        }).join('') +
-        '</tbody></table></div>'
+      '<div class="admin-support-quick">' +
+        actions
+          .map(function (a) {
+            return (
+              '<button type="button" data-quick-status="' + esc(a.status) + '" data-ticket="' + esc(t.ticket_number) + '">' +
+                esc(a.label) +
+              '</button>'
+            );
+          })
+          .join('') +
+      '</div>'
     );
+  }
+
+  function renderIssueRow(t) {
+    return (
+      '<article class="admin-support-issue" data-ticket="' + esc(t.ticket_number) + '" tabindex="0" role="button">' +
+        '<div class="admin-support-issue__main">' +
+          '<div class="admin-support-issue__top">' +
+            '<span class="admin-support-issue__id">' + esc(t.ticket_number) + '</span>' +
+            badge(String(t.priority || 'normal').toLowerCase(), t.priority) +
+          '</div>' +
+          '<h3 class="admin-support-issue__subject">' + esc(t.subject || 'Support request') + '</h3>' +
+          '<div class="admin-support-issue__meta">' +
+            '<span>' + esc(t.user_email || '—') + '</span>' +
+            '<span>·</span>' +
+            '<span>' + esc(deptLabel(t.department)) + '</span>' +
+            '<span>·</span>' +
+            '<span>' + esc(t.assigned_admin_email || 'Unassigned') + '</span>' +
+            '<span>·</span>' +
+            '<span>' + esc(fmtDate(t.last_activity_at || t.updated_at)) + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="admin-support-issue__side">' +
+          badge(String(t.status || '').toLowerCase(), t.status.replace(/_/g, ' ')) +
+          renderQuickActions(t) +
+        '</div>' +
+      '</article>'
+    );
+  }
+
+  function renderIssueList() {
+    if (!state.tickets.length) return '<div class="admin-support-empty">No tickets match your filters.</div>';
+    return '<div class="admin-support-issues">' + state.tickets.map(renderIssueRow).join('') + '</div>';
   }
 
   function renderListView() {
     return (
       '<div class="admin-support">' +
-        '<header><h2>Support Center</h2><p class="admin-muted">Manage customer tickets, assignments, and responses.</p></header>' +
+        '<header><h2>Support Center</h2><p class="admin-muted">Customer tickets — reply, assign, and resolve.</p></header>' +
         renderAnalytics() +
         renderFilters() +
-        renderTable() +
-        '<p class="admin-muted" style="margin-top:10px">Page ' + state.page + ' of ' + state.totalPages + '</p>' +
+        renderIssueList() +
+        '<p class="admin-muted" style="margin-top:12px;font-size:12px">Page ' + state.page + ' of ' + state.totalPages + '</p>' +
       '</div>'
     );
   }
 
-  function renderMessages(messages) {
-    return (messages || []).map(function (m) {
-      var cls = m.sender_type === 'user' ? 'admin-support-msg--user' : 'admin-support-msg--admin';
-      var who = m.sender_type === 'user' ? (m.sender_name || 'User') : (m.sender_email || 'Admin');
-      return '<div class="admin-support-msg ' + cls + '"><div>' + esc(m.message) + '</div><small style="opacity:.75">' + esc(who) + ' · ' + esc(fmtDate(m.created_at)) + '</small></div>';
-    }).join('');
+  var INLINE_EVENT_TYPES = { created: 1, status_change: 1, assigned: 1 };
+
+  function avatarUrl(name, isUser) {
+    var label = String(name || (isUser ? 'User' : 'Support')).trim() || 'User';
+    var bg = isUser ? '635BFF' : 'E2E8F0';
+    var color = isUser ? 'fff' : '475569';
+    return (
+      'https://ui-avatars.com/api/?name=' +
+      encodeURIComponent(label) +
+      '&size=80&background=' +
+      bg +
+      '&color=' +
+      color +
+      '&bold=true'
+    );
+  }
+
+  function formatStatusLabel(status) {
+    return String(status || '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, function (c) {
+      return c.toUpperCase();
+    });
+  }
+
+  function eventLabel(event) {
+    var p = event.payload || {};
+    if (event.event_type === 'created') return 'Ticket opened';
+    if (event.event_type === 'status_change') {
+      return p.status ? 'Status changed to ' + formatStatusLabel(p.status) : 'Status updated';
+    }
+    if (event.event_type === 'assigned') {
+      if (p.assigneeEmail) return 'Assigned to ' + p.assigneeEmail;
+      if (p.assigneeAdminId == null) return 'Ticket unassigned';
+      return 'Ticket assigned to support';
+    }
+    return String(event.event_type || 'update').replace(/_/g, ' ');
+  }
+
+  function buildConversationTimeline(messages, events) {
+    var items = [];
+    (messages || []).forEach(function (m) {
+      items.push({ kind: 'message', at: m.created_at, data: m });
+    });
+    (events || []).forEach(function (e) {
+      if (INLINE_EVENT_TYPES[e.event_type]) {
+        items.push({ kind: 'event', at: e.created_at, data: e });
+      }
+    });
+    items.sort(function (a, b) {
+      return new Date(a.at).getTime() - new Date(b.at).getTime();
+    });
+    return items;
+  }
+
+  function renderSystemEvent(event) {
+    return (
+      '<div class="admin-support-system" role="status">' +
+        '<span class="admin-support-system__pill">' + esc(eventLabel(event)) + '</span>' +
+        '<time class="admin-support-system__time" datetime="' + esc(event.created_at) + '">' + esc(fmtDate(event.created_at)) + '</time>' +
+      '</div>'
+    );
+  }
+
+  function renderMessageBubble(m) {
+    var isUser = m.sender_type === 'user';
+    var who = isUser ? (m.sender_name || m.sender_email || 'Customer') : (m.sender_email || 'Support');
+    var side = isUser ? 'admin-support-msg--user' : 'admin-support-msg--admin';
+    return (
+      '<article class="admin-support-msg ' + side + '">' +
+        '<img class="admin-support-msg__avatar" src="' + esc(avatarUrl(who, isUser)) + '" alt="" width="36" height="36" loading="lazy" decoding="async">' +
+        '<div class="admin-support-msg__body">' +
+          '<header class="admin-support-msg__head">' +
+            '<span class="admin-support-msg__name">' + esc(who) + '</span>' +
+            '<time class="admin-support-msg__time" datetime="' + esc(m.created_at) + '">' + esc(fmtDate(m.created_at)) + '</time>' +
+          '</header>' +
+          '<div class="admin-support-msg__bubble">' + esc(m.message) + '</div>' +
+        '</div>' +
+      '</article>'
+    );
+  }
+
+  function renderConversation(messages, events) {
+    var items = buildConversationTimeline(messages, events);
+    if (!items.length) return '<p class="admin-muted">No messages yet.</p>';
+    return items
+      .map(function (item) {
+        return item.kind === 'event' ? renderSystemEvent(item.data) : renderMessageBubble(item.data);
+      })
+      .join('');
   }
 
   function renderNotes(notes) {
@@ -223,7 +362,7 @@
         '<p class="admin-muted">' + esc(t.ticket_number) + ' · ' + esc(t.user_email) + ' · ' + esc(deptLabel(t.department)) + '</p>' +
         '<div class="admin-support-detail">' +
           '<div>' +
-            '<div class="admin-support-thread">' + renderMessages(data.messages) + '</div>' +
+            '<div class="admin-support-thread" id="adminSupportThread">' + renderConversation(data.messages, data.events) + '</div>' +
             '<div style="margin-top:12px">' +
               '<textarea id="adminSupportReply" placeholder="Reply to customer…" rows="3"></textarea>' +
               '<button type="button" class="btn" id="adminSupportSendReply" style="margin-top:8px">Send Reply</button>' +
@@ -300,13 +439,40 @@
       state.page = 1;
       void mountList(root);
     });
-    root.querySelectorAll('[data-ticket]').forEach(function (row) {
-      row.addEventListener('click', function () {
+    root.querySelectorAll('.admin-support-issue[data-ticket]').forEach(function (row) {
+      row.addEventListener('click', function (e) {
+        if (e.target.closest('[data-quick-status]')) return;
         state.view = 'detail';
         state.ticketNumber = row.getAttribute('data-ticket');
         void mountDetail(root, state.ticketNumber);
       });
+      row.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          if (e.target.closest('[data-quick-status]')) return;
+          e.preventDefault();
+          state.view = 'detail';
+          state.ticketNumber = row.getAttribute('data-ticket');
+          void mountDetail(root, state.ticketNumber);
+        }
+      });
     });
+    root.querySelectorAll('[data-quick-status]').forEach(function (btn) {
+      btn.addEventListener('click', async function (e) {
+        e.stopPropagation();
+        var ticket = btn.getAttribute('data-ticket');
+        var status = btn.getAttribute('data-quick-status');
+        btn.disabled = true;
+        await apiPost({ action: 'status', ticketNumber: ticket, status: status });
+        void mountList(root);
+      });
+    });
+    var search = document.getElementById('adminSupportSearch');
+    if (search && !search.dataset.boundEnter) {
+      search.dataset.boundEnter = '1';
+      search.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') document.getElementById('adminSupportApplyFilters')?.click();
+      });
+    }
   }
 
   function bindDetailEvents(root, ticketNumber) {
@@ -346,6 +512,8 @@
       await apiPost({ action: 'note', ticketNumber: ticketNumber, note: note });
       void mountDetail(root, ticketNumber);
     });
+    var thread = document.getElementById('adminSupportThread');
+    if (thread) thread.scrollTop = thread.scrollHeight;
   }
 
   async function mountList(root) {

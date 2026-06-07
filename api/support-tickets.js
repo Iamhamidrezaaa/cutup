@@ -81,7 +81,12 @@ export default async function handler(req, res) {
       if (ticketNumber) {
         const detail = await getTicketForUser(user.userId, ticketNumber);
         if (!detail.ok) return res.status(404).json({ ok: false, error: detail.reason });
-        return res.json({ ok: true, ticket: detail.ticket, messages: detail.messages });
+        return res.json({
+          ok: true,
+          ticket: detail.ticket,
+          messages: detail.messages,
+          events: detail.events || [],
+        });
       }
       const list = await listUserTickets(user.userId, {
         page: req.query?.page,

@@ -42,6 +42,21 @@ function mapMessage(row) {
   };
 }
 
+function mapEvent(row) {
+  const payload = row.payload && typeof row.payload === 'object' ? row.payload : {};
+  return {
+    id: Number(row.id),
+    ticket_id: Number(row.ticket_id),
+    event_type: row.event_type,
+    actor_type: row.actor_type,
+    actor_id: row.actor_id || null,
+    payload,
+    created_at: row.created_at,
+  };
+}
+
+const USER_VISIBLE_EVENT_TYPES = ['created', 'status_change', 'assigned'];
+
 async function nextTicketNumber(client) {
   const { rows } = await client.query(`SELECT nextval('support_ticket_number_seq') AS n`);
   const n = Number(rows[0]?.n || 1000);
@@ -115,11 +130,20 @@ export async function getUserTicketOverview(userId) {
       COUNT(*) FILTER (WHERE status IN ('OPEN','IN_PROGRESS'))::int AS open_count,
       COUNT(*) FILTER (WHERE status = 'WAITING_FOR_USER')::int AS waiting_count,
       COUNT(*) FILTER (WHERE status = 'RESOLVED')::int AS resolved_count,
-      COUNT(*) FILTER (WHERE status = 'CLOSED')::int AS closed_count
+      COUNT(*) FILTER (WHERE status = 'CLOSED')::int AS closed_count,
+      AVG(EXTRACT(EPOCH FROM (first_response_at - created_at))) FILTER (WHERE first_response_at IS NOT NULL) AS avg_first_response_sec
      FROM support_tickets WHERE user_id = $1::uuid`,
     [userId],
   );
-  return { ok: true, stats: rows[0] };
+  const row = rows[0] || {};
+  const avgSec = row.avg_first_response_sec;
+  return {
+    ok: true,
+    stats: {
+      ...row,
+      avg_first_response_ms: avgSec != null ? Math.round(Number(avgSec) * 1000) : null,
+    },
+  };
 }
 
 export async function listUserTickets(userId, { page = 1, limit = 20 } = {}) {
@@ -169,19 +193,33 @@ export async function getTicketForUser(userId, ticketNumber) {
     [String(ticketNumber).trim(), userId],
   );
   if (!rows[0]) return { ok: false, reason: 'not_found' };
-  const messages = await pool.query(
-    `SELECT m.*,
-      CASE WHEN m.sender_type = 'admin' THEN a.email ELSE u.email END AS sender_email,
-      CASE WHEN m.sender_type = 'admin' THEN a.email ELSE COALESCE(up.first_name, u.email) END AS sender_name
-     FROM support_ticket_messages m
-     LEFT JOIN users u ON u.id = m.sender_user_id
-     LEFT JOIN user_profiles up ON up.user_id = u.id
-     LEFT JOIN admins a ON a.id = m.sender_admin_id
-     WHERE m.ticket_id = $1
-     ORDER BY m.created_at ASC`,
-    [rows[0].id],
-  );
-  return { ok: true, ticket: mapTicket(rows[0]), messages: messages.rows.map(mapMessage) };
+  const [messages, events] = await Promise.all([
+    pool.query(
+      `SELECT m.*,
+        CASE WHEN m.sender_type = 'admin' THEN a.email ELSE u.email END AS sender_email,
+        CASE WHEN m.sender_type = 'admin' THEN a.email ELSE COALESCE(up.first_name, u.email) END AS sender_name
+       FROM support_ticket_messages m
+       LEFT JOIN users u ON u.id = m.sender_user_id
+       LEFT JOIN user_profiles up ON up.user_id = u.id
+       LEFT JOIN admins a ON a.id = m.sender_admin_id
+       WHERE m.ticket_id = $1
+       ORDER BY m.created_at ASC`,
+      [rows[0].id],
+    ),
+    pool.query(
+      `SELECT e.*
+       FROM support_ticket_events e
+       WHERE e.ticket_id = $1 AND e.event_type = ANY($2::text[])
+       ORDER BY e.created_at ASC`,
+      [rows[0].id, USER_VISIBLE_EVENT_TYPES],
+    ),
+  ]);
+  return {
+    ok: true,
+    ticket: mapTicket(rows[0]),
+    messages: messages.rows.map(mapMessage),
+    events: events.rows.map(mapEvent),
+  };
 }
 
 export async function addUserReply(userId, ticketNumber, message) {
@@ -396,12 +434,18 @@ export async function assignSupportTicket({ ticketNumber, adminId, assigneeAdmin
 
   const assignee = assigneeAdminId == null || assigneeAdminId === '' ? null : Number(assigneeAdminId);
   const pool = getPool();
+  let assigneeEmail = null;
+  if (assignee) {
+    const assigneeRes = await pool.query(`SELECT email FROM admins WHERE id = $1 LIMIT 1`, [assignee]);
+    assigneeEmail = assigneeRes.rows[0]?.email || null;
+  }
   await pool.query(
     `UPDATE support_tickets SET assigned_admin_id = $2, updated_at = NOW() WHERE id = $1`,
     [detail.ticket.id, assignee],
   );
   await logTicketEvent(pool, detail.ticket.id, 'assigned', 'admin', String(adminId), {
     assigneeAdminId: assignee,
+    assigneeEmail,
     adminEmail,
   });
 
