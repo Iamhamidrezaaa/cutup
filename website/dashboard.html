@@ -20,9 +20,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css?v=CLEAN_BUILD_2026_04">
-  <link rel="stylesheet" href="landing-page.css?v=20260607-pricing-matrix">
-  <link rel="stylesheet" href="dashboard.css?v=20260602-credits-engine">
-  <link rel="stylesheet" href="billing-dashboard.css?v=20260602-bd-polish">
+  <link rel="stylesheet" href="landing-page.css?v=20260602-dash-plans">
+  <link rel="stylesheet" href="dashboard.css?v=20260602-dash-plans">
+  <link rel="stylesheet" href="billing-dashboard.css?v=20260602-billing-v2">
   <link rel="stylesheet" href="responsive-global.css?v=1">
   <link rel="stylesheet" href="customer-role-guard.css">
 </head>
@@ -129,6 +129,11 @@
               </div>
             </div>
           </div>
+
+          <section class="dash-activity-section">
+            <h2 class="dash-activity-section__title">Recent Activity</h2>
+            <div id="overviewActivityFeed" class="af-host"></div>
+          </section>
         </section>
 
         <section class="dashboard-section" id="usage-section">
@@ -142,9 +147,8 @@
         </section>
 
         <section class="dashboard-section" id="subscription-section">
-          <h1 class="section-title">Plans & upgrades</h1>
+          <h1 class="section-title">Plans</h1>
           <div class="subscription-info" id="subscriptionInfo"></div>
-          <div id="cutupDashboardPricingPaywall" class="cutup-pricing-paywall" hidden></div>
         </section>
 
         <section class="dashboard-section" id="profile-section">
@@ -169,7 +173,7 @@
   <script src="api-config.js"></script>
   <script src="plan-permissions.js"></script>
   <script src="plan-display.js"></script>
-  <script src="pricing-matrix.js"></script>
+  <script src="pricing-matrix.js?v=20260602-dash-plans"></script>
   <script src="audit-track.js"></script>
   <script src="analytics-client.js"></script>
   <script src="conversion-banners.js"></script>
@@ -178,8 +182,9 @@
   <script src="offers-resolver.js"></script>
   <script src="plan-checkout-router.js?v=OAUTH_DIRECT_2026_01"></script>
   <script src="account-security-ui.js?v=ACCOUNT_SEC_2026_01"></script>
-  <script src="dashboard-billing.js?v=20260602-credits-engine"></script>
-  <script src="dashboard.js?v=20260602-credits-engine"></script>
+  <script src="activity-feed-ui.js?v=20260602-activity-feed"></script>
+  <script src="dashboard-billing.js?v=20260602-activity-feed"></script>
+  <script src="dashboard.js?v=20260602-activity-feed"></script>
 </body>
 </html>
 

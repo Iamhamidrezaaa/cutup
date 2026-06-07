@@ -35,7 +35,33 @@
     );
   }
 
-  function buildHead() {
+  function resolveCurrentPlan(currentPlan) {
+    return P().resolvePlanKey ? P().resolvePlanKey(currentPlan || 'free') : 'free';
+  }
+
+  function colModifiers(plan, currentPlan) {
+    var cur = resolveCurrentPlan(currentPlan);
+    var parts = ['pricing-compare__col'];
+    if (plan === 'pro') parts.push('pricing-compare__col--pro');
+    if (plan === cur) parts.push('pricing-compare__col--current');
+    return parts.join(' ');
+  }
+
+  function tdColAttr(plan, currentPlan) {
+    var parts = [];
+    if (plan === 'pro') parts.push('pricing-compare__col--pro');
+    if (plan === resolveCurrentPlan(currentPlan)) parts.push('pricing-compare__col--current');
+    return parts.length ? ' class="' + parts.join(' ') + '"' : '';
+  }
+
+  function footTdClass(plan, currentPlan) {
+    var parts = ['pricing-compare__cta-cell'];
+    if (plan === 'pro') parts.push('pricing-compare__col--pro');
+    if (plan === resolveCurrentPlan(currentPlan)) parts.push('pricing-compare__col--current');
+    return parts.join(' ');
+  }
+
+  function buildHead(currentPlan) {
     var order = P().PLAN_ORDER || ['free', 'starter', 'pro', 'business'];
     var labels = P().PLAN_LABELS || {};
     var prices = P().PLAN_PRICES || {};
@@ -43,11 +69,10 @@
       .map(function (plan) {
         var meta = labels[plan] || {};
         var price = (prices[plan] && prices[plan].display) || '';
-        var proClass = plan === 'pro' ? ' pricing-compare__col--pro' : '';
         var badge = plan === 'pro' ? '<span class="pricing-compare__badge">MOST POPULAR</span>' : '';
         return (
-          '<th scope="col" class="pricing-compare__col' +
-          proClass +
+          '<th scope="col" class="' +
+          colModifiers(plan, currentPlan) +
           '">' +
           badge +
           '<span class="pricing-compare__plan-name">' +
@@ -64,7 +89,7 @@
       .join('');
   }
 
-  function buildBodyRows() {
+  function buildBodyRows(currentPlan) {
     var order = P().PLAN_ORDER || ['free', 'starter', 'pro', 'business'];
     var rows = P().MATRIX_FEATURES || [];
     return rows
@@ -74,12 +99,12 @@
         else if (row.upgradeTrigger) trClass = ' class="pricing-compare__upgrade-trigger"';
         var cells = order
           .map(function (plan) {
-            var proTd = plan === 'pro' ? ' class="pricing-compare__col--pro"' : '';
+            var tdAttr = tdColAttr(plan, currentPlan);
             if (row.type === 'credits') {
-              return '<td' + proTd + ' data-cutup-plan-exports="' + plan + '">' + creditsCell(plan) + '</td>';
+              return '<td' + tdAttr + ' data-cutup-plan-exports="' + plan + '">' + creditsCell(plan) + '</td>';
             }
             var on = P().hasPermission && P().hasPermission(plan, row.id);
-            return '<td' + proTd + '>' + yesNoCell(on) + '</td>';
+            return '<td' + tdAttr + '>' + yesNoCell(on) + '</td>';
           })
           .join('');
         return '<tr' + trClass + '><th scope="row">' + esc(row.label) + '</th>' + cells + '</tr>';
@@ -129,10 +154,9 @@
     var order = P().PLAN_ORDER || ['free', 'starter', 'pro', 'business'];
     var cells = order
       .map(function (plan) {
-        var proTd = plan === 'pro' ? ' pricing-compare__col--pro' : '';
         return (
-          '<td class="pricing-compare__cta-cell' +
-          proTd +
+          '<td class="' +
+          footTdClass(plan, currentPlan) +
           '">' +
           ctaForPlan(plan, context, currentPlan) +
           '</td>'
@@ -152,10 +176,10 @@
       '<div class="pricing-compare-wrap" role="region" aria-label="Plan comparison">' +
       '<table class="pricing-compare">' +
       '<thead><tr><th class="pricing-compare__feature-col" scope="col">Feature</th>' +
-      buildHead() +
+      buildHead(currentPlan) +
       '</tr></thead>' +
       '<tbody>' +
-      buildBodyRows() +
+      buildBodyRows(currentPlan) +
       '</tbody>' +
       buildFoot(context || 'landing', currentPlan) +
       '</table></div>' +

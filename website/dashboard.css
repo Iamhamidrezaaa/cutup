@@ -1690,6 +1690,143 @@
   margin-top: 16px;
 }
 
+/* —— Dashboard Plans page —— */
+.dash-plans {
+  display: grid;
+  gap: 20px;
+  max-width: 1200px;
+}
+
+.dash-plans-kpi-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+@media (min-width: 640px) {
+  .dash-plans-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .dash-plans-kpi-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.dash-plans-kpi {
+  background: #fff;
+  border: 2px solid var(--border, #e2e8f0);
+  border-radius: 16px;
+  padding: 16px 18px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 76px;
+}
+
+.dash-plans-kpi--accent {
+  border-color: rgba(99, 102, 241, 0.28);
+  background: linear-gradient(135deg, #fff 0%, rgba(99, 102, 241, 0.05) 100%);
+}
+
+.dash-plans-kpi__label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.dash-plans-kpi__value {
+  font-size: clamp(1.25rem, 2.5vw, 1.6rem);
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.dash-plans-kpi--accent .dash-plans-kpi__value {
+  color: var(--primary, #6366f1);
+}
+
+.dash-plans-kpi__value--sm {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.dash-plans-section-title {
+  margin: 0 0 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.dash-plans-usage {
+  background: #fff;
+  border: 2px solid var(--border, #e2e8f0);
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.06);
+}
+
+.dash-plans-usage__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.dash-plans-usage__plan {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  background: rgba(99, 102, 241, 0.08);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+.dash-plans-usage__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 14px;
+  color: #64748b;
+  margin-bottom: 12px;
+}
+
+.dash-plans-usage__stats strong {
+  color: #0f172a;
+  font-weight: 800;
+}
+
+.dash-plans-usage__bar {
+  height: 12px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.dash-plans-usage__fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1, #818cf8);
+  border-radius: 999px;
+  transition: width 0.45s ease;
+}
+
+.dash-plans-matrix {
+  min-width: 0;
+}
+
+.dash-plans-matrix .pricing-compare-wrap {
+  margin: 0;
+}
+
 .dash-subscription-layout {
   display: grid;
   gap: 24px;
@@ -3402,6 +3539,105 @@
 .dash-activity-body span {
   font-size: 12px;
   color: #94a3b8;
+}
+
+.dash-activity-section {
+  margin-top: 28px;
+  padding: 20px 22px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+}
+
+.dash-activity-section__title {
+  margin: 0 0 14px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.af-host {
+  min-height: 0;
+}
+
+.af-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.af-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.af-card:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.af-card__icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.af-card__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.af-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.af-card__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.af-card__time {
+  font-size: 12px;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.af-card__detail {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #64748b;
+}
+
+.af-empty {
+  padding: 20px;
+  text-align: center;
+  font-size: 13px;
+  color: #64748b;
+  background: #f8fafc;
+  border-radius: 10px;
+}
+
+.bd-block--activity .af-card {
+  padding: 12px 0;
 }
 
 .dash-usage-empty {

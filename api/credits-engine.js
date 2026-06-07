@@ -409,6 +409,10 @@ export async function consumeProcessingCredit(email, operation, metadata = {}) {
     );
 
     await client.query('COMMIT');
+    if (!metadata?.skipActivityFeed) {
+      const { recordProcessingActivityFromCredit } = await import('./activity-feed-repository.js');
+      void recordProcessingActivityFromCredit(email, operation, metadata);
+    }
     return { ok: true, consumed: true };
   } catch (e) {
     await client.query('ROLLBACK');
@@ -432,5 +436,10 @@ async function applyUnlimitedProcessingCredit(email, opDef, metadata) {
       JSON.stringify({ ...(metadata || {}), unlimited: true, creditConsumed: true })
     ]
   );
+  const opKey = Object.entries(PROCESSING_OPERATIONS).find(([, v]) => v.usageType === opDef.usageType)?.[0];
+  if (opKey) {
+    const { recordProcessingActivityFromCredit } = await import('./activity-feed-repository.js');
+    void recordProcessingActivityFromCredit(email, opKey, metadata);
+  }
   return { ok: true, consumed: true };
 }

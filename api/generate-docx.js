@@ -206,6 +206,12 @@ export default async function handler(req, res) {
 
     console.log('GENERATE_DOCX: Success, buffer size:', buffer.length);
 
+    const { recordOutputDownloaded } = await import('./activity-feed-repository.js');
+    void recordOutputDownloaded(userEmail, {
+      format: 'docx',
+      title: filename || 'document'
+    });
+
     // Set headers for file download
     setCORSHeaders(res);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');

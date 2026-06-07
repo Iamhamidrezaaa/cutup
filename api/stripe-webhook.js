@@ -127,6 +127,16 @@ export default async function handler(req, res) {
               metadata: { plan, source: 'stripe_webhook' }
             });
           }
+          const { recordPaymentSuccessful } = await import('./activity-feed-repository.js');
+          const amount = s.amount_total != null ? Number(s.amount_total) / 100 : null;
+          const currency = s.currency || 'eur';
+          void recordPaymentSuccessful(email, {
+            amount,
+            currency,
+            planKey: plan,
+            source: 'stripe_checkout',
+            stripeSessionId: s.id
+          });
           console.log('[stripe-webhook] checkout.session.completed', plan, email, s.id);
         } else {
           console.warn('[stripe-webhook] checkout.session.completed without email', s.id);
@@ -156,6 +166,16 @@ export default async function handler(req, res) {
             sub.status === 'active' ? 'active' : 'active',
             periodStart
           );
+          const { recordPaymentSuccessful } = await import('./activity-feed-repository.js');
+          const amount = inv.amount_paid != null ? Number(inv.amount_paid) / 100 : null;
+          const currency = inv.currency || 'eur';
+          void recordPaymentSuccessful(email, {
+            amount,
+            currency,
+            planKey: plan,
+            source: 'stripe_invoice',
+            stripeInvoiceId: inv.id
+          });
           console.log('[stripe-webhook] invoice.paid', plan, email, inv.id);
         } else {
           console.warn('[stripe-webhook] invoice.paid: missing userEmail metadata', subId);
@@ -178,6 +198,22 @@ export default async function handler(req, res) {
         const subId = typeof inv.subscription === 'string' ? inv.subscription : inv.subscription?.id;
         if (subId) {
           await markSubscriptionPastDueByStripeSubscriptionId(subId);
+          try {
+            const sub = await stripe.subscriptions.retrieve(subId);
+            const email = sub.metadata?.userEmail || inv.customer_email;
+            const plan = planKeyFromStripeMetadata(sub.metadata?.plan);
+            if (email) {
+              const { recordPaymentFailed } = await import('./activity-feed-repository.js');
+              void recordPaymentFailed(email, {
+                planKey: plan,
+                reason: 'Payment could not be processed',
+                source: 'stripe_invoice',
+                stripeInvoiceId: inv.id
+              });
+            }
+          } catch (failErr) {
+            console.warn('[stripe-webhook] payment_failed activity', failErr?.message);
+          }
           console.warn('[stripe-webhook] invoice.payment_failed -> past_due', subId, inv.id);
         } else {
           console.warn('[stripe-webhook] invoice.payment_failed (no subscription)', inv?.id);

@@ -29,6 +29,7 @@ import {
   getCreditsSnapshot,
   getLifetimeMetrics
 } from './billing-repository.js';
+import { getActivityFeedDb } from './activity-feed-repository.js';
 
 const SPECIAL_EMAIL = 'h.asgarizade@gmail.com';
 
@@ -327,6 +328,17 @@ export default async function handler(req, res) {
       const limit = parseInt(query.limit, 10) || 100;
       const history = await getUsageHistoryDb(userId, limit);
       return res.json({ history, total: history.length });
+    }
+
+    if (method === 'GET' && action === 'activity') {
+      const limit = parseInt(query.limit, 10) || 10;
+      const filter = String(query.filter || 'all').toLowerCase();
+      const allowedFilters = new Set(['all', 'processing', 'billing']);
+      const events = await getActivityFeedDb(userId, {
+        limit,
+        filter: allowedFilters.has(filter) ? filter : 'all'
+      });
+      return res.json({ events, total: events.length });
     }
 
     if (method === 'GET' && action === 'savedOutputs') {

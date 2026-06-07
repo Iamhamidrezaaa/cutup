@@ -1,5 +1,5 @@
 /**
- * Billing Dashboard — widget architecture (presentation only).
+ * Billing Dashboard — presentation only (Stripe / Linear style).
  */
 (function () {
   'use strict';
@@ -38,30 +38,60 @@
     var s = String(status || '').toLowerCase();
     if (s === 'active' || s === 'paid') return 'bd-badge bd-badge--active';
     if (s === 'trialing' || s === 'trial') return 'bd-badge bd-badge--trial';
-    if (s === 'past_due' || s === 'unpaid') return 'bd-badge bd-badge--warn';
-    if (s === 'canceled' || s === 'cancelled' || s === 'failed') return 'bd-badge bd-badge--danger';
+    if (s === 'pending' || s === 'open') return 'bd-badge bd-badge--pending';
+    if (s === 'past_due' || s === 'unpaid' || s === 'failed') return 'bd-badge bd-badge--warn';
+    if (s === 'refunded' || s === 'refund') return 'bd-badge bd-badge--refund';
+    if (s === 'canceled' || s === 'cancelled') return 'bd-badge bd-badge--danger';
     return 'bd-badge bd-badge--neutral';
   }
 
-  function statusLabel(status, planKey) {
+  function subscriptionStatusLabel(status, planKey) {
     var s = String(status || '').toLowerCase();
     var plan = String(planKey || 'free').toLowerCase();
-    if (plan === 'free' && s === 'free') return 'Free';
+    if (plan === 'free') return 'Free';
     if (s === 'active') return 'Active';
     if (s === 'trialing') return 'Trial';
-    if (s === 'past_due') return 'Past Due';
+    if (s === 'past_due') return 'Past due';
     if (s === 'unpaid') return 'Unpaid';
     if (s === 'canceled' || s === 'cancelled') return 'Cancelled';
-    if (s === 'paid') return 'Paid';
-    if (s === 'failed') return 'Failed';
     return s ? s.charAt(0).toUpperCase() + s.slice(1) : '—';
   }
 
-  function formatPlanPrice(plan) {
-    if (plan && plan.price && plan.price.display) {
-      return String(plan.price.display).replace(' / month', '/month');
+  function invoiceStatusLabel(status) {
+    var s = String(status || 'paid').toLowerCase();
+    if (s === 'paid' || s === 'succeeded' || s === 'complete' || s === 'completed') return 'Paid';
+    if (s === 'pending' || s === 'open' || s === 'processing') return 'Pending';
+    if (s === 'failed' || s === 'past_due' || s === 'unpaid') return 'Failed';
+    if (s === 'refunded' || s === 'refund') return 'Refunded';
+    return 'Paid';
+  }
+
+  function paymentStatusKpi(sub, paymentFailure) {
+    if (paymentFailure) {
+      return { label: 'Failed', badgeClass: 'bd-badge bd-badge--warn' };
     }
-    return '€0';
+    var planKey = String(sub?.plan || 'free').toLowerCase();
+    if (planKey === 'free') {
+      return { label: 'No billing', badgeClass: 'bd-badge bd-badge--neutral' };
+    }
+    var st = String(sub?.status || '').toLowerCase();
+    if (st === 'past_due' || st === 'unpaid') {
+      return { label: 'Failed', badgeClass: 'bd-badge bd-badge--warn' };
+    }
+    if (st === 'active' || st === 'trialing') {
+      return { label: 'Paid', badgeClass: 'bd-badge bd-badge--active' };
+    }
+    return { label: subscriptionStatusLabel(st, planKey), badgeClass: statusBadgeClass(st) };
+  }
+
+  function monthlyCostLabel(sub) {
+    var plan = sub || {};
+    if (plan.price && plan.price.display) {
+      return String(plan.price.display).replace(' / month', '/mo');
+    }
+    var planKey = String(plan.plan || 'free').toLowerCase();
+    if (planKey === 'free') return '€0';
+    return '—';
   }
 
   function formatPaymentDisplay(pm) {
@@ -85,34 +115,36 @@
     return Math.ceil((d.getTime() - Date.now()) / 86400000);
   }
 
-  function kpiWidget(label, valueHtml, meta) {
+  function kpiCard(label, valueHtml, meta) {
     return (
-      '<div class="bd-kpi">' +
+      '<article class="bd-kpi">' +
         '<span class="bd-kpi__label">' + esc(label) + '</span>' +
         '<div class="bd-kpi__value">' + valueHtml + '</div>' +
-        (meta ? '<span class="bd-kpi__meta">' + esc(meta) + '</span>' : '') +
-      '</div>'
+        (meta ? '<span class="bd-kpi__meta">' + meta + '</span>' : '') +
+      '</article>'
     );
   }
 
-  function renderKpiGrid(sub, usage) {
+  function renderOverviewKpis(sub, usage, paymentFailure) {
     var plan = sub || {};
-    var u = usage || {};
+    var pay = paymentStatusKpi(plan, paymentFailure);
     var planKey = String(plan.plan || 'free').toLowerCase();
-    var badgeCls = planKey === 'free' ? statusBadgeClass('free') : statusBadgeClass(plan.status);
-    var badgeText = planKey === 'free' ? 'Free' : statusLabel(plan.status, plan.plan);
+    var renewal = formatBillingDate(plan.nextRenewalDate, true);
 
     return (
-      '<div class="bd-kpi-grid">' +
-        kpiWidget('Current Plan', esc(plan.planName || plan.plan), formatPlanPrice(plan)) +
-        kpiWidget('Credits Remaining', esc(String(u.remainingCredits ?? 0)), esc(String(u.usedCredits ?? 0) + ' used · ' + String(u.monthlyCredits ?? 0) + ' limit')) +
-        kpiWidget('Status', '<span class="' + badgeCls + '">' + esc(badgeText) + '</span>', '') +
-        kpiWidget('Renewal', esc(formatBillingDate(plan.nextRenewalDate)), planKey === 'free' ? '' : 'Auto-renewal') +
-      '</div>'
+      '<section class="bd-block">' +
+        '<h2 class="bd-block__title">Billing overview</h2>' +
+        '<div class="bd-kpi-grid">' +
+          kpiCard('Current plan', esc(plan.planName || plan.plan), '') +
+          kpiCard('Monthly cost', esc(monthlyCostLabel(plan)), planKey === 'free' ? '' : 'per billing cycle') +
+          kpiCard('Next renewal', esc(renewal), planKey === 'free' ? 'Upgrade for a paid plan' : '') +
+          kpiCard('Payment status', '<span class="' + pay.badgeClass + '">' + esc(pay.label) + '</span>', '') +
+        '</div>' +
+      '</section>'
     );
   }
 
-  function renderUsagePanel(usage) {
+  function renderUsageSection(usage) {
     var u = usage || {};
     var used = Number(u.usedCredits) || 0;
     var remaining = Number(u.remainingCredits) || 0;
@@ -120,35 +152,166 @@
     var pct = progressPct(used, total);
 
     return (
-      '<section class="bd-panel bd-panel--usage bd-panel--compact">' +
-        '<div class="bd-panel__toolbar">' +
-          '<span class="bd-panel__title">Credits this cycle</span>' +
-          '<span class="bd-panel__chip">' + pct + '%</span>' +
+      '<section class="bd-block bd-block--panel">' +
+        '<h2 class="bd-block__title">Usage this cycle</h2>' +
+        '<div class="bd-usage-stats">' +
+          '<div class="bd-usage-stat"><strong>' + esc(used) + '</strong><span>Credits used</span></div>' +
+          '<div class="bd-usage-stat bd-usage-stat--accent"><strong>' + esc(remaining) + '</strong><span>Credits remaining</span></div>' +
+          '<div class="bd-usage-stat"><strong>' + esc(total) + '</strong><span>Monthly limit</span></div>' +
         '</div>' +
         '<div class="bd-usage-bar" role="progressbar" aria-valuenow="' + pct + '" aria-valuemin="0" aria-valuemax="100">' +
           '<div class="bd-usage-bar__fill" style="width:' + pct + '%"></div>' +
         '</div>' +
-        '<div class="bd-usage-inline">' +
-          '<span><strong>' + esc(used) + '</strong> used</span>' +
-          '<span><strong>' + esc(remaining) + '</strong> remaining</span>' +
-          '<span><strong>' + esc(total) + '</strong> limit</span>' +
+      '</section>'
+    );
+  }
+
+  function renderPaymentSection(pm, canPortal) {
+    var hasPm = pm && (pm.display || pm.last4);
+    var display = formatPaymentDisplay(pm);
+    var exp = pm && pm.expMonth && pm.expYear
+      ? String(pm.expMonth).padStart(2, '0') + '/' + pm.expYear
+      : null;
+
+    var body = hasPm
+      ? '<div class="bd-pay-card">' +
+          '<span class="bd-pay-card__icon" aria-hidden="true">💳</span>' +
+          '<div class="bd-pay-card__info">' +
+            '<strong>' + esc(display) + '</strong>' +
+            (exp ? '<span>Expires ' + esc(exp) + '</span>' : '') +
+          '</div>' +
+          (canPortal ? '<button type="button" class="bd-btn bd-btn--ghost" id="billingUpdatePaymentBtn">Update</button>' : '') +
+        '</div>'
+      : '<div class="bd-pay-card bd-pay-card--empty">' +
+          '<div class="bd-pay-card__info">' +
+            '<strong>No payment method added</strong>' +
+            '<span>Add a payment method to simplify renewals.</span>' +
+          '</div>' +
+          (canPortal ? '<button type="button" class="bd-btn" id="billingUpdatePaymentBtn">Add payment method</button>' : '') +
+        '</div>';
+
+    return (
+      '<section class="bd-block bd-block--panel">' +
+        '<h2 class="bd-block__title">Payment method</h2>' +
+        body +
+      '</section>'
+    );
+  }
+
+  function renderBillingActivitySection(events) {
+    return (
+      '<section class="bd-block bd-block--panel bd-block--activity">' +
+        '<h2 class="bd-block__title">Billing Activity</h2>' +
+        '<p class="bd-block__lead">Payments, renewals, and plan changes.</p>' +
+        '<div id="billingActivityFeed" class="af-host"></div>' +
+      '</section>'
+    );
+  }
+
+  function mountBillingActivityFeed(events) {
+    var host = document.getElementById('billingActivityFeed');
+    if (!host || !window.CutupActivityFeed || typeof window.CutupActivityFeed.renderTimeline !== 'function') return;
+    window.CutupActivityFeed.renderTimeline(host, events || [], {
+      limit: 10,
+      category: 'billing',
+      emptyMessage: 'Billing activity appears here after your first payment or plan change.'
+    });
+  }
+
+  function renderHistorySection(rows) {
+    var list = Array.isArray(rows) ? rows : [];
+
+    if (!list.length) {
+      return (
+        '<section class="bd-block bd-block--panel bd-block--history">' +
+          '<h2 class="bd-block__title">Billing history</h2>' +
+          '<div class="bd-history-empty">' +
+            '<span>No invoices yet</span>' +
+            '<p>Invoices appear here after your first successful payment.</p>' +
+          '</div>' +
+        '</section>'
+      );
+    }
+
+    var tableRows = list.map(function (row) {
+      var st = invoiceStatusLabel(row.status);
+      var stKey = String(row.status || 'paid').toLowerCase();
+      var invoice = row.downloadUrl && String(row.downloadUrl).startsWith('http')
+        ? '<a class="bd-link" href="' + esc(row.downloadUrl) + '" target="_blank" rel="noopener">View</a>'
+        : (row.source === 'invoice'
+          ? '<button type="button" class="bd-link bd-link--btn" data-invoice-id="' + esc(row.id) + '">View</button>'
+          : '<span class="bd-muted">—</span>');
+      return (
+        '<tr>' +
+          '<td data-label="Date">' + esc(formatBillingDate(row.date, true)) + '</td>' +
+          '<td data-label="Amount">' + esc(formatMoney(row.amount, row.currency)) + '</td>' +
+          '<td data-label="Status"><span class="' + statusBadgeClass(stKey) + '">' + esc(st) + '</span></td>' +
+          '<td data-label="Invoice">' + invoice + '</td>' +
+        '</tr>'
+      );
+    }).join('');
+
+    return (
+      '<section class="bd-block bd-block--panel bd-block--history">' +
+        '<h2 class="bd-block__title">Billing history</h2>' +
+        '<div class="bd-table-wrap">' +
+          '<table class="bd-table">' +
+            '<thead><tr><th>Date</th><th>Amount</th><th>Status</th><th>Invoice</th></tr></thead>' +
+            '<tbody>' + tableRows + '</tbody>' +
+          '</table>' +
         '</div>' +
+      '</section>'
+    );
+  }
+
+  function renderActionsSection(sub, actions) {
+    var a = actions || {};
+    var s = sub || {};
+    var planKey = String(s.plan || 'free').toLowerCase();
+    var st = String(s.status || '').toLowerCase();
+    var isActive = st === 'active' || st === 'trialing';
+    var cancelScheduled = Boolean(s.cancelAtPeriodEnd);
+    var canPortal = Boolean(a.canOpenPortal);
+    var isPaid = planKey !== 'free';
+
+    var items = [];
+
+    if (canPortal && isPaid) {
+      items.push('<button type="button" class="bd-action" id="billingPortalBtn"><span>Manage subscription</span></button>');
+    }
+    items.push('<button type="button" class="bd-action" id="billingChangePlanBtn"><span>Change plan</span></button>');
+    if (canPortal && isPaid && isActive && !cancelScheduled) {
+      items.push('<button type="button" class="bd-action bd-action--danger" id="billingCancelBtn"><span>Cancel subscription</span></button>');
+    }
+    if (canPortal && isPaid && cancelScheduled) {
+      items.push('<button type="button" class="bd-action bd-action--primary" id="billingResumeBtn"><span>Resume subscription</span></button>');
+    }
+    if (canPortal) {
+      items.push('<button type="button" class="bd-action" id="billingOpenPortalBtn"><span>Open billing portal</span></button>');
+    }
+
+    if (!items.length) return '';
+
+    return (
+      '<section class="bd-block bd-block--panel">' +
+        '<h2 class="bd-block__title">Subscription actions</h2>' +
+        '<div class="bd-actions">' + items.join('') + '</div>' +
       '</section>'
     );
   }
 
   function renderPaymentFailedAlert() {
     return (
-      '<section class="bd-panel bd-panel--alert">' +
-        '<div class="bd-alert-copy">' +
-          '<strong class="bd-alert-title">Payment failed</strong>' +
-          '<span class="bd-alert-body">We couldn\'t renew your subscription. Update your payment method to keep your plan active.</span>' +
+      '<div class="bd-alert bd-alert--error">' +
+        '<div class="bd-alert__copy">' +
+          '<strong>Payment failed</strong>' +
+          '<span>We couldn\'t renew your subscription. Update your payment method to keep your plan active.</span>' +
         '</div>' +
-        '<div class="bd-alert-actions">' +
-          '<button type="button" class="plan-btn plan-btn--sm" id="billingRetryPaymentBtn">Retry payment</button>' +
-          '<button type="button" class="plan-btn plan-btn--sm plan-btn--ghost" id="billingUpdateCardBtn">Update payment method</button>' +
+        '<div class="bd-alert__actions">' +
+          '<button type="button" class="bd-btn" id="billingRetryPaymentBtn">Retry payment</button>' +
+          '<button type="button" class="bd-btn bd-btn--ghost" id="billingUpdateCardBtn">Update payment method</button>' +
         '</div>' +
-      '</section>'
+      '</div>'
     );
   }
 
@@ -161,156 +324,23 @@
     var days = daysUntil(sub?.nextRenewalDate || sub?.currentPeriodEnd);
     if (days == null || days > 7 || days < 0) return '';
     return (
-      '<section class="bd-panel bd-panel--expiring">' +
-        '<div class="bd-alert-copy">' +
-          '<strong class="bd-alert-title">Subscription expiring soon</strong>' +
-          '<span class="bd-alert-body">Renew your subscription to keep access to exports and monthly credits.</span>' +
+      '<div class="bd-alert bd-alert--warn">' +
+        '<div class="bd-alert__copy">' +
+          '<strong>Subscription expiring soon</strong>' +
+          '<span>Renew your subscription to keep access to exports and monthly credits.</span>' +
         '</div>' +
-        '<button type="button" class="plan-btn plan-btn--sm plan-btn--ghost" id="billingExpiringPortalBtn">Manage billing</button>' +
-      '</section>'
-    );
-  }
-
-  function renderUpgrade(planKey, btnId) {
-    var k = String(planKey || 'free').toLowerCase();
-    if (k !== 'free' && k !== 'starter') return '';
-    var PP = window.CutupPlanPermissions;
-    if (!PP) return '';
-    var next = PP.getNextPlanKey(k);
-    var benefits = PP.getUpgradeBenefits(k).slice(0, 5);
-    var nextName = next ? PP.displayPlanName(next) : null;
-    if (!next || !nextName || !benefits.length) return '';
-
-    return (
-      '<div class="bd-upgrade-slot">' +
-        '<article class="paid-plan-card featured bd-upgrade-card">' +
-          '<div class="paid-plan-header">' +
-            '<div class="bd-upgrade-icon" aria-hidden="true">⚡</div>' +
-            '<div class="paid-plan-name">' + esc(nextName) + '</div>' +
-          '</div>' +
-          '<ul class="plan-features bd-upgrade-features--compact">' +
-            benefits.map(function (b) { return '<li>' + esc(b) + '</li>'; }).join('') +
-          '</ul>' +
-          '<button type="button" class="plan-btn bd-upgrade-cta" id="' + esc(btnId) + '">Upgrade</button>' +
-        '</article>' +
+        '<button type="button" class="bd-btn bd-btn--ghost" id="billingExpiringPortalBtn">Manage billing</button>' +
       '</div>'
-    );
-  }
-
-  function renderHistoryPanel(rows) {
-    var list = Array.isArray(rows) ? rows : [];
-
-    if (!list.length) {
-      return (
-        '<section class="bd-panel bd-panel--history bd-panel--history-empty">' +
-          '<div class="bd-panel__toolbar"><span class="bd-panel__title">Billing history</span></div>' +
-          '<div class="bd-empty bd-empty--compact">' +
-            '<div class="bd-empty__art bd-empty__art--sm" aria-hidden="true">' +
-              '<svg viewBox="0 0 48 48" width="36" height="36" fill="none">' +
-                '<rect x="10" y="8" width="28" height="32" rx="4" stroke="currentColor" stroke-width="2"/>' +
-                '<path d="M16 18h16M16 26h16M16 34h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' +
-              '</svg>' +
-            '</div>' +
-            '<strong class="bd-empty__head">No invoices yet</strong>' +
-            '<span class="bd-empty__sub">Your invoices and payment history will appear here after your first successful payment.</span>' +
-          '</div>' +
-        '</section>'
-      );
-    }
-
-    var tableRows = list.map(function (row) {
-      var st = String(row.status || 'paid').toLowerCase();
-      var download = row.downloadUrl && String(row.downloadUrl).startsWith('http')
-        ? '<a class="bd-table-link" href="' + esc(row.downloadUrl) + '" target="_blank" rel="noopener">Download</a>'
-        : (row.source === 'invoice'
-          ? '<button type="button" class="bd-table-link bd-table-link--btn" data-invoice-id="' + esc(row.id) + '">Download</button>'
-          : '<span class="bd-table-muted">—</span>');
-      return (
-        '<tr>' +
-          '<td data-label="Date">' + esc(formatBillingDate(row.date, true)) + '</td>' +
-          '<td data-label="Amount">' + esc(formatMoney(row.amount, row.currency)) + '</td>' +
-          '<td data-label="Plan">' + esc(row.planName || row.plan) + '</td>' +
-          '<td data-label="Status"><span class="' + statusBadgeClass(st) + '">' + esc(statusLabel(st)) + '</span></td>' +
-          '<td data-label="Invoice">' + download + '</td>' +
-        '</tr>'
-      );
-    }).join('');
-
-    return (
-      '<section class="bd-panel bd-panel--history">' +
-        '<div class="bd-panel__toolbar"><span class="bd-panel__title">Billing history</span></div>' +
-        '<div class="bd-table-shell">' +
-          '<table class="bd-table">' +
-            '<thead><tr><th>Date</th><th>Amount</th><th>Plan</th><th>Status</th><th>Invoice</th></tr></thead>' +
-            '<tbody>' + tableRows + '</tbody>' +
-          '</table>' +
-        '</div>' +
-      '</section>'
-    );
-  }
-
-  function renderPaymentPanel(pm, canPortal) {
-    var hasPm = pm && (pm.display || pm.last4);
-    var display = formatPaymentDisplay(pm);
-    var exp = pm && pm.expMonth && pm.expYear
-      ? String(pm.expMonth).padStart(2, '0') + '/' + pm.expYear
-      : null;
-
-    var inner = hasPm
-      ? '<div class="bd-wallet">' +
-          '<span class="bd-wallet__brand">' + esc(display) + '</span>' +
-          (exp ? '<span class="bd-wallet__exp">Expires ' + esc(exp) + '</span>' : '') +
-        '</div>' +
-        (canPortal ? '<button type="button" class="plan-btn plan-btn--ghost plan-btn--sm bd-wallet-btn" id="billingUpdatePaymentBtn">Update payment method</button>' : '')
-      : '<div class="bd-wallet-empty-state">' +
-          '<strong>No payment method added</strong>' +
-          '<span>Add a payment method to simplify future renewals.</span>' +
-          (canPortal ? '<button type="button" class="plan-btn plan-btn--sm bd-wallet-btn" id="billingUpdatePaymentBtn">Add payment method</button>' : '') +
-        '</div>';
-
-    return (
-      '<section class="bd-panel bd-panel--wallet">' +
-        '<div class="bd-panel__toolbar"><span class="bd-panel__title">Payment method</span></div>' +
-        inner +
-      '</section>'
-    );
-  }
-
-  function renderManagePanel(sub, actions) {
-    var a = actions || {};
-    if (!a.canOpenPortal) return '';
-
-    var s = sub || {};
-    var st = String(s.status || '').toLowerCase();
-    var isActive = st === 'active' || st === 'trialing';
-    var cancelScheduled = Boolean(s.cancelAtPeriodEnd);
-    var planKey = String(s.plan || 'free').toLowerCase();
-    if (planKey === 'free') return '';
-
-    var buttons = '<button type="button" class="plan-btn plan-btn--sm plan-btn--ghost" id="billingPortalBtn">Manage billing</button>' +
-      '<button type="button" class="plan-btn plan-btn--sm plan-btn--ghost" id="billingUpdateCardBtn">Update card</button>';
-
-    if (cancelScheduled) {
-      buttons += '<button type="button" class="plan-btn plan-btn--sm" id="billingResumeBtn">Resume subscription</button>';
-    } else if (isActive) {
-      buttons += '<button type="button" class="plan-btn plan-btn--sm plan-btn--ghost bd-manage-cancel" id="billingCancelBtn">Cancel subscription</button>';
-    }
-
-    return (
-      '<section class="bd-panel bd-panel--manage">' +
-        '<div class="bd-panel__toolbar"><span class="bd-panel__title">Subscription</span></div>' +
-        '<div class="bd-manage-actions">' + buttons + '</div>' +
-      '</section>'
     );
   }
 
   function renderRetryWidget() {
     return (
-      '<section class="bd-panel">' +
-        '<div class="bd-empty bd-empty--compact">' +
-          '<strong class="bd-empty__head">Billing couldn\'t load</strong>' +
-          '<span class="bd-empty__sub">Please try again in a moment.</span>' +
-          '<button type="button" class="plan-btn plan-btn--sm" id="billingRetryLoadBtn">Try again</button>' +
+      '<section class="bd-block bd-block--panel">' +
+        '<div class="bd-history-empty">' +
+          '<span>Billing couldn\'t load</span>' +
+          '<p>Please try again in a moment.</p>' +
+          '<button type="button" class="bd-btn" id="billingRetryLoadBtn">Try again</button>' +
         '</div>' +
       '</section>'
     );
@@ -334,11 +364,6 @@
     var root = ctx.target;
     if (!root) return;
 
-    root.querySelector('#billingUpgradePlanBtn')?.addEventListener('click', function () {
-      var plan = window.CutupPlanPermissions?.getNextPlanKey?.(ctx.data?.subscription?.plan);
-      if (typeof ctx.onUpgrade === 'function') ctx.onUpgrade(plan);
-    });
-
     async function openPortal() {
       if (!ctx.session || !ctx.apiBase) return;
       try {
@@ -353,8 +378,20 @@
       }
     }
 
-    ['billingUpdatePaymentBtn', 'billingUpdateCardBtn', 'billingCancelBtn', 'billingResumeBtn', 'billingPortalBtn', 'billingExpiringPortalBtn'].forEach(function (id) {
+    [
+      'billingUpdatePaymentBtn',
+      'billingUpdateCardBtn',
+      'billingCancelBtn',
+      'billingResumeBtn',
+      'billingPortalBtn',
+      'billingOpenPortalBtn',
+      'billingExpiringPortalBtn'
+    ].forEach(function (id) {
       root.querySelector('#' + id)?.addEventListener('click', openPortal);
+    });
+
+    root.querySelector('#billingChangePlanBtn')?.addEventListener('click', function () {
+      document.querySelector('.nav-item[data-section="subscription"]')?.click();
     });
 
     root.querySelectorAll('[data-invoice-id]').forEach(function (btn) {
@@ -380,11 +417,11 @@
 
     root.querySelector('#billingRetryPaymentBtn')?.addEventListener('click', async function () {
       var btn = root.querySelector('#billingRetryPaymentBtn');
-      if (btn) { btn.disabled = true; }
+      if (btn) btn.disabled = true;
       try {
         if (typeof ctx.onRetryPayment === 'function') await ctx.onRetryPayment();
       } finally {
-        if (btn) { btn.disabled = false; }
+        if (btn) btn.disabled = false;
       }
     });
   }
@@ -433,17 +470,16 @@
       target.innerHTML =
         '<div class="bd">' +
           alerts +
-          renderKpiGrid(sub, d.usage) +
-          renderUsagePanel(d.usage) +
-          renderHistoryPanel(d.billingHistory) +
-          '<div class="bd-duo">' +
-            renderPaymentPanel(d.paymentMethod, d.actions && d.actions.canOpenPortal) +
-            renderManagePanel(sub, d.actions) +
-          '</div>' +
-          renderUpgrade(sub.plan, 'billingUpgradePlanBtn') +
+          renderOverviewKpis(sub, d.usage, d.paymentFailure) +
+          renderUsageSection(d.usage) +
+          renderPaymentSection(d.paymentMethod, d.actions && d.actions.canOpenPortal) +
+          renderBillingActivitySection(ctx.activityFeed) +
+          renderHistorySection(d.billingHistory) +
+          renderActionsSection(sub, d.actions) +
         '</div>';
 
       bindActions(ctx);
+      mountBillingActivityFeed(ctx.activityFeed);
     } catch (err) {
       console.error('[billing] render failed', err);
       target.innerHTML = '<div class="bd">' + renderRetryWidget() + '</div>';
@@ -460,7 +496,7 @@
     try {
       var url = ctx.apiBase + '/api/subscription?action=billing&session=' + encodeURIComponent(ctx.session);
       var r = await fetch(url, { headers: { 'X-Session-Id': ctx.session } });
-      var data = await r.json().catch(function () { return null; });
+      var data = await r.json().catch(function () { return null });
       if (!r.ok) {
         return {
           ok: false,

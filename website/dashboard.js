@@ -88,6 +88,7 @@ let currentUser = null;
 let subscriptionInfo = null;
 let plansCache = [];
 let historyCache = [];
+let activityFeedCache = [];
 let billingDashboardCache = null;
 let billingDashboardLoadState = 'idle';
 let billingDashboardLoadError = null;
@@ -1567,6 +1568,14 @@ async function loadUsageHistory() {
   historyCache = response.ok ? (data.history || []) : [];
 }
 
+async function loadActivityFeed() {
+  const { response, data } = await apiGet(
+    `${API_BASE_URL}/api/subscription?action=activity&session=${currentSession}&limit=30&filter=all`,
+    { headers: { 'X-Session-Id': currentSession } }
+  );
+  activityFeedCache = response.ok ? (data.events || []) : [];
+}
+
 async function loadPlans() {
   const { response, data } = await apiGet(`${API_BASE_URL}/api/subscription?action=plans`);
   plansCache = response.ok ? (data.plans || []) : [];
@@ -1696,7 +1705,15 @@ async function loadDashboardHeavy({ silent = false, skipUserProfile = false } = 
   }
   const tasks = [];
   if (!skipUserProfile) tasks.push(loadUserProfile());
-  tasks.push(loadSubscriptionInfo(), loadUsageHistory(), loadPlans(), loadSavedOutputs(), loadOffers(), loadBillingDashboard());
+  tasks.push(
+    loadSubscriptionInfo(),
+    loadUsageHistory(),
+    loadActivityFeed(),
+    loadPlans(),
+    loadSavedOutputs(),
+    loadOffers(),
+    loadBillingDashboard()
+  );
   await Promise.all(tasks);
   if ((!billingDashboardCache || billingDashboardLoadState === 'error') && subscriptionInfo) {
     const billingFallback = buildBillingFallbackFromSubscriptionInfo(subscriptionInfo);
@@ -1911,6 +1928,7 @@ function renderOverview() {
   const remainingVideos = String(credits.remaining);
 
   renderInsights();
+  renderOverviewActivity();
   renderOffersUi();
   renderUpgradeWarning();
 
@@ -2149,8 +2167,13 @@ function getMostUsedFeatureLabel() {
 }
 
 function getLastActivityLabel() {
-  if (!historyCache.length) return 'Start with your first transcript';
-  const last = new Date(historyCache[0].date);
+  const feed = activityFeedCache.length ? activityFeedCache : null;
+  const lastIso = feed?.[0]?.createdAt || historyCache[0]?.date;
+  if (!lastIso) return 'Start with your first transcript';
+  if (window.CutupActivityFeed?.formatRelativeTime) {
+    return window.CutupActivityFeed.formatRelativeTime(lastIso);
+  }
+  const last = new Date(lastIso);
   if (Number.isNaN(last.getTime())) return 'Start with your first transcript';
   const diffMs = Date.now() - last.getTime();
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
@@ -2158,6 +2181,16 @@ function getLastActivityLabel() {
   if (diffHours < 24) return `${diffHours} hours ago`;
   const diffDays = Math.floor(diffHours / 24);
   return `${diffDays} days ago`;
+}
+
+function renderOverviewActivity() {
+  const target = document.getElementById('overviewActivityFeed');
+  if (!target || !window.CutupActivityFeed?.renderTimeline) return;
+  window.CutupActivityFeed.renderTimeline(target, activityFeedCache, {
+    limit: 10,
+    category: 'all',
+    emptyMessage: 'Your activity will appear here after your first video or payment.'
+  });
 }
 
 function renderInsights() {
@@ -2174,7 +2207,7 @@ function renderInsights() {
     <article class="insight-card"><h3>You completed ${monthVideos} videos this month</h3><p>Only successful runs count toward your monthly limit.</p></article>
     <article class="insight-card"><h3>Most used feature</h3><p>${mostUsed}</p></article>
     <article class="insight-card"><h3>You saved ${savedCount} outputs</h3><p>${savedCount ? 'Reuse and export them anytime.' : 'Start with your first transcript.'}</p></article>
-    <article class="insight-card"><h3>Last activity</h3><p>${historyCache.length ? `${getLastActivityLabel()} · ${monthActivities} this month` : 'Start with your first transcript.'}</p></article>
+    <article class="insight-card"><h3>Last activity</h3><p>${(activityFeedCache.length || historyCache.length) ? `${getLastActivityLabel()} · ${monthActivities} this month` : 'Start with your first transcript.'}</p></article>
   `;
 }
 
@@ -2273,19 +2306,6 @@ function renderUsageSection() {
   const lifetime = lifetimeFromSubscription(subscriptionInfo);
   const pct = credits.limit > 0 ? Math.min(100, Math.round((credits.used / credits.limit) * 100)) : 0;
 
-  const feedItems = historyCache.slice(0, 10).map((item) => {
-    const label = activityFeedLabel(item);
-    const when = formatDateTime(item.date);
-    return `
-      <li class="dash-activity-item">
-        <span class="dash-activity-dot" aria-hidden="true"></span>
-        <div class="dash-activity-body">
-          <strong>${escapeHtml(label)}</strong>
-          <span>${escapeHtml(when)}</span>
-        </div>
-      </li>`;
-  }).join('');
-
   target.innerHTML = `
     <div class="dash-usage-analytics">
       <section class="dash-usage-block">
@@ -2308,13 +2328,19 @@ function renderUsageSection() {
         </div>
       </section>
       <section class="dash-usage-block">
-        <h3 class="dash-usage-block__title">Recent activity</h3>
-        ${feedItems
-          ? `<ul class="dash-activity-feed">${feedItems}</ul>`
-          : '<div class="dash-usage-empty">Your activity will appear here after your first video.</div>'}
+        <h3 class="dash-usage-block__title">Recent Processing Activity</h3>
+        <div id="usageActivityFeed" class="af-host"></div>
       </section>
     </div>
   `;
+  const usageFeed = document.getElementById('usageActivityFeed');
+  if (usageFeed && window.CutupActivityFeed?.renderTimeline) {
+    window.CutupActivityFeed.renderTimeline(usageFeed, activityFeedCache, {
+      limit: 10,
+      category: 'processing',
+      emptyMessage: 'Your processing activity will appear here after your first video.'
+    });
+  }
 }
 
 function renderSavedOutputs() {
@@ -2519,86 +2545,81 @@ function renderPlansSection() {
 
   const planKey = String(subscriptionInfo.plan || 'free').toLowerCase();
   const credits = creditsFromSubscription(subscriptionInfo);
-  const renewalCountdown = formatRenewalCountdown(subscriptionInfo.subscription?.endDate);
-  const renewalDate = subscriptionInfo.subscription?.endDate
-    ? formatDateTime(subscriptionInfo.subscription.endDate)
-    : null;
   const planName = window.CutupPlanPermissions?.displayPlanName
     ? window.CutupPlanPermissions.displayPlanName(planKey)
     : displayPlanTitle(subscriptionInfo.plan, subscriptionInfo.planName);
-  const nextPlan = window.CutupPlanPermissions?.getNextPlanKey
-    ? window.CutupPlanPermissions.getNextPlanKey(planKey)
-    : null;
-  const benefits = window.CutupPlanPermissions?.getUpgradeBenefits
-    ? window.CutupPlanPermissions.getUpgradeBenefits(planKey)
-    : [];
-  const nextPlanName = nextPlan && window.CutupPlanPermissions?.displayPlanName
-    ? window.CutupPlanPermissions.displayPlanName(nextPlan)
-    : (nextPlan ? displayPlanTitle(nextPlan) : null);
-  const statusLabel = formatSubscriptionStatus(subscriptionInfo);
-
-  let upgradeBlock = '';
-  if (nextPlan && nextPlanName && benefits.length) {
-    upgradeBlock = `
-      <div class="dash-subscription-upgrade">
-        <h3>Upgrade to ${escapeHtml(nextPlanName)} and unlock:</h3>
-        <ul>
-          ${benefits.map((b) => `<li>✓ ${escapeHtml(b)}</li>`).join('')}
-        </ul>
-        <button type="button" class="plan-btn" id="dashUpgradePrimaryBtn">Upgrade to ${escapeHtml(nextPlanName)}</button>
-        <button type="button" class="plan-btn plan-btn--ghost" id="dashComparePlansBtn">Compare all plans</button>
-      </div>
-    `;
-  } else if (!nextPlan) {
-    upgradeBlock = `
-      <div class="dash-subscription-complete">
-        You are on the Business plan with every feature unlocked.
-      </div>
-    `;
-  }
+  const renewalCountdown = formatRenewalCountdown(subscriptionInfo.subscription?.endDate);
+  const cycleEnd = subscriptionInfo.creditsSnapshot?.cycleEnd || subscriptionInfo.subscription?.endDate;
+  const renewalLabel = renewalCountdown
+    || (cycleEnd ? formatDateTime(cycleEnd) : '—');
+  const pct = credits.limit > 0 ? Math.min(100, Math.round((credits.used / credits.limit) * 100)) : 0;
 
   subscriptionInfoEl.innerHTML = `
-    <div class="dash-subscription-layout">
-      <div class="dash-subscription-plan-card">
-        <h2 class="dash-subscription-plan-card__title">${escapeHtml(planName)}</h2>
-        <p class="dash-subscription-plan-card__status">${escapeHtml(statusLabel)}</p>
-        <p class="dash-subscription-plan-card__credits">Used: <strong>${credits.used}</strong> · Remaining: <strong>${credits.remaining}</strong> · Limit: <strong>${credits.limit}</strong></p>
-        <p class="dash-subscription-plan-card__meta">Monthly limit: <strong>${credits.limit} credits</strong></p>
-        ${renewalCountdown
-          ? `<p class="dash-subscription-plan-card__meta">${escapeHtml(renewalCountdown)}</p>`
-          : renewalDate
-            ? `<p class="dash-subscription-plan-card__meta">Renewal: ${escapeHtml(renewalDate)}</p>`
-            : ''}
+    <div class="dash-plans">
+      <div class="dash-plans-kpi-grid">
+        <article class="dash-plans-kpi">
+          <span class="dash-plans-kpi__label">Current plan</span>
+          <strong class="dash-plans-kpi__value">${escapeHtml(planName)}</strong>
+        </article>
+        <article class="dash-plans-kpi dash-plans-kpi--accent">
+          <span class="dash-plans-kpi__label">Credits remaining</span>
+          <strong class="dash-plans-kpi__value">${credits.remaining}</strong>
+        </article>
+        <article class="dash-plans-kpi">
+          <span class="dash-plans-kpi__label">Monthly limit</span>
+          <strong class="dash-plans-kpi__value">${credits.limit}</strong>
+        </article>
+        <article class="dash-plans-kpi">
+          <span class="dash-plans-kpi__label">Next renewal</span>
+          <strong class="dash-plans-kpi__value dash-plans-kpi__value--sm">${escapeHtml(renewalLabel)}</strong>
+        </article>
       </div>
-      ${upgradeBlock}
+
+      <section class="dash-plans-usage">
+        <div class="dash-plans-usage__head">
+          <h2 class="dash-plans-section-title">Usage this cycle</h2>
+          <span class="dash-plans-usage__plan">${escapeHtml(planName)}</span>
+        </div>
+        <div class="dash-plans-usage__stats">
+          <span><strong>${credits.remaining}</strong> remaining</span>
+          <span><strong>${credits.used}</strong> used</span>
+          <span><strong>${credits.limit}</strong> monthly limit</span>
+        </div>
+        <div class="dash-plans-usage__bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">
+          <div class="dash-plans-usage__fill" style="width:${pct}%"></div>
+        </div>
+      </section>
+
+      <section class="dash-plans-matrix">
+        <h2 class="dash-plans-section-title">Available plans</h2>
+        <div id="dashPlansMatrixRoot"></div>
+      </section>
     </div>
   `;
 
-  document.getElementById('dashUpgradePrimaryBtn')?.addEventListener('click', () => {
-    openDashboardPricingMatrix(nextPlan);
-  });
-  document.getElementById('dashComparePlansBtn')?.addEventListener('click', () => {
-    openDashboardPricingMatrix(nextPlan);
-  });
-
-  try {
-    if (window.CutupOffersResolver) {
-      window.CutupOffersResolver.renderGlobalRibbon(offersResolvedState || { selectedOffer: null });
-    }
-  } catch (_e) {
-    /* noop */
+  const paywallEl = document.getElementById('cutupDashboardPricingPaywall');
+  if (paywallEl) {
+    paywallEl.hidden = true;
+    paywallEl.innerHTML = '';
   }
 
-  try {
-    if (typeof window.renderDashboardPaywall === 'function') window.renderDashboardPaywall(subscriptionInfo);
-  } catch (_e) {
-    /* noop */
+  if (window.CutupPricingMatrix?.mount) {
+    window.CutupPricingMatrix.mount('#dashPlansMatrixRoot', {
+      context: 'dashboard',
+      currentPlan: planKey,
+      onUpgrade: (plan) => dashboardCheckoutForPlan(plan)
+    });
   }
 
   if (dashboardHighlightPlan) {
     const hl = dashboardHighlightPlan;
     dashboardHighlightPlan = null;
-    openDashboardPricingMatrix(hl);
+    requestAnimationFrame(() => {
+      const root = document.getElementById('dashPlansMatrixRoot');
+      const cell = root?.querySelector(`[data-cutup-plan="${CSS.escape(hl)}"]`)?.closest('td')
+        || root?.querySelector(`[data-cutup-plan-exports="${CSS.escape(hl)}"]`);
+      cell?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    });
   }
 }
 
@@ -2615,6 +2636,7 @@ function renderBillingSection() {
       loadState: billingDashboardLoadState,
       loadError: billingDashboardLoadError,
       subscriptionInfo,
+      activityFeed: activityFeedCache,
       session: currentSession,
       apiBase: API_BASE_URL,
       apiPost,

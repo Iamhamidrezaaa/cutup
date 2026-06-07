@@ -185,6 +185,8 @@ export async function getLegacyUsageShape(email) {
 export async function applyStripeSubscriptionDbFromCheckout(email, planKey, stripeCustomerId, stripeSubscriptionId, currentPeriodEnd) {
   const userId = await ensureUserByEmail(email);
   const pool = getPool();
+  const prevR = await pool.query('SELECT plan FROM subscriptions WHERE user_id = $1', [userId]);
+  const prevPlan = prevR.rows[0]?.plan || 'free';
   await pool.query(
     `UPDATE subscriptions SET
       plan = $2,
@@ -197,6 +199,10 @@ export async function applyStripeSubscriptionDbFromCheckout(email, planKey, stri
     WHERE user_id = $1`,
     [userId, planKey, stripeCustomerId, stripeSubscriptionId, currentPeriodEnd]
   );
+  if (String(prevPlan).toLowerCase() !== String(planKey).toLowerCase()) {
+    const { recordPlanUpgraded } = await import('./activity-feed-repository.js');
+    void recordPlanUpgraded(email, prevPlan, planKey, { source: 'stripe_checkout' });
+  }
 }
 
 export async function resetMonthlyCreditsForUser(userId) {
@@ -214,6 +220,14 @@ export async function resetMonthlyCreditsForUser(userId) {
     WHERE user_id = $1`,
     [userId, new Date(cycle.cycleStart), cycle.cycleKey.slice(0, 7)]
   );
+  const { getEmailByUserId, recordCreditsReset } = await import('./activity-feed-repository.js');
+  const userEmail = await getEmailByUserId(userId);
+  if (userEmail) {
+    void recordCreditsReset(userEmail, {
+      cycleStart: cycle.cycleStart,
+      cycleEnd: subR.rows[0]?.current_period_end || null
+    });
+  }
 }
 
 export async function syncStripeSubscriptionFromStripeObject(
@@ -252,6 +266,8 @@ export async function syncStripeSubscriptionFromStripeObject(
 
   if (isRenewal) {
     await resetMonthlyCreditsForUser(userId);
+    const { recordSubscriptionRenewed } = await import('./activity-feed-repository.js');
+    void recordSubscriptionRenewed(email, planKey, { source: 'stripe_renewal' });
   }
 }
 

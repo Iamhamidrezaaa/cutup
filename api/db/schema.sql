@@ -72,6 +72,19 @@ CREATE TABLE IF NOT EXISTS usage_history (
 
 CREATE INDEX IF NOT EXISTS idx_usage_history_user_created ON usage_history(user_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS activity_feed (
+  id BIGSERIAL PRIMARY KEY,
+  user_email VARCHAR(320) NOT NULL,
+  event_type VARCHAR(64) NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  description TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_activity_feed_email_created
+  ON activity_feed (lower(user_email), created_at DESC);
+
 CREATE TABLE IF NOT EXISTS saved_outputs (
   id BIGSERIAL PRIMARY KEY,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

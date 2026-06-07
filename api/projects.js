@@ -21,6 +21,7 @@ import {
   duplicateProjectDb,
   archiveProjectDb,
   deleteProjectDb,
+  getProjectDetailDb,
   buildProjectRestorePayloadDb,
   getLatestExportForProjectDb
 } from './projects-repository.js';
@@ -129,8 +130,14 @@ export default async function handler(req, res) {
     if (method === 'POST' && action === 'delete') {
       const { id } = body;
       if (!id) return res.status(400).json({ error: 'id is required' });
+      const detail = await getProjectDetailDb(userEmail, id);
       const ok = await deleteProjectDb(userEmail, id);
       if (!ok) return res.status(404).json({ error: 'Project not found' });
+      const { recordProjectDeleted } = await import('./activity-feed-repository.js');
+      void recordProjectDeleted(userEmail, {
+        projectId: id,
+        title: detail?.project?.title || null
+      });
       return res.json({ ok: true });
     }
 

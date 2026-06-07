@@ -471,6 +471,12 @@ async function handleDownload(req, res, jobId, email) {
   }
 
   console.log('[export-video] download', { jobId, bytes: job.fileSizeBytes, disposition: 'attachment' });
+  const { recordOutputDownloaded } = await import('./activity-feed-repository.js');
+  void recordOutputDownloaded(email, {
+    format: 'mp4',
+    title: job.videoTitle || job.title || job.projectTitle || null,
+    jobId
+  });
   job.stageKey = 'completed';
   streamJobMp4(req, res, jobId, job, 'attachment', {
     onComplete: () => {

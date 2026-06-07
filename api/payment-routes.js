@@ -25,6 +25,7 @@ import {
   markPaymentTerminalStatus,
   markPendingPaymentExpiredIfStale,
   resolveUserIdForAnalytics,
+  getSubscriptionRowByEmail,
 } from './billing-repository.js';
 import {
   getYekpayConfig,
@@ -222,6 +223,17 @@ async function auditPaymentSuccess(req, email, sessionId, planKey, source) {
   });
 }
 
+async function auditPaymentFailedActivity(email, planKey, reason, extra = {}) {
+  if (!email) return;
+  const { recordPaymentFailed } = await import('./activity-feed-repository.js');
+  void recordPaymentFailed(email, {
+    planKey: planKey || null,
+    reason: reason || 'Payment failed',
+    source: 'yekpay',
+    ...extra
+  });
+}
+
 
 async function processSuccessfulPayment({ payment, authority, verifyResult, req, sessionId = null }) {
   const email = payment.email;
@@ -269,6 +281,8 @@ async function processSuccessfulPayment({ payment, authority, verifyResult, req,
   if (!PAID_PLAN_KEYS.includes(planKeyResolved)) {
     return { ok: false, error: 'invalid_plan' };
   }
+  const prevSubRow = await getSubscriptionRowByEmail(email);
+  const prevPlanKey = String(prevSubRow?.plan || 'free').toLowerCase();
   const paid = await markPaymentSuccess(fresh.id, {
     refId: verifyResult?.raw?.Result?.ReferenceNumber || verifyResult?.raw?.ReferenceNumber || null,
     amountIrr: amountCheck.storeAmountIrr ?? null
@@ -349,6 +363,25 @@ async function processSuccessfulPayment({ payment, authority, verifyResult, req,
       subscriptionActivationResult: sub.created ? 'created' : sub.extended ? 'extended' : 'updated'
     })
   );
+  const payAmount = Number(fresh.final_amount_eur || fresh.amount_eur || fresh.amount || 0);
+  const payCurrency = String(fresh.currency || 'EUR');
+  const {
+    recordPaymentSuccessful,
+    recordPlanUpgraded,
+    recordSubscriptionRenewed
+  } = await import('./activity-feed-repository.js');
+  void recordPaymentSuccessful(email, {
+    amount: payAmount,
+    currency: payCurrency,
+    planKey: planKeyResolved,
+    source: 'yekpay',
+    paymentId: String(fresh.id)
+  });
+  if (prevPlanKey !== planKeyResolved) {
+    void recordPlanUpgraded(email, prevPlanKey, planKeyResolved, { source: 'yekpay' });
+  } else if (sub.extended) {
+    void recordSubscriptionRenewed(email, planKeyResolved, { source: 'yekpay' });
+  }
   return { ok: true, payment: paid, subscription: sub, invoice };
 }
 
@@ -792,6 +825,7 @@ export async function paymentCallbackHandler(req, res) {
       metadata: { plan: payment.plan_key || null, provider: 'yekpay', reason: 'gateway_callback_unsuccess' },
       req
     });
+    void auditPaymentFailedActivity(payment.email, payment.plan_key, 'Gateway declined payment');
     return paymentFrontendRedirect(res, '/payment-failed.html');
   }
 
@@ -822,6 +856,7 @@ export async function paymentCallbackHandler(req, res) {
       metadata: { plan: payment.plan_key || null, provider: 'yekpay', reason: verified.error || 'verify_failed' },
       req
     });
+    void auditPaymentFailedActivity(payment.email, payment.plan_key, verified.error || 'Verification failed');
     return paymentFrontendRedirect(res, '/payment-failed.html');
   }
 
@@ -840,6 +875,7 @@ export async function paymentCallbackHandler(req, res) {
       },
       req
     });
+    void auditPaymentFailedActivity(payment.email, payment.plan_key, amountPre.error || 'Amount mismatch');
     return paymentFrontendRedirect(res, '/payment-failed.html');
   }
 
@@ -860,6 +896,7 @@ export async function paymentCallbackHandler(req, res) {
       metadata: { plan: payment.plan_key || null, provider: 'yekpay', reason: out.error || 'finalize_failed' },
       req
     });
+    void auditPaymentFailedActivity(payment.email, payment.plan_key, out.error || 'Activation failed');
     return paymentFrontendRedirect(res, '/payment-failed.html');
   }
 
