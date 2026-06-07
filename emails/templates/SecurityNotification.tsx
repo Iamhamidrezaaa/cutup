@@ -1,6 +1,12 @@
-import { Section } from '@react-email/components';
+import { Text } from '@react-email/components';
 import { CutupLayout } from '../layouts/CutupLayout';
-import { EmailButton, EmailCard, EmailHeading, EmailText } from '../components';
+import {
+  EmailButton,
+  EmailCard,
+  EmailText,
+  HeroSection,
+  StatusBadge,
+} from '../components';
 import { BRAND, SITE } from '../brand';
 
 export type SecurityNotificationData = {
@@ -20,17 +26,17 @@ export function SecurityNotification({
 }: SecurityNotificationData) {
   return (
     <CutupLayout preview={title}>
-      <EmailHeading>{title}</EmailHeading>
-      <EmailText>Hi {firstName},</EmailText>
+      <StatusBadge variant="danger">Security alert</StatusBadge>
+      <HeroSection title={title} subtitle={`Hi ${firstName}, we detected activity on your account that needs your attention.`} />
       <EmailCard>
-        <EmailText style={{ margin: 0 }}>{message}</EmailText>
+        <Text style={{ margin: 0, fontSize: '15px', lineHeight: '1.65', color: BRAND.text }}>{message}</Text>
       </EmailCard>
       {actionUrl ? (
-        <Section style={{ margin: '24px 0' }}>
-          <EmailButton href={actionUrl}>{actionLabel}</EmailButton>
-        </Section>
+        <EmailButton href={actionUrl} fullWidth>
+          {actionLabel}
+        </EmailButton>
       ) : null}
-      <EmailText muted small style={{ color: BRAND.danger }}>
+      <EmailText inset muted small style={{ color: BRAND.danger }}>
         If this wasn&apos;t you, contact {SITE.supportEmail} immediately.
       </EmailText>
     </CutupLayout>

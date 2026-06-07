@@ -1,4 +1,4 @@
-import { Body, Container, Head, Html, Preview } from '@react-email/components';
+import { Body, Container, Head, Html, Preview, Section } from '@react-email/components';
 import { Tailwind } from '@react-email/tailwind';
 import * as React from 'react';
 import { BRAND } from '../brand';
@@ -25,8 +25,8 @@ export function CutupLayout({ preview, children }: Props) {
   return (
     <Html lang="en">
       <Head>
-        <meta name="color-scheme" content="light dark" />
-        <meta name="supported-color-schemes" content="light dark" />
+        <meta name="color-scheme" content="light" />
+        <meta name="supported-color-schemes" content="light" />
       </Head>
       <Preview>{preview}</Preview>
       <Tailwind config={tailwindConfig}>
@@ -36,18 +36,29 @@ export function CutupLayout({ preview, children }: Props) {
             backgroundColor: BRAND.background,
             fontFamily: BRAND.fontFamily,
             WebkitFontSmoothing: 'antialiased',
+            margin: 0,
+            padding: '32px 16px',
           }}
         >
           <Container
             className="mx-auto"
             style={{
-              maxWidth: '560px',
+              maxWidth: BRAND.maxWidth,
               margin: '0 auto',
-              backgroundColor: BRAND.background,
             }}
           >
-            <EmailHeader />
-            <Container style={{ padding: '8px 24px 16px' }}>{children}</Container>
+            <Section
+              style={{
+                backgroundColor: BRAND.card,
+                borderRadius: BRAND.radiusLg,
+                border: `1px solid ${BRAND.border}`,
+                boxShadow: BRAND.shadowSm,
+                overflow: 'hidden',
+              }}
+            >
+              <EmailHeader />
+              {children}
+            </Section>
             <EmailFooter />
           </Container>
         </Body>

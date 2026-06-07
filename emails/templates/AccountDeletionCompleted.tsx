@@ -1,7 +1,13 @@
-import { Section } from '@react-email/components';
+import { Text } from '@react-email/components';
 import { CutupLayout } from '../layouts/CutupLayout';
-import { EmailButton, EmailHeading, EmailText } from '../components';
-import { SITE } from '../brand';
+import {
+  EmailButton,
+  EmailCard,
+  EmailText,
+  HeroSection,
+  StatusBadge,
+} from '../components';
+import { BRAND, SITE } from '../brand';
 
 export type AccountDeletionCompletedData = {
   firstName?: string;
@@ -14,19 +20,24 @@ export function AccountDeletionCompleted({
 }: AccountDeletionCompletedData) {
   return (
     <CutupLayout preview="Your Cutup account has been deleted">
-      <EmailHeading>Your Cutup account has been deleted</EmailHeading>
-      <EmailText>Hi {firstName}, your Cutup account and associated data have been permanently removed.</EmailText>
-      <EmailText>
-        • Your account is no longer available.
-        <br />• The same email address is locked for <strong>{cooldownDays} days</strong> and cannot
-        be used to register a new account during this period.
-      </EmailText>
-      <Section style={{ margin: '24px 0' }}>
-        <EmailButton href={`mailto:${SITE.supportEmail}`} variant="secondary">
-          Contact Support
-        </EmailButton>
-      </Section>
-      <EmailText muted small>
+      <StatusBadge variant="neutral">Account deleted</StatusBadge>
+      <HeroSection
+        title="Your account has been deleted"
+        subtitle={`Hi ${firstName}, your Cutup account and associated data have been permanently removed.`}
+      />
+      <EmailCard>
+        <Text style={{ margin: '0 0 12px', fontSize: '15px', lineHeight: '1.6', color: BRAND.text }}>
+          • Your account is no longer available.
+        </Text>
+        <Text style={{ margin: 0, fontSize: '15px', lineHeight: '1.6', color: BRAND.text }}>
+          • The same email address is locked for <strong>{cooldownDays} days</strong> and cannot be
+          used to register a new account during this period.
+        </Text>
+      </EmailCard>
+      <EmailButton href={`mailto:${SITE.supportEmail}`} variant="secondary">
+        Contact Support
+      </EmailButton>
+      <EmailText inset muted small>
         If you believe this was a mistake, contact {SITE.supportEmail} as soon as possible.
       </EmailText>
     </CutupLayout>

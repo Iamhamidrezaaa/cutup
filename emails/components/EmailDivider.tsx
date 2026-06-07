@@ -1,14 +1,16 @@
-import { Hr } from '@react-email/components';
+import { Hr, Section } from '@react-email/components';
 import { BRAND } from '../brand';
 
 export function EmailDivider() {
   return (
-    <Hr
-      style={{
-        borderColor: BRAND.border,
-        borderWidth: '1px',
-        margin: '28px 0',
-      }}
-    />
+    <Section style={{ padding: '0 32px' }}>
+      <Hr
+        style={{
+          borderColor: BRAND.border,
+          borderWidth: '1px',
+          margin: '24px 0',
+        }}
+      />
+    </Section>
   );
 }

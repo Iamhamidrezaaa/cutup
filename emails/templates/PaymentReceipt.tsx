@@ -1,6 +1,13 @@
-import { Section } from '@react-email/components';
 import { CutupLayout } from '../layouts/CutupLayout';
-import { EmailButton, EmailCard, EmailHeading, EmailText } from '../components';
+import {
+  DetailRow,
+  EmailButton,
+  EmailCard,
+  EmailText,
+  HeroSection,
+  PlanBadge,
+  SuccessIndicator,
+} from '../components';
 import { SITE } from '../brand';
 
 export type PaymentReceiptData = {
@@ -21,26 +28,24 @@ export function PaymentReceipt({
   const dateLabel = paymentDate || new Date().toLocaleDateString('en-US', { dateStyle: 'medium' });
 
   return (
-    <CutupLayout preview="Payment received — thank you">
-      <EmailHeading>Payment received</EmailHeading>
-      <EmailText>Hi {firstName}, we received your payment. Thank you for supporting Cutup.</EmailText>
+    <CutupLayout preview="Payment confirmed">
+      <SuccessIndicator label="Payment confirmed" />
+      <HeroSection
+        title="Payment confirmed"
+        subtitle={`Hi ${firstName}, thank you for your payment. Your receipt details are below.`}
+      />
       <EmailCard>
-        <EmailText style={{ margin: '0 0 8px' }}>
-          <strong>Plan:</strong> {planName}
-        </EmailText>
-        <EmailText style={{ margin: '0 0 8px' }}>
-          <strong>Amount:</strong> {amount}
-        </EmailText>
-        <EmailText style={{ margin: 0 }}>
-          <strong>Date:</strong> {dateLabel}
-        </EmailText>
+        <PlanBadge plan={planName} />
+        <DetailRow label="Amount" value={amount} />
+        <DetailRow label="Plan" value={planName} />
+        <DetailRow label="Billing date" value={dateLabel} last />
       </EmailCard>
       {invoiceUrl ? (
-        <Section style={{ margin: '20px 0' }}>
-          <EmailButton href={invoiceUrl}>View Invoice</EmailButton>
-        </Section>
+        <EmailButton href={invoiceUrl} fullWidth>
+          View Invoice
+        </EmailButton>
       ) : null}
-      <EmailText muted small>
+      <EmailText inset muted small>
         Billing questions? Contact {SITE.supportEmail}.
       </EmailText>
     </CutupLayout>

@@ -2,17 +2,22 @@ import { Section } from '@react-email/components';
 import * as React from 'react';
 import { BRAND } from '../brand';
 
-type Props = { children: React.ReactNode };
+type Props = {
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+};
 
-export function EmailCard({ children }: Props) {
+export function EmailCard({ children, style }: Props) {
   return (
     <Section
       style={{
-        backgroundColor: BRAND.surface,
+        backgroundColor: BRAND.card,
         borderRadius: BRAND.radiusLg,
         border: `1px solid ${BRAND.border}`,
-        padding: '20px 24px',
-        margin: '0 0 24px',
+        boxShadow: BRAND.shadowSm,
+        padding: '24px',
+        margin: '0 32px 24px',
+        ...style,
       }}
     >
       {children}

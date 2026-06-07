@@ -1,11 +1,19 @@
-import { Section } from '@react-email/components';
 import { CutupLayout } from '../layouts/CutupLayout';
-import { EmailButton, EmailHeading, EmailText } from '../components';
+import {
+  DetailRow,
+  EmailButton,
+  EmailCard,
+  EmailText,
+  HeroSection,
+  StatusBadge,
+  SuccessIndicator,
+} from '../components';
 import { SITE } from '../brand';
 import type { SupportTicketData } from './SupportTicketCreated';
 
 export type SupportTicketClosedData = SupportTicketData & {
   ratingUrl?: string;
+  resolutionSummary?: string;
 };
 
 export function SupportTicketClosed({
@@ -13,19 +21,38 @@ export function SupportTicketClosed({
   ticketNumber = '0000',
   subject = 'Support request',
   ratingUrl,
+  resolutionSummary,
+  ticketUrl,
 }: SupportTicketClosedData) {
   const rate = ratingUrl || SITE.dashboardUrl;
+  const reopen = ticketUrl || SITE.dashboardUrl;
 
   return (
     <CutupLayout preview={`Ticket #${ticketNumber} resolved`}>
-      <EmailHeading>Ticket #{ticketNumber} resolved</EmailHeading>
-      <EmailText>
-        Hi {firstName}, your support ticket &quot;{subject}&quot; has been marked as resolved.
+      <SuccessIndicator label="Resolved" />
+      <HeroSection
+        title={`Ticket #${ticketNumber} resolved`}
+        subtitle={`Hi ${firstName}, your support request has been marked as resolved.`}
+      />
+      <EmailCard>
+        <StatusBadge variant="success">Resolution summary</StatusBadge>
+        <DetailRow label="Ticket" value={`#${ticketNumber}`} />
+        <DetailRow label="Subject" value={subject} />
+        <DetailRow
+          label="Outcome"
+          value={resolutionSummary || 'Issue resolved by support team'}
+          last
+        />
+      </EmailCard>
+      <EmailButton href={rate} fullWidth>
+        Rate Support
+      </EmailButton>
+      <EmailButton href={reopen} variant="secondary">
+        Reopen Ticket
+      </EmailButton>
+      <EmailText inset muted small>
+        How was your experience? Your feedback helps us improve Cutup.
       </EmailText>
-      <EmailText>How was your experience? Your feedback helps us improve Cutup.</EmailText>
-      <Section style={{ margin: '24px 0' }}>
-        <EmailButton href={rate}>Rate Support</EmailButton>
-      </Section>
     </CutupLayout>
   );
 }

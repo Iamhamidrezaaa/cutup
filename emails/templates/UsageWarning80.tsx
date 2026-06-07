@@ -1,6 +1,14 @@
-import { Section } from '@react-email/components';
 import { CutupLayout } from '../layouts/CutupLayout';
-import { EmailButton, EmailCard, EmailHeading, EmailText } from '../components';
+import {
+  DetailRow,
+  EmailButton,
+  EmailCard,
+  EmailText,
+  HeroSection,
+  PlanBadge,
+  StatusBadge,
+  UsageProgressBar,
+} from '../components';
 import { BRAND, SITE } from '../brand';
 
 export type UsageWarningData = {
@@ -8,6 +16,7 @@ export type UsageWarningData = {
   used?: number;
   remaining?: number;
   limit?: number;
+  planName?: string;
   upgradeUrl?: string;
 };
 
@@ -16,33 +25,29 @@ export function UsageWarning80({
   used = 0,
   remaining = 0,
   limit = 0,
+  planName = 'Starter',
   upgradeUrl,
 }: UsageWarningData) {
   const upgrade = upgradeUrl || `${SITE.dashboardUrl}#subscription`;
 
   return (
-    <CutupLayout preview="80% of monthly credits used">
-      <EmailHeading>80% of monthly credits used</EmailHeading>
-      <EmailText>
-        Hi {firstName}, you&apos;ve used most of your monthly processing credits. Consider upgrading
-        to avoid interruptions.
-      </EmailText>
+    <CutupLayout preview="You're approaching your monthly limit">
+      <StatusBadge variant="warning">80% used</StatusBadge>
+      <HeroSection
+        title="You're approaching your monthly limit"
+        subtitle={`Hi ${firstName}, you've used most of your monthly credits. Upgrade now to avoid interruptions.`}
+      />
       <EmailCard>
-        <EmailText style={{ margin: '0 0 8px' }}>
-          <strong>Used:</strong> {used}
-        </EmailText>
-        <EmailText style={{ margin: '0 0 8px' }}>
-          <strong>Remaining:</strong> {remaining}
-        </EmailText>
-        <EmailText style={{ margin: 0 }}>
-          <strong>Limit:</strong> {limit}
-        </EmailText>
+        <PlanBadge plan={planName} />
+        <UsageProgressBar used={used} limit={limit} label="Monthly usage" />
+        <DetailRow label="Used" value={used} />
+        <DetailRow label="Remaining" value={remaining} last />
       </EmailCard>
-      <Section style={{ margin: '24px 0' }}>
-        <EmailButton href={upgrade}>Upgrade Plan</EmailButton>
-      </Section>
-      <EmailText muted small style={{ color: BRAND.warning }}>
-        You&apos;re approaching your monthly limit.
+      <EmailButton href={upgrade} fullWidth>
+        Upgrade Plan
+      </EmailButton>
+      <EmailText inset muted small style={{ color: BRAND.warning }}>
+        You&apos;re approaching your monthly limit. Credits reset at the start of your billing cycle.
       </EmailText>
     </CutupLayout>
   );

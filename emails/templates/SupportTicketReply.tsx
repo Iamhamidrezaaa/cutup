@@ -1,7 +1,12 @@
-import { Section } from '@react-email/components';
+import { Text } from '@react-email/components';
 import { CutupLayout } from '../layouts/CutupLayout';
-import { EmailButton, EmailCard, EmailHeading, EmailText } from '../components';
-import { SITE } from '../brand';
+import {
+  EmailButton,
+  EmailCard,
+  HeroSection,
+  StatusBadge,
+} from '../components';
+import { BRAND, SITE } from '../brand';
 import type { SupportTicketData } from './SupportTicketCreated';
 
 export type SupportTicketReplyData = SupportTicketData & {
@@ -20,17 +25,31 @@ export function SupportTicketReply({
 
   return (
     <CutupLayout preview={`Update on Ticket #${ticketNumber}`}>
-      <EmailHeading>Update on Ticket #{ticketNumber}</EmailHeading>
-      <EmailText>Hi {firstName}, {agentName} replied to your support ticket.</EmailText>
+      <StatusBadge variant="info">New reply</StatusBadge>
+      <HeroSection
+        title={`Update on ticket #${ticketNumber}`}
+        subtitle={`Hi ${firstName}, ${agentName} replied to your support request.`}
+      />
       <EmailCard>
-        <EmailText style={{ margin: '0 0 12px', fontSize: '14px', color: '#6B7280' }}>
-          <strong>{agentName}</strong> wrote:
-        </EmailText>
-        <EmailText style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{replyText || '—'}</EmailText>
+        <Text
+          style={{
+            margin: '0 0 12px',
+            fontSize: '13px',
+            fontWeight: 600,
+            color: BRAND.textMuted,
+            textTransform: 'uppercase',
+            letterSpacing: '0.06em',
+          }}
+        >
+          {agentName}
+        </Text>
+        <Text style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: '15px', lineHeight: '1.65', color: BRAND.text }}>
+          {replyText || '—'}
+        </Text>
       </EmailCard>
-      <Section style={{ margin: '24px 0' }}>
-        <EmailButton href={url}>View Ticket</EmailButton>
-      </Section>
+      <EmailButton href={url} fullWidth>
+        View Ticket
+      </EmailButton>
     </CutupLayout>
   );
 }

@@ -1,6 +1,13 @@
-import { Section } from '@react-email/components';
 import { CutupLayout } from '../layouts/CutupLayout';
-import { EmailButton, EmailCard, EmailHeading, EmailText } from '../components';
+import {
+  DetailRow,
+  EmailButton,
+  EmailCard,
+  HeroSection,
+  QuickActions,
+  StatusBadge,
+  SuccessIndicator,
+} from '../components';
 import { SITE } from '../brand';
 
 export type ExportCompletedData = {
@@ -21,27 +28,24 @@ export function ExportCompleted({
 
   return (
     <CutupLayout preview="Your export is ready">
-      <EmailHeading>Your export is ready</EmailHeading>
-      <EmailText>Your {exportType} export has finished processing and is ready to download.</EmailText>
+      <SuccessIndicator label="Export ready" />
+      <HeroSection
+        title="Your export is ready"
+        subtitle="Your file has finished processing and is ready to download."
+      />
       <EmailCard>
-        <EmailText style={{ margin: '0 0 8px' }}>
-          <strong>Project:</strong> {projectName}
-        </EmailText>
-        <EmailText style={{ margin: '0 0 8px' }}>
-          <strong>Export type:</strong> {exportType}
-        </EmailText>
-        <EmailText style={{ margin: 0 }}>
-          <strong>Date:</strong> {dateLabel}
-        </EmailText>
+        <StatusBadge variant="success">Export summary</StatusBadge>
+        <DetailRow label="Project" value={projectName} />
+        <DetailRow label="Export type" value={exportType} />
+        <DetailRow label="Export date" value={dateLabel} last />
       </EmailCard>
-      <Section style={{ margin: '8px 0 20px' }}>
-        <EmailButton href={download}>Download Export</EmailButton>
-      </Section>
-      <Section>
-        <EmailButton href={SITE.dashboardUrl} variant="secondary">
-          Open Dashboard
-        </EmailButton>
-      </Section>
+      <EmailButton href={download} fullWidth>
+        Download Export
+      </EmailButton>
+      <EmailButton href={SITE.dashboardUrl} variant="secondary">
+        Open Dashboard
+      </EmailButton>
+      <QuickActions />
     </CutupLayout>
   );
 }

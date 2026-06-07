@@ -1,6 +1,12 @@
-import { Section } from '@react-email/components';
+import { Text } from '@react-email/components';
 import { CutupLayout } from '../layouts/CutupLayout';
-import { EmailButton, EmailCard, EmailHeading, EmailText } from '../components';
+import {
+  EmailButton,
+  EmailCard,
+  HeroSection,
+  StatusBadge,
+} from '../components';
+import { BRAND } from '../brand';
 import { SITE } from '../brand';
 
 export type SystemNotificationData = {
@@ -20,14 +26,16 @@ export function SystemNotification({
 }: SystemNotificationData) {
   return (
     <CutupLayout preview={title}>
-      <EmailHeading>{title}</EmailHeading>
-      <EmailText>Hi {firstName},</EmailText>
+      <StatusBadge variant="info">System update</StatusBadge>
+      <HeroSection title={title} subtitle={`Hi ${firstName}, here's an important update from Cutup.`} />
       <EmailCard>
-        <EmailText style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{message || '—'}</EmailText>
+        <Text style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: '15px', lineHeight: '1.65', color: BRAND.text }}>
+          {message || '—'}
+        </Text>
       </EmailCard>
-      <Section style={{ margin: '24px 0' }}>
-        <EmailButton href={ctaUrl || SITE.dashboardUrl}>{ctaLabel}</EmailButton>
-      </Section>
+      <EmailButton href={ctaUrl || SITE.dashboardUrl} fullWidth>
+        {ctaLabel}
+      </EmailButton>
     </CutupLayout>
   );
 }

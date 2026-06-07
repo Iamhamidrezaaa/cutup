@@ -1,6 +1,11 @@
-import { Section } from '@react-email/components';
 import { CutupLayout } from '../layouts/CutupLayout';
-import { EmailButton, EmailHeading, EmailText } from '../components';
+import {
+  EmailButton,
+  EmailText,
+  HeroSection,
+  QuickActions,
+  StatusBadge,
+} from '../components';
 import { SITE } from '../brand';
 
 export type WelcomeEmailData = {
@@ -10,17 +15,18 @@ export type WelcomeEmailData = {
 export function WelcomeEmail({ firstName = 'there' }: WelcomeEmailData) {
   const name = String(firstName).trim() || 'there';
   return (
-    <CutupLayout preview="Welcome to Cutup — your AI video workspace">
-      <EmailHeading>Welcome to Cutup</EmailHeading>
-      <EmailText>
-        Hi {name}, thanks for joining Cutup. Your AI video workspace is ready — transcribe, translate,
-        summarize, and export videos in one place.
-      </EmailText>
-      <Section style={{ margin: '28px 0' }}>
-        <EmailButton href={SITE.dashboardUrl}>Open Dashboard</EmailButton>
-      </Section>
-      <EmailText muted small>
-        Questions? Reply to this email or contact {SITE.supportEmail}.
+    <CutupLayout preview="Welcome to your AI video workspace">
+      <StatusBadge variant="success">Welcome aboard</StatusBadge>
+      <HeroSection
+        title="Welcome to your AI video workspace"
+        subtitle={`Hi ${name}, your Cutup account is ready. Transcribe, translate, summarize, and export videos — all in one premium workspace.`}
+      />
+      <EmailButton href={SITE.dashboardUrl} fullWidth>
+        Open Dashboard
+      </EmailButton>
+      <QuickActions />
+      <EmailText inset muted small>
+        Need help getting started? Reply to this email or reach us at {SITE.supportEmail}.
       </EmailText>
     </CutupLayout>
   );

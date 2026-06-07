@@ -3,34 +3,44 @@ import { BRAND, SITE } from '../brand';
 
 export function EmailHeader() {
   return (
-    <Section style={{ padding: '32px 24px 8px', textAlign: 'left' }}>
-      <table cellPadding={0} cellSpacing={0} style={{ width: '100%' }}>
+    <Section style={{ padding: '32px 32px 20px' }}>
+      <table cellPadding={0} cellSpacing={0} role="presentation" style={{ width: '100%' }}>
         <tbody>
           <tr>
-            <td style={{ verticalAlign: 'middle' }}>
+            <td style={{ verticalAlign: 'middle', width: '40px' }}>
+              <Link href={SITE.url} style={{ textDecoration: 'none', display: 'block' }}>
+                <Img
+                  src={SITE.logoUrl}
+                  width="32"
+                  height="32"
+                  alt="Cutup"
+                  style={{ display: 'block', borderRadius: '8px' }}
+                />
+              </Link>
+            </td>
+            <td style={{ verticalAlign: 'middle', paddingLeft: '12px' }}>
               <Link href={SITE.url} style={{ textDecoration: 'none' }}>
                 <Text
                   style={{
                     margin: 0,
-                    fontSize: '22px',
-                    fontWeight: 800,
-                    color: BRAND.primary,
+                    fontSize: '20px',
+                    fontWeight: 700,
+                    color: BRAND.text,
                     letterSpacing: '-0.03em',
+                    lineHeight: '1.2',
                   }}
                 >
-                  Cutup
+                  <span style={{ color: BRAND.primary, marginRight: '6px' }}>✦</span>
+                  {SITE.name}
                 </Text>
               </Link>
-            </td>
-          </tr>
-          <tr>
-            <td>
               <Text
                 style={{
                   margin: '4px 0 0',
                   fontSize: '13px',
                   color: BRAND.textMuted,
-                  letterSpacing: '0.02em',
+                  letterSpacing: '0.01em',
+                  lineHeight: '1.4',
                 }}
               >
                 {SITE.tagline}
@@ -39,13 +49,6 @@ export function EmailHeader() {
           </tr>
         </tbody>
       </table>
-      <Img
-        src={`${SITE.url}/icons/icon128.png`}
-        width="0"
-        height="0"
-        alt=""
-        style={{ display: 'none' }}
-      />
     </Section>
   );
 }

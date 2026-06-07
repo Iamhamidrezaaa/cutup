@@ -1,6 +1,12 @@
-import { Section } from '@react-email/components';
 import { CutupLayout } from '../layouts/CutupLayout';
-import { EmailButton, EmailCard, EmailHeading, EmailText } from '../components';
+import {
+  DetailRow,
+  EmailButton,
+  EmailCard,
+  EmailText,
+  HeroSection,
+  StatusBadge,
+} from '../components';
 import { SITE } from '../brand';
 
 export type SupportTicketData = {
@@ -23,22 +29,23 @@ export function SupportTicketCreated({
 
   return (
     <CutupLayout preview={`Ticket #${ticketNumber} received`}>
-      <EmailHeading>Ticket #{ticketNumber} received</EmailHeading>
-      <EmailText>Hi {firstName}, we&apos;ve received your support request and will respond shortly.</EmailText>
+      <StatusBadge variant="info">Ticket received</StatusBadge>
+      <HeroSection
+        title="We've received your request"
+        subtitle={`Hi ${firstName}, our support team has your ticket and will respond shortly.`}
+      />
       <EmailCard>
-        <EmailText style={{ margin: '0 0 8px' }}>
-          <strong>Ticket:</strong> #{ticketNumber}
-        </EmailText>
-        <EmailText style={{ margin: '0 0 8px' }}>
-          <strong>Subject:</strong> {subject}
-        </EmailText>
-        <EmailText style={{ margin: 0 }}>
-          <strong>Created:</strong> {dateLabel}
-        </EmailText>
+        <StatusBadge variant="info">#{ticketNumber}</StatusBadge>
+        <DetailRow label="Subject" value={subject} />
+        <DetailRow label="Created" value={dateLabel} />
+        <DetailRow label="Response time" value="Within 24 hours" last />
       </EmailCard>
-      <Section style={{ margin: '24px 0' }}>
-        <EmailButton href={url}>View Ticket</EmailButton>
-      </Section>
+      <EmailButton href={url} fullWidth>
+        View Ticket
+      </EmailButton>
+      <EmailText inset muted small>
+        Need to add more details? Reply to this email or update your ticket in the dashboard.
+      </EmailText>
     </CutupLayout>
   );
 }

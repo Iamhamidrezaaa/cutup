@@ -1,3 +1,4 @@
+export { DetailRow } from './DetailRow';
 export { EmailButton } from './EmailButton';
 export { EmailCard } from './EmailCard';
 export { EmailDivider } from './EmailDivider';
@@ -5,3 +6,10 @@ export { EmailFooter } from './EmailFooter';
 export { EmailHeader } from './EmailHeader';
 export { EmailHeading } from './EmailHeading';
 export { EmailText } from './EmailText';
+export { FeatureList } from './FeatureList';
+export { HeroSection } from './HeroSection';
+export { PlanBadge } from './PlanBadge';
+export { QuickActions } from './QuickActions';
+export { StatusBadge } from './StatusBadge';
+export { SuccessIndicator } from './SuccessIndicator';
+export { UsageProgressBar } from './UsageProgressBar';

@@ -1,6 +1,12 @@
-import { Section } from '@react-email/components';
+import { Text } from '@react-email/components';
 import { CutupLayout } from '../layouts/CutupLayout';
-import { EmailButton, EmailCard, EmailHeading, EmailText } from '../components';
+import {
+  EmailButton,
+  EmailCard,
+  EmailText,
+  HeroSection,
+  StatusBadge,
+} from '../components';
 import { BRAND, SITE } from '../brand';
 
 export type AccountDeletionRequestedData = {
@@ -19,40 +25,39 @@ export function AccountDeletionRequested({
   const cancel = cancelUrl || SITE.dashboardUrl;
 
   return (
-    <CutupLayout preview="Your Cutup account deletion request">
-      <EmailHeading>Your Cutup account deletion request</EmailHeading>
-      <EmailText>
-        Hi {firstName}, we received a request to delete your Cutup account. Your account is scheduled
-        for deletion.
-      </EmailText>
+    <CutupLayout preview="Account deletion scheduled">
+      <StatusBadge variant="danger">Deletion scheduled</StatusBadge>
+      <HeroSection
+        title="Account deletion scheduled"
+        subtitle={`Hi ${firstName}, we received your request. Your account is scheduled for permanent deletion.`}
+      />
       <EmailCard>
-        <EmailText style={{ margin: '0 0 12px' }}>
-          • Your account will be permanently deleted once confirmed.
-        </EmailText>
-        <EmailText style={{ margin: '0 0 12px' }}>
-          • You cannot create another account using the same email for{' '}
-          <strong>{cooldownDays} days</strong> after deletion.
-        </EmailText>
-        <EmailText style={{ margin: 0 }}>
-          • If you did not request this, contact support immediately.
-        </EmailText>
+        <Text style={{ margin: '0 0 12px', fontSize: '15px', lineHeight: '1.6', color: BRAND.text }}>
+          <strong>Countdown:</strong> {cooldownDays}-day email lockout after deletion is confirmed.
+        </Text>
+        <Text style={{ margin: '0 0 12px', fontSize: '15px', lineHeight: '1.6', color: BRAND.text }}>
+          • Your account and data will be permanently removed once confirmed.
+        </Text>
+        <Text style={{ margin: '0 0 12px', fontSize: '15px', lineHeight: '1.6', color: BRAND.text }}>
+          • The same email cannot register a new account for <strong>{cooldownDays} days</strong>.
+        </Text>
+        <Text style={{ margin: 0, fontSize: '15px', lineHeight: '1.6', color: BRAND.text }}>
+          • Changed your mind? Cancel below before deletion completes.
+        </Text>
       </EmailCard>
-      <Section style={{ margin: '24px 0 16px' }}>
-        <EmailButton href={cancel}>Cancel Deletion</EmailButton>
-      </Section>
+      <EmailButton href={cancel} fullWidth>
+        Cancel Deletion
+      </EmailButton>
       {confirmDeletionUrl ? (
-        <Section style={{ margin: '0 0 16px' }}>
-          <EmailButton href={confirmDeletionUrl} variant="secondary">
-            Confirm Deletion
-          </EmailButton>
-        </Section>
+        <EmailButton href={confirmDeletionUrl} variant="secondary">
+          Confirm Deletion
+        </EmailButton>
       ) : null}
-      <EmailText muted small style={{ color: BRAND.danger }}>
-        Didn&apos;t request this? Email{' '}
-        <a href={`mailto:${SITE.supportEmail}`} style={{ color: BRAND.primary }}>
-          {SITE.supportEmail}
-        </a>{' '}
-        immediately.
+      <EmailButton href={`mailto:${SITE.supportEmail}`} variant="secondary">
+        Contact Support
+      </EmailButton>
+      <EmailText inset muted small style={{ color: BRAND.danger }}>
+        Didn&apos;t request this? Email {SITE.supportEmail} immediately.
       </EmailText>
     </CutupLayout>
   );

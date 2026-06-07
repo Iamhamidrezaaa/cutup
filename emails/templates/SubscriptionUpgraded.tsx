@@ -1,6 +1,16 @@
-import { Section } from '@react-email/components';
+import { Text } from '@react-email/components';
 import { CutupLayout } from '../layouts/CutupLayout';
-import { EmailButton, EmailCard, EmailHeading, EmailText } from '../components';
+import {
+  DetailRow,
+  EmailButton,
+  EmailCard,
+  FeatureList,
+  HeroSection,
+  PlanBadge,
+  QuickActions,
+  StatusBadge,
+} from '../components';
+import { BRAND } from '../brand';
 import { SITE } from '../brand';
 
 export type SubscriptionUpgradedData = {
@@ -9,31 +19,49 @@ export type SubscriptionUpgradedData = {
   monthlyCredits?: number;
 };
 
+const PLAN_FEATURES: Record<string, string[]> = {
+  pro: [
+    'Higher monthly processing credits',
+    'Priority export queue',
+    'Advanced AI translation & summaries',
+  ],
+  business: [
+    'Team-ready processing limits',
+    'Priority support & faster exports',
+    'Full AI workspace features',
+  ],
+  starter: ['Core transcription tools', 'Standard export quality', 'Dashboard access'],
+};
+
 export function SubscriptionUpgraded({
   firstName = 'there',
   planName = 'Pro',
   monthlyCredits,
 }: SubscriptionUpgradedData) {
+  const planKey = String(planName).trim().toLowerCase();
+  const features = PLAN_FEATURES[planKey] || PLAN_FEATURES.pro;
+
   return (
-    <CutupLayout preview={`Welcome to ${planName}`}>
-      <EmailHeading>Welcome to {planName}</EmailHeading>
-      <EmailText>
-        Hi {firstName}, your Cutup plan has been upgraded. You now have access to more processing power
-        and premium features.
-      </EmailText>
+    <CutupLayout preview={`You're now on ${planName}`}>
+      <StatusBadge variant="success">Plan upgraded</StatusBadge>
+      <HeroSection
+        title={`You're now on ${planName}`}
+        subtitle={`Hi ${firstName}, your workspace has been upgraded. Enjoy more power, faster exports, and premium AI features.`}
+      />
       <EmailCard>
-        <EmailText style={{ margin: '0 0 8px' }}>
-          <strong>Plan:</strong> {planName}
-        </EmailText>
+        <PlanBadge plan={planName} />
         {monthlyCredits != null ? (
-          <EmailText style={{ margin: 0 }}>
-            <strong>Monthly credits:</strong> {monthlyCredits}
-          </EmailText>
+          <DetailRow label="Credits included" value={`${monthlyCredits} / month`} />
         ) : null}
+        <Text style={{ margin: '16px 0 12px', fontSize: '13px', fontWeight: 600, color: BRAND.textMuted }}>
+          What&apos;s included
+        </Text>
+        <FeatureList items={features} />
       </EmailCard>
-      <Section style={{ margin: '24px 0' }}>
-        <EmailButton href={SITE.dashboardUrl}>Start Creating</EmailButton>
-      </Section>
+      <EmailButton href={SITE.dashboardUrl} fullWidth>
+        Start Creating
+      </EmailButton>
+      <QuickActions />
     </CutupLayout>
   );
 }
