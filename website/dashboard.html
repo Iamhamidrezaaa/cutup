@@ -20,6 +20,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css?v=CLEAN_BUILD_2026_04">
+  <link rel="stylesheet" href="landing-page.css?v=20260607-pricing-matrix">
   <link rel="stylesheet" href="dashboard.css?v=20260519-no-quick-action-1">
   <link rel="stylesheet" href="dashboard-projects.css?v=20260602-projects">
   <link rel="stylesheet" href="responsive-global.css?v=1">
@@ -123,26 +124,12 @@
           <div class="current-plan-card" id="currentPlanCard"></div>
           <div class="current-plan-card" id="myOffersCard"></div>
 
-          <div class="stats-grid">
+          <div class="stats-grid stats-grid--single">
             <div class="stat-card">
               <div class="stat-icon">📊</div>
               <div class="stat-content">
                 <div class="stat-value" id="remainingVideos">0</div>
-                <div class="stat-label" id="statRemainingLabel">Videos left this month</div>
-              </div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-icon">🎵</div>
-              <div class="stat-content">
-                <div class="stat-value" id="audioDownloadUsage">0/0</div>
-                <div class="stat-label">Audio downloads</div>
-              </div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-icon">🎬</div>
-              <div class="stat-content">
-                <div class="stat-value" id="videoDownloadUsage">0/0</div>
-                <div class="stat-label">Video downloads</div>
+                <div class="stat-label" id="statRemainingLabel">Credits remaining</div>
               </div>
             </div>
           </div>
@@ -168,7 +155,6 @@
           <h1 class="section-title">Plans & upgrades</h1>
           <div class="subscription-info" id="subscriptionInfo"></div>
           <div id="cutupDashboardPricingPaywall" class="cutup-pricing-paywall" hidden></div>
-          <div class="plans-grid" id="plansGrid"></div>
         </section>
 
         <section class="dashboard-section" id="profile-section">
@@ -193,6 +179,7 @@
   <script src="api-config.js"></script>
   <script src="plan-permissions.js"></script>
   <script src="plan-display.js"></script>
+  <script src="pricing-matrix.js"></script>
   <script src="audit-track.js"></script>
   <script src="analytics-client.js"></script>
   <script src="conversion-banners.js"></script>

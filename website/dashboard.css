@@ -1685,6 +1685,95 @@
   margin-top: 16px;
 }
 
+.dash-subscription-layout {
+  display: grid;
+  gap: 24px;
+  max-width: 640px;
+}
+
+.dash-subscription-plan-card {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.dash-subscription-plan-card__title {
+  margin: 0 0 4px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.dash-subscription-plan-card__status {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.dash-subscription-plan-card__credits {
+  margin: 0 0 8px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.dash-subscription-plan-card__meta {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.dash-subscription-upgrade {
+  background: #f8fafc;
+  border: 1px solid rgba(99, 102, 241, 0.12);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.dash-subscription-upgrade h3 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  color: #0f172a;
+}
+
+.dash-subscription-upgrade ul {
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.dash-subscription-upgrade li {
+  padding: 4px 0;
+  font-size: 14px;
+  color: #334155;
+}
+
+.dash-subscription-upgrade .plan-btn {
+  margin-right: 8px;
+  margin-top: 4px;
+}
+
+.dash-subscription-upgrade .plan-btn--ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.dash-subscription-complete {
+  padding: 16px;
+  background: rgba(16, 185, 129, 0.08);
+  border-radius: 10px;
+  color: #047857;
+  font-size: 14px;
+}
+
+.stats-grid--single {
+  grid-template-columns: 1fr;
+  max-width: 280px;
+}
+
 .dashboard-error-surface {
   background: #fef2f2 !important;
   color: #991b1b !important;

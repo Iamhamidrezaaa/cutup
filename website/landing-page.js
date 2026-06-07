@@ -38,8 +38,8 @@
   }
 
   function init() {
-    if (window.CutupPlanDisplay?.hydratePricingCompareTable) {
-      window.CutupPlanDisplay.hydratePricingCompareTable();
+    if (!document.querySelector('#cutupPricingMatrixMount .pricing-compare') && window.CutupPricingMatrix) {
+      window.CutupPricingMatrix.mount('#cutupPricingMatrixMount', { context: 'landing' });
     }
     injectFaqSchema();
   }

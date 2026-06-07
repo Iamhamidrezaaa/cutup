@@ -239,3 +239,77 @@
   padding: 11px 8px;
   box-sizing: border-box;
 }
+
+.pricing-compare__footnote {
+  text-align: center;
+  max-width: 720px;
+  margin: 20px auto 0;
+  font-size: 14px;
+  color: #666;
+  line-height: 1.5;
+}
+
+.pricing-compare__current-label,
+.pricing-compare__muted-label {
+  display: block;
+  font-size: 0.82rem;
+  color: #64748b;
+  font-weight: 600;
+}
+
+/* Shared pricing modal (dashboard + landing) */
+.cutup-pricing-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px 16px;
+  overflow-y: auto;
+}
+
+.cutup-pricing-modal.is-open {
+  display: flex;
+}
+
+.cutup-pricing-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(4px);
+}
+
+.cutup-pricing-modal__panel {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 1080px);
+  margin: 24px auto 48px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.2);
+  padding: 20px 16px 24px;
+}
+
+.cutup-pricing-modal__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cutup-pricing-modal__close:hover {
+  background: #e2e8f0;
+}
+
+body.cutup-pricing-modal-open {
+  overflow: hidden;
+}

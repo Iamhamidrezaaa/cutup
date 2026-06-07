@@ -230,6 +230,61 @@ function planUpgradeHint(planKey) {
   return null;
 }
 
+function formatSubscriptionStatus(sub) {
+  const plan = String(sub?.plan || 'free').toLowerCase();
+  const status = String(sub?.subscription?.status || 'active').toLowerCase();
+  if (plan === 'free') return 'Free tier — no paid subscription';
+  if (status === 'past_due') return 'Past due — update your payment method';
+  if (status === 'canceled' || status === 'cancelled') return 'Canceled';
+  if (status === 'trialing') return 'Trial active';
+  return 'Active subscription';
+}
+
+function dashboardCheckoutForPlan(planId) {
+  const targetPlan = String(planId || '').toLowerCase();
+  if (!targetPlan || !currentSession) return;
+  if (typeof sendAnalyticsEvent === 'function') {
+    sendAnalyticsEvent('upgrade_clicked', { plan: targetPlan, sessionId: currentSession });
+  }
+  try {
+    if (typeof getHotDiscountCodeForCheckout === 'function' && getHotDiscountCodeForCheckout({ subscriptionInfo })) {
+      if (typeof window.cutupPaywallOfferClicked === 'function') window.cutupPaywallOfferClicked();
+    }
+  } catch (_e) {
+    /* noop */
+  }
+  const selected = offersResolvedState?.selectedOffer || null;
+  const selectedTarget = String(window.CutupOffersResolver?.inferTargetPlan?.(selected) || '').toLowerCase();
+  const coupon = selected && selectedTarget === targetPlan ? String(selected.code || '').toUpperCase() : '';
+  window.location.href = coupon
+    ? `/checkout.html?plan=${encodeURIComponent(targetPlan)}&coupon=${encodeURIComponent(coupon)}`
+    : `/checkout.html?plan=${encodeURIComponent(targetPlan)}`;
+}
+
+function openDashboardPricingMatrix(highlightPlan) {
+  if (!window.CutupPricingMatrix?.openModal) return;
+  const planKey = String(subscriptionInfo?.plan || 'free').toLowerCase();
+  window.CutupPricingMatrix.openModal({
+    currentPlan: planKey,
+    onUpgrade: (plan) => {
+      window.CutupPricingMatrix.closeModal();
+      dashboardCheckoutForPlan(plan);
+    }
+  });
+  if (highlightPlan) {
+    requestAnimationFrame(() => {
+      const modal = document.getElementById('cutupPricingMatrixModal');
+      const cell = modal?.querySelector(`[data-cutup-plan="${CSS.escape(highlightPlan)}"]`)?.closest('td')
+        || modal?.querySelector(`[data-cutup-plan-exports="${CSS.escape(highlightPlan)}"]`);
+      cell?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    });
+  }
+  if (typeof sendAnalyticsEvent === 'function' && !cutupDashboardPricingViewedSent) {
+    cutupDashboardPricingViewedSent = true;
+    sendAnalyticsEvent('pricing_viewed', { plan: planKey, sessionId: currentSession });
+  }
+}
+
 function nextCalendarResetLabelFromUsage(usage) {
   const m = usage?.monthly;
   if (!m || m.year == null || m.month == null) return null;
@@ -1765,54 +1820,23 @@ function renderOverview() {
   const genLimit = credits.limit;
   const genUsed = credits.used;
   const remainingVideos = String(credits.remaining);
-  const audioCount = usage.downloads?.audio?.count || 0;
-  const audioLimit = usage.downloads?.audio?.limit;
-  const videoCount = usage.downloads?.video?.count || 0;
-  const videoLimit = usage.downloads?.video?.limit;
-  const renewalCountdown = formatRenewalCountdown(subscriptionInfo.subscription?.endDate);
-  const planKey = String(subscriptionInfo.plan || 'free').toLowerCase();
-  const upgradeHint = planUpgradeHint(planKey);
-  const showUpgradeBtn = planKey !== 'business';
 
   renderInsights();
   renderOffersUi();
   renderUpgradeWarning();
 
-  document.getElementById('remainingVideos').textContent = remainingVideos;
+  const remainingEl = document.getElementById('remainingVideos');
+  if (remainingEl) remainingEl.textContent = remainingVideos;
   const statLbl = document.getElementById('statRemainingLabel');
   if (statLbl) statLbl.textContent = 'Credits remaining';
-  document.getElementById('audioDownloadUsage').textContent = `${audioCount}${audioLimit != null ? `/${audioLimit}` : ''}`;
-  document.getElementById('videoDownloadUsage').textContent = `${videoCount}${videoLimit != null ? `/${videoLimit}` : ''}`;
 
   const currentPlanCard = document.getElementById('currentPlanCard');
   if (currentPlanCard) {
-    currentPlanCard.innerHTML = `
-      <div class="plan-status-card">
-        <h2>Your plan</h2>
-        <div class="plan-status-card__row">
-          <span class="plan-status-card__label">Plan</span>
-          <strong class="plan-status-card__value">${escapeHtml(displayPlanTitle(subscriptionInfo.plan, subscriptionInfo.planName))}</strong>
-        </div>
-        <div class="plan-status-card__row">
-          <span class="plan-status-card__label">Credits remaining</span>
-          <strong class="plan-status-card__value">${credits.remaining} / ${credits.limit}</strong>
-        </div>
-        <div class="plan-status-card__row">
-          <span class="plan-status-card__label">Monthly limit</span>
-          <strong class="plan-status-card__value">${credits.limit} credits</strong>
-        </div>
-        ${renewalCountdown
-          ? `<div class="plan-status-card__row"><span class="plan-status-card__label">Renewal</span><strong class="plan-status-card__value">${escapeHtml(renewalCountdown)}</strong></div>`
-          : ''}
-        ${upgradeHint
-          ? `<p class="plan-status-card__hint">${escapeHtml(upgradeHint)}</p>`
-          : ''}
-        ${showUpgradeBtn ? `<button class="plan-btn" id="overviewUpgradeBtn">Upgrade plan</button>` : ''}
-      </div>
-    `;
-    document.getElementById('overviewUpgradeBtn')?.addEventListener('click', () => {
-      document.querySelector('.nav-item[data-section="subscription"]')?.click();
-    });
+    const planKey = String(subscriptionInfo.plan || 'free').toLowerCase();
+    const showUpgrade = planKey !== 'business';
+    currentPlanCard.innerHTML = showUpgrade
+      ? `<p class="dashboard-muted-loading">Manage your plan and credits in <a href="#subscription">Plans &amp; upgrades</a>.</p>`
+      : `<p class="dashboard-muted-loading">You are on the Business plan with full access.</p>`;
   }
 }
 
@@ -2078,6 +2102,7 @@ function renderUpgradeWarning() {
     `;
     document.getElementById('upgradeWarningBtn')?.addEventListener('click', () => {
       document.querySelector('.nav-item[data-section="subscription"]')?.click();
+      setTimeout(() => openDashboardPricingMatrix(), 80);
     });
     return;
   }
@@ -2095,6 +2120,7 @@ function renderUpgradeWarning() {
   `;
   document.getElementById('upgradeWarningBtn')?.addEventListener('click', () => {
     document.querySelector('.nav-item[data-section="subscription"]')?.click();
+    setTimeout(() => openDashboardPricingMatrix(), 80);
   });
 }
 
@@ -2168,9 +2194,8 @@ function renderUsageSection() {
       <div class="usage-stats">
         <div class="usage-stat-item"><span class="usage-stat-label">Videos completed (this month)</span><span class="usage-stat-value">${monthlyMinutes}</span></div>
         <div class="usage-stat-item"><span class="usage-stat-label">Videos remaining</span><span class="usage-stat-value">${isTopTierPlanKey(subscriptionInfo.plan) ? 'Included' : Math.max(0, monthlyLimit - monthlyMinutes)}</span></div>
+        <div class="usage-stat-item"><span class="usage-stat-label">Monthly credit limit</span><span class="usage-stat-value">${monthlyLimit}</span></div>
         <div class="usage-stat-item"><span class="usage-stat-label">Daily meter</span><span class="usage-stat-value">${dailyLabel}</span></div>
-        <div class="usage-stat-item"><span class="usage-stat-label">Audio downloads</span><span class="usage-stat-value">${usage.downloads?.audio?.count || 0}${usage.downloads?.audio?.limit != null ? `/${usage.downloads.audio.limit}` : ''}</span></div>
-        <div class="usage-stat-item"><span class="usage-stat-label">Video downloads</span><span class="usage-stat-value">${usage.downloads?.video?.count || 0}${usage.downloads?.video?.limit != null ? `/${usage.downloads.video.limit}` : ''}</span></div>
       </div>
     </div>
     <div class="usage-history">
@@ -2386,141 +2411,79 @@ function renderSavedOutputs() {
 function renderPlansSection() {
   if (window.__ONBOARDING_ACTIVE__) return;
   const subscriptionInfoEl = document.getElementById('subscriptionInfo');
-  const plansGrid = document.getElementById('plansGrid');
-  if (!subscriptionInfoEl || !plansGrid) return;
+  if (!subscriptionInfoEl || !subscriptionInfo) return;
 
-  const paymentReady = plansCache.some((p) => Number(p?.priceEur?.monthly ?? p?.priceUsd?.monthly) > 0);
-  const publicPlanIds = new Set(plansCache.map((p) => p.id));
-  const currentUserPlanKey = String(subscriptionInfo?.plan || 'free').toLowerCase();
-  const isCurrentPlanPrivate = !publicPlanIds.has(currentUserPlanKey);
-  const atTopTier = isTopTierPlanKey(currentUserPlanKey);
-  const currentRank = dashboardPlanRank(currentUserPlanKey);
+  const planKey = String(subscriptionInfo.plan || 'free').toLowerCase();
+  const credits = creditsFromSubscription(subscriptionInfo);
+  const renewalCountdown = formatRenewalCountdown(subscriptionInfo.subscription?.endDate);
+  const renewalDate = subscriptionInfo.subscription?.endDate
+    ? formatDateTime(subscriptionInfo.subscription.endDate)
+    : null;
+  const planName = window.CutupPlanPermissions?.displayPlanName
+    ? window.CutupPlanPermissions.displayPlanName(planKey)
+    : displayPlanTitle(subscriptionInfo.plan, subscriptionInfo.planName);
+  const nextPlan = window.CutupPlanPermissions?.getNextPlanKey
+    ? window.CutupPlanPermissions.getNextPlanKey(planKey)
+    : null;
+  const benefits = window.CutupPlanPermissions?.getUpgradeBenefits
+    ? window.CutupPlanPermissions.getUpgradeBenefits(planKey)
+    : [];
+  const nextPlanName = nextPlan && window.CutupPlanPermissions?.displayPlanName
+    ? window.CutupPlanPermissions.displayPlanName(nextPlan)
+    : (nextPlan ? displayPlanTitle(nextPlan) : null);
+  const statusLabel = formatSubscriptionStatus(subscriptionInfo);
+
+  let upgradeBlock = '';
+  if (nextPlan && nextPlanName && benefits.length) {
+    upgradeBlock = `
+      <div class="dash-subscription-upgrade">
+        <h3>Upgrade to ${escapeHtml(nextPlanName)} and unlock:</h3>
+        <ul>
+          ${benefits.map((b) => `<li>✓ ${escapeHtml(b)}</li>`).join('')}
+        </ul>
+        <button type="button" class="plan-btn" id="dashUpgradePrimaryBtn">Upgrade to ${escapeHtml(nextPlanName)}</button>
+        <button type="button" class="plan-btn plan-btn--ghost" id="dashComparePlansBtn">Compare all plans</button>
+      </div>
+    `;
+  } else if (!nextPlan) {
+    upgradeBlock = `
+      <div class="dash-subscription-complete">
+        You are on the Business plan with every feature unlocked.
+      </div>
+    `;
+  }
+
   subscriptionInfoEl.innerHTML = `
-    <div class="usage-summary">
-      <h3>Choose a plan</h3>
-      <p class="dashboard-muted-loading">Current: <strong>${displayPlanTitle(subscriptionInfo?.plan, subscriptionInfo?.planName)}</strong></p>
-      ${isCurrentPlanPrivate ? '<p class="dashboard-empty-note">You are currently on a Business plan.</p>' : ''}
-      ${paymentReady ? '' : '<p class="dashboard-empty-note">Payments are not available yet.</p>'}
+    <div class="dash-subscription-layout">
+      <div class="dash-subscription-plan-card">
+        <h2 class="dash-subscription-plan-card__title">${escapeHtml(planName)}</h2>
+        <p class="dash-subscription-plan-card__status">${escapeHtml(statusLabel)}</p>
+        <p class="dash-subscription-plan-card__credits">${credits.remaining} / ${credits.limit} credits remaining</p>
+        <p class="dash-subscription-plan-card__meta">Monthly limit: <strong>${credits.limit} credits</strong></p>
+        ${renewalCountdown
+          ? `<p class="dash-subscription-plan-card__meta">${escapeHtml(renewalCountdown)}</p>`
+          : renewalDate
+            ? `<p class="dash-subscription-plan-card__meta">Renewal: ${escapeHtml(renewalDate)}</p>`
+            : ''}
+      </div>
+      ${upgradeBlock}
     </div>
   `;
 
-  const order = ['free', 'starter', 'pro', 'business'];
-  const sortedPlans = [...plansCache].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
-  const selectedOffer = offersResolvedState?.selectedOffer || null;
-  const selectedTargetPlan = String(window.CutupOffersResolver?.inferTargetPlan?.(selectedOffer) || '').toLowerCase();
-  const selectedDiscountLabel = selectedOffer ? window.CutupOffersResolver?.discountLabel?.(selectedOffer) : '';
-  plansGrid.innerHTML = sortedPlans.map((plan) => {
-    const pid = plan.id;
-    const planRank = dashboardPlanRank(pid);
-    const eur = Number((plan?.priceEur?.monthly ?? plan?.priceUsd?.monthly) ?? 0);
-    const displayName = displayPlanTitle(pid, plan.nameEn || plan.name);
-
-    let cta;
-    let disableButton = true;
-    let cardExtraClass = 'plan-card-disabled disabled-plan';
-
-    if (atTopTier) {
-      if (isTopTierPlanKey(pid) && isTopTierPlanKey(currentUserPlanKey)) {
-        cta = 'Current plan';
-      } else {
-        cta = 'Not available';
-      }
-    } else if (planRank < currentRank) {
-      cta = 'Not available';
-    } else if (planRank === currentRank) {
-      cta = 'Current plan';
-    } else {
-      cta =
-        pid === 'starter'
-          ? 'Upgrade to Starter'
-          : pid === 'pro'
-            ? 'Upgrade to Pro'
-            : pid === 'business' || pid === 'advanced'
-              ? 'Upgrade to Business'
-              : 'Upgrade';
-      disableButton = !paymentReady;
-      cardExtraClass = disableButton ? 'plan-card-disabled disabled-plan' : '';
-    }
-
-    const isCurrentCard =
-      String(pid).toLowerCase() === currentUserPlanKey ||
-      (isTopTierPlanKey(pid) && isTopTierPlanKey(currentUserPlanKey));
-    const hasOfferForThisPlan = !!(selectedOffer && selectedTargetPlan === String(pid).toLowerCase());
-    const discountedMonthly = hasOfferForThisPlan
-      ? String(selectedOffer.discountType) === 'percentage'
-        ? Math.max(0, eur - ((eur * Number(selectedOffer.discountValue || 0)) / 100))
-        : Math.max(0, eur - Number(selectedOffer.discountValue || 0))
-      : 0;
-    const priceLabel = eur > 0 ? `€${eur.toFixed(2)} / month` : 'Price unavailable';
-    const offerPriceLabel = hasOfferForThisPlan && eur > 0
-      ? `<p class="plan-price-offer"><span class="plan-price-old">€${eur.toFixed(2)}</span> <strong>€${discountedMonthly.toFixed(2)} / month</strong></p>`
-      : '';
-    return `
-      <article class="paid-plan-card ${pid === 'pro' ? 'featured' : ''} ${isCurrentCard ? 'current-plan' : ''} ${cardExtraClass}">
-        <div class="paid-plan-header">
-          <h3 class="paid-plan-name">${escapeHtml(displayName)}</h3>
-          ${isCurrentCard ? '<span class="current-badge">Current</span>' : ''}
-        </div>
-        <p class="plan-price">${priceLabel}</p>
-        ${hasOfferForThisPlan ? `<p class="plan-offer-badge">${escapeHtml(selectedDiscountLabel)} OFF FOR YOU</p>` : ''}
-        ${offerPriceLabel}
-        <ul class="plan-features">
-          <li class="plan-feature-row"><span>Monthly videos</span><strong>${formatMonthlyVideosLineForPlanKey(plan.id)}</strong></li>
-          <li class="plan-feature-row"><span>Audio downloads</span><strong>${plan.downloadAudioLimit != null ? plan.downloadAudioLimit : 'Unlimited'}</strong></li>
-          <li class="plan-feature-row"><span>Video downloads</span><strong>${plan.downloadVideoLimit != null ? plan.downloadVideoLimit : 'Unlimited'}</strong></li>
-        </ul>
-        <button class="plan-btn" data-upgrade-plan="${pid}" ${disableButton ? 'disabled' : ''}>${cta}</button>
-      </article>
-    `;
-  }).join('');
+  document.getElementById('dashUpgradePrimaryBtn')?.addEventListener('click', () => {
+    openDashboardPricingMatrix(nextPlan);
+  });
+  document.getElementById('dashComparePlansBtn')?.addEventListener('click', () => {
+    openDashboardPricingMatrix(nextPlan);
+  });
 
   try {
     if (window.CutupOffersResolver) {
-      window.CutupOffersResolver.applyPlanHighlight(plansGrid, offersResolvedState || { selectedOffer: null });
       window.CutupOffersResolver.renderGlobalRibbon(offersResolvedState || { selectedOffer: null });
     }
   } catch (_e) {
     /* noop */
   }
-
-  if (dashboardHighlightPlan) {
-    const hlPlan = dashboardHighlightPlan;
-    dashboardHighlightPlan = null;
-    const hlBtn = plansGrid.querySelector(`button[data-upgrade-plan="${CSS.escape(hlPlan)}"]`);
-    const hlCard = hlBtn?.closest('.paid-plan-card');
-    if (hlCard && !hlBtn?.disabled) {
-      hlCard.classList.add('paid-plan-card--highlight');
-      hlCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-  }
-
-  plansGrid.querySelectorAll('button[data-upgrade-plan]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      if (btn.disabled) return;
-      const planId = btn.getAttribute('data-upgrade-plan');
-      if (!planId || !currentSession) return;
-      if (typeof sendAnalyticsEvent === 'function') {
-        sendAnalyticsEvent('upgrade_clicked', { plan: planId, sessionId: currentSession });
-      }
-      try {
-        if (
-          typeof getHotDiscountCodeForCheckout === 'function' &&
-          getHotDiscountCodeForCheckout({ subscriptionInfo })
-        ) {
-          if (typeof window.cutupPaywallOfferClicked === 'function') window.cutupPaywallOfferClicked();
-        }
-      } catch (_e) {
-        /* noop */
-      }
-      const targetPlan = String(planId || '').toLowerCase();
-      const selected = offersResolvedState?.selectedOffer || null;
-      const selectedTarget = String(window.CutupOffersResolver?.inferTargetPlan?.(selected) || '').toLowerCase();
-      const coupon = selected && selectedTarget === targetPlan ? String(selected.code || '').toUpperCase() : '';
-      window.location.href = coupon
-        ? `/checkout.html?plan=${encodeURIComponent(planId)}&coupon=${encodeURIComponent(coupon)}`
-        : `/checkout.html?plan=${encodeURIComponent(planId)}`;
-    });
-  });
 
   try {
     if (typeof window.renderDashboardPaywall === 'function') window.renderDashboardPaywall(subscriptionInfo);
@@ -2528,13 +2491,10 @@ function renderPlansSection() {
     /* noop */
   }
 
-  if (
-    typeof sendAnalyticsEvent === 'function' &&
-    !cutupDashboardPricingViewedSent &&
-    plansGrid.querySelector('button[data-upgrade-plan]')
-  ) {
-    cutupDashboardPricingViewedSent = true;
-    sendAnalyticsEvent('pricing_viewed', { plan: null, sessionId: currentSession });
+  if (dashboardHighlightPlan) {
+    const hl = dashboardHighlightPlan;
+    dashboardHighlightPlan = null;
+    openDashboardPricingMatrix(hl);
   }
 }
 

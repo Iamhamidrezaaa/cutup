@@ -3303,6 +3303,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  if (
+    document.getElementById('cutupPricingMatrixMount') &&
+    !document.querySelector('#cutupPricingMatrixMount .pricing-compare') &&
+    window.CutupPricingMatrix
+  ) {
+    window.CutupPricingMatrix.mount('#cutupPricingMatrixMount', { context: 'landing' });
+  }
   setupLandingPricingCheckoutIntercept();
   initCutupFaqAccordion();
   
