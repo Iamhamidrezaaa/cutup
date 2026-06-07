@@ -2181,11 +2181,17 @@ async function loadOpsCommandCenter() {
 function getInitialAdminSection() {
   try {
     const q = new URLSearchParams(window.location.search);
-    const section = (q.get('section') || '').toLowerCase();
+    let section = (q.get('section') || '').toLowerCase();
     if (section === 'pages' || section === 'blog' || section === 'users') return null;
-    if (section === 'ops' || section === 'command-center') return 'ops';
-    const h = (window.location.hash || '').replace(/^#/, '');
-    if (h === 'ops' || h === 'command-center') return 'ops';
+    if (section === 'command-center') section = 'ops';
+    if (section && document.querySelector(`.nav-btn[data-section="${section}"]`)) {
+      return section;
+    }
+    const h = (window.location.hash || '').replace(/^#/, '').toLowerCase();
+    if (h === 'command-center') return 'ops';
+    if (h && document.querySelector(`.nav-btn[data-section="${h}"]`)) {
+      return h;
+    }
   } catch (_e) {}
   return null;
 }
@@ -3633,7 +3639,8 @@ window.cutupAdminBootstrap = async function cutupAdminBootstrap() {
         { name: 'payments', run: () => loadPayments() },
         { name: 'offers', run: () => loadOffers() },
         { name: 'creator-wall', run: () => window.loadCreatorWallAdmin?.() },
-        { name: 'health', run: () => loadHealth() }
+        { name: 'health', run: () => loadHealth() },
+        { name: 'email-preview', run: () => loadEmailPreview() }
       );
     }
     if (panelRole === 'super_admin') loads.push({ name: 'admins', run: () => loadAdmins() });
@@ -3646,15 +3653,16 @@ window.cutupAdminBootstrap = async function cutupAdminBootstrap() {
       showBanner('Some widgets are temporarily unavailable.');
     }
     const initialSection = getInitialAdminSection();
-    if (initialSection === 'ops') {
-      if (!canAccessOpsCommandCenter()) {
+    if (initialSection) {
+      if (initialSection === 'ops' && !canAccessOpsCommandCenter()) {
         showBanner('Operations dashboard requires admin or super admin.');
       } else {
-        activateAdminSection('ops');
+        activateAdminSection(initialSection);
+        window.CutupAdminFilterState?.setAdminNavUrl?.(initialSection);
         try {
-          await refreshSection('ops');
+          await refreshSection(initialSection);
         } catch (e2) {
-          showBanner(e2.message || 'Could not load operations dashboard.');
+          showBanner(e2.message || `Could not load ${initialSection} section.`);
         }
       }
     }
