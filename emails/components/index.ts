@@ -1,3 +1,4 @@
+export { EmailHeadStyles } from './EmailHeadStyles';
 export { DetailRow } from './DetailRow';
 export { EmailButton } from './EmailButton';
 export { EmailCard } from './EmailCard';

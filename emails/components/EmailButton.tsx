@@ -1,4 +1,4 @@
-import { Button, Section } from '@react-email/components';
+import { Section } from '@react-email/components';
 import * as React from 'react';
 import { BRAND } from '../brand';
 
@@ -8,34 +8,55 @@ type Props = {
   href: string;
   children: React.ReactNode;
   variant?: Variant;
+  /** @deprecated All CTAs are centered with max-width 280px for mobile safety */
   fullWidth?: boolean;
 };
 
-export function EmailButton({ href, children, variant = 'primary', fullWidth }: Props) {
+export function EmailButton({ href, children, variant = 'primary' }: Props) {
   const isPrimary = variant === 'primary';
   return (
-    <Section style={{ margin: '0 32px 16px', textAlign: fullWidth ? 'center' : 'left' }}>
-      <Button
-        href={href}
+    <Section className="email-pad-x" style={{ padding: `0 ${BRAND.padX} 10px`, textAlign: 'center' }}>
+      <table
+        cellPadding={0}
+        cellSpacing={0}
+        role="presentation"
+        align="center"
         style={{
-          display: fullWidth ? 'block' : 'inline-block',
-          width: fullWidth ? '100%' : 'auto',
-          padding: '16px 32px',
-          borderRadius: '14px',
-          fontSize: '15px',
-          fontWeight: 600,
-          textDecoration: 'none',
-          textAlign: 'center',
-          backgroundColor: isPrimary ? BRAND.primary : BRAND.card,
-          background: isPrimary ? BRAND.gradient : BRAND.card,
-          color: isPrimary ? '#FFFFFF' : BRAND.text,
-          border: isPrimary ? 'none' : `1px solid ${BRAND.border}`,
-          boxShadow: isPrimary ? '0 4px 14px rgba(99, 91, 255, 0.28)' : BRAND.shadowSm,
-          lineHeight: '1.2',
+          margin: '0 auto',
+          maxWidth: BRAND.buttonMaxWidth,
+          width: '100%',
         }}
       >
-        {children}
-      </Button>
+        <tbody>
+          <tr>
+            <td
+              align="center"
+              style={{
+                borderRadius: BRAND.radius,
+                backgroundColor: isPrimary ? BRAND.primary : BRAND.card,
+                border: isPrimary ? 'none' : `1px solid ${BRAND.border}`,
+                padding: '13px 20px',
+              }}
+            >
+              <a
+                href={href}
+                style={{
+                  display: 'block',
+                  fontSize: '15px',
+                  fontWeight: 600,
+                  color: isPrimary ? '#FFFFFF' : BRAND.text,
+                  textDecoration: 'none',
+                  lineHeight: '1.3',
+                  textAlign: 'center',
+                  fontFamily: BRAND.fontFamily,
+                }}
+              >
+                {children}
+              </a>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </Section>
   );
 }

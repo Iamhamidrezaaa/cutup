@@ -11,15 +11,15 @@ export function FeatureList({ items }: Props) {
       {items.map((item, i) => (
         <Text
           key={item}
+          className="email-word-break"
           style={{
-            margin: i === items.length - 1 ? '0' : '0 0 10px',
-            fontSize: '15px',
-            lineHeight: '1.5',
+            margin: i === items.length - 1 ? '0' : '0 0 6px',
+            fontSize: '14px',
+            lineHeight: '1.4',
             color: BRAND.text,
-            paddingLeft: '4px',
           }}
         >
-          <span style={{ color: BRAND.primary, marginRight: '8px' }}>✦</span>
+          <span style={{ color: BRAND.primary, marginRight: '6px' }}>✦</span>
           {item}
         </Text>
       ))}

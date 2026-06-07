@@ -1,4 +1,3 @@
-import { Text } from '@react-email/components';
 import * as React from 'react';
 import { BRAND } from '../brand';
 
@@ -8,39 +7,45 @@ type Props = {
   last?: boolean;
 };
 
+/** Stacked label → value rows (Gmail mobile safe, no two-column overflow). */
 export function DetailRow({ label, value, last }: Props) {
   return (
     <table
       cellPadding={0}
       cellSpacing={0}
       role="presentation"
+      width="100%"
       style={{
         width: '100%',
-        marginBottom: last ? 0 : '12px',
+        marginBottom: last ? 0 : '10px',
+        paddingBottom: last ? 0 : '10px',
         borderBottom: last ? 'none' : `1px solid ${BRAND.border}`,
-        paddingBottom: last ? 0 : '12px',
       }}
     >
       <tbody>
         <tr>
           <td
+            className="email-word-break"
             style={{
-              fontSize: '13px',
+              fontSize: '12px',
               color: BRAND.textMuted,
-              paddingBottom: '4px',
-              width: '40%',
-              verticalAlign: 'top',
+              paddingBottom: '3px',
+              lineHeight: '1.3',
+              fontWeight: 500,
             }}
           >
             {label}
           </td>
+        </tr>
+        <tr>
           <td
+            className="email-word-break"
             style={{
               fontSize: '15px',
               fontWeight: 600,
               color: BRAND.text,
-              textAlign: 'right',
-              verticalAlign: 'top',
+              lineHeight: '1.4',
+              wordBreak: 'break-word',
             }}
           >
             {value}

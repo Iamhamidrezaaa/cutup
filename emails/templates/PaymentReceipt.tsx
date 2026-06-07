@@ -29,10 +29,10 @@ export function PaymentReceipt({
 
   return (
     <CutupLayout preview="Payment confirmed">
-      <SuccessIndicator label="Payment confirmed" />
+      <SuccessIndicator label="Paid" />
       <HeroSection
         title="Payment confirmed"
-        subtitle={`Hi ${firstName}, thank you for your payment. Your receipt details are below.`}
+        subtitle={`Hi ${firstName}, thank you.`}
       />
       <EmailCard>
         <PlanBadge plan={planName} />
@@ -40,13 +40,9 @@ export function PaymentReceipt({
         <DetailRow label="Plan" value={planName} />
         <DetailRow label="Billing date" value={dateLabel} last />
       </EmailCard>
-      {invoiceUrl ? (
-        <EmailButton href={invoiceUrl} fullWidth>
-          View Invoice
-        </EmailButton>
-      ) : null}
+      {invoiceUrl ? <EmailButton href={invoiceUrl}>View Invoice</EmailButton> : null}
       <EmailText inset muted small>
-        Billing questions? Contact {SITE.supportEmail}.
+        Billing: {SITE.supportEmail}
       </EmailText>
     </CutupLayout>
   );

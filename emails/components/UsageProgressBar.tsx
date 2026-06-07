@@ -12,12 +12,12 @@ export function UsageProgressBar({ used, limit, label }: Props) {
   const barColor = pct >= 100 ? BRAND.danger : pct >= 80 ? BRAND.warning : BRAND.primary;
 
   return (
-    <Section style={{ margin: '0 0 16px' }}>
+    <Section style={{ margin: '0 0 12px' }}>
       {label ? (
         <Text
           style={{
-            margin: '0 0 8px',
-            fontSize: '13px',
+            margin: '0 0 6px',
+            fontSize: '12px',
             color: BRAND.textMuted,
             fontWeight: 500,
           }}
@@ -25,22 +25,23 @@ export function UsageProgressBar({ used, limit, label }: Props) {
           {label}
         </Text>
       ) : null}
-      <table cellPadding={0} cellSpacing={0} role="presentation" style={{ width: '100%' }}>
+      <table cellPadding={0} cellSpacing={0} role="presentation" width="100%" style={{ width: '100%' }}>
         <tbody>
           <tr>
             <td
               style={{
                 backgroundColor: BRAND.surface,
                 borderRadius: '999px',
-                padding: '0',
-                height: '10px',
+                padding: 0,
+                height: '8px',
               }}
             >
               <table
                 cellPadding={0}
                 cellSpacing={0}
                 role="presentation"
-                style={{ width: `${pct}%`, minWidth: pct > 0 ? '8px' : '0' }}
+                width={`${pct}%`}
+                style={{ width: `${pct}%`, minWidth: pct > 0 ? '6px' : '0' }}
               >
                 <tbody>
                   <tr>
@@ -48,7 +49,7 @@ export function UsageProgressBar({ used, limit, label }: Props) {
                       style={{
                         backgroundColor: barColor,
                         borderRadius: '999px',
-                        height: '10px',
+                        height: '8px',
                         fontSize: '0',
                         lineHeight: '0',
                       }}
@@ -64,12 +65,12 @@ export function UsageProgressBar({ used, limit, label }: Props) {
       </table>
       <Text
         style={{
-          margin: '8px 0 0',
-          fontSize: '13px',
+          margin: '6px 0 0',
+          fontSize: '12px',
           color: BRAND.textMuted,
         }}
       >
-        {used} of {limit} credits used ({pct}%)
+        {used} of {limit} credits ({pct}%)
       </Text>
     </Section>
   );

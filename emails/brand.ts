@@ -1,4 +1,4 @@
-/** Cutup email brand tokens — V2 enterprise design system. */
+/** Cutup email brand tokens — mobile-first, Gmail-safe. */
 export const BRAND = {
   primary: '#635BFF',
   primaryDark: '#4F46E5',
@@ -19,12 +19,19 @@ export const BRAND = {
   dangerBg: '#FEF2F2',
   info: '#3B82F6',
   infoBg: '#EFF6FF',
-  radius: '12px',
-  radiusLg: '20px',
-  shadowSm: '0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04)',
+  radius: '10px',
+  radiusLg: '14px',
+  shadowSm: '0 1px 2px rgba(15, 23, 42, 0.05)',
   fontFamily:
     '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-  maxWidth: '640px',
+  maxWidth: '560px',
+  padX: '20px',
+  padBody: '12px 16px',
+  heroTitleSize: '36px',
+  bodySize: '16px',
+  buttonMaxWidth: '280px',
+  cardPad: '16px',
+  cardMarginBottom: '12px',
 } as const;
 
 export const PLAN_COLORS: Record<string, { bg: string; text: string }> = {

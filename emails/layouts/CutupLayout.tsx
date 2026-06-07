@@ -3,6 +3,7 @@ import { Tailwind } from '@react-email/tailwind';
 import * as React from 'react';
 import { BRAND } from '../brand';
 import { EmailFooter } from '../components/EmailFooter';
+import { EmailHeadStyles } from '../components/EmailHeadStyles';
 import { EmailHeader } from '../components/EmailHeader';
 
 type Props = {
@@ -25,8 +26,10 @@ export function CutupLayout({ preview, children }: Props) {
   return (
     <Html lang="en">
       <Head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta name="color-scheme" content="light" />
         <meta name="supported-color-schemes" content="light" />
+        <EmailHeadStyles />
       </Head>
       <Preview>{preview}</Preview>
       <Tailwind config={tailwindConfig}>
@@ -37,12 +40,14 @@ export function CutupLayout({ preview, children }: Props) {
             fontFamily: BRAND.fontFamily,
             WebkitFontSmoothing: 'antialiased',
             margin: 0,
-            padding: '32px 16px',
+            padding: BRAND.padBody,
+            width: '100%',
           }}
         >
           <Container
-            className="mx-auto"
+            className="email-container mx-auto"
             style={{
+              width: '100%',
               maxWidth: BRAND.maxWidth,
               margin: '0 auto',
             }}
@@ -53,7 +58,6 @@ export function CutupLayout({ preview, children }: Props) {
                 borderRadius: BRAND.radiusLg,
                 border: `1px solid ${BRAND.border}`,
                 boxShadow: BRAND.shadowSm,
-                overflow: 'hidden',
               }}
             >
               <EmailHeader />

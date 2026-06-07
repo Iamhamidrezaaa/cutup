@@ -3,12 +3,12 @@ import { BRAND } from '../brand';
 
 export function EmailDivider() {
   return (
-    <Section style={{ padding: '0 32px' }}>
+    <Section className="email-pad-x" style={{ padding: `0 ${BRAND.padX}` }}>
       <Hr
         style={{
           borderColor: BRAND.border,
           borderWidth: '1px',
-          margin: '24px 0',
+          margin: '12px 0',
         }}
       />
     </Section>

@@ -7,11 +7,9 @@ import {
   FeatureList,
   HeroSection,
   PlanBadge,
-  QuickActions,
   StatusBadge,
 } from '../components';
-import { BRAND } from '../brand';
-import { SITE } from '../brand';
+import { BRAND, SITE } from '../brand';
 
 export type SubscriptionUpgradedData = {
   firstName?: string;
@@ -20,17 +18,9 @@ export type SubscriptionUpgradedData = {
 };
 
 const PLAN_FEATURES: Record<string, string[]> = {
-  pro: [
-    'Higher monthly processing credits',
-    'Priority export queue',
-    'Advanced AI translation & summaries',
-  ],
-  business: [
-    'Team-ready processing limits',
-    'Priority support & faster exports',
-    'Full AI workspace features',
-  ],
-  starter: ['Core transcription tools', 'Standard export quality', 'Dashboard access'],
+  pro: ['More monthly credits', 'Priority exports', 'Advanced AI features'],
+  business: ['Higher limits', 'Priority support', 'Full workspace access'],
+  starter: ['Core transcription', 'Standard exports', 'Dashboard access'],
 };
 
 export function SubscriptionUpgraded({
@@ -46,22 +36,19 @@ export function SubscriptionUpgraded({
       <StatusBadge variant="success">Plan upgraded</StatusBadge>
       <HeroSection
         title={`You're now on ${planName}`}
-        subtitle={`Hi ${firstName}, your workspace has been upgraded. Enjoy more power, faster exports, and premium AI features.`}
+        subtitle={`Hi ${firstName}, your plan is active with more credits and premium features.`}
       />
       <EmailCard>
         <PlanBadge plan={planName} />
         {monthlyCredits != null ? (
           <DetailRow label="Credits included" value={`${monthlyCredits} / month`} />
         ) : null}
-        <Text style={{ margin: '16px 0 12px', fontSize: '13px', fontWeight: 600, color: BRAND.textMuted }}>
-          What&apos;s included
+        <Text style={{ margin: '10px 0 8px', fontSize: '12px', fontWeight: 600, color: BRAND.textMuted }}>
+          Included
         </Text>
         <FeatureList items={features} />
       </EmailCard>
-      <EmailButton href={SITE.dashboardUrl} fullWidth>
-        Start Creating
-      </EmailButton>
-      <QuickActions />
+      <EmailButton href={SITE.dashboardUrl}>Start Creating</EmailButton>
     </CutupLayout>
   );
 }

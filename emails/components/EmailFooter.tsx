@@ -1,60 +1,81 @@
 import { Link, Section, Text } from '@react-email/components';
 import { BRAND, SITE } from '../brand';
-import { EmailDivider } from './EmailDivider';
+
+const linkStyle = {
+  color: BRAND.textMuted,
+  textDecoration: 'underline',
+  fontSize: '12px',
+  lineHeight: '1.4',
+} as const;
 
 export function EmailFooter() {
   return (
-    <Section style={{ padding: '8px 32px 40px' }}>
-      <EmailDivider />
-      <Text
-        style={{
-          margin: '0 0 8px',
-          fontSize: '14px',
-          lineHeight: '1.6',
-          color: BRAND.text,
-          textAlign: 'center',
-        }}
-      >
-        <Link href={`mailto:${SITE.supportEmail}`} style={{ color: BRAND.primary, textDecoration: 'none' }}>
-          {SITE.supportEmail}
-        </Link>
-        <br />
-        <Link href={SITE.url} style={{ color: BRAND.textMuted, textDecoration: 'none' }}>
-          cutup.shop
-        </Link>
-      </Text>
-      <Text
-        style={{
-          margin: '0 0 16px',
-          fontSize: '13px',
-          lineHeight: '1.6',
-          color: BRAND.textMuted,
-          textAlign: 'center',
-        }}
-      >
-        <Link href={SITE.privacyUrl} style={{ color: BRAND.textMuted, textDecoration: 'underline' }}>
-          Privacy Policy
-        </Link>
-        {' · '}
-        <Link href={SITE.termsUrl} style={{ color: BRAND.textMuted, textDecoration: 'underline' }}>
-          Terms of Service
-        </Link>
-        {' · '}
-        <Link href={SITE.notificationsUrl} style={{ color: BRAND.textMuted, textDecoration: 'underline' }}>
-          Manage Notifications
-        </Link>
-      </Text>
-      <Text
-        style={{
-          margin: 0,
-          fontSize: '12px',
-          lineHeight: '1.5',
-          color: BRAND.textSubtle,
-          textAlign: 'center',
-        }}
-      >
-        You received this email because you have a Cutup account.
-      </Text>
+    <Section className="email-pad-x" style={{ padding: `10px ${BRAND.padX} 24px` }}>
+      <table cellPadding={0} cellSpacing={0} role="presentation" width="100%" style={{ width: '100%' }}>
+        <tbody>
+          <tr>
+            <td align="center" style={{ paddingBottom: '12px' }}>
+              <table cellPadding={0} cellSpacing={0} role="presentation" align="center">
+                <tbody>
+                  <tr>
+                    <td align="center" style={{ paddingBottom: '4px' }}>
+                      <Link
+                        href={`mailto:${SITE.supportEmail}`}
+                        style={{ ...linkStyle, color: BRAND.primary, textDecoration: 'none', fontSize: '13px' }}
+                      >
+                        {SITE.supportEmail}
+                      </Link>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td align="center" style={{ paddingBottom: '8px' }}>
+                      <Link href={SITE.url} style={{ ...linkStyle, textDecoration: 'none' }}>
+                        cutup.shop
+                      </Link>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td align="center" style={{ paddingBottom: '3px' }}>
+                      <Link href={SITE.privacyUrl} style={linkStyle}>
+                        Privacy Policy
+                      </Link>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td align="center" style={{ paddingBottom: '3px' }}>
+                      <Link href={SITE.termsUrl} style={linkStyle}>
+                        Terms
+                      </Link>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td align="center">
+                      <Link href={SITE.notificationsUrl} style={linkStyle}>
+                        Manage Notifications
+                      </Link>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td align="center">
+              <Text
+                style={{
+                  margin: 0,
+                  fontSize: '11px',
+                  lineHeight: '1.4',
+                  color: BRAND.textSubtle,
+                  textAlign: 'center',
+                }}
+              >
+                You received this email because you have a Cutup account.
+              </Text>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </Section>
   );
 }
