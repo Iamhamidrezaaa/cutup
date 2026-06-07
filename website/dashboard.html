@@ -23,6 +23,7 @@
   <link rel="stylesheet" href="landing-page.css?v=20260602-dash-plans">
   <link rel="stylesheet" href="dashboard.css?v=20260602-dash-plans">
   <link rel="stylesheet" href="dashboard-notifications.css?v=20260602-notif-v1">
+  <link rel="stylesheet" href="dashboard-support.css?v=20260602-support-v1">
   <link rel="stylesheet" href="billing-dashboard.css?v=20260602-billing-v2">
   <link rel="stylesheet" href="responsive-global.css?v=1">
   <link rel="stylesheet" href="customer-role-guard.css">
@@ -106,6 +107,10 @@
             <span class="nav-icon">🔔</span>
             <span class="nav-text">Notifications</span>
           </a>
+          <a href="#support" class="nav-item" data-section="support">
+            <span class="nav-icon">💬</span>
+            <span class="nav-text">Support</span>
+          </a>
         </nav>
       </aside>
 
@@ -175,6 +180,10 @@
           <p class="dashboard-section-lead">Stay on top of exports, billing, usage, and account activity.</p>
           <div id="notificationsPageRoot"></div>
         </section>
+
+        <section class="dashboard-section" id="support-section">
+          <div id="supportPageRoot" class="cutup-support-root" aria-live="polite"></div>
+        </section>
       </div>
     </main>
   </div>
@@ -201,7 +210,8 @@
   <script src="saved-outputs-library.js?v=20260602-sol-fix2"></script>
   <script src="dashboard-billing.js?v=20260602-billing-fix"></script>
   <script src="dashboard-notifications.js?v=20260602-notif-v1"></script>
-  <script src="dashboard.js?v=20260602-sol-fix2"></script>
+  <script src="dashboard-support.js?v=20260602-support-v1"></script>
+  <script src="dashboard.js?v=20260602-support-v1"></script>
 </body>
 </html>
 

@@ -148,10 +148,22 @@ export const EMAIL_REGISTRY: Record<EmailTemplateId, EmailRegistryEntry> = {
     },
     event: EMAIL_EVENTS.TICKET_REPLIED,
   },
-  [EMAIL_TEMPLATES.SUPPORT_TICKET_CLOSED]: {
-    template: EMAIL_TEMPLATES.SUPPORT_TICKET_CLOSED,
+  [EMAIL_TEMPLATES.SUPPORT_TICKET_RESOLVED]: {
+    template: EMAIL_TEMPLATES.SUPPORT_TICKET_RESOLVED,
     subject: (d) => `Ticket #${String(d.ticketNumber || '0000')} resolved`,
     preview: (d) => `Ticket #${String(d.ticketNumber || '0000')} resolved`,
+    senderRole: 'support',
+    sampleData: {
+      firstName: sample.firstName,
+      ticketNumber: sample.ticketNumber,
+      subject: sample.subject,
+    },
+    event: EMAIL_EVENTS.TICKET_RESOLVED,
+  },
+  [EMAIL_TEMPLATES.SUPPORT_TICKET_CLOSED]: {
+    template: EMAIL_TEMPLATES.SUPPORT_TICKET_CLOSED,
+    subject: (d) => `Ticket #${String(d.ticketNumber || '0000')} closed`,
+    preview: (d) => `Ticket #${String(d.ticketNumber || '0000')} closed`,
     senderRole: 'support',
     sampleData: {
       firstName: sample.firstName,

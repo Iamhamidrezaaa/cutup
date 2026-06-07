@@ -23,6 +23,16 @@
       "permanent": false
     },
     {
+      "source": "/dashboard/support/:ticket",
+      "destination": "/dashboard.html#support/:ticket",
+      "permanent": false
+    },
+    {
+      "source": "/dashboard/support",
+      "destination": "/dashboard.html#support",
+      "permanent": false
+    },
+    {
       "source": "/admin/ops",
       "destination": "/adminha.html?section=ops",
       "permanent": false
@@ -194,6 +204,14 @@
     {
       "src": "/api/notifications",
       "dest": "/api/notifications.js"
+    },
+    {
+      "src": "/api/support/tickets",
+      "dest": "/api/support-tickets.js"
+    },
+    {
+      "src": "/api/admin/support",
+      "dest": "/api/admin-support-tickets.js"
     },
     {
       "src": "/api/admin/login",

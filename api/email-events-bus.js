@@ -165,6 +165,15 @@ export function emitTicketReplied(payload) {
   return emitEmailEvent('ticket_replied', payload);
 }
 
+export function emitTicketAssigned(payload) {
+  void createInAppNotification('ticket_assigned', payload);
+  return Promise.resolve({ ok: true, notificationOnly: true });
+}
+
+export function emitTicketResolved(payload) {
+  return emitEmailEvent('ticket_resolved', payload);
+}
+
 export function emitTicketClosed(payload) {
   return emitEmailEvent('ticket_closed', payload);
 }

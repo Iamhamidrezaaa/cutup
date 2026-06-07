@@ -175,6 +175,7 @@ var EMAIL_TEMPLATES = {
   ACCOUNT_DELETION_COMPLETED: "ACCOUNT_DELETION_COMPLETED",
   SUPPORT_TICKET_CREATED: "SUPPORT_TICKET_CREATED",
   SUPPORT_TICKET_REPLY: "SUPPORT_TICKET_REPLY",
+  SUPPORT_TICKET_RESOLVED: "SUPPORT_TICKET_RESOLVED",
   SUPPORT_TICKET_CLOSED: "SUPPORT_TICKET_CLOSED",
   SECURITY_NOTIFICATION: "SECURITY_NOTIFICATION",
   SYSTEM_NOTIFICATION: "SYSTEM_NOTIFICATION"
@@ -190,6 +191,7 @@ var EMAIL_EVENTS = {
   ACCOUNT_DELETED: "account_deleted",
   TICKET_CREATED: "ticket_created",
   TICKET_REPLIED: "ticket_replied",
+  TICKET_RESOLVED: "ticket_resolved",
   TICKET_CLOSED: "ticket_closed"
 };
 
@@ -339,10 +341,22 @@ var EMAIL_REGISTRY = {
     },
     event: EMAIL_EVENTS.TICKET_REPLIED
   },
-  [EMAIL_TEMPLATES.SUPPORT_TICKET_CLOSED]: {
-    template: EMAIL_TEMPLATES.SUPPORT_TICKET_CLOSED,
+  [EMAIL_TEMPLATES.SUPPORT_TICKET_RESOLVED]: {
+    template: EMAIL_TEMPLATES.SUPPORT_TICKET_RESOLVED,
     subject: (d) => `Ticket #${String(d.ticketNumber || "0000")} resolved`,
     preview: (d) => `Ticket #${String(d.ticketNumber || "0000")} resolved`,
+    senderRole: "support",
+    sampleData: {
+      firstName: sample.firstName,
+      ticketNumber: sample.ticketNumber,
+      subject: sample.subject
+    },
+    event: EMAIL_EVENTS.TICKET_RESOLVED
+  },
+  [EMAIL_TEMPLATES.SUPPORT_TICKET_CLOSED]: {
+    template: EMAIL_TEMPLATES.SUPPORT_TICKET_CLOSED,
+    subject: (d) => `Ticket #${String(d.ticketNumber || "0000")} closed`,
+    preview: (d) => `Ticket #${String(d.ticketNumber || "0000")} closed`,
     senderRole: "support",
     sampleData: {
       firstName: sample.firstName,
@@ -32466,8 +32480,36 @@ function SupportTicketClosed({
   ] });
 }
 
-// emails/templates/SecurityNotification.tsx
+// emails/templates/SupportTicketResolved.tsx
 import { jsx as jsx40, jsxs as jsxs23 } from "react/jsx-runtime";
+function SupportTicketResolved({
+  firstName = "there",
+  ticketNumber = "0000",
+  subject = "Support request",
+  ticketUrl
+}) {
+  const url = ticketUrl || "https://cutup.shop/dashboard.html#support";
+  return /* @__PURE__ */ jsxs23(CutupLayout, { preview: `Ticket #${ticketNumber} resolved`, children: [
+    /* @__PURE__ */ jsx40(SuccessIndicator, { label: "Resolved" }),
+    /* @__PURE__ */ jsx40(
+      HeroSection,
+      {
+        title: `Ticket #${ticketNumber} resolved`,
+        subtitle: `Hi ${firstName}, your support request has been marked as resolved.`
+      }
+    ),
+    /* @__PURE__ */ jsxs23(EmailCard, { children: [
+      /* @__PURE__ */ jsx40(StatusBadge, { variant: "success", children: "Resolved" }),
+      /* @__PURE__ */ jsx40(DetailRow, { label: "Ticket", value: `#${ticketNumber}` }),
+      /* @__PURE__ */ jsx40(DetailRow, { label: "Subject", value: subject, last: true })
+    ] }),
+    /* @__PURE__ */ jsx40(EmailButton, { href: url, fullWidth: true, children: "View Ticket" }),
+    /* @__PURE__ */ jsx40(EmailText, { inset: true, muted: true, small: true, children: "If you still need help, reply in the dashboard and we will reopen your ticket." })
+  ] });
+}
+
+// emails/templates/SecurityNotification.tsx
+import { jsx as jsx41, jsxs as jsxs24 } from "react/jsx-runtime";
 function SecurityNotification({
   firstName = "there",
   title = "Security notification",
@@ -32475,12 +32517,12 @@ function SecurityNotification({
   actionUrl,
   actionLabel = "Review Account"
 }) {
-  return /* @__PURE__ */ jsxs23(CutupLayout, { preview: title, children: [
-    /* @__PURE__ */ jsx40(StatusBadge, { variant: "danger", children: "Security alert" }),
-    /* @__PURE__ */ jsx40(HeroSection, { title, subtitle: `Hi ${firstName}, we detected activity on your account that needs your attention.` }),
-    /* @__PURE__ */ jsx40(EmailCard, { children: /* @__PURE__ */ jsx40(Text3, { style: { margin: 0, fontSize: "15px", lineHeight: "1.65", color: BRAND.text }, children: message }) }),
-    actionUrl ? /* @__PURE__ */ jsx40(EmailButton, { href: actionUrl, fullWidth: true, children: actionLabel }) : null,
-    /* @__PURE__ */ jsxs23(EmailText, { inset: true, muted: true, small: true, style: { color: BRAND.danger }, children: [
+  return /* @__PURE__ */ jsxs24(CutupLayout, { preview: title, children: [
+    /* @__PURE__ */ jsx41(StatusBadge, { variant: "danger", children: "Security alert" }),
+    /* @__PURE__ */ jsx41(HeroSection, { title, subtitle: `Hi ${firstName}, we detected activity on your account that needs your attention.` }),
+    /* @__PURE__ */ jsx41(EmailCard, { children: /* @__PURE__ */ jsx41(Text3, { style: { margin: 0, fontSize: "15px", lineHeight: "1.65", color: BRAND.text }, children: message }) }),
+    actionUrl ? /* @__PURE__ */ jsx41(EmailButton, { href: actionUrl, fullWidth: true, children: actionLabel }) : null,
+    /* @__PURE__ */ jsxs24(EmailText, { inset: true, muted: true, small: true, style: { color: BRAND.danger }, children: [
       "If this wasn't you, contact ",
       SITE.supportEmail,
       " immediately."
@@ -32489,7 +32531,7 @@ function SecurityNotification({
 }
 
 // emails/templates/SystemNotification.tsx
-import { jsx as jsx41, jsxs as jsxs24 } from "react/jsx-runtime";
+import { jsx as jsx42, jsxs as jsxs25 } from "react/jsx-runtime";
 function SystemNotification({
   firstName = "there",
   title = "Cutup update",
@@ -32497,11 +32539,11 @@ function SystemNotification({
   ctaUrl,
   ctaLabel = "Open Dashboard"
 }) {
-  return /* @__PURE__ */ jsxs24(CutupLayout, { preview: title, children: [
-    /* @__PURE__ */ jsx41(StatusBadge, { variant: "info", children: "System update" }),
-    /* @__PURE__ */ jsx41(HeroSection, { title, subtitle: `Hi ${firstName}, here's an important update from Cutup.` }),
-    /* @__PURE__ */ jsx41(EmailCard, { children: /* @__PURE__ */ jsx41(Text3, { style: { margin: 0, whiteSpace: "pre-wrap", fontSize: "15px", lineHeight: "1.65", color: BRAND.text }, children: message || "\u2014" }) }),
-    /* @__PURE__ */ jsx41(EmailButton, { href: ctaUrl || SITE.dashboardUrl, fullWidth: true, children: ctaLabel })
+  return /* @__PURE__ */ jsxs25(CutupLayout, { preview: title, children: [
+    /* @__PURE__ */ jsx42(StatusBadge, { variant: "info", children: "System update" }),
+    /* @__PURE__ */ jsx42(HeroSection, { title, subtitle: `Hi ${firstName}, here's an important update from Cutup.` }),
+    /* @__PURE__ */ jsx42(EmailCard, { children: /* @__PURE__ */ jsx42(Text3, { style: { margin: 0, whiteSpace: "pre-wrap", fontSize: "15px", lineHeight: "1.65", color: BRAND.text }, children: message || "\u2014" }) }),
+    /* @__PURE__ */ jsx42(EmailButton, { href: ctaUrl || SITE.dashboardUrl, fullWidth: true, children: ctaLabel })
   ] });
 }
 
@@ -32517,6 +32559,7 @@ var TEMPLATE_COMPONENTS = {
   [EMAIL_TEMPLATES.ACCOUNT_DELETION_COMPLETED]: AccountDeletionCompleted,
   [EMAIL_TEMPLATES.SUPPORT_TICKET_CREATED]: SupportTicketCreated,
   [EMAIL_TEMPLATES.SUPPORT_TICKET_REPLY]: SupportTicketReply,
+  [EMAIL_TEMPLATES.SUPPORT_TICKET_RESOLVED]: SupportTicketResolved,
   [EMAIL_TEMPLATES.SUPPORT_TICKET_CLOSED]: SupportTicketClosed,
   [EMAIL_TEMPLATES.SECURITY_NOTIFICATION]: SecurityNotification,
   [EMAIL_TEMPLATES.SYSTEM_NOTIFICATION]: SystemNotification
@@ -32747,6 +32790,7 @@ var EVENT_TEMPLATE_MAP = {
   [EMAIL_EVENTS.ACCOUNT_DELETED]: EMAIL_TEMPLATES.ACCOUNT_DELETION_COMPLETED,
   [EMAIL_EVENTS.TICKET_CREATED]: EMAIL_TEMPLATES.SUPPORT_TICKET_CREATED,
   [EMAIL_EVENTS.TICKET_REPLIED]: EMAIL_TEMPLATES.SUPPORT_TICKET_REPLY,
+  [EMAIL_EVENTS.TICKET_RESOLVED]: EMAIL_TEMPLATES.SUPPORT_TICKET_RESOLVED,
   [EMAIL_EVENTS.TICKET_CLOSED]: EMAIL_TEMPLATES.SUPPORT_TICKET_CLOSED
 };
 function onEmailEvent(event, handler) {

@@ -2360,6 +2360,12 @@ async function loadAdminNotifications() {
   await window.CutupAdminNotifications.mount(root);
 }
 
+async function loadAdminSupport() {
+  const root = document.getElementById('supportAdminWorkspace');
+  if (!root || !window.CutupAdminSupport?.mount) return;
+  await window.CutupAdminSupport.mount(root);
+}
+
 async function refreshSection(section) {
   if (section === 'overview') return loadOverview();
   if (section === 'users') return loadUsers();
@@ -2374,6 +2380,7 @@ async function refreshSection(section) {
   if (section === 'health') return loadHealth();
   if (section === 'email-preview') return loadEmailPreview();
   if (section === 'notifications') return loadAdminNotifications();
+  if (section === 'support') return loadAdminSupport();
   if (section === 'ops') return loadOpsCommandCenter();
   if (section === 'blog') return loadBlogPosts();
   if (section === 'pages' || section === 'blog') {

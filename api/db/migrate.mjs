@@ -47,6 +47,9 @@ async function main() {
   const notificationsSql = readFileSync(join(__dirname, 'schema-notifications.sql'), 'utf8');
   await getPool().query(notificationsSql);
   console.log('Migration applied: schema-notifications.sql');
+  const supportSql = readFileSync(join(__dirname, 'schema-support.sql'), 'utf8');
+  await getPool().query(supportSql);
+  console.log('Migration applied: schema-support.sql');
   await closePool();
 }
 

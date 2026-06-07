@@ -499,6 +499,10 @@ function setupNavigation() {
       if (target === 'notifications') {
         window.CutupDashboardNotifications?.mountPage?.();
       }
+      if (target === 'support') {
+        const route = window.CutupDashboardSupport?.parseSupportHash?.(window.location.hash);
+        window.CutupDashboardSupport?.mount?.(route?.ticket || null);
+      }
       if (target === 'saved') {
         renderSavedOutputs();
       }
@@ -686,8 +690,14 @@ function writeProfilePrefs(prefs) {
 }
 
 function navigateDashboardSection(sectionId) {
-  const item = document.querySelector(`.nav-item[data-section="${sectionId}"]`);
+  const base = String(sectionId || '').split('/')[0];
+  const item = document.querySelector(`.nav-item[data-section="${base}"]`);
   if (item) {
+    if (base === 'support' && String(sectionId).includes('/')) {
+      window.location.hash = sectionId.startsWith('support') ? sectionId : `support/${sectionId.split('/').slice(1).join('/')}`;
+    } else if (base !== sectionId && sectionId.startsWith('support/')) {
+      window.location.hash = sectionId;
+    }
     item.click();
     return;
   }
@@ -1994,10 +2004,18 @@ async function initDashboard() {
     cleanDashboardProfileQueryParams();
     await runHeavySafe();
     const rawHash = window.location.hash.replace(/^#/, '');
-    const hashSec = rawHash === 'billing' ? 'financial' : rawHash;
+    const supportRoute = window.CutupDashboardSupport?.parseSupportHash?.(window.location.hash);
+    const hashSec = supportRoute
+      ? 'support'
+      : rawHash === 'billing'
+        ? 'financial'
+        : rawHash.split('/')[0];
     const urlParams = new URLSearchParams(window.location.search);
     dashboardHighlightPlan = urlParams.get('highlightPlan');
-    if (hashSec && document.querySelector(`.nav-item[data-section="${hashSec}"]`)) {
+    if (supportRoute) {
+      navigateDashboardSection(supportRoute.ticket ? `support/${supportRoute.ticket}` : 'support');
+      window.CutupDashboardSupport?.mount?.(supportRoute.ticket || null);
+    } else if (hashSec && document.querySelector(`.nav-item[data-section="${hashSec}"]`)) {
       navigateDashboardSection(hashSec);
     } else if (dashboardHighlightPlan || hashSec === 'subscription') {
       navigateDashboardSection('subscription');

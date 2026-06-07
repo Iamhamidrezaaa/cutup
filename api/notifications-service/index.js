@@ -10,6 +10,8 @@ var NOTIFICATION_TYPES = {
   ACCOUNT_DELETED: "ACCOUNT_DELETED",
   SUPPORT_TICKET_CREATED: "SUPPORT_TICKET_CREATED",
   SUPPORT_TICKET_REPLY: "SUPPORT_TICKET_REPLY",
+  SUPPORT_TICKET_ASSIGNED: "SUPPORT_TICKET_ASSIGNED",
+  SUPPORT_TICKET_RESOLVED: "SUPPORT_TICKET_RESOLVED",
   SUPPORT_TICKET_CLOSED: "SUPPORT_TICKET_CLOSED",
   SECURITY_ALERT: "SECURITY_ALERT",
   SYSTEM_NOTIFICATION: "SYSTEM_NOTIFICATION"
@@ -52,7 +54,9 @@ var ICONS = {
   ACCOUNT_DELETION_REQUESTED: "\u26A0\uFE0F",
   ACCOUNT_DELETED: "\u26A0\uFE0F",
   SUPPORT_TICKET_CREATED: "\u{1F3AB}",
-  SUPPORT_TICKET_REPLY: "\u{1F3AB}",
+  SUPPORT_TICKET_REPLY: "\u{1F4AC}",
+  SUPPORT_TICKET_ASSIGNED: "\u{1F464}",
+  SUPPORT_TICKET_RESOLVED: "\u2705",
   SUPPORT_TICKET_CLOSED: "\u{1F3AB}",
   SECURITY_ALERT: "\u{1F512}",
   SYSTEM_NOTIFICATION: "\u2699\uFE0F"
@@ -194,16 +198,40 @@ function buildNotificationFromEvent(event, payload) {
           ticketUrl: payload.ticketUrl
         }
       };
-    case "ticket_closed":
+    case "ticket_assigned":
       return {
-        type: NOTIFICATION_TYPES.SUPPORT_TICKET_CLOSED,
+        type: NOTIFICATION_TYPES.SUPPORT_TICKET_ASSIGNED,
+        title: `Ticket #${payload.ticketNumber || "\u2014"} assigned`,
+        message: `${payload.agentName || "Support"} is handling your request.`,
+        metadata: {
+          event,
+          ticketNumber: payload.ticketNumber,
+          agentName: payload.agentName,
+          ticketUrl: payload.ticketUrl
+        }
+      };
+    case "ticket_resolved":
+      return {
+        type: NOTIFICATION_TYPES.SUPPORT_TICKET_RESOLVED,
         title: `Ticket #${payload.ticketNumber || "\u2014"} resolved`,
-        message: payload.subject ? `"${payload.subject}" was marked resolved.` : "Your support ticket was closed.",
+        message: payload.subject ? `"${payload.subject}" was marked resolved.` : "Your support ticket was resolved.",
         metadata: {
           event,
           ticketNumber: payload.ticketNumber,
           subject: payload.subject,
-          ratingUrl: payload.ratingUrl
+          ticketUrl: payload.ticketUrl
+        }
+      };
+    case "ticket_closed":
+      return {
+        type: NOTIFICATION_TYPES.SUPPORT_TICKET_CLOSED,
+        title: `Ticket #${payload.ticketNumber || "\u2014"} closed`,
+        message: payload.subject ? `"${payload.subject}" was closed.` : "Your support ticket was closed.",
+        metadata: {
+          event,
+          ticketNumber: payload.ticketNumber,
+          subject: payload.subject,
+          ticketUrl: payload.ticketUrl
         }
       };
     case "security_notification":

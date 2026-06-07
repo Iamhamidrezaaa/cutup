@@ -132,18 +132,44 @@ export function buildNotificationFromEvent(
           ticketUrl: payload.ticketUrl,
         },
       };
-    case 'ticket_closed':
+    case 'ticket_assigned':
       return {
-        type: NOTIFICATION_TYPES.SUPPORT_TICKET_CLOSED,
+        type: NOTIFICATION_TYPES.SUPPORT_TICKET_ASSIGNED,
+        title: `Ticket #${payload.ticketNumber || '—'} assigned`,
+        message: `${payload.agentName || 'Support'} is handling your request.`,
+        metadata: {
+          event,
+          ticketNumber: payload.ticketNumber,
+          agentName: payload.agentName,
+          ticketUrl: payload.ticketUrl,
+        },
+      };
+    case 'ticket_resolved':
+      return {
+        type: NOTIFICATION_TYPES.SUPPORT_TICKET_RESOLVED,
         title: `Ticket #${payload.ticketNumber || '—'} resolved`,
         message: payload.subject
           ? `"${payload.subject}" was marked resolved.`
+          : 'Your support ticket was resolved.',
+        metadata: {
+          event,
+          ticketNumber: payload.ticketNumber,
+          subject: payload.subject,
+          ticketUrl: payload.ticketUrl,
+        },
+      };
+    case 'ticket_closed':
+      return {
+        type: NOTIFICATION_TYPES.SUPPORT_TICKET_CLOSED,
+        title: `Ticket #${payload.ticketNumber || '—'} closed`,
+        message: payload.subject
+          ? `"${payload.subject}" was closed.`
           : 'Your support ticket was closed.',
         metadata: {
           event,
           ticketNumber: payload.ticketNumber,
           subject: payload.subject,
-          ratingUrl: payload.ratingUrl,
+          ticketUrl: payload.ticketUrl,
         },
       };
     case 'security_notification':

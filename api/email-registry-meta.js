@@ -153,10 +153,22 @@ const EMAIL_REGISTRY_META = {
     },
     event: 'ticket_replied',
   },
-  SUPPORT_TICKET_CLOSED: {
-    template: 'SUPPORT_TICKET_CLOSED',
+  SUPPORT_TICKET_RESOLVED: {
+    template: 'SUPPORT_TICKET_RESOLVED',
     subject: (d) => `Ticket #${String(d.ticketNumber || '0000')} resolved`,
     preview: (d) => `Ticket #${String(d.ticketNumber || '0000')} resolved`,
+    senderRole: 'support',
+    sampleData: {
+      firstName: sample.firstName,
+      ticketNumber: sample.ticketNumber,
+      subject: sample.subject,
+    },
+    event: 'ticket_resolved',
+  },
+  SUPPORT_TICKET_CLOSED: {
+    template: 'SUPPORT_TICKET_CLOSED',
+    subject: (d) => `Ticket #${String(d.ticketNumber || '0000')} closed`,
+    preview: (d) => `Ticket #${String(d.ticketNumber || '0000')} closed`,
     senderRole: 'support',
     sampleData: {
       firstName: sample.firstName,

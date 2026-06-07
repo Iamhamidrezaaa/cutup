@@ -808,6 +808,26 @@ app.all('/api/admin/notifications', async (req, res) => {
   }
 });
 
+app.all('/api/support/tickets', async (req, res) => {
+  try {
+    const mod = await import('./api/support-tickets.js');
+    return mod.default(req, res);
+  } catch (e) {
+    console.error('[support-tickets]', e);
+    return res.status(503).json({ ok: false, error: 'handler_unavailable' });
+  }
+});
+
+app.all('/api/admin/support', async (req, res) => {
+  try {
+    const mod = await import('./api/admin-support-tickets.js');
+    return mod.default(req, res);
+  } catch (e) {
+    console.error('[admin-support-tickets]', e);
+    return res.status(503).json({ ok: false, error: 'handler_unavailable' });
+  }
+});
+
 app.get('/api/admin', async (req, res) => {
   if (!adminHandler) {
     return res.status(503).json({ error: 'Admin handler not loaded' });

@@ -9,5 +9,6 @@ export { AccountDeletionCompleted, type AccountDeletionCompletedData } from './A
 export { SupportTicketCreated, type SupportTicketData } from './SupportTicketCreated';
 export { SupportTicketReply, type SupportTicketReplyData } from './SupportTicketReply';
 export { SupportTicketClosed, type SupportTicketClosedData } from './SupportTicketClosed';
+export { SupportTicketResolved } from './SupportTicketResolved';
 export { SecurityNotification, type SecurityNotificationData } from './SecurityNotification';
 export { SystemNotification, type SystemNotificationData } from './SystemNotification';
