@@ -18,6 +18,11 @@
     return n + ' videos per month';
   }
 
+  function formatMonthlyExportsLine(planKey) {
+    var n = monthlyVideosForPlan(planKey);
+    return n + ' exports/month';
+  }
+
   /** Free: no upgrade needed to start; paid: standard SaaS line. */
   function pricingAccessNote(planKey) {
     var k = String(planKey || '').toLowerCase();
@@ -25,10 +30,21 @@
     return 'Cancel anytime · Instant access after upgrade';
   }
 
+  function hydratePricingCompareTable() {
+    document.querySelectorAll('[data-cutup-plan-exports]').forEach(function (el) {
+      var k = el.getAttribute('data-cutup-plan-exports');
+      if (!k) return;
+      var n = monthlyVideosForPlan(k);
+      el.innerHTML = '<span class="pricing-compare__export-num">' + n + '</span><span class="pricing-compare__export-unit">/mo</span>';
+    });
+  }
+
   window.CutupPlanDisplay = {
     PLAN_MONTHLY_VIDEOS: PLAN_MONTHLY_VIDEOS,
     monthlyVideosForPlan: monthlyVideosForPlan,
     formatMonthlyVideosLine: formatMonthlyVideosLine,
-    pricingAccessNote: pricingAccessNote
+    formatMonthlyExportsLine: formatMonthlyExportsLine,
+    pricingAccessNote: pricingAccessNote,
+    hydratePricingCompareTable: hydratePricingCompareTable
   };
 })();

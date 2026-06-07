@@ -1,72 +1,8 @@
 /**
- * CutUp landing polish — FAQ schema + hero CTAs (no redesign widgets).
+ * CutUp landing polish — FAQ schema + pricing table hydration.
  */
 (function () {
   'use strict';
-
-  function getSessionId() {
-    try {
-      return localStorage.getItem('cutup_session') || null;
-    } catch {
-      return null;
-    }
-  }
-
-  function scrollToTool() {
-    document.getElementById('tool')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-
-  async function triggerGoogleLogin() {
-    const loginBtn = document.getElementById('loginBtn');
-    if (loginBtn) {
-      loginBtn.click();
-      return;
-    }
-    const apiBase = window.CUTUP_API_BASE || '';
-    try {
-      const response = await fetch(`${apiBase}/api/oauth/google/start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      const data = await response.json();
-      if (data?.authUrl) window.location.href = data.authUrl;
-    } catch (_err) {
-      /* script.js login handler surfaces errors when available */
-    }
-  }
-
-  function wireStartFree(el, sessionId) {
-    const loggedIn = Boolean(sessionId);
-    el.textContent = loggedIn ? 'Open editor' : 'Start Free';
-
-    if (loggedIn) {
-      el.onclick = function (e) {
-        e.preventDefault();
-        scrollToTool();
-      };
-      return;
-    }
-
-    el.onclick = async function (e) {
-      e.preventDefault();
-      await triggerGoogleLogin();
-    };
-  }
-
-  function wireLandingCtas() {
-    const sessionId = getSessionId();
-
-    document.querySelectorAll('[data-lp-start-free]').forEach((el) => {
-      wireStartFree(el, sessionId);
-    });
-
-    document.querySelectorAll('[data-lp-try-cutup]').forEach((el) => {
-      el.addEventListener('click', function (e) {
-        e.preventDefault();
-        scrollToTool();
-      });
-    });
-  }
 
   function injectFaqSchema() {
     const root = document.getElementById('faqAccordion');
@@ -102,7 +38,9 @@
   }
 
   function init() {
-    wireLandingCtas();
+    if (window.CutupPlanDisplay?.hydratePricingCompareTable) {
+      window.CutupPlanDisplay.hydratePricingCompareTable();
+    }
     injectFaqSchema();
   }
 
@@ -111,6 +49,4 @@
   } else {
     init();
   }
-
-  window.addEventListener('cutup:auth-changed', wireLandingCtas);
 })();

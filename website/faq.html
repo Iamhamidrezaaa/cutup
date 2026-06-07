@@ -3,14 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FAQ — Cutup</title>
-  <meta name="description" content="Answers about accounts, subtitle speed, supported platforms, downloads, trials, languages, payments, and plans on Cutup.">
+  <title>FAQ — CutUp AI Video Repurposing &amp; MP4 Export</title>
+  <meta name="description" content="Answers about AI captions, creator styles, MP4 export, translations, pricing limits, projects and privacy on CutUp — the AI video repurposing platform.">
+  <meta name="keywords" content="CutUp FAQ, AI captions, MP4 export, creator subtitle styles, TikTok captions, video repurposing">
   <link rel="canonical" href="https://cutup.shop/faq.html">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://cutup.shop/faq.html">
-  <meta property="og:title" content="FAQ — Cutup">
-  <meta property="og:description" content="Answers about accounts, subtitle speed, supported platforms, downloads, trials, languages, payments, and plans on Cutup.">
+  <meta property="og:title" content="FAQ — CutUp AI Video Repurposing">
+  <meta property="og:description" content="How CutUp captions, creator styles, translations and MP4 exports work — 30 answers for creators and teams.">
   <meta property="og:site_name" content="Cutup">
   <meta name="twitter:card" content="summary">
   <meta name="theme-color" content="#6366f1">
@@ -19,6 +20,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="responsive-global.css?v=1">
+  <link rel="stylesheet" href="faq-page.css?v=20260607">
 </head>
 <body>
   <script src="site-chrome.js"></script>
@@ -36,68 +38,183 @@
   <main>
     <section id="faq" class="faq-section" aria-labelledby="faq-heading">
       <div class="container">
-        <h1 id="faq-heading" class="section-title section-title--faq section-text">FAQ</h1>
+        <h1 id="faq-heading" class="section-title section-title--faq section-text">CutUp FAQ</h1>
+        <p class="faq-page-intro">Everything about AI captions, creator styles, translations and MP4 export. Jump to a category or <a href="/#tool">start creating on the homepage</a>.</p>
+
+        <nav class="faq-category-nav" aria-label="FAQ categories">
+          <a href="#getting-started">Getting Started</a>
+          <a href="#captions">Captions &amp; Transcripts</a>
+          <a href="#translations">Translations</a>
+          <a href="#creator-styles">Creator Styles</a>
+          <a href="#mp4-export">MP4 Export</a>
+          <a href="#projects">Projects &amp; Workspace</a>
+          <a href="#pricing">Pricing &amp; Limits</a>
+          <a href="#privacy">Privacy &amp; Security</a>
+        </nav>
+
         <div class="faq-accordion" id="faqAccordion">
-          <div class="faq-item">
-            <button type="button" class="faq-question" id="faq-q-1" aria-expanded="false" aria-controls="faq-a-1" data-faq-btn>Do I need an account?</button>
-            <div class="faq-answer" id="faq-a-1" role="region" aria-labelledby="faq-q-1">
-              <p>No. Paste a link and preview timed subtitles right away. A free account adds history, saved outputs, and higher limits when you’re ready.</p>
+
+          <div class="faq-category" id="getting-started">
+            <h2 class="faq-category__title">Getting Started</h2>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>What does CutUp do?</button>
+              <div class="faq-answer" role="region"><p>CutUp is an AI video repurposing platform. Paste a YouTube, TikTok or Instagram link — or upload a file — and CutUp generates timed captions, applies creator-inspired subtitle styles, and exports social-ready MP4s with burned-in captions for TikTok, Reels and Shorts.</p></div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>Who is CutUp for?</button>
+              <div class="faq-answer" role="region"><p>Short-form creators, YouTubers repurposing long-form, social media managers, educators turning lectures into clips, and teams that need consistent caption styling without a full post-production workflow.</p></div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>Can beginners use CutUp?</button>
+              <div class="faq-answer" role="region"><p>Yes. Paste a link, wait for captions, pick a style preset, and export. You do not need Premiere, CapCut or After Effects to get a postable MP4.</p></div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>Can I try CutUp before paying?</button>
+              <div class="faq-answer" role="region"><p>Yes. The Free plan lets you run the full preview workflow in your browser — no credit card. You see AI captions and styled previews before upgrading for full MP4 exports and higher monthly limits. <a href="/#tool">Try it on the homepage →</a></p></div>
             </div>
           </div>
-          <div class="faq-item">
-            <button type="button" class="faq-question" id="faq-q-2" aria-expanded="false" aria-controls="faq-a-2" data-faq-btn>How fast is subtitle generation?</button>
-            <div class="faq-answer" id="faq-a-2" role="region" aria-labelledby="faq-q-2">
-              <p>Most short-to-medium videos finish in about a minute. Longer files take a bit more—you’ll see progress in the tool so you’re never guessing.</p>
+
+          <div class="faq-category" id="captions">
+            <h2 class="faq-category__title">Captions &amp; Transcripts</h2>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>How accurate are AI captions?</button>
+              <div class="faq-answer" role="region"><p>CutUp uses Whisper-grade speech recognition with word-level timing. Clean studio audio typically scores very high; noisy environments may need a quick pass in the editor before export.</p></div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>Can I edit captions before export?</button>
+              <div class="faq-answer" role="region"><p>Yes. Review timing and text in the editor, switch between subtitle versions, and export SRT or a burned-in MP4 only when the copy matches your hook.</p></div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>Can I upload my own SRT?</button>
+              <div class="faq-answer" role="region"><p>CutUp generates captions from your video or link. If you already have an SRT, use it in your editor — CutUp is built for generating and styling captions from speech, not replacing a dedicated SRT import tool.</p></div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>Can I generate plain transcripts?</button>
+              <div class="faq-answer" role="region"><p>Yes. Every run produces a full transcript alongside captions. Export to TXT or DOCX on paid plans for blogs, show notes, or client deliverables.</p></div>
             </div>
           </div>
-          <div class="faq-item">
-            <button type="button" class="faq-question" id="faq-q-3" aria-expanded="false" aria-controls="faq-a-3" data-faq-btn>What video platforms are supported?</button>
-            <div class="faq-answer" id="faq-a-3" role="region" aria-labelledby="faq-q-3">
-              <p>YouTube, TikTok, and Instagram links work out of the box. You can also upload audio or video files when you want to run everything in one place.</p>
+
+          <div class="faq-category" id="translations">
+            <h2 class="faq-category__title">Translations</h2>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>Which languages are supported?</button>
+              <div class="faq-answer" role="region"><p>Transcription works across dozens of languages. Paid plans add translation for captions, transcripts and summaries — pick the output language in the tool before export.</p></div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>Can I export translated captions?</button>
+              <div class="faq-answer" role="region"><p>Yes on Starter and above. Translate your caption track, then download as SRT or burn the translated text into your MP4 for a localized short-form clip.</p></div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>Can I translate before MP4 export?</button>
+              <div class="faq-answer" role="region"><p>Yes. Translate first, preview the styled captions in your target language, then run MP4 export so the burned-in text matches what you reviewed.</p></div>
             </div>
           </div>
-          <div class="faq-item">
-            <button type="button" class="faq-question" id="faq-q-4" aria-expanded="false" aria-controls="faq-a-4" data-faq-btn>Can I download subtitles?</button>
-            <div class="faq-answer" id="faq-a-4" role="region" aria-labelledby="faq-q-4">
-              <p>Yes. Paid plans unlock full SRT downloads and exports so you can drop captions straight into your editor or upload platform.</p>
+
+          <div class="faq-category" id="creator-styles">
+            <h2 class="faq-category__title">Creator Styles</h2>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>What is the Alex Hormozi style?</button>
+              <div class="faq-answer" role="region"><p>Bold, high-contrast captions with emphasis on key words — designed for talking-head hooks and direct-response clips. Yellow highlights on punchlines, tight timing on fast speech.</p></div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>What is the MrBeast style?</button>
+              <div class="faq-answer" role="region"><p>Large, energetic typography with strong color pops — built for retention on fast-paced challenge and reaction content. Words scale up on emphasis beats.</p></div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>What is Luxury Minimal?</button>
+              <div class="faq-answer" role="region"><p>Clean serif-inspired captions with generous spacing and muted colors — suited for premium brands, real estate, finance and lifestyle content where readability matters more than flash.</p></div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>What is the Podcast style?</button>
+              <div class="faq-answer" role="region"><p>Lower-third friendly captions with readable line lengths — ideal for interview clips, podcast highlights and talking-head excerpts where the speaker should stay visible.</p></div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>Can I customize styles?</button>
+              <div class="faq-answer" role="region"><p>Pick from curated creator presets and preview before export. Fine-tune caption text and timing in the editor. Full custom font/color controls are on the roadmap — Pro and Business plans get the full preset library today.</p></div>
             </div>
           </div>
-          <div class="faq-item">
-            <button type="button" class="faq-question" id="faq-q-5" aria-expanded="false" aria-controls="faq-a-5" data-faq-btn>Is there a free trial?</button>
-            <div class="faq-answer" id="faq-a-5" role="region" aria-labelledby="faq-q-5">
-              <p>You get a real in-browser preview without a card. When you need full files, longer clips, or higher volume, upgrading takes one minute.</p>
+
+          <div class="faq-category" id="mp4-export">
+            <h2 class="faq-category__title">MP4 Export</h2>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>How does MP4 export work?</button>
+              <div class="faq-answer" role="region"><p>After captions and style are set, CutUp runs a render pipeline: prepare source, lay out captions, apply your creator style, render video, and deliver a downloadable MP4. Progress streams in real time in the export queue.</p></div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>Do captions burn into the video?</button>
+              <div class="faq-answer" role="region"><p>Yes. MP4 export bakes your styled captions directly into the video file — not a separate subtitle track. You get one file ready to upload.</p></div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>Can I export vertical videos for TikTok and Reels?</button>
+              <div class="faq-answer" role="region"><p>Yes. Exports default to vertical, social-ready framing suited for TikTok, Instagram Reels and YouTube Shorts.</p></div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>What resolutions are available?</button>
+              <div class="faq-answer" role="region"><p>Free previews may cap at 480p. Paid plans unlock full-quality cinematic export. Your dashboard reflects the quality tier for your current plan.</p></div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>How long does export take?</button>
+              <div class="faq-answer" role="region"><p>Short clips typically finish in a few minutes. Longer source files take proportionally longer. The export queue shows each pipeline stage so you know exactly where your render is.</p></div>
             </div>
           </div>
-          <div class="faq-item">
-            <button type="button" class="faq-question" id="faq-q-6" aria-expanded="false" aria-controls="faq-a-6" data-faq-btn>What languages are supported?</button>
-            <div class="faq-answer" id="faq-a-6" role="region" aria-labelledby="faq-q-6">
-              <p>Transcription and subtitles work across many languages—pick the output language you need in the tool. Paid plans add translation for SRT, transcript, and summaries.</p>
+
+          <div class="faq-category" id="projects">
+            <h2 class="faq-category__title">Projects &amp; Workspace</h2>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>What is My Projects?</button>
+              <div class="faq-answer" role="region"><p>My Projects is your CutUp workspace dashboard. Signed-in users can reopen past runs, continue editing captions, and re-download exports without starting from scratch. <a href="/dashboard.html">Open dashboard →</a></p></div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>How long are projects stored?</button>
+              <div class="faq-answer" role="region"><p>Projects stay available while your account is active. Heavy media may be trimmed after extended inactivity — your caption data and export history remain accessible from the dashboard.</p></div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>Can I reopen previous exports?</button>
+              <div class="faq-answer" role="region"><p>Yes on paid plans. Open a project from My Projects, adjust captions or switch styles, and run a new MP4 export without re-uploading the source.</p></div>
             </div>
           </div>
-          <div class="faq-item">
-            <button type="button" class="faq-question" id="faq-q-7" aria-expanded="false" aria-controls="faq-a-7" data-faq-btn>Can I edit subtitles before exporting?</button>
-            <div class="faq-answer" id="faq-a-7" role="region" aria-labelledby="faq-q-7">
-              <p>Absolutely. Review timing and text in the preview, tweak what you need, then export when it matches your style.</p>
+
+          <div class="faq-category" id="pricing">
+            <h2 class="faq-category__title">Pricing &amp; Limits</h2>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>How many exports are included in each plan?</button>
+              <div class="faq-answer" role="region"><p>Free: 3/month. Starter: 15/month. Pro: 35/month. Business: 100/month. Each successful generation counts as one export. <a href="/#pricing">See the full comparison table →</a></p></div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>What happens when I reach my limit?</button>
+              <div class="faq-answer" role="region"><p>Your dashboard shows remaining exports. When you hit the cap, you can wait for the monthly reset or upgrade instantly — unused exports do not roll over.</p></div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>Can I upgrade anytime?</button>
+              <div class="faq-answer" role="region"><p>Yes. Upgrade from the pricing table or your dashboard. New limits apply immediately after checkout — no waiting for the next billing cycle to start creating.</p></div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>Can I cancel my subscription?</button>
+              <div class="faq-answer" role="region"><p>Yes. Cancel anytime from your dashboard. You keep access through the end of your paid period, then move to Free tier limits.</p></div>
             </div>
           </div>
-          <div class="faq-item">
-            <button type="button" class="faq-question" id="faq-q-8" aria-expanded="false" aria-controls="faq-a-8" data-faq-btn>What payment methods do you accept?</button>
-            <div class="faq-answer" id="faq-a-8" role="region" aria-labelledby="faq-q-8">
-              <p>Payments are handled securely via international card processors. You can pay with Visa, Mastercard, and other global payment methods. Pricing is in EUR.</p>
+
+          <div class="faq-category" id="privacy">
+            <h2 class="faq-category__title">Privacy &amp; Security</h2>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>Who can see my videos?</button>
+              <div class="faq-answer" role="region"><p>Only you and CutUp's processing systems. Videos are not published publicly unless you opt in to share on the Creator Wall. <a href="/privacy.html">Read our privacy policy →</a></p></div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>Are uploads private?</button>
+              <div class="faq-answer" role="region"><p>Yes. Your uploads and exports are tied to your account and are not listed in any public directory. Creator Wall sharing is optional and off by default.</p></div>
+            </div>
+            <div class="faq-item">
+              <button type="button" class="faq-question" aria-expanded="false" data-faq-btn>Can I delete my data?</button>
+              <div class="faq-answer" role="region"><p>Yes. Delete individual projects from My Projects or contact support for full account deletion. We remove associated media and caption data from active storage. <a href="/contact.html">Contact us →</a></p></div>
             </div>
           </div>
-          <div class="faq-item">
-            <button type="button" class="faq-question" id="faq-q-9" aria-expanded="false" aria-controls="faq-a-9" data-faq-btn>Can I translate subtitles for other markets?</button>
-            <div class="faq-answer" id="faq-a-9" role="region" aria-labelledby="faq-q-9">
-              <p>Yes. On paid plans you can translate SRT, full transcript, and summaries so one video can ship in multiple languages.</p>
-            </div>
-          </div>
-          <div class="faq-item">
-            <button type="button" class="faq-question" id="faq-q-10" aria-expanded="false" aria-controls="faq-a-10" data-faq-btn>Where do I manage my plan?</button>
-            <div class="faq-answer" id="faq-a-10" role="region" aria-labelledby="faq-q-10">
-              <p>After you sign in, your dashboard shows usage, saved work, and plan options in one place—no digging through emails.</p>
-            </div>
-          </div>
+
+        </div>
+
+        <div class="faq-page-cta">
+          <p>Ready to transform your next video into a social-ready clip?</p>
+          <a href="/#tool" class="btn btn-primary">Start on the homepage</a>
         </div>
       </div>
     </section>

@@ -56,7 +56,7 @@ export function renderMarketingHeader() {
     LOGO_MARKUP +
     NAV_TOGGLE +
     '<nav id="navLinks" class="main-header-nav">' +
-    '<a href="/#tool" class="nav-link cta">Generate subtitles</a>' +
+    '<a href="/#tool" class="nav-link cta">Create videos</a>' +
     '<a href="/#features" class="nav-link">Features</a>' +
     '<a href="/#pricing" class="nav-link">Pricing</a>' +
     '<a href="/faq.html" class="nav-link">FAQ</a>' +
