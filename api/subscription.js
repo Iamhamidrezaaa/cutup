@@ -9,6 +9,7 @@ import {
   PLAN_LABELS,
   PLAN_CREDITS
 } from './plans/permissions.js';
+import { buildBillingDashboardPayload } from './billing-dashboard.js';
 import {
   isBillingDbConfigured,
   ensureUserByEmail,
@@ -225,6 +226,14 @@ export default async function handler(req, res) {
       };
 
       return res.json(responseData);
+    }
+
+    if (method === 'GET' && action === 'billing') {
+      const payload = await buildBillingDashboardPayload(userId);
+      if (payload.error) {
+        return res.status(503).json({ error: payload.error });
+      }
+      return res.json(payload);
     }
 
     if (method === 'GET' && action === 'check') {

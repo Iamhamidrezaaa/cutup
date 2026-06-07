@@ -123,7 +123,7 @@ app.get('/api/system-health', async (req, res) => {
 app.get('/sitemap.xml', async (req, res) => sitemapHandler(req, res));
 
 // Import and use API routes
-let uploadHandler, adminCmsMediaHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, projectsHandler, oauthGoogleStartHandler, generateDocxHandler, exportVideoHandler, stripeCheckoutHandler, paymentCreateHandler, paymentVerifyHandler, paymentCallbackHandler, paymentRetryHandler, invoicesHandler, invoiceByIdHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler, userProfileHandler, accountSecurityHandler, auditEventHandler, adminAuditSummaryHandler, adminAuditListHandler, adminAuditUserTimelineHandler, adminAuditChartsHandler, adminAuditFunnelHandler, adminAuditAlertsHandler, adminAuditEvaluateAlertsHandler, adminAuditSeedHandler, adminAuditDashboardHandler, adminAuditJourneyHandler, adminAuditNotesHandler, adminAuditExportHandler, offersHandler, adminOffersHandler, creatorWallHandler, adminCreatorWallHandler, systemHealthHandler, adminOpsStateHandler, adminProvidersHandler;
+let uploadHandler, adminCmsMediaHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, projectsHandler, oauthGoogleStartHandler, generateDocxHandler, exportVideoHandler, stripeCheckoutHandler, stripePortalHandler, paymentCreateHandler, paymentVerifyHandler, paymentCallbackHandler, paymentRetryHandler, invoicesHandler, invoiceByIdHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler, userProfileHandler, accountSecurityHandler, auditEventHandler, adminAuditSummaryHandler, adminAuditListHandler, adminAuditUserTimelineHandler, adminAuditChartsHandler, adminAuditFunnelHandler, adminAuditAlertsHandler, adminAuditEvaluateAlertsHandler, adminAuditSeedHandler, adminAuditDashboardHandler, adminAuditJourneyHandler, adminAuditNotesHandler, adminAuditExportHandler, offersHandler, adminOffersHandler, creatorWallHandler, adminCreatorWallHandler, systemHealthHandler, adminOpsStateHandler, adminProvidersHandler;
 
 async function loadRoutes() {
   try {
@@ -219,7 +219,9 @@ async function loadRoutes() {
 
     const stripeCh = await import('./api/stripe-checkout.js');
     stripeCheckoutHandler = stripeCh.default;
-    console.log('✅ Stripe checkout handler loaded');
+    const stripePortalModule = await import('./api/stripe-portal.js');
+    stripePortalHandler = stripePortalModule.default;
+    console.log('✅ Stripe checkout + portal handlers loaded');
 
     const paymentCreateModule = await import('./api/payment-create.js');
     paymentCreateHandler = paymentCreateModule.default;
@@ -536,6 +538,13 @@ app.post('/api/stripe/create-checkout-session', async (req, res) => {
     return res.status(503).json({ error: 'Stripe checkout not loaded' });
   }
   return stripeCheckoutHandler(req, res);
+});
+
+app.post('/api/stripe/portal', async (req, res) => {
+  if (!stripePortalHandler) {
+    return res.status(503).json({ error: 'Stripe portal not loaded' });
+  }
+  return stripePortalHandler(req, res);
 });
 
 app.post('/api/payment/create', async (req, res) => {
@@ -1106,6 +1115,8 @@ loadRoutes().then(async () => {
     console.log(`   POST /api/subscription?action=check`);
     console.log(`   POST /api/subscription?action=upgrade`);
     console.log(`   POST /api/stripe/create-checkout-session`);
+    console.log(`   POST /api/stripe/portal`);
+    console.log(`   GET  /api/subscription?action=billing`);
     console.log(`   POST /api/payment/create`);
     console.log(`   POST /api/payment/verify`);
     console.log(`   POST /api/payment/callback`);

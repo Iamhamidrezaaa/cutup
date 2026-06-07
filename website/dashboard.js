@@ -88,6 +88,7 @@ let currentUser = null;
 let subscriptionInfo = null;
 let plansCache = [];
 let historyCache = [];
+let billingDashboardCache = null;
 let offersCache = [];
 let offersResolvedState = null;
 let dashboardHighlightPlan = null;
@@ -1581,6 +1582,21 @@ async function loadPlans() {
   plansCache = response.ok ? (data.plans || []) : [];
 }
 
+async function loadBillingDashboard() {
+  if (window.CutupBillingDashboard?.load) {
+    billingDashboardCache = await window.CutupBillingDashboard.load({
+      session: currentSession,
+      apiBase: API_BASE_URL
+    });
+    return;
+  }
+  const { response, data } = await apiGet(
+    `${API_BASE_URL}/api/subscription?action=billing&session=${currentSession}`,
+    { headers: { 'X-Session-Id': currentSession } }
+  );
+  billingDashboardCache = response.ok ? data : null;
+}
+
 async function loadSavedOutputs() {
   const { response, data } = await apiGet(`${API_BASE_URL}/api/subscription?action=savedOutputs&session=${currentSession}&limit=100`, {
     headers: { 'X-Session-Id': currentSession }
@@ -1615,7 +1631,7 @@ async function loadDashboardHeavy({ silent = false, skipUserProfile = false } = 
   }
   const tasks = [];
   if (!skipUserProfile) tasks.push(loadUserProfile());
-  tasks.push(loadSubscriptionInfo(), loadUsageHistory(), loadPlans(), loadSavedOutputs(), loadOffers());
+  tasks.push(loadSubscriptionInfo(), loadUsageHistory(), loadPlans(), loadSavedOutputs(), loadOffers(), loadBillingDashboard());
   await Promise.all(tasks);
   initProjectsDashboard();
   if (window.__ONBOARDING_ACTIVE__) {
@@ -2502,6 +2518,37 @@ function renderBillingSection() {
   if (window.__ONBOARDING_ACTIVE__) return;
   const target = document.getElementById('financialInfo');
   if (!target) return;
+
+  if (window.CutupBillingDashboard?.render) {
+    window.CutupBillingDashboard.render({
+      target,
+      data: billingDashboardCache,
+      subscriptionInfo,
+      session: currentSession,
+      apiBase: API_BASE_URL,
+      apiPost,
+      showBanner: showDashboardBanner,
+      onUpgrade: (planKey) => {
+        if (planKey && typeof dashboardCheckoutForPlan === 'function') {
+          dashboardCheckoutForPlan(planKey);
+        } else {
+          openDashboardPricingMatrix(planKey);
+        }
+      },
+      onRetryPayment: async () => {
+        const { response, data } = await apiPost(`${API_BASE_URL}/api/payment/retry`, {}, {
+          headers: { 'X-Session-Id': currentSession }
+        });
+        if (!response.ok || !data?.redirect_url) {
+          showDashboardBanner(data?.error || 'Retry is not available right now.', 'error');
+          return;
+        }
+        window.location.href = data.redirect_url;
+      }
+    });
+    return;
+  }
+
   const subscriptionEnd = subscriptionInfo?.subscription?.endDate ? formatDateTime(subscriptionInfo.subscription.endDate) : '—';
   const paymentReady = plansCache.some((p) => Number(p?.priceEur?.monthly ?? p?.priceUsd?.monthly) > 0);
   const paymentStatus = subscriptionInfo?.plan === 'free' ? 'No active paid subscription' : 'Active';
