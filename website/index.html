@@ -3,18 +3,112 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cutup — AI subtitles &amp; transcripts for creators, students &amp; pros</title>
-  <meta name="description" content="Paste a link. Get timed subtitles and a clean transcript in under a minute—no login for your first preview. Built for YouTube, TikTok, Instagram &amp; files.">
+  <title>Cutup — Transform Long Videos into Viral Shorts with AI Captions</title>
+  <meta name="description" content="Generate cinematic captions, creator-inspired styles and social-ready MP4 exports in minutes. Upload or paste a URL — start free. YouTube, TikTok, Instagram &amp; files.">
+  <meta name="keywords" content="viral shorts, AI captions, subtitle generator, TikTok captions, YouTube shorts, burned-in subtitles, video export">
   <link rel="canonical" href="https://cutup.shop/">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://cutup.shop/">
-  <meta property="og:title" content="Cutup — AI subtitles &amp; transcripts">
-  <meta property="og:description" content="Paste a link. Preview subtitles and transcripts in seconds—no signup for your first try. YouTube, TikTok, Instagram &amp; file upload.">
+  <meta property="og:title" content="Cutup — Transform Long Videos into Viral Shorts">
+  <meta property="og:description" content="Cinematic captions, creator-inspired styles and social-ready exports in minutes. Start free — no credit card.">
   <meta property="og:site_name" content="Cutup">
+  <meta property="og:image" content="https://cutup.shop/cms-media/images/blog/cutup-blog-hero.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Cutup — AI subtitles &amp; transcripts">
-  <meta name="twitter:description" content="Paste a link. Preview subtitles and transcripts in seconds. Built for creators, students, and pros.">
+  <meta name="twitter:title" content="Cutup — Transform Long Videos into Viral Shorts">
+  <meta name="twitter:description" content="AI captions, creator styles &amp; viral-ready MP4 exports in minutes. Start free.">
+  <meta name="twitter:image" content="https://cutup.shop/cms-media/images/blog/cutup-blog-hero.jpg">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "name": "Cutup",
+        "url": "https://cutup.shop/",
+        "description": "AI-powered viral shorts: cinematic captions, creator styles, social-ready MP4 export.",
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": "https://cutup.shop/blog.html?q={search_term_string}",
+          "query-input": "required name=search_term_string"
+        }
+      },
+      {
+        "@type": "SoftwareApplication",
+        "name": "Cutup",
+        "applicationCategory": "MultimediaApplication",
+        "operatingSystem": "Web",
+        "url": "https://cutup.shop/",
+        "description": "Transform long videos into viral shorts with AI captions, creator-inspired subtitle styles and MP4 export.",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "EUR",
+          "description": "Free tier with preview workflow"
+        }
+      },
+      {
+        "@type": "Organization",
+        "name": "Cutup",
+        "url": "https://cutup.shop/",
+        "logo": "https://cutup.shop/logo.svg"
+      }
+    ]
+  }
+  </script>
+  <script>
+    (function cutupEarlyAuthRedirect() {
+      try {
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('auth') !== 'success' || !params.get('session')) return;
+        document.documentElement.classList.add('cutup-auth-pending');
+        var session = params.get('session');
+        try { localStorage.setItem('cutup_session', session); } catch (_e) { /* ignore */ }
+        var resume = false;
+        try {
+          var pendingUrl = localStorage.getItem('cutup_pending_url');
+          if (pendingUrl && String(pendingUrl).trim()) resume = true;
+          var pendingRaw = localStorage.getItem('pending_action');
+          if (pendingRaw) {
+            var pending = JSON.parse(pendingRaw);
+            var ts = pending && pending.timestamp ? pending.timestamp : 0;
+            if (ts && Date.now() - ts <= 600000) resume = true;
+          }
+          if (sessionStorage.getItem('cutup_pending_action')) resume = true;
+        } catch (_e2) { /* ignore */ }
+        var checkout = null;
+        try {
+          var pendingPlan = sessionStorage.getItem('cutup_pending_plan_after_auth');
+          if (pendingPlan) {
+            var plan = String(pendingPlan).toLowerCase();
+            if (plan === 'starter' || plan === 'pro' || plan === 'business') {
+              checkout = '/checkout.html?plan=' + encodeURIComponent(plan) + '&source=checkout';
+            }
+          }
+        } catch (_e3) { /* ignore */ }
+        if (!checkout && params.get('redirect') === 'checkout') {
+          var qPlan = String(params.get('plan') || '').toLowerCase();
+          if (qPlan === 'starter' || qPlan === 'pro' || qPlan === 'business') {
+            checkout = '/checkout.html?plan=' + encodeURIComponent(qPlan) + '&source=checkout';
+          }
+        }
+        if (checkout && !resume) {
+          window.location.replace(checkout);
+          return;
+        }
+        if (resume) {
+          window.location.replace(window.location.origin + '/?resume=1');
+          return;
+        }
+        window.location.replace(window.location.origin + '/dashboard.html?auth=success&session=' + encodeURIComponent(session));
+      } catch (_err) { /* allow fallback in script.js */ }
+    })();
+  </script>
+  <style>
+    html.cutup-auth-pending body { visibility: hidden; }
+  </style>
   <meta name="theme-color" content="#6366f1">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -33,6 +127,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bangers&family=Bebas+Neue&family=Cormorant+Garamond:wght@500;600&family=Inter:wght@600&family=Lato:wght@600&family=Montserrat:wght@800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="subtitle-styles/subtitle-styles.css?v=20260528-styles">
   <link rel="stylesheet" href="responsive-global.css?v=1">
+  <link rel="stylesheet" href="landing-page.css?v=20260603-features">
 </head>
 <body class="cutup-home">
   <script src="site-chrome.js"></script>
@@ -75,6 +170,10 @@
           <p class="hero-description">
             <strong>Creators</strong> stop retyping captions. <strong>Students</strong> turn lectures into notes. <strong>Professionals</strong> export clean transcripts—fast, simple, and powerful. Your first preview runs in seconds.
           </p>
+          <div class="hero-cta hero-cta-row">
+            <button type="button" class="btn btn-primary" id="heroStartFree" data-lp-start-free>Start Free</button>
+            <a href="#tool" class="btn btn-secondary hero-cta-secondary" data-lp-try-cutup>Try CutUp</a>
+          </div>
         </div>
       </div>
     </section>
@@ -383,64 +482,38 @@ Here's the fastest path from link to publish-ready captions.
     <!-- Features Section -->
     <section id="features" class="features">
       <div class="container">
-        <h2 class="section-title section-text">Export subtitles, transcripts, and summaries in seconds</h2>
-        <div class="features-grid">
-          <div class="feature-card feature-text">
-            <div class="feature-icon">📝</div>
-            <h3 class="feature-title">SRT in seconds</h3>
-            <p class="feature-description">
-              Paste a link and get a timed subtitle preview instantly. Upgrade to download the full SRT.
-            </p>
-          </div>
-          <div class="feature-card feature-text">
-            <div class="feature-icon">🧠</div>
-            <h3 class="feature-title">Whisper-grade transcription</h3>
-            <p class="feature-description">
-              High-quality speech-to-text for long videos and noisy audio when captions are missing.
-            </p>
-          </div>
-          <div class="feature-card feature-text">
-            <div class="feature-icon">✨</div>
-            <h3 class="feature-title">AI summaries</h3>
-            <p class="feature-description">
-              Turn hours of talking heads into short paragraphs and bullet takeaways you can share.
-            </p>
-          </div>
-          <div class="feature-card feature-text">
-            <div class="feature-icon">🌍</div>
-            <h3 class="feature-title">Multilingual</h3>
-            <p class="feature-description">
-              Translate transcripts, summaries, and subtitle tracks to the languages your audience speaks.
-            </p>
-          </div>
-          <div class="feature-card feature-text">
-            <div class="feature-icon">📁</div>
-            <h3 class="feature-title">Upload audio & video</h3>
-            <p class="feature-description">
-              Drop a podcast episode, lecture recording, or screen capture—no hosting required.
-            </p>
-          </div>
-          <div class="feature-card feature-text">
-            <div class="feature-icon">📄</div>
-            <h3 class="feature-title">Export to TXT & DOCX</h3>
-            <p class="feature-description">
-              Download polished documents for editors, legal workflows, or content repurposing.
-            </p>
-          </div>
-          <div class="feature-card feature-text">
-            <div class="feature-icon">📊</div>
-            <h3 class="feature-title">Usage dashboard</h3>
-            <p class="feature-description">
-              Sign in to see how many videos you have left this month, track downloads, and revisit history in one calm control panel.
-            </p>
-          </div>
-          <div class="feature-card feature-text">
-            <div class="feature-icon">⚡</div>
-            <h3 class="feature-title">Preview without friction</h3>
-            <p class="feature-description">
-              Try the workflow before you pay—see the hook, then unlock the full file when you are ready.
-            </p>
-          </div>
+        <h2 class="section-title section-text">Everything you need to ship viral captions</h2>
+        <div class="lp-features-grid">
+          <article class="lp-feature">
+            <div class="lp-feature__icon" aria-hidden="true">🎙️</div>
+            <h3 class="lp-feature__title">AI Captions</h3>
+            <p class="lp-feature__desc">Whisper-grade transcription with word-level timing — accurate hooks and punchlines.</p>
+          </article>
+          <article class="lp-feature">
+            <div class="lp-feature__icon" aria-hidden="true">🌍</div>
+            <h3 class="lp-feature__title">Multi-language support</h3>
+            <p class="lp-feature__desc">Transcribe and translate subtitles, transcripts and summaries for global audiences.</p>
+          </article>
+          <article class="lp-feature">
+            <div class="lp-feature__icon" aria-hidden="true">✨</div>
+            <h3 class="lp-feature__title">Creator styles</h3>
+            <p class="lp-feature__desc">Alex Hormozi, MrBeast, Luxury Minimal and more — cinematic typography out of the box.</p>
+          </article>
+          <article class="lp-feature">
+            <div class="lp-feature__icon" aria-hidden="true">📱</div>
+            <h3 class="lp-feature__title">Export ready MP4</h3>
+            <p class="lp-feature__desc">Burned-in captions in a vertical, social-ready file — post straight to TikTok or Reels.</p>
+          </article>
+          <article class="lp-feature">
+            <div class="lp-feature__icon" aria-hidden="true">⚡</div>
+            <h3 class="lp-feature__title">Fast rendering</h3>
+            <p class="lp-feature__desc">Fast preview for iteration, HQ cinematic export when you are ready to publish.</p>
+          </article>
+          <article class="lp-feature">
+            <div class="lp-feature__icon" aria-hidden="true">📂</div>
+            <h3 class="lp-feature__title">Project history</h3>
+            <p class="lp-feature__desc">Reopen transcripts, continue editing, and download your latest export from one dashboard.</p>
+          </article>
         </div>
       </div>
     </section>
@@ -560,63 +633,51 @@ Here's the fastest path from link to publish-ready captions.
         <h2 id="faq-heading" class="section-title section-title--faq section-text">FAQ</h2>
         <div class="faq-accordion" id="faqAccordion">
           <div class="faq-item">
-            <button type="button" class="faq-question" id="faq-q-1" aria-expanded="false" aria-controls="faq-a-1" data-faq-btn>Do I need an account?</button>
+            <button type="button" class="faq-question" id="faq-q-1" aria-expanded="false" aria-controls="faq-a-1" data-faq-btn>How do I turn a long video into viral shorts with Cutup?</button>
             <div class="faq-answer" id="faq-a-1" role="region" aria-labelledby="faq-q-1">
-              <p>No. Paste a link and preview timed subtitles right away. A free account adds history, saved outputs, and higher limits when you’re ready.</p>
+              <p>Paste a YouTube, TikTok or Instagram URL — or upload a file. Cutup generates a timed transcript, lets you pick a creator subtitle style, then exports a social-ready MP4 with burned-in captions.</p>
             </div>
           </div>
           <div class="faq-item">
-            <button type="button" class="faq-question" id="faq-q-2" aria-expanded="false" aria-controls="faq-a-2" data-faq-btn>How fast is subtitle generation?</button>
+            <button type="button" class="faq-question" id="faq-q-2" aria-expanded="false" aria-controls="faq-a-2" data-faq-btn>Is Cutup free to start?</button>
             <div class="faq-answer" id="faq-a-2" role="region" aria-labelledby="faq-q-2">
-              <p>Most short-to-medium videos finish in about a minute. Longer files take a bit more—you’ll see progress in the tool so you’re never guessing.</p>
+              <p>Yes. Start free with an in-browser preview — no credit card required. Sign in to save projects, unlock full exports and higher monthly limits when you are ready.</p>
             </div>
           </div>
           <div class="faq-item">
-            <button type="button" class="faq-question" id="faq-q-3" aria-expanded="false" aria-controls="faq-a-3" data-faq-btn>What video platforms are supported?</button>
+            <button type="button" class="faq-question" id="faq-q-3" aria-expanded="false" aria-controls="faq-a-3" data-faq-btn>What creator subtitle styles does Cutup include?</button>
             <div class="faq-answer" id="faq-a-3" role="region" aria-labelledby="faq-q-3">
-              <p>YouTube, TikTok, and Instagram links work out of the box. You can also upload audio or video files when you want to run everything in one place.</p>
+              <p>Alex Hormozi, MrBeast, Luxury Minimal, Podcast, TikTok Neon and more. Each style uses cinematic typography tuned for short-form retention — preview before you export.</p>
             </div>
           </div>
           <div class="faq-item">
-            <button type="button" class="faq-question" id="faq-q-4" aria-expanded="false" aria-controls="faq-a-4" data-faq-btn>Can I download subtitles?</button>
+            <button type="button" class="faq-question" id="faq-q-4" aria-expanded="false" aria-controls="faq-a-4" data-faq-btn>Can I export a viral-ready MP4 with captions burned in?</button>
             <div class="faq-answer" id="faq-a-4" role="region" aria-labelledby="faq-q-4">
-              <p>Yes. Paid plans unlock full SRT downloads and exports so you can drop captions straight into your editor or upload platform.</p>
+              <p>Yes. Cutup exports a vertical, social-ready MP4 with your chosen creator style baked in — ready to post on TikTok, Reels or Shorts without extra editing.</p>
             </div>
           </div>
           <div class="faq-item">
-            <button type="button" class="faq-question" id="faq-q-5" aria-expanded="false" aria-controls="faq-a-5" data-faq-btn>Is there a free trial?</button>
+            <button type="button" class="faq-question" id="faq-q-5" aria-expanded="false" aria-controls="faq-a-5" data-faq-btn>Which platforms and file types are supported?</button>
             <div class="faq-answer" id="faq-a-5" role="region" aria-labelledby="faq-q-5">
-              <p>You get a real in-browser preview without a card. When you need full files, longer clips, or higher volume, upgrading takes one minute.</p>
+              <p>YouTube, TikTok and Instagram links work out of the box. You can also upload MP3, WAV, M4A, MP4, MOV and other common audio/video formats.</p>
             </div>
           </div>
           <div class="faq-item">
-            <button type="button" class="faq-question" id="faq-q-6" aria-expanded="false" aria-controls="faq-a-6" data-faq-btn>What languages are supported?</button>
+            <button type="button" class="faq-question" id="faq-q-6" aria-expanded="false" aria-controls="faq-a-6" data-faq-btn>Does Cutup support multiple languages?</button>
             <div class="faq-answer" id="faq-a-6" role="region" aria-labelledby="faq-q-6">
-              <p>Transcription and subtitles work across many languages—pick the output language you need in the tool. Paid plans add translation for SRT, transcript, and summaries.</p>
+              <p>Yes. Transcription works across many languages. Paid plans add translation for subtitles, transcripts and summaries so one video can reach multiple markets.</p>
             </div>
           </div>
           <div class="faq-item">
-            <button type="button" class="faq-question" id="faq-q-7" aria-expanded="false" aria-controls="faq-a-7" data-faq-btn>Can I edit subtitles before exporting?</button>
+            <button type="button" class="faq-question" id="faq-q-7" aria-expanded="false" aria-controls="faq-a-7" data-faq-btn>How fast is AI caption and video export?</button>
             <div class="faq-answer" id="faq-a-7" role="region" aria-labelledby="faq-q-7">
-              <p>Absolutely. Review timing and text in the preview, tweak what you need, then export when it matches your style.</p>
+              <p>Most short-to-medium clips finish transcription in about a minute. MP4 export shows real-time progress through each pipeline stage — preparing, captions, layout, render and download.</p>
             </div>
           </div>
           <div class="faq-item">
-            <button type="button" class="faq-question" id="faq-q-8" aria-expanded="false" aria-controls="faq-a-8" data-faq-btn>What payment methods do you accept?</button>
+            <button type="button" class="faq-question" id="faq-q-8" aria-expanded="false" aria-controls="faq-a-8" data-faq-btn>Can I edit subtitles before exporting?</button>
             <div class="faq-answer" id="faq-a-8" role="region" aria-labelledby="faq-q-8">
-              <p>Payments are handled securely via international card processors. You can pay with Visa, Mastercard, and other global payment methods. Pricing is in EUR.</p>
-            </div>
-          </div>
-          <div class="faq-item">
-            <button type="button" class="faq-question" id="faq-q-9" aria-expanded="false" aria-controls="faq-a-9" data-faq-btn>Can I translate subtitles for other markets?</button>
-            <div class="faq-answer" id="faq-a-9" role="region" aria-labelledby="faq-q-9">
-              <p>Yes. On paid plans you can translate SRT, full transcript, and summaries so one video can ship in multiple languages.</p>
-            </div>
-          </div>
-          <div class="faq-item">
-            <button type="button" class="faq-question" id="faq-q-10" aria-expanded="false" aria-controls="faq-a-10" data-faq-btn>Where do I manage my plan?</button>
-            <div class="faq-answer" id="faq-a-10" role="region" aria-labelledby="faq-q-10">
-              <p>After you sign in, your dashboard shows usage, saved work, and plan options in one place—no digging through emails.</p>
+              <p>Absolutely. Review timing and text in the editor, switch subtitle versions, then export SRT or a burned-in MP4 when it matches your style.</p>
             </div>
           </div>
         </div>
@@ -690,6 +751,7 @@ Here's the fastest path from link to publish-ready captions.
   <script src="creator-wall/creator-wall.js?v=20260520-live"></script>
   <script src="demo-live-micro.js?v=20260520-live"></script>
   <script src="script.js?v=20260526-placement-versions"></script>
+  <script src="landing-page.js?v=20260603-restore" defer></script>
   <script>
     document.addEventListener('DOMContentLoaded', async function () {
       if (!window.CutupOffersResolver) return;
