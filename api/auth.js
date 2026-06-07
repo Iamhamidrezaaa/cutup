@@ -134,6 +134,24 @@ export default async function handler(req, res) {
           } catch (regErr) {
             console.warn('[auth] registerCustomerSession:', regErr?.message);
           }
+          try {
+            const { getPool } = await import('./db/pool.js');
+            const pool = getPool();
+            const created = await pool.query(
+              'SELECT created_at FROM users WHERE id = $1::uuid LIMIT 1',
+              [userId]
+            );
+            const ts = created.rows[0]?.created_at;
+            if (ts && Date.now() - new Date(ts).getTime() < 120000) {
+              const { emitUserRegistered } = await import('./email-events-bus.js');
+              void emitUserRegistered({
+                email: user.email,
+                firstName: user.given_name || user.name?.split(' ')?.[0] || 'there',
+              });
+            }
+          } catch (welcomeErr) {
+            console.warn('[auth] welcome email skipped:', welcomeErr?.message);
+          }
         }
       } catch (e) {
         console.error('[auth] ensureUserByEmail failed:', e.message);

@@ -1,5 +1,7 @@
 /**
- * Lightweight SMTP sending (optional). If SMTP_* env vars are missing, send is skipped safely.
+ * Legacy SMTP transport (optional).
+ * Product emails must use: import { sendTemplatedEmail } from './email-events-bus.js'
+ * or emitEmailEvent() — never call Resend/SMTP from business logic directly.
  */
 import nodemailer from 'nodemailer';
 

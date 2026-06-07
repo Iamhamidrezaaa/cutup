@@ -41,6 +41,9 @@ async function main() {
   const savedV2Sql = readFileSync(join(__dirname, 'schema-saved-outputs-v2.sql'), 'utf8');
   await getPool().query(savedV2Sql);
   console.log('Migration applied: schema-saved-outputs-v2.sql');
+  const emailSql = readFileSync(join(__dirname, 'schema-email.sql'), 'utf8');
+  await getPool().query(emailSql);
+  console.log('Migration applied: schema-email.sql');
   await closePool();
 }
 

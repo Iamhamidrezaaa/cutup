@@ -13,6 +13,11 @@
   },
   "redirects": [
     {
+      "source": "/admin/email-preview",
+      "destination": "/adminha.html?section=email-preview",
+      "permanent": false
+    },
+    {
       "source": "/admin/ops",
       "destination": "/adminha.html?section=ops",
       "permanent": false
@@ -168,6 +173,10 @@
     {
       "src": "/api/admin/ops/state",
       "dest": "/api/admin-ops-state.js"
+    },
+    {
+      "src": "/api/admin/email-preview",
+      "dest": "/api/admin-email-preview.js"
     },
     {
       "src": "/api/admin/forgot-password",

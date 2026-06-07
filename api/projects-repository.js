@@ -548,6 +548,20 @@ export async function updateExportFromJobDb(job) {
     } catch (err) {
       console.warn('[project_exports] credit consume skipped:', err?.message || err);
     }
+    try {
+      const site = (process.env.FRONTEND_URL || 'https://cutup.shop').replace(/\/$/, '');
+      const { emitExportCompleted } = await import('./email-events-bus.js');
+      void emitExportCompleted({
+        email: job.userEmail,
+        firstName: job.userName || 'there',
+        projectName: job.projectTitle || job.presetDisplayName || job.presetId || 'Your project',
+        exportType: 'MP4',
+        exportDate: new Date().toLocaleDateString('en-US', { dateStyle: 'medium' }),
+        downloadUrl: `${site}/api/export-video?action=download&jobId=${encodeURIComponent(job.id)}`,
+      });
+    } catch (mailErr) {
+      console.warn('[project_exports] export email skipped:', mailErr?.message || mailErr);
+    }
   } else if (status === 'failed' && job.userEmail) {
     const userId = await resolveUserId(job.userEmail);
     if (userId) {

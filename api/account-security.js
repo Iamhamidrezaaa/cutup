@@ -195,6 +195,17 @@ async function handleDeleteConfirm(req, res) {
 
   await markDeleteTokenUsed(v.tokenId);
 
+  try {
+    const { emitAccountDeleted } = await import('./email-events-bus.js');
+    void emitAccountDeleted({
+      email: del.email,
+      firstName: 'there',
+      cooldownDays: 30,
+    });
+  } catch (mailErr) {
+    console.warn('[account-security] deletion email skipped:', mailErr?.message || mailErr);
+  }
+
   const emailLower = String(del.email || '').trim().toLowerCase();
   for (const [sid, sess] of sessions.entries()) {
     if (String(sess.user?.email || '').trim().toLowerCase() === emailLower) {

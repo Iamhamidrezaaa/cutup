@@ -409,6 +409,23 @@ export async function consumeProcessingCredit(email, operation, metadata = {}) {
     );
 
     await client.query('COMMIT');
+
+    try {
+      const pct = genLimit > 0 ? (newCredits / genLimit) * 100 : 0;
+      const prevPct = genLimit > 0 ? ((newCredits - billUnits) / genLimit) * 100 : 0;
+      const bus = await import('./email-events-bus.js');
+      const payload = {
+        email,
+        used: newCredits,
+        remaining: Math.max(0, genLimit - newCredits),
+        limit: genLimit,
+      };
+      if (pct >= 100 && prevPct < 100) void bus.emitCreditsExhausted(payload);
+      else if (pct >= 80 && prevPct < 80) void bus.emitCredits80Percent(payload);
+    } catch (_mailErr) {
+      /* noop */
+    }
+
     if (!metadata?.skipActivityFeed) {
       const { recordProcessingActivityFromCredit } = await import('./activity-feed-repository.js');
       void recordProcessingActivityFromCredit(email, operation, metadata);

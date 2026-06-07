@@ -137,6 +137,23 @@ export default async function handler(req, res) {
             source: 'stripe_checkout',
             stripeSessionId: s.id
           });
+          try {
+            const { emitSubscriptionUpgraded, emitPaymentSuccessful } = await import('./email-events-bus.js');
+            const amountLabel =
+              amount != null ? `${currency?.toUpperCase() === 'EUR' ? '€' : ''}${amount}` : '—';
+            void emitPaymentSuccessful({
+              email,
+              firstName: 'there',
+              amount: amountLabel,
+              planName: plan,
+              paymentDate: new Date().toLocaleDateString('en-US', { dateStyle: 'medium' }),
+            });
+            void emitSubscriptionUpgraded({
+              email,
+              firstName: 'there',
+              planName: plan,
+            });
+          } catch (_e) { /* noop */ }
           console.log('[stripe-webhook] checkout.session.completed', plan, email, s.id);
         } else {
           console.warn('[stripe-webhook] checkout.session.completed without email', s.id);
@@ -176,6 +193,20 @@ export default async function handler(req, res) {
             source: 'stripe_invoice',
             stripeInvoiceId: inv.id
           });
+          try {
+            const { emitPaymentSuccessful } = await import('./email-events-bus.js');
+            const amountLabel =
+              amount != null
+                ? `${(currency || 'eur').toUpperCase() === 'EUR' ? '€' : ''}${amount}`
+                : '—';
+            void emitPaymentSuccessful({
+              email,
+              firstName: 'there',
+              amount: amountLabel,
+              planName: plan,
+              paymentDate: new Date().toLocaleDateString('en-US', { dateStyle: 'medium' }),
+            });
+          } catch (_e) { /* noop */ }
           console.log('[stripe-webhook] invoice.paid', plan, email, inv.id);
         } else {
           console.warn('[stripe-webhook] invoice.paid: missing userEmail metadata', subId);

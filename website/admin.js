@@ -2324,6 +2324,12 @@ async function loadAdmins() {
   renderAdminsTable(adminsCache);
 }
 
+async function loadEmailPreview() {
+  const root = document.getElementById('emailPreviewWorkspace');
+  if (!root || !window.CutupAdminEmailPreview?.mount) return;
+  await window.CutupAdminEmailPreview.mount(root);
+}
+
 async function refreshSection(section) {
   if (section === 'overview') return loadOverview();
   if (section === 'users') return loadUsers();
@@ -2336,6 +2342,7 @@ async function refreshSection(section) {
     return Promise.resolve();
   }
   if (section === 'health') return loadHealth();
+  if (section === 'email-preview') return loadEmailPreview();
   if (section === 'ops') return loadOpsCommandCenter();
   if (section === 'blog') return loadBlogPosts();
   if (section === 'pages' || section === 'blog') {

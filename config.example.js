@@ -22,6 +22,8 @@ module.exports = {
   SMTP_USER: '',
   SMTP_PASS: '',
   SMTP_FROM: 'Cutup <you@gmail.com>',
+  /** Preferred: Resend API (billing@, security@, support@, noreply@cutup.shop) */
+  RESEND_API_KEY: '',
   // Protect GET/POST /api/cron/conversion-emails (Vercel Cron sends Authorization: Bearer <secret>)
   CRON_SECRET: '',
   // --- YekPay (production): set these in the Node server `.env` or host env (never in the browser / never commit secrets) ---
