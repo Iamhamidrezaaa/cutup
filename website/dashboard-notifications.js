@@ -12,6 +12,7 @@
     filter: 'all',
     pageItems: [],
     loading: false,
+    sse: null,
   };
 
   function apiBase() {
@@ -67,15 +68,55 @@
     return '#notifications';
   }
 
+  function dayGroup(iso) {
+    var d = new Date(iso);
+    var now = new Date();
+    var startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var startYesterday = new Date(startToday.getTime() - 86400000);
+    if (d >= startToday) return 'Today';
+    if (d >= startYesterday) return 'Yesterday';
+    return 'Earlier';
+  }
+
+  function actionLabel(item) {
+    var m = item?.metadata || {};
+    if (m.ticketUrl || m.ticketNumber) return 'View ticket';
+    if (m.downloadUrl) return 'Download';
+    if (m.href || m.actionUrl || m.ctaUrl) return 'Open';
+    return 'View';
+  }
+
   async function refreshUnreadCount() {
     var res = await apiGet('/api/notifications/unread-count');
     if (!res.ok) return;
     state.unread = res.data.count || 0;
     var badge = document.getElementById('cutupNotifBadge');
+    var bell = document.getElementById('cutupNotifBell');
     if (badge) {
       badge.textContent = state.unread > 99 ? '99+' : String(state.unread);
       badge.hidden = state.unread <= 0;
     }
+    if (bell) bell.classList.toggle('has-unread', state.unread > 0);
+  }
+
+  function renderDropdownItem(item) {
+    var unread = !item.is_read ? ' is-unread' : '';
+    return (
+      '<button type="button" class="cutup-notif-item' + unread + '" data-notif-id="' + esc(item.id) + '">' +
+        '<span class="cutup-notif-item__icon" aria-hidden="true">' + esc(item.icon || '⚙️') + '</span>' +
+        '<span class="cutup-notif-item__body">' +
+          '<span class="cutup-notif-item__row">' +
+            '<p class="cutup-notif-item__title">' + esc(item.title) + '</p>' +
+            (!item.is_read ? '<span class="cutup-notif-item__dot" aria-label="Unread"></span>' : '') +
+          '</span>' +
+          '<p class="cutup-notif-item__msg">' + esc(item.message) + '</p>' +
+          '<span class="cutup-notif-item__foot">' +
+            '<span class="cutup-notif-item__time">' + esc(relTime(item.created_at)) + '</span>' +
+            '<span class="cutup-notif-item__action">' + esc(actionLabel(item)) + ' →</span>' +
+          '</span>' +
+        '</span>' +
+      '</button>'
+    );
   }
 
   function renderDropdownList() {
@@ -85,22 +126,18 @@
       list.innerHTML = '<div class="cutup-notif-empty">You&apos;re all caught up.</div>';
       return;
     }
-    list.innerHTML = state.dropdownItems
-      .map(function (item) {
-        var unread = !item.is_read ? ' is-unread' : '';
-        var href = notificationHref(item);
+    var groups = { Today: [], Yesterday: [], Earlier: [] };
+    state.dropdownItems.forEach(function (item) {
+      groups[dayGroup(item.created_at)].push(item);
+    });
+    list.innerHTML = ['Today', 'Yesterday', 'Earlier']
+      .filter(function (g) { return groups[g].length; })
+      .map(function (g) {
         return (
-          '<button type="button" class="cutup-notif-item' + unread + '" data-notif-id="' + esc(item.id) + '" data-notif-href="' + esc(href) + '">' +
-            '<span class="cutup-notif-item__icon" aria-hidden="true">' + esc(item.icon || '⚙️') + '</span>' +
-            '<span class="cutup-notif-item__body">' +
-              '<span class="cutup-notif-item__row">' +
-                '<p class="cutup-notif-item__title">' + esc(item.title) + '</p>' +
-                (!item.is_read ? '<span class="cutup-notif-item__dot" aria-label="Unread"></span>' : '') +
-              '</span>' +
-              '<p class="cutup-notif-item__msg">' + esc(item.message) + '</p>' +
-              '<span class="cutup-notif-item__time">' + esc(relTime(item.created_at)) + '</span>' +
-            '</span>' +
-          '</button>'
+          '<div class="cutup-notif-group">' +
+            '<div class="cutup-notif-group__label">' + g + '</div>' +
+            groups[g].map(renderDropdownItem).join('') +
+          '</div>'
         );
       })
       .join('');
@@ -201,27 +238,42 @@
     );
   }
 
+  function renderFeedItem(item) {
+    var unread = !item.is_read ? ' is-unread' : '';
+    var href = notificationHref(item);
+    return (
+      '<article class="cutup-notif-feed-item' + unread + '">' +
+        '<div class="cutup-notif-feed-item__rail"><span class="cutup-notif-feed-item__dot" aria-hidden="true">' + esc(item.icon || '⚙️') + '</span></div>' +
+        '<div class="cutup-notif-feed-item__body">' +
+          '<header><h3>' + esc(item.title) + '</h3><time>' + esc(relTime(item.created_at)) + '</time></header>' +
+          '<p>' + esc(item.message) + '</p>' +
+          '<div class="cutup-notif-feed-item__actions">' +
+            '<button type="button" class="cutup-notif-feed-item__open" data-open-href="' + esc(href) + '" data-open-id="' + esc(item.id) + '">' + esc(actionLabel(item)) + '</button>' +
+            (!item.is_read ? '<button type="button" class="cutup-notif-feed-item__read" data-mark-id="' + esc(item.id) + '">Mark read</button>' : '') +
+          '</div>' +
+        '</div>' +
+      '</article>'
+    );
+  }
+
   function renderPageList() {
     if (!state.pageItems.length) {
       return '<div class="cutup-notif-empty">No notifications match this filter.</div>';
     }
+    var groups = { Today: [], Yesterday: [], Earlier: [] };
+    state.pageItems.forEach(function (item) {
+      groups[dayGroup(item.created_at)].push(item);
+    });
     return (
-      '<div class="cutup-notif-page__list">' +
-        state.pageItems
-          .map(function (item) {
-            var unread = !item.is_read ? ' is-unread' : '';
+      '<div class="cutup-notif-feed">' +
+        ['Today', 'Yesterday', 'Earlier']
+          .filter(function (g) { return groups[g].length; })
+          .map(function (g) {
             return (
-              '<article class="cutup-notif-page-card' + unread + '">' +
-                '<div class="cutup-notif-page-card__icon" aria-hidden="true">' + esc(item.icon || '⚙️') + '</div>' +
-                '<div>' +
-                  '<h3 class="cutup-notif-page-card__title">' + esc(item.title) + '</h3>' +
-                  '<p class="cutup-notif-page-card__msg">' + esc(item.message) + '</p>' +
-                  '<span class="cutup-notif-page-card__time">' + esc(relTime(item.created_at)) + '</span>' +
-                '</div>' +
-                (item.is_read
-                  ? ''
-                  : '<button type="button" class="cutup-notif-page-card__action" data-mark-id="' + esc(item.id) + '">Mark read</button>') +
-              '</article>'
+              '<section class="cutup-notif-feed-group">' +
+                '<h2 class="cutup-notif-feed-group__title">' + g + '</h2>' +
+                groups[g].map(renderFeedItem).join('') +
+              '</section>'
             );
           })
           .join('') +
@@ -285,6 +337,14 @@
         }
         return;
       }
+      var openBtn = e.target.closest('[data-open-href]');
+      if (openBtn) {
+        var href = openBtn.getAttribute('data-open-href') || '';
+        var oid = Number(openBtn.getAttribute('data-open-id'));
+        var item = state.pageItems.find(function (x) { return x.id === oid; });
+        void handleNotificationClick(oid, item);
+        return;
+      }
       var markBtn = e.target.closest('[data-mark-id]');
       if (markBtn) {
         var id = Number(markBtn.getAttribute('data-mark-id'));
@@ -293,12 +353,45 @@
     });
   }
 
+  function connectSse() {
+    if (state.sse || typeof EventSource === 'undefined') return;
+    try {
+      var url = apiBase() + '/api/notifications/stream';
+      var sid = typeof currentSession !== 'undefined' ? currentSession : '';
+      if (sid) url += '?session=' + encodeURIComponent(sid);
+      var es = new EventSource(url, { withCredentials: true });
+      es.addEventListener('unread', function (ev) {
+        try {
+          var data = JSON.parse(ev.data || '{}');
+          state.unread = data.count || 0;
+          void refreshUnreadCount();
+        } catch (_e) { /* noop */ }
+      });
+      es.addEventListener('notification', function () {
+        void refreshUnreadCount();
+        var dd = document.getElementById('cutupNotifDropdown');
+        if (dd && !dd.hidden) void loadDropdown();
+      });
+      es.onerror = function () {
+        es.close();
+        state.sse = null;
+        setTimeout(connectSse, 15000);
+      };
+      state.sse = es;
+    } catch (_e) { /* noop */ }
+  }
+
   function mountPageSection() {
     var root = document.getElementById('notificationsPageRoot');
     if (!root) return;
     if (root.dataset.mounted !== '1') {
       root.dataset.mounted = '1';
-      root.innerHTML = renderPageToolbar(root) + '<div id="cutupNotifPageHost"></div>';
+      root.innerHTML =
+        '<header class="cutup-notif-page-head">' +
+          '<div><h1 class="section-title">Activity Center</h1><p class="dashboard-section-lead">Exports, billing, support, and account updates in one feed.</p></div>' +
+        '</header>' +
+        renderPageToolbar(root) +
+        '<div id="cutupNotifPageHost"></div>';
     }
     bindPageEvents(root);
     void loadPage(root);
@@ -308,6 +401,7 @@
     init: function () {
       mountBell();
       void refreshUnreadCount();
+      connectSse();
     },
     refresh: function () {
       void refreshUnreadCount();

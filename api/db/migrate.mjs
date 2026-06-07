@@ -50,6 +50,9 @@ async function main() {
   const supportSql = readFileSync(join(__dirname, 'schema-support.sql'), 'utf8');
   await getPool().query(supportSql);
   console.log('Migration applied: schema-support.sql');
+  const opsV3Sql = readFileSync(join(__dirname, 'schema-operations-v3.sql'), 'utf8');
+  await getPool().query(opsV3Sql);
+  console.log('Migration applied: schema-operations-v3.sql');
   await closePool();
 }
 

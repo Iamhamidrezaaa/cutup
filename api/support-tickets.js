@@ -10,6 +10,7 @@ import { getUserIdByEmail, isBillingDbConfigured } from './billing-repository.js
 import {
   createSupportTicket,
   getUserTicketOverview,
+  getUserSupportActivity,
   listUserTickets,
   getTicketForUser,
   addUserReply,
@@ -77,6 +78,10 @@ export default async function handler(req, res) {
         const result = await getUserTicketOverview(user.userId);
         return res.json({ ok: true, stats: result.stats });
       }
+      if (action === 'activity') {
+        const result = await getUserSupportActivity(user.userId, { limit: req.query?.limit });
+        return res.json({ ok: true, activity: result.activity || [] });
+      }
       const ticketNumber = String(req.query?.ticket || '').trim();
       if (ticketNumber) {
         const detail = await getTicketForUser(user.userId, ticketNumber);
@@ -124,7 +129,7 @@ export default async function handler(req, res) {
 
       if (action === 'reply') {
         const ticketNumber = String(body?.ticketNumber || body?.ticket || '').trim();
-        const result = await addUserReply(user.userId, ticketNumber, body?.message);
+        const result = await addUserReply(user.userId, ticketNumber, body?.message, body?.attachments);
         if (!result.ok) {
           const code = result.reason === 'not_found' ? 404 : 400;
           return res.status(code).json({ ok: false, error: result.reason });

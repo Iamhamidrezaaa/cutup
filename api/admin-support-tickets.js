@@ -8,6 +8,7 @@ import { setCORSHeaders } from './cors.js';
 import { resolveAdminAuth } from './admin-panel-auth.js';
 import { isBillingDbConfigured } from './db/pool.js';
 import { getPool } from './db/pool.js';
+import { adminHasPermission } from './rbac-repository.js';
 import {
   listAdminTickets,
   getTicketForAdmin,
@@ -60,7 +61,9 @@ async function requireSupportAdmin(req, res) {
     return null;
   }
   const role = normalizeRole(auth.role);
-  if (!['admin', 'super_admin'].includes(role)) {
+  const legacyOk = ['admin', 'super_admin'].includes(role);
+  const hasSupport = legacyOk || (await adminHasPermission(auth.adminId, 'support.view'));
+  if (!hasSupport) {
     res.status(403).json({ ok: false, error: 'forbidden' });
     return null;
   }
@@ -113,6 +116,7 @@ export default async function handler(req, res) {
         department: req.query?.department,
         priority: req.query?.priority,
         assignedAdminId: req.query?.assigned,
+        queue: req.query?.queue,
         q: req.query?.q,
       });
       return res.json({ ok: true, ...list });

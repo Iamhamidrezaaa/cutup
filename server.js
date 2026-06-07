@@ -818,6 +818,36 @@ app.all('/api/support/tickets', async (req, res) => {
   }
 });
 
+app.post('/api/support/attachments', async (req, res) => {
+  try {
+    const mod = await import('./api/support-attachments.js');
+    return mod.default(req, res);
+  } catch (e) {
+    console.error('[support-attachments]', e);
+    return res.status(503).json({ ok: false, error: 'handler_unavailable' });
+  }
+});
+
+app.get('/api/help', async (req, res) => {
+  try {
+    const mod = await import('./api/help-center.js');
+    return mod.default(req, res);
+  } catch (e) {
+    console.error('[help-center]', e);
+    return res.status(503).json({ ok: false, error: 'handler_unavailable' });
+  }
+});
+
+app.get('/api/notifications/stream', async (req, res) => {
+  try {
+    const mod = await import('./api/notifications-stream.js');
+    return mod.default(req, res);
+  } catch (e) {
+    console.error('[notifications-stream]', e);
+    return res.status(503).json({ ok: false, error: 'handler_unavailable' });
+  }
+});
+
 app.all('/api/admin/support', async (req, res) => {
   try {
     const mod = await import('./api/admin-support-tickets.js');

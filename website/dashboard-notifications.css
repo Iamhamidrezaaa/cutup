@@ -33,6 +33,28 @@
   color: #4338ca;
 }
 
+.cutup-notif-bell.has-unread::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #635bff;
+  border: 2px solid #fff;
+  animation: cutup-notif-pulse 2s ease-in-out infinite;
+}
+
+@keyframes cutup-notif-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 0.75; }
+}
+
+.cutup-notif-bell {
+  position: relative;
+}
+
 .cutup-notif-badge {
   position: absolute;
   top: -5px;
@@ -198,6 +220,123 @@
   text-align: center;
   color: #64748b;
   font-size: 13px;
+}
+
+.cutup-notif-group__label {
+  padding: 8px 14px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+}
+
+.cutup-notif-item__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cutup-notif-item__action {
+  font-size: 11px;
+  font-weight: 600;
+  color: #635bff;
+}
+
+.cutup-notif-page-head {
+  margin-bottom: 12px;
+}
+
+.cutup-notif-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.cutup-notif-feed-group__title {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+}
+
+.cutup-notif-feed-item {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #fff;
+  margin-bottom: 8px;
+}
+
+.cutup-notif-feed-item.is-unread {
+  border-color: #c7d2fe;
+  background: linear-gradient(90deg, #fafaff 0%, #fff 28%);
+}
+
+.cutup-notif-feed-item__dot {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: #f1f5f9;
+  font-size: 18px;
+}
+
+.cutup-notif-feed-item__body header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.cutup-notif-feed-item__body h3 {
+  margin: 0;
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.cutup-notif-feed-item__body time {
+  font-size: 11px;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.cutup-notif-feed-item__body p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.cutup-notif-feed-item__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.cutup-notif-feed-item__open,
+.cutup-notif-feed-item__read {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cutup-notif-feed-item__open {
+  border-color: #c7d2fe;
+  color: #4338ca;
+  background: #fafaff;
 }
 
 /* Full notifications page */

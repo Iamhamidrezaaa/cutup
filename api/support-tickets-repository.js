@@ -1,6 +1,8 @@
 import { getPool, isBillingDbConfigured } from './db/pool.js';
 import { ensureSupportTicketsSchema } from './support-tickets-bootstrap.js';
+import { ensureOperationsV3Schema } from './operations-bootstrap.js';
 import { isValidDepartment, isValidPriority, isValidStatus } from './support-constants.js';
+import { computeSlaDueAt, computeSlaStatus, enrichTicketWithSla } from './support-sla.js';
 
 function mapTicket(row) {
   if (!row) return null;
@@ -24,7 +26,13 @@ function mapTicket(row) {
     resolved_at: row.resolved_at || null,
     last_activity_at: row.last_activity_at || row.updated_at,
     message_count: row.message_count != null ? Number(row.message_count) : undefined,
+    sla_due_at: row.sla_due_at || null,
+    sla_status: row.sla_status || null,
   };
+}
+
+function withSla(row) {
+  return enrichTicketWithSla(mapTicket(row));
 }
 
 function mapMessage(row) {
@@ -55,7 +63,7 @@ function mapEvent(row) {
   };
 }
 
-const USER_VISIBLE_EVENT_TYPES = ['created', 'status_change', 'assigned'];
+const USER_VISIBLE_EVENT_TYPES = ['created', 'status_change', 'assigned', 'admin_reply', 'user_reply'];
 
 async function nextTicketNumber(client) {
   const { rows } = await client.query(`SELECT nextval('support_ticket_number_seq') AS n`);
@@ -81,6 +89,7 @@ export async function createSupportTicket({
 }) {
   if (!isBillingDbConfigured()) return { ok: false, reason: 'db_not_configured' };
   await ensureSupportTicketsSchema();
+  await ensureOperationsV3Schema();
 
   const dept = String(department || '').trim().toUpperCase();
   const pri = String(priority || 'NORMAL').trim().toUpperCase();
@@ -97,12 +106,13 @@ export async function createSupportTicket({
   try {
     await client.query('BEGIN');
     const ticketNumber = await nextTicketNumber(client);
+    const slaDue = computeSlaDueAt(new Date(), dept, pri);
     const { rows } = await client.query(
       `INSERT INTO support_tickets
-        (ticket_number, user_id, department, priority, status, subject, message, metadata)
-       VALUES ($1, $2::uuid, $3, $4, 'OPEN', $5, $6, $7::jsonb)
+        (ticket_number, user_id, department, priority, status, subject, message, metadata, sla_due_at, sla_status)
+       VALUES ($1, $2::uuid, $3, $4, 'OPEN', $5, $6, $7::jsonb, $8, 'healthy')
        RETURNING *`,
-      [ticketNumber, userId, dept, pri, subj, body, JSON.stringify(metadata)],
+      [ticketNumber, userId, dept, pri, subj, body, JSON.stringify(metadata), slaDue],
     );
     const ticket = rows[0];
     await client.query(
@@ -124,13 +134,16 @@ export async function createSupportTicket({
 export async function getUserTicketOverview(userId) {
   if (!isBillingDbConfigured()) return { ok: false, reason: 'db_not_configured' };
   await ensureSupportTicketsSchema();
+  await ensureOperationsV3Schema();
   const pool = getPool();
   const { rows } = await pool.query(
     `SELECT
-      COUNT(*) FILTER (WHERE status IN ('OPEN','IN_PROGRESS'))::int AS open_count,
+      COUNT(*) FILTER (WHERE status = 'OPEN')::int AS open_count,
       COUNT(*) FILTER (WHERE status = 'WAITING_FOR_USER')::int AS waiting_count,
+      COUNT(*) FILTER (WHERE status = 'IN_PROGRESS')::int AS in_progress_count,
       COUNT(*) FILTER (WHERE status = 'RESOLVED')::int AS resolved_count,
       COUNT(*) FILTER (WHERE status = 'CLOSED')::int AS closed_count,
+      COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days')::int AS new_7d,
       AVG(EXTRACT(EPOCH FROM (first_response_at - created_at))) FILTER (WHERE first_response_at IS NOT NULL) AS avg_first_response_sec
      FROM support_tickets WHERE user_id = $1::uuid`,
     [userId],
@@ -143,6 +156,33 @@ export async function getUserTicketOverview(userId) {
       ...row,
       avg_first_response_ms: avgSec != null ? Math.round(Number(avgSec) * 1000) : null,
     },
+  };
+}
+
+export async function getUserSupportActivity(userId, { limit = 12 } = {}) {
+  if (!isBillingDbConfigured()) return { ok: false, reason: 'db_not_configured', activity: [] };
+  await ensureSupportTicketsSchema();
+  const safeLimit = Math.min(30, Math.max(1, Number(limit) || 12));
+  const pool = getPool();
+  const { rows } = await pool.query(
+    `SELECT e.event_type, e.payload, e.created_at, t.ticket_number, t.subject
+     FROM support_ticket_events e
+     JOIN support_tickets t ON t.id = e.ticket_id
+     WHERE t.user_id = $1::uuid
+       AND e.event_type IN ('created', 'assigned', 'admin_reply', 'user_reply', 'status_change')
+     ORDER BY e.created_at DESC
+     LIMIT $2`,
+    [userId, safeLimit],
+  );
+  return {
+    ok: true,
+    activity: rows.map((r) => ({
+      event_type: r.event_type,
+      payload: r.payload && typeof r.payload === 'object' ? r.payload : {},
+      created_at: r.created_at,
+      ticket_number: r.ticket_number,
+      subject: r.subject,
+    })),
   };
 }
 
@@ -172,7 +212,7 @@ export async function listUserTickets(userId, { page = 1, limit = 20 } = {}) {
 
   return {
     ok: true,
-    tickets: rows.map(mapTicket),
+    tickets: rows.map(withSla),
     page: safePage,
     limit: safeLimit,
     total,
@@ -216,15 +256,16 @@ export async function getTicketForUser(userId, ticketNumber) {
   ]);
   return {
     ok: true,
-    ticket: mapTicket(rows[0]),
+    ticket: withSla(rows[0]),
     messages: messages.rows.map(mapMessage),
     events: events.rows.map(mapEvent),
   };
 }
 
-export async function addUserReply(userId, ticketNumber, message) {
+export async function addUserReply(userId, ticketNumber, message, attachments = null) {
   const body = String(message || '').trim();
-  if (!body || body.length < 1) return { ok: false, reason: 'invalid_message' };
+  const attach = Array.isArray(attachments) && attachments.length ? attachments : null;
+  if (!body && !attach) return { ok: false, reason: 'invalid_message' };
 
   const ticketRes = await getTicketForUser(userId, ticketNumber);
   if (!ticketRes.ok) return ticketRes;
@@ -237,10 +278,10 @@ export async function addUserReply(userId, ticketNumber, message) {
   try {
     await client.query('BEGIN');
     const { rows } = await client.query(
-      `INSERT INTO support_ticket_messages (ticket_id, sender_type, sender_user_id, message)
-       VALUES ($1, 'user', $2::uuid, $3)
+      `INSERT INTO support_ticket_messages (ticket_id, sender_type, sender_user_id, message, attachments)
+       VALUES ($1, 'user', $2::uuid, $3, $4::jsonb)
        RETURNING *`,
-      [ticketRes.ticket.id, userId, body],
+      [ticketRes.ticket.id, userId, body || '', attach ? JSON.stringify(attach) : null],
     );
     const newStatus = ticketRes.ticket.status === 'WAITING_FOR_USER' ? 'IN_PROGRESS' : ticketRes.ticket.status;
     await client.query(
@@ -278,6 +319,17 @@ function buildAdminWhere(filters, params) {
     where.push(`t.priority = $${n}`);
     params.push(String(filters.priority).trim().toUpperCase());
     n += 1;
+  }
+  if (filters.queue === 'breached') {
+    where.push(`t.sla_status = 'breached' AND t.status NOT IN ('RESOLVED','CLOSED')`);
+  } else if (filters.queue === 'open') {
+    where.push(`t.status = 'OPEN'`);
+  } else if (filters.queue === 'assigned') {
+    where.push(`t.assigned_admin_id IS NOT NULL AND t.status NOT IN ('RESOLVED','CLOSED')`);
+  } else if (filters.queue === 'waiting') {
+    where.push(`t.status = 'WAITING_FOR_USER'`);
+  } else if (filters.queue === 'resolved') {
+    where.push(`t.status IN ('RESOLVED','CLOSED')`);
   }
   if (filters.assignedAdminId === 'unassigned') {
     where.push('t.assigned_admin_id IS NULL');
@@ -334,7 +386,7 @@ export async function listAdminTickets(filters = {}) {
 
   return {
     ok: true,
-    tickets: rows.map(mapTicket),
+    tickets: rows.map(withSla),
     page,
     limit,
     total,
@@ -380,16 +432,17 @@ export async function getTicketForAdmin(ticketNumber) {
 
   return {
     ok: true,
-    ticket: mapTicket(rows[0]),
+    ticket: withSla(rows[0]),
     messages: messages.rows.map(mapMessage),
     notes: notes.rows,
-    events: events.rows,
+    events: events.rows.map(mapEvent),
   };
 }
 
-export async function addAdminReply({ ticketNumber, adminId, adminEmail, message }) {
+export async function addAdminReply({ ticketNumber, adminId, adminEmail, message, attachments = null }) {
   const body = String(message || '').trim();
-  if (!body) return { ok: false, reason: 'invalid_message' };
+  const attach = Array.isArray(attachments) && attachments.length ? attachments : null;
+  if (!body && !attach) return { ok: false, reason: 'invalid_message' };
 
   const detail = await getTicketForAdmin(ticketNumber);
   if (!detail.ok) return detail;
@@ -399,14 +452,14 @@ export async function addAdminReply({ ticketNumber, adminId, adminEmail, message
   try {
     await client.query('BEGIN');
     const { rows } = await client.query(
-      `INSERT INTO support_ticket_messages (ticket_id, sender_type, sender_admin_id, message)
-       VALUES ($1, 'admin', $2, $3) RETURNING *`,
-      [detail.ticket.id, adminId, body],
+      `INSERT INTO support_ticket_messages (ticket_id, sender_type, sender_admin_id, message, attachments)
+       VALUES ($1, 'admin', $2, $3, $4::jsonb) RETURNING *`,
+      [detail.ticket.id, adminId, body || '', attach ? JSON.stringify(attach) : null],
     );
 
     const updates = [`status = 'WAITING_FOR_USER'`, `updated_at = NOW()`];
     if (!detail.ticket.first_response_at) {
-      updates.push(`first_response_at = NOW()`);
+      updates.push(`first_response_at = NOW()`, `sla_status = 'healthy'`);
     }
     await client.query(`UPDATE support_tickets SET ${updates.join(', ')} WHERE id = $1`, [detail.ticket.id]);
     await logTicketEvent(client, detail.ticket.id, 'admin_reply', 'admin', String(adminId), { adminEmail });
@@ -505,28 +558,61 @@ export async function addInternalNote({ ticketNumber, adminId, adminEmail, note 
   return { ok: true, note: rows[0] };
 }
 
+async function refreshSlaStatuses(pool) {
+  await pool.query(
+    `UPDATE support_tickets SET sla_status = CASE
+      WHEN status IN ('RESOLVED','CLOSED') OR first_response_at IS NOT NULL THEN 'healthy'
+      WHEN sla_due_at IS NULL THEN 'healthy'
+      WHEN sla_due_at <= NOW() THEN 'breached'
+      WHEN sla_due_at <= NOW() + INTERVAL '2 hours' THEN 'at_risk'
+      ELSE 'healthy'
+    END
+    WHERE status NOT IN ('RESOLVED','CLOSED') AND first_response_at IS NULL`,
+  );
+}
+
 export async function getSupportAnalytics() {
   if (!isBillingDbConfigured()) return { ok: false, reason: 'db_not_configured' };
   await ensureSupportTicketsSchema();
+  await ensureOperationsV3Schema();
   const pool = getPool();
+  await refreshSlaStatuses(pool);
 
-  const [summary, dept, response] = await Promise.all([
+  const [summary, dept, response, agents, breached] = await Promise.all([
     pool.query(
       `SELECT
-        COUNT(*) FILTER (WHERE status IN ('OPEN','IN_PROGRESS','WAITING_FOR_USER'))::int AS open_tickets,
+        COUNT(*) FILTER (WHERE status = 'OPEN')::int AS open_tickets,
+        COUNT(*) FILTER (WHERE status = 'WAITING_FOR_USER')::int AS waiting_tickets,
+        COUNT(*) FILTER (WHERE priority = 'URGENT' AND status NOT IN ('RESOLVED','CLOSED'))::int AS urgent_tickets,
         COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '24 hours')::int AS tickets_24h,
         COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days')::int AS tickets_7d
        FROM support_tickets`,
     ),
     pool.query(
       `SELECT department, COUNT(*)::int AS count
-       FROM support_tickets GROUP BY department ORDER BY count DESC`,
+       FROM support_tickets GROUP BY department ORDER BY count DESC LIMIT 8`,
     ),
     pool.query(
       `SELECT
         AVG(EXTRACT(EPOCH FROM (first_response_at - created_at))) FILTER (WHERE first_response_at IS NOT NULL) AS avg_first_response_sec,
         AVG(EXTRACT(EPOCH FROM (resolved_at - created_at))) FILTER (WHERE resolved_at IS NOT NULL) AS avg_resolution_sec
        FROM support_tickets`,
+    ),
+    pool.query(
+      `SELECT a.email AS agent_email,
+        COUNT(*) FILTER (WHERE t.status NOT IN ('RESOLVED','CLOSED'))::int AS open_assigned,
+        COUNT(*)::int AS total_assigned
+       FROM support_tickets t
+       JOIN admins a ON a.id = t.assigned_admin_id
+       WHERE t.assigned_admin_id IS NOT NULL
+       GROUP BY a.email ORDER BY open_assigned DESC LIMIT 8`,
+    ),
+    pool.query(
+      `SELECT t.ticket_number, t.subject, t.department, t.priority, t.sla_due_at, u.email AS user_email
+       FROM support_tickets t
+       JOIN users u ON u.id = t.user_id
+       WHERE t.sla_status = 'breached' AND t.status NOT IN ('RESOLVED','CLOSED')
+       ORDER BY t.sla_due_at ASC LIMIT 10`,
     ),
   ]);
 
@@ -537,11 +623,16 @@ export async function getSupportAnalytics() {
     ok: true,
     analytics: {
       openTickets: summary.rows[0]?.open_tickets ?? 0,
+      waitingTickets: summary.rows[0]?.waiting_tickets ?? 0,
+      urgentTickets: summary.rows[0]?.urgent_tickets ?? 0,
+      breachedCount: breached.rows.length,
       tickets24h: summary.rows[0]?.tickets_24h ?? 0,
       tickets7d: summary.rows[0]?.tickets_7d ?? 0,
       avgFirstResponseMs: avgFirst != null ? Math.round(Number(avgFirst) * 1000) : null,
       avgResolutionMs: avgRes != null ? Math.round(Number(avgRes) * 1000) : null,
       departmentDistribution: dept.rows,
+      agentPerformance: agents.rows,
+      breachedTickets: breached.rows,
     },
   };
 }

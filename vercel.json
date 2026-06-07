@@ -33,6 +33,16 @@
       "permanent": false
     },
     {
+      "source": "/dashboard/help",
+      "destination": "/dashboard.html#help",
+      "permanent": false
+    },
+    {
+      "source": "/dashboard/help/:slug",
+      "destination": "/dashboard.html#help/:slug",
+      "permanent": false
+    },
+    {
       "source": "/admin/ops",
       "destination": "/adminha.html?section=ops",
       "permanent": false
@@ -208,6 +218,18 @@
     {
       "src": "/api/support/tickets",
       "dest": "/api/support-tickets.js"
+    },
+    {
+      "src": "/api/support/attachments",
+      "dest": "/api/support-attachments.js"
+    },
+    {
+      "src": "/api/help",
+      "dest": "/api/help-center.js"
+    },
+    {
+      "src": "/api/notifications/stream",
+      "dest": "/api/notifications-stream.js"
     },
     {
       "src": "/api/admin/support",

@@ -1,0 +1,238 @@
+/* Cutup Help Center V3 */
+
+.cutup-help-root {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cutup-help-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cutup-help-head .section-title {
+  margin: 0 0 4px;
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+}
+
+.cutup-help-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.cutup-help-search svg {
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.cutup-help-search input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 14px;
+  font-family: inherit;
+  background: transparent;
+}
+
+.cutup-help-cats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.cutup-help-cat {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  text-align: left;
+  padding: 14px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 14px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  font-family: inherit;
+}
+
+.cutup-help-cat:hover {
+  border-color: #c7d2fe;
+  box-shadow: 0 4px 12px rgba(99, 91, 255, 0.08);
+}
+
+.cutup-help-cat__icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.cutup-help-cat__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cutup-help-cat__body strong {
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.cutup-help-cat__body span {
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.cutup-help-cat__body em {
+  font-size: 11px;
+  color: #94a3b8;
+  font-style: normal;
+}
+
+.cutup-help-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.cutup-help-panel {
+  padding: 14px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.cutup-help-panel h2 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.cutup-help-articles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cutup-help-article {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1px solid #f1f5f9;
+  border-radius: 10px;
+  background: #fafafa;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.cutup-help-article:hover {
+  background: #fafaff;
+  border-color: #e0e7ff;
+}
+
+.cutup-help-article__cat {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #6366f1;
+  margin-bottom: 4px;
+}
+
+.cutup-help-article__title {
+  display: block;
+  font-size: 14px;
+  color: #0f172a;
+  margin-bottom: 4px;
+}
+
+.cutup-help-article__summary {
+  margin: 0;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.cutup-help-article__meta {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.cutup-help-back {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  color: #635bff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+}
+
+.cutup-help-article-view {
+  padding: 20px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.cutup-help-article-view h1 {
+  margin: 0 0 10px;
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+}
+
+.cutup-help-article-view__cat {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #6366f1;
+}
+
+.cutup-help-article-view__summary {
+  font-size: 15px;
+  color: #64748b;
+  margin: 0 0 16px;
+}
+
+.cutup-help-article-view__body {
+  font-size: 15px;
+  line-height: 1.65;
+  color: #334155;
+}
+
+.cutup-help-article-view__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #f1f5f9;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+@media (max-width: 768px) {
+  .cutup-help-panels {
+    grid-template-columns: 1fr;
+  }
+}

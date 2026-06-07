@@ -499,6 +499,10 @@ function setupNavigation() {
       if (target === 'notifications') {
         window.CutupDashboardNotifications?.mountPage?.();
       }
+      if (target === 'help') {
+        const helpRoute = window.CutupDashboardHelp?.parseHelpHash?.(window.location.hash);
+        window.CutupDashboardHelp?.mount?.(helpRoute?.slug || null);
+      }
       if (target === 'support') {
         const route = window.CutupDashboardSupport?.parseSupportHash?.(window.location.hash);
         window.CutupDashboardSupport?.mount?.(route?.ticket || null);
@@ -695,7 +699,9 @@ function navigateDashboardSection(sectionId) {
   if (item) {
     if (base === 'support' && String(sectionId).includes('/')) {
       window.location.hash = sectionId.startsWith('support') ? sectionId : `support/${sectionId.split('/').slice(1).join('/')}`;
-    } else if (base !== sectionId && sectionId.startsWith('support/')) {
+    } else if (base === 'help' && String(sectionId).includes('/')) {
+      window.location.hash = sectionId.startsWith('help') ? sectionId : `help/${sectionId.split('/').slice(1).join('/')}`;
+    } else if (base !== sectionId && (sectionId.startsWith('support/') || sectionId.startsWith('help/'))) {
       window.location.hash = sectionId;
     }
     item.click();
@@ -2005,16 +2011,22 @@ async function initDashboard() {
     await runHeavySafe();
     const rawHash = window.location.hash.replace(/^#/, '');
     const supportRoute = window.CutupDashboardSupport?.parseSupportHash?.(window.location.hash);
+    const helpRoute = window.CutupDashboardHelp?.parseHelpHash?.(window.location.hash);
     const hashSec = supportRoute
       ? 'support'
-      : rawHash === 'billing'
-        ? 'financial'
-        : rawHash.split('/')[0];
+      : helpRoute
+        ? 'help'
+        : rawHash === 'billing'
+          ? 'financial'
+          : rawHash.split('/')[0];
     const urlParams = new URLSearchParams(window.location.search);
     dashboardHighlightPlan = urlParams.get('highlightPlan');
     if (supportRoute) {
       navigateDashboardSection(supportRoute.ticket ? `support/${supportRoute.ticket}` : 'support');
       window.CutupDashboardSupport?.mount?.(supportRoute.ticket || null);
+    } else if (helpRoute) {
+      navigateDashboardSection(helpRoute.slug ? `help/${helpRoute.slug}` : 'help');
+      window.CutupDashboardHelp?.mount?.(helpRoute.slug || null);
     } else if (hashSec && document.querySelector(`.nav-item[data-section="${hashSec}"]`)) {
       navigateDashboardSection(hashSec);
     } else if (dashboardHighlightPlan || hashSec === 'subscription') {

@@ -27,8 +27,10 @@
     ticketNumber: null,
     stats: null,
     tickets: [],
+    activity: [],
     loading: false,
     modalOpen: false,
+    pendingAttachments: [],
   };
 
   function apiBase() {
@@ -145,16 +147,38 @@
     return '<span class="cutup-support-dept">' + esc(deptLabel(dept)) + '</span>';
   }
 
+  function kpiTrend(key, s) {
+    if (key === 'waiting' && s.waiting_count > 0) return 'Needs your reply';
+    if (key === 'open' && s.new_7d > 0) return '+' + s.new_7d + ' this week';
+    if (key === 'resolved' && s.resolved_count > 0) return 'All clear';
+    if (key === 'in_progress' && s.in_progress_count > 0) return 'Team is on it';
+    if (key === 'avg') return 'First reply target';
+    return '—';
+  }
+
+  function renderKpi(icon, label, value, trend, accent) {
+    return (
+      '<article class="cutup-support-kpi' + (accent ? ' cutup-support-kpi--accent' : '') + '" role="listitem">' +
+        '<span class="cutup-support-kpi__icon" aria-hidden="true">' + icon + '</span>' +
+        '<div class="cutup-support-kpi__body">' +
+          '<span class="cutup-support-kpi__label">' + esc(label) + '</span>' +
+          '<strong class="cutup-support-kpi__value">' + esc(value) + '</strong>' +
+          '<span class="cutup-support-kpi__trend">' + esc(trend) + '</span>' +
+        '</div>' +
+      '</article>'
+    );
+  }
+
   function renderMetrics() {
     var s = state.stats || {};
     var avg = fmtDurationMs(s.avg_first_response_ms);
     return (
-      '<div class="cutup-support-metrics" role="list">' +
-        '<div class="cutup-support-metric" role="listitem"><span>Open</span><strong>' + esc(s.open_count || 0) + '</strong></div>' +
-        '<div class="cutup-support-metric" role="listitem"><span>Waiting</span><strong>' + esc(s.waiting_count || 0) + '</strong></div>' +
-        '<div class="cutup-support-metric" role="listitem"><span>Resolved</span><strong>' + esc(s.resolved_count || 0) + '</strong></div>' +
-        '<div class="cutup-support-metric" role="listitem"><span>Closed</span><strong>' + esc(s.closed_count || 0) + '</strong></div>' +
-        '<div class="cutup-support-metric cutup-support-metric--accent" role="listitem"><span>Avg response</span><strong>' + esc(avg) + '</strong></div>' +
+      '<div class="cutup-support-kpis" role="list">' +
+        renderKpi('📂', 'Open Tickets', s.open_count || 0, kpiTrend('open', s), false) +
+        renderKpi('⏳', 'Waiting For You', s.waiting_count || 0, kpiTrend('waiting', s), false) +
+        renderKpi('🔄', 'In Progress', s.in_progress_count || 0, kpiTrend('in_progress', s), false) +
+        renderKpi('✅', 'Resolved', s.resolved_count || 0, kpiTrend('resolved', s), false) +
+        renderKpi('⚡', 'Avg First Response', avg, kpiTrend('avg', s), true) +
       '</div>'
     );
   }
@@ -162,37 +186,94 @@
   function renderEmptyState() {
     return (
       '<div class="cutup-support-zero">' +
-        '<div class="cutup-support-zero__icon" aria-hidden="true">💬</div>' +
-        '<h2>No support tickets yet</h2>' +
-        '<p>Describe your issue and our team will help you resolve it quickly.</p>' +
-        '<p class="cutup-support-zero__sla">Typical response within 24 hours</p>' +
-        '<button type="button" class="btn-primary cutup-support-cta" id="cutupSupportCreateBtnEmpty">+ Create Ticket</button>' +
+        '<div class="cutup-support-zero__illus" aria-hidden="true">' +
+          '<svg width="120" height="96" viewBox="0 0 120 96" fill="none"><rect x="8" y="16" width="72" height="56" rx="12" fill="#EEF2FF" stroke="#C7D2FE"/><path d="M28 40h32M28 52h20" stroke="#818CF8" stroke-width="3" stroke-linecap="round"/><circle cx="88" cy="56" r="20" fill="#635BFF"/><path d="M82 56l4 4 8-8" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+        '</div>' +
+        '<h2>Need help?</h2>' +
+        '<p>Our support team typically responds within 24 hours — urgent billing issues within 12 hours.</p>' +
+        '<p class="cutup-support-zero__sla">Expected response: under 24h · Billing: under 12h</p>' +
+        '<div class="cutup-support-zero__actions">' +
+          '<button type="button" class="btn-primary cutup-support-cta" id="cutupSupportCreateBtnEmpty">Create Ticket</button>' +
+          '<a href="#help" class="btn-secondary">Browse Help Center</a>' +
+        '</div>' +
       '</div>'
     );
   }
 
-  function renderIssueCard(t) {
+  function slaBadge(t) {
+    var st = String(t.sla_status || 'healthy').toLowerCase();
+    if (st === 'healthy' && t.first_response_at) return '';
+    var label = st === 'breached' ? 'SLA Breached' : st === 'at_risk' ? 'At Risk' : 'Healthy';
+    return '<span class="cutup-support-sla cutup-support-sla--' + esc(st) + '">' + esc(label) + '</span>';
+  }
+
+  function renderIssueCard(t, compact) {
     return (
-      '<button type="button" class="cutup-support-issue" data-ticket="' + esc(t.ticket_number) + '">' +
+      '<button type="button" class="cutup-support-issue' + (compact ? ' cutup-support-issue--compact' : '') + '" data-ticket="' + esc(t.ticket_number) + '">' +
         '<div class="cutup-support-issue__top">' +
           '<span class="cutup-support-issue__id">' + esc(t.ticket_number) + '</span>' +
-          '<span class="cutup-support-issue__badges">' + deptBadge(t.department) + statusBadge(t.status) + '</span>' +
+          '<span class="cutup-support-issue__badges">' + deptBadge(t.department) + statusBadge(t.status) + slaBadge(t) + '</span>' +
         '</div>' +
         '<h3 class="cutup-support-issue__subject">' + esc(t.subject || 'Support request') + '</h3>' +
         '<div class="cutup-support-issue__meta">' +
           '<span>Updated ' + esc(relTime(t.last_activity_at || t.updated_at)) + '</span>' +
-          '<span aria-hidden="true">·</span>' +
-          '<span>Created ' + esc(fmtDate(t.created_at)) + '</span>' +
+          (!compact ? '<span aria-hidden="true">·</span><span>Created ' + esc(fmtDate(t.created_at)) + '</span>' : '') +
         '</div>' +
       '</button>'
     );
   }
 
-  function renderList() {
-    if (!state.tickets.length) return renderEmptyState();
+  function activityLabel(item) {
+    var map = {
+      created: 'Ticket Created',
+      assigned: 'Ticket Assigned',
+      admin_reply: 'Ticket Replied',
+      user_reply: 'You Replied',
+      status_change: 'Status Changed',
+    };
+    return map[item.event_type] || String(item.event_type || '').replace(/_/g, ' ');
+  }
+
+  function activityIcon(type) {
+    var map = { created: '🎫', assigned: '👤', admin_reply: '💬', user_reply: '↩️', status_change: '🔄' };
+    return map[type] || '•';
+  }
+
+  function renderActivityFeed() {
+    if (!state.activity.length) {
+      return '<p class="cutup-support-activity-empty">No recent activity yet.</p>';
+    }
     return (
-      '<div class="cutup-support-issues" aria-label="Your support tickets">' +
-        state.tickets.map(renderIssueCard).join('') +
+      '<div class="cutup-support-activity" role="feed">' +
+        state.activity.slice(0, 8).map(function (a) {
+          return (
+            '<button type="button" class="cutup-support-activity__item" data-ticket="' + esc(a.ticket_number) + '">' +
+              '<span class="cutup-support-activity__icon" aria-hidden="true">' + activityIcon(a.event_type) + '</span>' +
+              '<span class="cutup-support-activity__body">' +
+                '<strong>' + esc(activityLabel(a)) + '</strong>' +
+                '<span>' + esc(a.subject || a.ticket_number) + '</span>' +
+                '<time>' + esc(relTime(a.created_at)) + '</time>' +
+              '</span>' +
+            '</button>'
+          );
+        }).join('') +
+      '</div>'
+    );
+  }
+
+  function renderHomeGrid() {
+    if (!state.tickets.length) return renderEmptyState();
+    var recent = state.tickets.slice(0, 5);
+    return (
+      '<div class="cutup-support-home-grid">' +
+        '<section class="cutup-support-panel">' +
+          '<header class="cutup-support-panel__head"><h2>Recent Tickets</h2><a href="#" id="cutupSupportViewAll" class="cutup-support-panel__link">View all</a></header>' +
+          '<div class="cutup-support-issues">' + recent.map(function (t) { return renderIssueCard(t, true); }).join('') + '</div>' +
+        '</section>' +
+        '<section class="cutup-support-panel">' +
+          '<header class="cutup-support-panel__head"><h2>Support Activity</h2></header>' +
+          renderActivityFeed() +
+        '</section>' +
       '</div>'
     );
   }
@@ -202,13 +283,13 @@
       '<div class="cutup-support-root">' +
         '<div class="cutup-support-head">' +
           '<div class="cutup-support-head__copy">' +
-            '<h1 class="section-title">Support</h1>' +
-            '<p class="dashboard-section-lead">Premium support from the Cutup team — track every reply in one place.</p>' +
+            '<h1 class="section-title">Support Center</h1>' +
+            '<p class="dashboard-section-lead">Get help from the Cutup team.</p>' +
           '</div>' +
-          '<button type="button" class="btn-primary cutup-support-cta" id="cutupSupportCreateBtn">+ Create Ticket</button>' +
+          '<button type="button" class="btn-primary cutup-support-cta" id="cutupSupportCreateBtn">Create Ticket</button>' +
         '</div>' +
         renderMetrics() +
-        renderList() +
+        renderHomeGrid() +
       '</div>'
     );
   }
@@ -251,8 +332,12 @@
       if (p.assigneeAdminId == null) return 'Ticket unassigned';
       return 'Ticket assigned to support';
     }
+    if (event.event_type === 'admin_reply') return 'Support replied';
+    if (event.event_type === 'user_reply') return 'You replied';
     return String(event.event_type || 'update').replace(/_/g, ' ');
   }
+
+  var INLINE_EVENT_TYPES = { created: 1, status_change: 1, assigned: 1 };
 
   function buildConversationTimeline(messages, events) {
     var items = [];
@@ -260,6 +345,7 @@
       items.push({ kind: 'message', at: m.created_at, data: m });
     });
     (events || []).forEach(function (e) {
+      if (!INLINE_EVENT_TYPES[e.event_type]) return;
       items.push({ kind: 'event', at: e.created_at, data: e });
     });
     items.sort(function (a, b) {
@@ -277,11 +363,42 @@
     );
   }
 
+  function renderAttachments(attachments) {
+    if (!attachments?.length) return '';
+    return (
+      '<div class="cutup-support-attachments">' +
+        attachments.map(function (a) {
+          var isImg = String(a.mime || '').startsWith('image/');
+          if (isImg) {
+            return (
+              '<a class="cutup-support-attach cutup-support-attach--img" href="' + esc(a.url) + '" target="_blank" rel="noopener">' +
+                '<img src="' + esc(a.url) + '" alt="' + esc(a.filename) + '" loading="lazy">' +
+              '</a>'
+            );
+          }
+          if (String(a.mime || '').includes('pdf')) {
+            return (
+              '<a class="cutup-support-attach cutup-support-attach--pdf" href="' + esc(a.url) + '" target="_blank" rel="noopener">' +
+                '<span>📄</span><span>' + esc(a.filename) + '</span><em>Download PDF</em>' +
+              '</a>'
+            );
+          }
+          return (
+            '<a class="cutup-support-attach" href="' + esc(a.url) + '" target="_blank" rel="noopener">' +
+              '<span>📎</span><span>' + esc(a.filename) + '</span>' +
+            '</a>'
+          );
+        }).join('') +
+      '</div>'
+    );
+  }
+
   function renderMessageBubble(m) {
     var isUser = m.sender_type === 'user';
     var who = isUser ? 'You' : (m.sender_name || m.sender_email || 'Cutup Support');
     var side = isUser ? 'cutup-support-msg--user' : 'cutup-support-msg--admin';
     var avatar = avatarUrl(who, isUser);
+    var attach = Array.isArray(m.attachments) ? m.attachments : null;
     return (
       '<article class="cutup-support-msg ' + side + '">' +
         '<img class="cutup-support-msg__avatar" src="' + esc(avatar) + '" alt="" width="36" height="36" loading="lazy" decoding="async">' +
@@ -290,7 +407,10 @@
             '<span class="cutup-support-msg__name">' + esc(who) + '</span>' +
             '<time class="cutup-support-msg__time" datetime="' + esc(m.created_at) + '" title="' + esc(fmtDate(m.created_at)) + '">' + esc(fmtDate(m.created_at)) + '</time>' +
           '</header>' +
-          '<div class="cutup-support-msg__bubble">' + esc(m.message) + '</div>' +
+          '<div class="cutup-support-msg__bubble">' +
+            (m.message ? esc(m.message) : '') +
+            renderAttachments(attach) +
+          '</div>' +
         '</div>' +
       '</article>'
     );
@@ -306,34 +426,85 @@
       .join('');
   }
 
+  function timelineIcon(type) {
+    var map = {
+      created: '🎫', assigned: '👤', status_change: '🔄',
+      admin_reply: '💬', user_reply: '↩️', internal_note: '📝',
+    };
+    return map[type] || '•';
+  }
+
+  function renderTimeline(events) {
+    var all = (events || []).slice().sort(function (a, b) {
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
+    if (!all.length) return '<p class="cutup-support-timeline-empty">No timeline events.</p>';
+    return (
+      '<ol class="cutup-support-timeline">' +
+        all.map(function (e, i) {
+          var last = i === all.length - 1;
+          return (
+            '<li class="cutup-support-timeline__item' + (last ? ' is-last' : '') + '">' +
+              '<span class="cutup-support-timeline__dot" aria-hidden="true">' + timelineIcon(e.event_type) + '</span>' +
+              '<div class="cutup-support-timeline__body">' +
+                '<strong>' + esc(eventLabel(e)) + '</strong>' +
+                '<time datetime="' + esc(e.created_at) + '">' + esc(fmtDate(e.created_at)) + '</time>' +
+              '</div>' +
+            '</li>'
+          );
+        }).join('') +
+      '</ol>'
+    );
+  }
+
   function renderDetailView(ticket, messages, events) {
     var closed = ['CLOSED', 'RESOLVED'].includes(ticket.status);
     var composer = closed
       ? '<p class="cutup-support-closed-note">This ticket is ' + esc(formatStatusLabel(ticket.status)) + '. Create a new ticket if you need more help.</p>'
       : '<div class="cutup-support-reply">' +
           '<label for="cutupSupportReply">Reply</label>' +
+          '<div id="cutupSupportAttachPreview" class="cutup-support-attach-preview" hidden></div>' +
           '<div class="cutup-support-reply__row">' +
             '<textarea id="cutupSupportReply" placeholder="Write a reply…" rows="2"></textarea>' +
-            '<button type="button" class="btn-primary" id="cutupSupportSendReply">Send</button>' +
+            '<div class="cutup-support-reply__actions">' +
+              '<label class="cutup-support-attach-btn" title="Attach file">' +
+                '<input type="file" id="cutupSupportFile" accept=".png,.jpg,.jpeg,.webp,.pdf,.txt,.zip" hidden>' +
+                '📎' +
+              '</label>' +
+              '<button type="button" class="btn-primary" id="cutupSupportSendReply">Send</button>' +
+            '</div>' +
           '</div>' +
         '</div>';
     return (
       '<div class="cutup-support-detail">' +
         '<button type="button" class="cutup-support-detail__back" id="cutupSupportBack">← All tickets</button>' +
-        '<header class="cutup-support-detail__header">' +
-          '<h1 class="section-title">' + esc(ticket.subject) + '</h1>' +
-          '<div class="cutup-support-meta">' +
-            '<strong>' + esc(ticket.ticket_number) + '</strong>' +
-            statusBadge(ticket.status) +
-            priorityBadge(ticket.priority) +
-            deptBadge(ticket.department) +
-            '<span>Created ' + esc(fmtDate(ticket.created_at)) + '</span>' +
-            (ticket.assigned_admin_email ? '<span>' + esc(ticket.assigned_admin_email) + '</span>' : '') +
+        '<div class="cutup-support-detail__layout">' +
+          '<div class="cutup-support-detail__main">' +
+            '<header class="cutup-support-detail__header">' +
+              '<h1 class="section-title">' + esc(ticket.subject) + '</h1>' +
+              '<div class="cutup-support-meta">' +
+                '<strong>' + esc(ticket.ticket_number) + '</strong>' +
+                statusBadge(ticket.status) +
+                priorityBadge(ticket.priority) +
+                deptBadge(ticket.department) +
+                slaBadge(ticket) +
+                '<span>Created ' + esc(fmtDate(ticket.created_at)) + '</span>' +
+                (ticket.assigned_admin_email ? '<span>' + esc(ticket.assigned_admin_email) + '</span>' : '') +
+              '</div>' +
+            '</header>' +
+            '<div class="cutup-support-timeline-mobile">' +
+              '<h3>Timeline</h3>' + renderTimeline(events) +
+            '</div>' +
+            '<div class="cutup-support-conversation">' +
+              '<div class="cutup-support-thread" id="cutupSupportThread">' + renderConversation(messages, events) + '</div>' +
+              composer +
+            '</div>' +
           '</div>' +
-        '</header>' +
-        '<div class="cutup-support-conversation">' +
-          '<div class="cutup-support-thread" id="cutupSupportThread">' + renderConversation(messages, events) + '</div>' +
-          composer +
+          '<aside class="cutup-support-detail__sidebar">' +
+            '<div class="cutup-support-sidebar-card">' +
+              '<h3>Ticket Timeline</h3>' + renderTimeline(events) +
+            '</div>' +
+          '</aside>' +
         '</div>' +
       '</div>'
     );
@@ -353,7 +524,8 @@
             '<label>Priority<select name="priority" required>' +
               PRIORITIES.map(function (p) { return '<option value="' + esc(p.value) + '"' + (p.value === 'NORMAL' ? ' selected' : '') + '>' + esc(p.label) + '</option>'; }).join('') +
             '</select></label>' +
-            '<label>Subject<input name="subject" type="text" required minlength="3" maxlength="200" placeholder="Brief summary"></label>' +
+            '<label>Subject<input name="subject" id="cutupSupportSubject" type="text" required minlength="3" maxlength="200" placeholder="Brief summary"></label>' +
+            '<div id="cutupSupportDeflect" class="cutup-support-deflect" hidden></div>' +
             '<label>Message<textarea name="message" required minlength="10" maxlength="8000" placeholder="Describe your issue in detail…"></textarea></label>' +
             '<div id="cutupSupportTurnstile" class="cf-turnstile" data-sitekey="' + esc(TURNSTILE_SITE_KEY) + '"></div>' +
             '<p id="cutupSupportFormError" class="dashboard-empty-note" hidden role="alert"></p>' +
@@ -431,6 +603,8 @@
       if (e.target === modal) closeModal();
     });
 
+    bindDeflection();
+
     document.getElementById('cutupSupportForm')?.addEventListener('submit', async function (e) {
       e.preventDefault();
       var form = e.target;
@@ -482,20 +656,101 @@
         navigateToTicket(row.getAttribute('data-ticket'));
       });
     });
+    root.querySelectorAll('.cutup-support-activity__item[data-ticket]').forEach(function (row) {
+      row.addEventListener('click', function () {
+        navigateToTicket(row.getAttribute('data-ticket'));
+      });
+    });
+  }
+
+  function bindDeflection() {
+    var subject = document.getElementById('cutupSupportSubject');
+    var host = document.getElementById('cutupSupportDeflect');
+    if (!subject || !host || subject.dataset.bound === '1') return;
+    subject.dataset.bound = '1';
+    var timer;
+    subject.addEventListener('input', function () {
+      clearTimeout(timer);
+      var q = subject.value.trim();
+      if (q.length < 3) {
+        host.hidden = true;
+        return;
+      }
+      timer = setTimeout(async function () {
+        var articles = await (window.CutupDashboardHelp?.searchArticles?.(q, 3) || Promise.resolve([]));
+        if (!articles.length) {
+          host.hidden = true;
+          return;
+        }
+        host.hidden = false;
+        host.innerHTML =
+          '<p class="cutup-support-deflect__title">Suggested articles</p>' +
+          articles.map(function (a) {
+            return (
+              '<a href="#help/' + esc(a.slug) + '" class="cutup-support-deflect__item">' +
+                '<strong>' + esc(a.title) + '</strong>' +
+                '<span>' + esc(a.summary) + '</span>' +
+              '</a>'
+            );
+          }).join('');
+      }, 320);
+    });
+  }
+
+  async function uploadAttachment(file) {
+    var fd = new FormData();
+    fd.append('file', file);
+    var r = await fetch(apiBase() + '/api/support/attachments', {
+      method: 'POST',
+      credentials: 'include',
+      headers: sessionHeaders(),
+      body: fd,
+    });
+    var d = await r.json().catch(function () { return {}; });
+    return { ok: r.ok, data: d };
   }
 
   function bindDetailEvents(root, ticketNumber) {
+    state.pendingAttachments = [];
     root.querySelector('#cutupSupportBack')?.addEventListener('click', navigateToList);
+    var fileInput = document.getElementById('cutupSupportFile');
+    var preview = document.getElementById('cutupSupportAttachPreview');
+    fileInput?.addEventListener('change', async function () {
+      var file = fileInput.files?.[0];
+      if (!file) return;
+      if (file.size > 20 * 1024 * 1024) {
+        if (typeof showDashboardBanner === 'function') showDashboardBanner('File must be under 20 MB.', 'error');
+        fileInput.value = '';
+        return;
+      }
+      var up = await uploadAttachment(file);
+      fileInput.value = '';
+      if (!up.ok) {
+        if (typeof showDashboardBanner === 'function') showDashboardBanner('Upload failed. Try again.', 'error');
+        return;
+      }
+      state.pendingAttachments = [up.data.attachment];
+      if (preview) {
+        preview.hidden = false;
+        preview.innerHTML = '<span>📎 ' + esc(up.data.attachment.filename) + '</span> <button type="button" id="cutupSupportClearAttach">Remove</button>';
+        preview.querySelector('#cutupSupportClearAttach')?.addEventListener('click', function () {
+          state.pendingAttachments = [];
+          preview.hidden = true;
+          preview.innerHTML = '';
+        });
+      }
+    });
     root.querySelector('#cutupSupportSendReply')?.addEventListener('click', async function () {
       var ta = document.getElementById('cutupSupportReply');
       var msg = ta?.value?.trim();
-      if (!msg) return;
+      if (!msg && !state.pendingAttachments.length) return;
       var btn = document.getElementById('cutupSupportSendReply');
       if (btn) btn.disabled = true;
       var res = await apiPost('/api/support/tickets', {
         action: 'reply',
         ticketNumber: ticketNumber,
-        message: msg,
+        message: msg || '',
+        attachments: state.pendingAttachments.length ? state.pendingAttachments : undefined,
       });
       if (btn) btn.disabled = false;
       if (!res.ok) {
@@ -505,6 +760,8 @@
         return;
       }
       if (ta) ta.value = '';
+      state.pendingAttachments = [];
+      if (preview) { preview.hidden = true; preview.innerHTML = ''; }
       void mount(ticketNumber);
     });
     var thread = document.getElementById('cutupSupportThread');
@@ -519,6 +776,11 @@
   async function loadList() {
     var res = await apiGet('/api/support/tickets');
     if (res.ok) state.tickets = res.data.tickets || [];
+  }
+
+  async function loadActivity() {
+    var res = await apiGet('/api/support/tickets?action=activity&limit=12');
+    if (res.ok) state.activity = res.data.activity || [];
   }
 
   async function mount(ticketNumber) {
@@ -545,7 +807,7 @@
 
     state.view = 'list';
     state.ticketNumber = null;
-    await Promise.all([loadOverview(), loadList()]);
+    await Promise.all([loadOverview(), loadList(), loadActivity()]);
     state.loading = false;
     root.innerHTML = renderListView();
     bindListEvents(root);
