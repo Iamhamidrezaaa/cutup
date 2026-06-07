@@ -15,6 +15,7 @@ export type ProviderSendResult = {
   skipped?: boolean;
   error?: string;
   messageId?: string;
+  resendResponse?: unknown;
 };
 
 export async function sendViaResend(input: ProviderSendInput): Promise<ProviderSendResult> {
@@ -38,12 +39,44 @@ export async function sendViaResend(input: ProviderSendInput): Promise<ProviderS
       payload.tags = input.tags;
     }
 
+    console.log('[email-platform] Resend request', {
+      from: input.from,
+      to: input.to,
+      subject: input.subject,
+      htmlLength: input.html?.length ?? 0,
+      textLength: input.text?.length ?? 0,
+    });
+
     const result = await resend.emails.send(payload as Parameters<typeof resend.emails.send>[0]);
+
+    console.log('[email-platform] Resend response', {
+      from: input.from,
+      to: input.to,
+      subject: input.subject,
+      htmlLength: input.html?.length ?? 0,
+      messageId: result.data?.id ?? null,
+      error: result.error ? result.error.message || String(result.error) : null,
+      raw: result,
+    });
+
     if (result.error) {
-      return { sent: false, error: result.error.message || String(result.error) };
+      return {
+        sent: false,
+        error: result.error.message || String(result.error),
+        resendResponse: result,
+      };
     }
-    return { sent: true, messageId: result.data?.id };
+    return { sent: true, messageId: result.data?.id, resendResponse: result };
   } catch (err) {
-    return { sent: false, error: (err as Error)?.message || String(err) };
+    const message = (err as Error)?.message || String(err);
+    console.error('[email-platform] Resend exception', {
+      from: input.from,
+      to: input.to,
+      subject: input.subject,
+      htmlLength: input.html?.length ?? 0,
+      error: message,
+      stack: (err as Error)?.stack,
+    });
+    return { sent: false, error: message, resendResponse: { exception: message } };
   }
 }

@@ -1,16 +1,27 @@
 /**
  * Event-driven email bus — business logic emits events here; never calls Resend directly.
  */
+import { setLastRenderError, setLastSendResult } from './email-debug-state.js';
+
 let platformPromise = null;
+let platformLoadError = null;
 
 async function loadPlatform() {
   if (!platformPromise) {
     platformPromise = import('./email-platform/index.js').catch((err) => {
-      console.warn('[email-events-bus] platform unavailable:', err?.message || err);
+      platformLoadError = {
+        message: err?.message || String(err),
+        stack: err?.stack || null,
+      };
+      console.warn('[email-events-bus] platform unavailable:', platformLoadError.message, platformLoadError.stack);
       return null;
     });
   }
   return platformPromise;
+}
+
+export function getPlatformLoadError() {
+  return platformLoadError;
 }
 
 export async function emitEmailEvent(event, payload) {
@@ -29,15 +40,56 @@ export async function emitEmailEvent(event, payload) {
 export async function sendTemplatedEmail({ template, recipient, data, senderRole, tags }) {
   const platform = await loadPlatform();
   if (!platform?.sendEmail) {
-    return { sent: false, skipped: true, template };
+    const result = { sent: false, skipped: true, template, reason: 'platform_unavailable' };
+    setLastSendResult(result);
+    return result;
   }
-  return platform.sendEmail({ template, recipient, data, senderRole, tags });
+  try {
+    const result = await platform.sendEmail({ template, recipient, data, senderRole, tags });
+    setLastSendResult(result);
+    return result;
+  } catch (err) {
+    const result = {
+      sent: false,
+      error: err?.message || String(err),
+      stack: err?.stack || null,
+      template,
+    };
+    setLastSendResult(result);
+    return result;
+  }
 }
 
 export async function previewEmailTemplate(template, data = {}) {
   const platform = await loadPlatform();
-  if (!platform?.renderEmailTemplate) return null;
-  return platform.renderEmailTemplate(template, data);
+  if (!platform?.renderEmailTemplate) {
+    setLastRenderError({
+      message: 'platform_unavailable',
+      stack: platformLoadError?.stack || null,
+      details: { platformLoadError },
+    });
+    return null;
+  }
+  try {
+    const rendered = await platform.renderEmailTemplate(template, data);
+    if (!rendered || typeof rendered.html !== 'string' || !rendered.html.trim()) {
+      setLastRenderError({
+        message: 'invalid_html_output',
+        stack: null,
+        details: {
+          htmlType: typeof rendered?.html,
+          htmlLength: typeof rendered?.html === 'string' ? rendered.html.length : 0,
+        },
+      });
+      return null;
+    }
+    setLastRenderError(null);
+    return rendered;
+  } catch (err) {
+    setLastRenderError(err);
+    console.error('[email-events-bus] render failed', template, err?.stack || err);
+    return null;
+  }
 }
 
 export async function listEmailTemplates() {

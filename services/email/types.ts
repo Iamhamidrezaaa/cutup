@@ -72,6 +72,11 @@ export type SendEmailResult = {
   provider?: 'resend' | 'smtp';
   messageId?: string;
   template: EmailTemplateId;
+  from?: string;
+  to?: string;
+  subject?: string;
+  htmlLength?: number;
+  resendResponse?: unknown;
 };
 
 export type RenderedEmail = {

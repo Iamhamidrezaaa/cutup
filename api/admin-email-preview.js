@@ -15,6 +15,7 @@ import {
   previewEmailTemplate,
   sendTemplatedEmail,
 } from './email-events-bus.js';
+import { getLastRenderError } from './email-debug-state.js';
 import {
   formatTemplateForApi,
   getRegistryMetaEntry,
@@ -87,7 +88,13 @@ export default async function handler(req, res) {
       }
       const rendered = await previewEmailTemplate(template, data);
       if (!rendered) {
-        return res.status(503).json({ ok: false, error: 'render_unavailable' });
+        const lastRenderError = getLastRenderError();
+        return res.status(503).json({
+          ok: false,
+          error: 'render_unavailable',
+          lastRenderError,
+          stack: lastRenderError?.stack || null,
+        });
       }
       return res.json({ ok: true, template, data, rendered });
     }
@@ -100,7 +107,7 @@ export default async function handler(req, res) {
       if (!recipient) return res.status(400).json({ ok: false, error: 'recipient_required' });
       const data = body.data && typeof body.data === 'object' ? body.data : {};
       const result = await sendTemplatedEmail({ template, recipient, data });
-      return res.json({ ok: Boolean(result.sent || result.skipped), result });
+      return res.json({ ok: Boolean(result.sent), result });
     }
 
     // ——— Canonical API (no action param) ———
@@ -124,7 +131,13 @@ export default async function handler(req, res) {
       }
       const rendered = await previewEmailTemplate(templateParam, data);
       if (!rendered) {
-        return res.status(503).json({ ok: false, error: 'render_unavailable' });
+        const lastRenderError = getLastRenderError();
+        return res.status(503).json({
+          ok: false,
+          error: 'render_unavailable',
+          lastRenderError,
+          stack: lastRenderError?.stack || null,
+        });
       }
       return res.json({
         ok: true,
@@ -145,7 +158,7 @@ export default async function handler(req, res) {
       if (!recipient) return res.status(400).json({ ok: false, error: 'recipient_required' });
       const data = body.data && typeof body.data === 'object' ? body.data : {};
       const result = await sendTemplatedEmail({ template, recipient, data });
-      return res.json({ ok: Boolean(result.sent || result.skipped), result });
+      return res.json({ ok: Boolean(result.sent), result });
     }
 
     return res.status(405).json({ ok: false, error: 'method_not_allowed' });

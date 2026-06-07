@@ -157,9 +157,14 @@
       body: JSON.stringify({ template: state.selected, recipient: recipient, data: data }),
     });
     if (status) {
-      status.textContent = res.ok
-        ? 'Test email queued/sent.'
-        : 'Send failed: ' + (res.data?.error || res.data?.result?.error || 'error');
+      var result = res.data?.result || {};
+      if (res.ok && result.sent) {
+        status.textContent = 'Test email sent' + (result.messageId ? ' (id: ' + result.messageId + ')' : '') + '.';
+      } else if (result.skipped) {
+        status.textContent = 'Send skipped — Resend/SMTP not configured. Check /api/admin/email-debug.';
+      } else {
+        status.textContent = 'Send failed: ' + (res.data?.error || result.error || 'error');
+      }
     }
   }
 

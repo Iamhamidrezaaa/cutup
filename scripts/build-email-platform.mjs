@@ -19,7 +19,7 @@ await esbuild.build({
   platform: 'node',
   format: 'esm',
   outfile,
-  packages: 'external',
+  packages: 'bundle',
   external: ['resend', 'nodemailer', 'pg', 'react', 'react-dom'],
   loader: { '.tsx': 'tsx', '.ts': 'ts' },
   jsx: 'automatic',

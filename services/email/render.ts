@@ -44,16 +44,16 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-export function renderEmailTemplate(
+export async function renderEmailTemplate(
   template: EmailTemplateId,
   data: Record<string, unknown> = {},
-): RenderedEmail {
+): Promise<RenderedEmail> {
   const entry = getRegistryEntry(template);
   const Component = TEMPLATE_COMPONENTS[template];
   if (!Component) throw new Error(`No React component for template: ${template}`);
 
   const element = React.createElement(Component, data);
-  const html = render(element, { pretty: false });
+  const html = await render(element, { pretty: false });
   const subject = entry.subject(data);
   const preview = entry.preview(data);
 

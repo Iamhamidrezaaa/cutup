@@ -159,6 +159,14 @@
       "dest": "/api/admin-email-preview.js"
     },
     {
+      "src": "/api/admin/email-debug-send",
+      "dest": "/api/admin-email-debug.js"
+    },
+    {
+      "src": "/api/admin/email-debug",
+      "dest": "/api/admin-email-debug.js"
+    },
+    {
       "src": "/api/admin/login",
       "dest": "/api/admin-login.js"
     },
