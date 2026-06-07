@@ -45,9 +45,23 @@
 
   function exportBadge(status) {
     if (status === 'exported') return statusBadge('Exported', 'exported');
-    if (status === 'in_progress') return statusBadge('Export in progress', 'progress');
+    if (status === 'in_progress') return statusBadge('In Progress', 'progress');
     if (status === 'failed') return statusBadge('Export failed', 'failed');
-    return statusBadge('Not exported', 'progress');
+    return statusBadge('In Progress', 'progress');
+  }
+
+  function primaryStatusBadge(p) {
+    if (p.lifecycleStatus === 'archived') return statusBadge('Archived', 'failed');
+    if (p.exportStatus === 'exported') return statusBadge('Exported', 'exported');
+    if (p.exportStatus === 'in_progress' || p.transcriptStatus === 'in_progress') return statusBadge('In Progress', 'progress');
+    if (p.transcriptStatus === 'ready') return statusBadge('Transcript Ready', 'ready');
+    return statusBadge('In Progress', 'progress');
+  }
+
+  function formatStyleLabel(p) {
+    const preset = p.settings?.stylePreset || p.settings?.presetId;
+    if (!preset) return 'Default style';
+    return String(preset).replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   }
 
   function formatDuration(sec) {
@@ -304,16 +318,17 @@
       <article class="cutup-project-card" data-project-id="${state.escapeHtml(p.id)}">
         <div class="cutup-project-card__media">${thumb}</div>
         <div class="cutup-project-card__body">
-          <h3 class="cutup-project-card__title" title="${title}">${title}</h3>
-          <p class="cutup-project-card__source" title="${source}">${source}</p>
-          <div class="cutup-project-card__meta">
+          <div class="cutup-project-card__status-row">
+            ${primaryStatusBadge(p)}
             ${transcriptBadge(p.transcriptStatus)}
             ${exportBadge(p.exportStatus)}
-            ${p.exportCount ? statusBadge(`${p.exportCount} export${p.exportCount > 1 ? 's' : ''}`, 'exported') : ''}
           </div>
-          <div class="cutup-project-card__dates">
-            <div>Created ${state.formatDateTime(p.createdAt)}</div>
-            <div>Updated ${state.formatDateTime(p.updatedAt)}</div>
+          <h3 class="cutup-project-card__title" title="${title}">${title}</h3>
+          <p class="cutup-project-card__source" title="${source}">${source}</p>
+          <div class="cutup-project-card__facts">
+            <span>Style: ${state.escapeHtml(formatStyleLabel(p))}</span>
+            <span>Updated ${state.formatDateTime(p.updatedAt)}</span>
+            <span>${p.exportCount ? `${p.exportCount} export${p.exportCount > 1 ? 's' : ''}` : 'No exports yet'}</span>
           </div>
           <div class="cutup-project-card__actions">
             <button type="button" class="cutup-project-btn cutup-project-btn--primary" data-project-open="${state.escapeHtml(p.id)}">Open</button>

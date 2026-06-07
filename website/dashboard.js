@@ -2041,6 +2041,53 @@ function formatHistoryType(type) {
   }
 }
 
+function activityFeedLabel(item) {
+  const type = item?.type;
+  const meta = item?.metadata || {};
+  if (type === 'summarization') return 'Summary generated';
+  if (meta.translationOnly) return 'Translation completed';
+  if (type === 'download' && meta.kind === 'video') return 'MP4 exported';
+  if (type === 'transcription' && meta.videoProcessed) return 'Video processed';
+  if (type === 'transcription') return 'Transcript generated';
+  if (type === 'srt') return 'Subtitles generated';
+  return formatHistoryType(type === 'download'
+    ? (meta.kind === 'audio' ? 'downloadAudio' : meta.kind === 'video' ? 'downloadVideo' : 'download')
+    : type);
+}
+
+function computeUsageLifetimeStats(history, sub) {
+  const h = Array.isArray(history) ? history : [];
+  let videos = 0;
+  let exports = 0;
+  let subtitles = 0;
+  h.forEach((item) => {
+    const t = item?.type;
+    const m = item?.metadata || {};
+    if (t === 'transcription' && !m.translationOnly) videos += 1;
+    if (t === 'srt') subtitles += 1;
+    if (t === 'download' && m.kind === 'video') exports += 1;
+  });
+  const dlVideo = Number(sub?.usage?.downloads?.video?.count) || 0;
+  const dlAudio = Number(sub?.usage?.downloads?.audio?.count) || 0;
+  return {
+    videos: Math.max(videos, 0),
+    exports: Math.max(exports, dlVideo),
+    subtitles: Math.max(subtitles, 0),
+    downloads: dlAudio + dlVideo
+  };
+}
+
+function formatSavedOutputTypeLabel(type) {
+  const t = String(type || '').toLowerCase();
+  if (t === 'transcript' || t === 'transcription') return 'Transcript';
+  if (t === 'summary' || t === 'summarization') return 'Summary';
+  if (t === 'srt') return 'Translation';
+  if (t === 'mp4' || t === 'video') return 'MP4';
+  if (t === 'docx') return 'DOCX';
+  if (t === 'txt') return 'TXT';
+  return formatHistoryType(type);
+}
+
 function formatPlatformLabel(platform, sourceUrl = '') {
   const p = String(platform || '').toLowerCase();
   if (p.includes('youtube')) return 'YouTube';
@@ -2223,93 +2270,55 @@ function renderUsageSection() {
   if (window.__ONBOARDING_ACTIVE__) return;
   const target = document.getElementById('usageDetails');
   if (!target || !subscriptionInfo) return;
-  const usage = subscriptionInfo.usage || {};
-  const monthlyMinutes = generationsUsedFromSubscription(subscriptionInfo);
+  const monthlyUsed = generationsUsedFromSubscription(subscriptionInfo);
   const monthlyLimit = subscriptionMonthlyGenLimit(subscriptionInfo);
-  const daily = usage.daily || {};
-  const dailyLabel = shouldShowDailyUsageMeter(usage)
-    ? `${daily.minutes || 0}/${usage.dailyLimit} (daily meter)`
-    : '—';
+  const credits = creditsFromSubscription(subscriptionInfo);
+  const lifetime = computeUsageLifetimeStats(historyCache, subscriptionInfo);
+  const pct = monthlyLimit > 0 ? Math.min(100, Math.round((monthlyUsed / monthlyLimit) * 100)) : 0;
 
-  const items = historyCache.slice(0, 20).map((item) => {
-    const normalizedType = item.type === 'download'
-      ? (item.metadata?.kind === 'audio' ? 'downloadAudio' : item.metadata?.kind === 'video' ? 'downloadVideo' : 'download')
-      : item.type;
-    const sourceUrl = safeText(item.metadata?.sourceUrl || item.metadata?.url, '');
-    const platformLabel = formatPlatformLabel(item.metadata?.platform || item.metadata?.source, sourceUrl);
-    const title = safeText(
-      item.metadata?.title || item.metadata?.videoTitle || item.metadata?.filename,
-      fallbackTitle(platformLabel, sourceUrl)
-    );
-    const platform = platformLabel !== 'Unknown' ? ` · ${platformLabel}` : '';
-    const minutesNote = Number(item.minutes) > 0 ? ` · ${Number(item.minutes).toFixed(1)} min` : '';
-    const status = safeText(item.metadata?.status, 'completed');
-    const sourceUrlLabel = sourceUrl
-      ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">Open source</a>`
-      : '—';
-    const relatedSaved = savedOutputsCache.find((saved) => {
-      const sameSource = sourceUrl && saved.sourceUrl && String(saved.sourceUrl) === String(sourceUrl);
-      const sameTitle = title && saved.title && String(saved.title).trim() === String(title).trim();
-      return sameSource || sameTitle;
-    });
-    const relatedLink = relatedSaved
-      ? `<button class="history-link-btn" data-jump-saved="${relatedSaved.id}">View output</button>`
-      : '';
+  const feedItems = historyCache.slice(0, 10).map((item) => {
+    const label = activityFeedLabel(item);
+    const when = formatDateTime(item.date);
     return `
-      <div class="history-item">
-        <details>
-          <summary>
-            <div class="history-content">
-              <div class="history-title">${title}</div>
-              <div class="history-meta">
-                <span class="history-type">${formatHistoryType(normalizedType)}</span>
-                <span>${formatDateTime(item.date)}${platform}${minutesNote}</span>
-              </div>
-            </div>
-            <span class="history-expand-hint">Details</span>
-          </summary>
-          <div class="history-details">
-            <div><strong>Platform:</strong> ${platformLabel}</div>
-            <div><strong>Type:</strong> ${formatHistoryType(normalizedType)}</div>
-            <div><strong>Date:</strong> ${formatDateTime(item.date)}</div>
-            <div><strong>Duration:</strong> ${Number(item.minutes) > 0 ? `${Number(item.minutes).toFixed(1)} min` : '—'}</div>
-            <div><strong>Title:</strong> ${title}</div>
-            <div><strong>Source URL:</strong> ${sourceUrlLabel}</div>
-            <div><strong>Status:</strong> ${status}</div>
-            ${relatedLink ? `<div><strong>Saved output:</strong> ${relatedLink}</div>` : ''}
-          </div>
-        </details>
-      </div>
-    `;
+      <li class="dash-activity-item">
+        <span class="dash-activity-dot" aria-hidden="true"></span>
+        <div class="dash-activity-body">
+          <strong>${escapeHtml(label)}</strong>
+          <span>${escapeHtml(when)}</span>
+        </div>
+      </li>`;
   }).join('');
 
   target.innerHTML = `
-    <div class="usage-summary">
-      <h3>Usage overview</h3>
-      <div class="usage-stats">
-        <div class="usage-stat-item"><span class="usage-stat-label">Videos completed (this month)</span><span class="usage-stat-value">${monthlyMinutes}</span></div>
-        <div class="usage-stat-item"><span class="usage-stat-label">Videos remaining</span><span class="usage-stat-value">${isTopTierPlanKey(subscriptionInfo.plan) ? 'Included' : Math.max(0, monthlyLimit - monthlyMinutes)}</span></div>
-        <div class="usage-stat-item"><span class="usage-stat-label">Monthly credit limit</span><span class="usage-stat-value">${monthlyLimit}</span></div>
-        <div class="usage-stat-item"><span class="usage-stat-label">Daily meter</span><span class="usage-stat-value">${dailyLabel}</span></div>
-      </div>
-    </div>
-    <div class="usage-history">
-      <h3>Recent activity</h3>
-      <p class="dashboard-muted-loading">You have ${getThisMonthActivityCount()} activities this month.</p>
-      ${items || '<p class="dashboard-empty-note">No recent activity yet.</p>'}
+    <div class="dash-usage-analytics">
+      <section class="dash-usage-block">
+        <h3 class="dash-usage-block__title">Current month</h3>
+        <div class="dash-usage-metrics">
+          <div class="dash-usage-metric"><strong>${monthlyUsed}</strong><span>Videos processed</span></div>
+          <div class="dash-usage-metric"><strong>${credits.used}</strong><span>Credits used</span></div>
+          <div class="dash-usage-metric dash-usage-metric--accent"><strong>${credits.remaining}</strong><span>Credits remaining</span></div>
+        </div>
+        <div class="dash-usage-progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">
+          <div class="dash-usage-progress__fill" style="width:${pct}%"></div>
+        </div>
+      </section>
+      <section class="dash-usage-block">
+        <h3 class="dash-usage-block__title">Lifetime</h3>
+        <div class="dash-usage-metrics dash-usage-metrics--4">
+          <div class="dash-usage-metric"><strong>${lifetime.videos}</strong><span>Videos processed</span></div>
+          <div class="dash-usage-metric"><strong>${lifetime.exports}</strong><span>Total exports</span></div>
+          <div class="dash-usage-metric"><strong>${lifetime.subtitles}</strong><span>Subtitles generated</span></div>
+          <div class="dash-usage-metric"><strong>${lifetime.downloads}</strong><span>Downloads</span></div>
+        </div>
+      </section>
+      <section class="dash-usage-block">
+        <h3 class="dash-usage-block__title">Recent activity</h3>
+        ${feedItems
+          ? `<ul class="dash-activity-feed">${feedItems}</ul>`
+          : '<div class="dash-usage-empty">Your activity will appear here after your first video.</div>'}
+      </section>
     </div>
   `;
-
-  target.querySelectorAll('[data-jump-saved]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const savedId = btn.getAttribute('data-jump-saved');
-      document.querySelector('.nav-item[data-section="saved"]')?.click();
-      setTimeout(() => {
-        const details = document.getElementById(`saved-output-view-${savedId}`);
-        if (details) details.open = true;
-      }, 120);
-    });
-  });
 }
 
 function renderSavedOutputs() {
@@ -2346,30 +2355,28 @@ function renderSavedOutputs() {
   const cards = filteredOutputs.map((item) => {
     const title = safeText(item.title, fallbackTitle(item.platform, item.sourceUrl || ''));
     const created = formatDateTime(item.createdAt);
-    const typeLabel = formatHistoryType(item.type);
-    const platform = formatPlatformLabel(item.platform, item.sourceUrl || '');
+    const typeLabel = formatSavedOutputTypeLabel(item.type);
+    const lang = safeText(item.language, 'Original');
     const content = safeText(item.content, '');
     const favoriteIcon = item.isFavorite ? '★' : '☆';
     return `
-      <article class="usage-summary saved-output-card">
-        <div class="saved-output-header">
-          <h3>${title}</h3>
-          <div class="saved-output-badges">
-            <span class="saved-output-badge">${typeLabel}</span>
-            <span class="saved-output-badge">${platform}</span>
-            <span class="saved-output-badge">${safeText(item.language, 'Original')}</span>
-          </div>
+      <article class="dash-saved-card">
+        <div class="dash-saved-card__head">
+          <h3 class="dash-saved-card__title">${escapeHtml(title)}</h3>
+          <button type="button" class="dash-saved-card__pin" data-favorite-output="${item.id}" title="Pin">${favoriteIcon}</button>
         </div>
-        <p class="saved-output-date">${created}</p>
-        <div class="saved-output-actions">
-          <button class="plan-btn plan-btn--ghost" data-favorite-output="${item.id}" title="Pin output">${favoriteIcon}</button>
-          <button class="plan-btn plan-btn--ghost" data-rename-output="${item.id}">Rename</button>
-          <button class="plan-btn plan-btn--sm" data-view-output="${item.id}">View</button>
-          <button class="plan-btn" data-copy-output="${item.id}">Copy</button>
-          <button class="plan-btn" data-download-txt="${item.id}">Download TXT</button>
-          ${item.type === 'srt' ? `<button class="plan-btn" data-download-srt="${item.id}">Download SRT</button>` : `<button class="plan-btn" data-download-docx="${item.id}">Download DOCX</button>`}
+        <div class="dash-saved-card__meta">
+          <span>${escapeHtml(created)}</span>
+          <span class="dash-saved-card__type">${escapeHtml(typeLabel)}</span>
+          <span>${escapeHtml(lang)}</span>
         </div>
-        <details id="saved-output-view-${item.id}" class="saved-output-preview">
+        <div class="dash-saved-card__actions">
+          <button type="button" class="dash-saved-action" data-view-output="${item.id}">Open</button>
+          <button type="button" class="dash-saved-action" data-download-output="${item.id}" data-output-ext="${item.type === 'srt' ? 'srt' : 'txt'}">Download</button>
+          <button type="button" class="dash-saved-action" data-copy-output="${item.id}">Duplicate</button>
+          <button type="button" class="dash-saved-action dash-saved-action--danger" data-delete-output="${item.id}">Delete</button>
+        </div>
+        <details id="saved-output-view-${item.id}" class="dash-saved-card__preview">
           <summary>Preview</summary>
           <pre>${escapeHtml(content)}</pre>
         </details>
@@ -2384,7 +2391,9 @@ function renderSavedOutputs() {
       <button class="saved-filter-btn ${savedOutputsFilter === 'summary' ? 'active' : ''}" data-saved-filter="summary">Summary (${counts.summary})</button>
       <button class="saved-filter-btn ${savedOutputsFilter === 'srt' ? 'active' : ''}" data-saved-filter="srt">SRT (${counts.srt})</button>
     </div>
-    ${cards || '<p class="dashboard-empty-note">No saved outputs in this filter yet.</p>'}
+    <div class="dash-saved-grid">
+      ${cards || '<div class="dash-usage-empty">No saved outputs in this filter yet.</div>'}
+    </div>
   `;
 
   target.querySelectorAll('[data-saved-filter]').forEach((btn) => {
@@ -2401,27 +2410,14 @@ function renderSavedOutputs() {
       if (details) details.open = !details.open;
     });
   });
-  target.querySelectorAll('[data-rename-output]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const id = btn.getAttribute('data-rename-output');
+  target.querySelectorAll('[data-delete-output]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-delete-output');
       const item = savedOutputsCache.find((o) => String(o.id) === String(id));
       if (!item) return;
-      const nextTitle = window.prompt('Rename output', safeText(item.title, ''));
-      if (nextTitle == null) return;
-      try {
-        const { response } = await apiPost(`${API_BASE_URL}/api/subscription?action=renameSavedOutput`, {
-          id,
-          title: nextTitle
-        }, {
-          headers: { 'X-Session-Id': currentSession }
-        });
-        if (!response.ok) throw new Error('rename_failed');
-        item.title = String(nextTitle || '').trim();
-        showDashboardBanner('Output renamed.', 'success');
-        renderSavedOutputs();
-      } catch (_e) {
-        showDashboardBanner('Could not rename this output right now.', 'error');
-      }
+      const title = safeText(item.title, 'this output');
+      if (!window.confirm(`Remove "${title}" from your saved outputs?`)) return;
+      showDashboardBanner('This output is part of your project history and can’t be removed right now.', 'neutral');
     });
   });
   target.querySelectorAll('[data-favorite-output]').forEach((btn) => {
@@ -2452,7 +2448,24 @@ function renderSavedOutputs() {
       const item = savedOutputsCache.find((o) => String(o.id) === String(id));
       if (!item) return;
       await navigator.clipboard.writeText(item.content || '');
-      showDashboardBanner('Output copied.', 'success');
+      showDashboardBanner('Duplicate ready — content copied.', 'success');
+    });
+  });
+  target.querySelectorAll('[data-download-output]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-download-output');
+      const item = savedOutputsCache.find((o) => String(o.id) === String(id));
+      if (!item) return;
+      const ext = btn.getAttribute('data-output-ext') || 'txt';
+      const blob = new Blob([item.content || ''], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${safeText(item.title, 'output').replace(/\s+/g, '_')}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
     });
   });
   target.querySelectorAll('[data-download-txt],[data-download-srt]').forEach((btn) => {
@@ -2627,7 +2640,7 @@ function renderBillingSection() {
           headers: { 'X-Session-Id': currentSession }
         });
         if (!response.ok || !data?.redirect_url) {
-          showDashboardBanner(data?.error || 'Retry is not available right now.', 'error');
+          showDashboardBanner('Please try again in a moment.', 'error');
           return;
         }
         window.location.href = data.redirect_url;
