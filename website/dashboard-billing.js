@@ -69,37 +69,90 @@
     return Math.min(100, Math.round((used / total) * 100));
   }
 
-  function renderOverview(sub, usage) {
+  function formatPlanPrice(plan) {
+    if (plan && plan.price && plan.price.display) return plan.price.display;
+    return '€0';
+  }
+
+  function formatPaymentDisplay(pm) {
+    if (!pm) return null;
+    if (pm.last4) {
+      var brand = String(pm.brand || 'Card').replace(/^./, function (c) { return c.toUpperCase(); });
+      return brand + ' •••• ' + pm.last4;
+    }
+    return String(pm.display || '').replace(/ending in /i, '•••• ') || null;
+  }
+
+  function upgradeSubtitle(planKey) {
+    var k = String(planKey || 'free').toLowerCase();
+    if (k === 'free') return 'Unlock translation, exports, and project history.';
+    if (k === 'starter') return 'Unlock video exports and creator styles.';
+    return 'Unlock more features for your workflow.';
+  }
+
+  function statCard(icon, label, valueHtml, desc) {
+    return (
+      '<div class="billing-stat-card">' +
+        '<div class="billing-stat-card__icon" aria-hidden="true">' + icon + '</div>' +
+        '<div class="billing-stat-card__body">' +
+          '<span class="billing-stat-card__label">' + esc(label) + '</span>' +
+          '<div class="billing-stat-card__value">' + valueHtml + '</div>' +
+          (desc ? '<span class="billing-stat-card__desc">' + esc(desc) + '</span>' : '') +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function renderOverviewStats(sub, usage) {
     var plan = sub || {};
     var u = usage || {};
-    var pct = progressPct(u.usedCredits, u.monthlyCredits);
     var planKey = String(plan.plan || 'free').toLowerCase();
     var badgeCls = planKey === 'free' ? statusBadgeClass('free') : statusBadgeClass(plan.status);
-    var badgeText = planKey === 'free' ? 'Free' : statusLabel(plan.status, plan.plan);
+    var badgeText = (planKey === 'free' ? 'Free' : statusLabel(plan.status, plan.plan)).toUpperCase();
+    var renewalDate = formatBillingDate(plan.nextRenewalDate);
+    var renewalDesc = planKey === 'free' ? 'No active subscription' : 'Automatic renewal';
 
     return (
-      '<article class="billing-card billing-card--overview">' +
-        '<div class="billing-card__head">' +
-          '<h2 class="billing-card__title">Subscription overview</h2>' +
-          '<span class="' + badgeCls + '">' + esc(badgeText) + '</span>' +
+      '<section class="billing-overview-section">' +
+        '<div class="billing-stat-grid">' +
+          statCard('💳', 'Current plan', esc(plan.planName || plan.plan), formatPlanPrice(plan)) +
+          statCard('🎬', 'Credits remaining', esc(String(u.remainingCredits)), 'credits left') +
+          statCard('✓', 'Status', '<span class="' + badgeCls + ' billing-stat-badge">' + esc(badgeText) + '</span>', billingPeriodLabel(plan.billingPeriod) + ' billing') +
+          statCard('📅', 'Next renewal', esc(renewalDate), renewalDesc) +
         '</div>' +
-        '<p class="billing-overview__label">Current plan</p>' +
-        '<p class="billing-overview__plan">' + esc(plan.planName || plan.plan) + '</p>' +
-        '<p class="billing-overview__price">' + esc(plan.price && plan.price.display ? plan.price.display : '€0') + '</p>' +
-        '<dl class="billing-overview__meta">' +
-          '<div><dt>Billing period</dt><dd>' + esc(billingPeriodLabel(plan.billingPeriod)) + '</dd></div>' +
-          '<div><dt>Next renewal</dt><dd>' + esc(formatBillingDate(plan.nextRenewalDate)) + '</dd></div>' +
-          '<div><dt>Credits</dt><dd>' + esc(u.remainingCredits) + ' / ' + esc(u.monthlyCredits) + ' remaining</dd></div>' +
-          '<div><dt>Used this cycle</dt><dd>' + esc(u.usedCredits) + '</dd></div>' +
-        '</dl>' +
-        '<div class="billing-usage">' +
-          '<div class="billing-usage__head">' +
-            '<span>Usage this cycle</span>' +
-            '<span class="billing-usage__counts">' +
-              '<strong>' + esc(u.usedCredits) + ' used</strong> · ' + esc(u.remainingCredits) + ' remaining' +
-            '</span>' +
+      '</section>'
+    );
+  }
+
+  function renderUsageWidget(usage) {
+    var u = usage || {};
+    var used = Number(u.usedCredits) || 0;
+    var remaining = Number(u.remainingCredits) || 0;
+    var total = Number(u.monthlyCredits) || (used + remaining) || 0;
+    var pct = progressPct(used, total);
+
+    return (
+      '<article class="billing-card billing-card--usage">' +
+        '<div class="billing-usage-widget">' +
+          '<div class="billing-usage-widget__header">' +
+            '<h3 class="billing-section-title">Credits this month</h3>' +
+            '<span class="billing-usage-widget__pct">' + pct + '% used</span>' +
           '</div>' +
-          '<div class="billing-usage__track" role="progressbar" aria-valuenow="' + pct + '" aria-valuemin="0" aria-valuemax="100">' +
+          '<div class="billing-usage-widget__metrics">' +
+            '<div class="billing-usage-metric">' +
+              '<span class="billing-usage-metric__value">' + esc(used) + '</span>' +
+              '<span class="billing-usage-metric__label">Used</span>' +
+            '</div>' +
+            '<div class="billing-usage-metric billing-usage-metric--remaining">' +
+              '<span class="billing-usage-metric__value">' + esc(remaining) + '</span>' +
+              '<span class="billing-usage-metric__label">Remaining</span>' +
+            '</div>' +
+            '<div class="billing-usage-metric billing-usage-metric--total">' +
+              '<span class="billing-usage-metric__value">' + esc(total) + '</span>' +
+              '<span class="billing-usage-metric__label">Monthly limit</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="billing-usage__track" role="progressbar" aria-valuenow="' + pct + '" aria-valuemin="0" aria-valuemax="100" aria-label="Credit usage">' +
             '<div class="billing-usage__fill" style="width:' + pct + '%"></div>' +
           '</div>' +
         '</div>' +
@@ -118,13 +171,20 @@
     if (!next || !nextName || !benefits.length) return '';
 
     return (
-      '<article class="billing-card billing-card--upgrade">' +
-        '<h2 class="billing-card__title">Upgrade to ' + esc(nextName) + '</h2>' +
-        '<p class="billing-card__sub">Unlock:</p>' +
-        '<ul class="billing-upgrade-list">' +
-          benefits.map(function (b) { return '<li>✓ ' + esc(b) + '</li>'; }).join('') +
-        '</ul>' +
-        '<button type="button" class="plan-btn" id="' + esc(onUpgradeId) + '">Upgrade plan</button>' +
+      '<article class="billing-card billing-card--upgrade billing-card--upgrade-featured">' +
+        '<div class="billing-upgrade-inner">' +
+          '<div class="billing-upgrade-copy">' +
+            '<span class="billing-upgrade-eyebrow">Recommended upgrade</span>' +
+            '<h2 class="billing-upgrade-title">Upgrade to ' + esc(nextName) + '</h2>' +
+            '<p class="billing-upgrade-subtitle">' + esc(upgradeSubtitle(k)) + '</p>' +
+            '<ul class="billing-upgrade-features">' +
+              benefits.map(function (b) { return '<li>' + esc(b) + '</li>'; }).join('') +
+            '</ul>' +
+          '</div>' +
+          '<div class="billing-upgrade-cta">' +
+            '<button type="button" class="plan-btn billing-upgrade-btn" id="' + esc(onUpgradeId) + '">Upgrade to ' + esc(nextName) + '</button>' +
+          '</div>' +
+        '</div>' +
       '</article>'
     );
   }
@@ -149,10 +209,16 @@
     if (!list.length) {
       return (
         '<article class="billing-card billing-card--history">' +
-          '<h2 class="billing-card__title">Billing history</h2>' +
-          '<div class="billing-empty">' +
-            '<p class="billing-empty__title">No billing history yet.</p>' +
-            '<p class="billing-empty__text">Your first invoice will appear here.</p>' +
+          '<h2 class="billing-section-title">Billing history</h2>' +
+          '<div class="billing-empty billing-empty--illustrated">' +
+            '<div class="billing-empty__icon" aria-hidden="true">' +
+              '<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+                '<rect x="8" y="6" width="32" height="36" rx="4" stroke="currentColor" stroke-width="2"/>' +
+                '<path d="M16 16h16M16 24h16M16 32h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' +
+              '</svg>' +
+            '</div>' +
+            '<p class="billing-empty__title">No invoices yet</p>' +
+            '<p class="billing-empty__text">Your future payments and invoices<br>will appear here.</p>' +
           '</div>' +
         '</article>'
       );
@@ -178,7 +244,7 @@
 
     return (
       '<article class="billing-card billing-card--history">' +
-        '<h2 class="billing-card__title">Billing history</h2>' +
+        '<h2 class="billing-section-title">Billing history</h2>' +
         '<div class="billing-table-wrap">' +
           '<table class="billing-table">' +
             '<thead><tr><th>Date</th><th>Amount</th><th>Plan</th><th>Status</th><th>Invoice</th></tr></thead>' +
@@ -190,24 +256,33 @@
   }
 
   function renderPaymentMethod(pm, canPortal) {
-    var body;
-    if (pm && pm.display) {
-      var exp = pm.expMonth && pm.expYear
-        ? String(pm.expMonth).padStart(2, '0') + '/' + pm.expYear
-        : null;
-      body =
-        '<p class="billing-pm__brand">' + esc(pm.display) + '</p>' +
-        (exp ? '<p class="billing-pm__exp">Expires ' + esc(exp) + '</p>' : '');
-    } else {
-      body = '<p class="billing-empty-inline">No payment method on file</p>';
-    }
+    var hasPm = pm && (pm.display || pm.last4);
+    var display = formatPaymentDisplay(pm);
+    var exp = pm && pm.expMonth && pm.expYear
+      ? String(pm.expMonth).padStart(2, '0') + '/' + pm.expYear
+      : null;
+    var btnLabel = hasPm ? 'Update payment method' : 'Add payment method';
     var btn = canPortal
-      ? '<button type="button" class="plan-btn plan-btn--ghost" id="billingUpdatePaymentBtn">Update payment method</button>'
+      ? '<button type="button" class="plan-btn plan-btn--ghost billing-pm-btn" id="billingUpdatePaymentBtn">' + esc(btnLabel) + '</button>'
       : '';
+
+    var body = hasPm
+      ? '<div class="billing-pm-card">' +
+          '<div class="billing-pm-card__chip" aria-hidden="true">💳</div>' +
+          '<div class="billing-pm-card__details">' +
+            '<p class="billing-pm__brand">' + esc(display) + '</p>' +
+            (exp ? '<p class="billing-pm__exp">Expires ' + esc(exp) + '</p>' : '') +
+          '</div>' +
+        '</div>'
+      : '<div class="billing-pm-empty">' +
+          '<span class="billing-pm-empty__icon" aria-hidden="true">💳</span>' +
+          '<p class="billing-pm-empty__text">No payment method added yet</p>' +
+        '</div>';
 
     return (
       '<article class="billing-card billing-card--payment">' +
-        '<h2 class="billing-card__title">Payment method</h2>' + body + btn +
+        '<h2 class="billing-section-title">Payment method</h2>' +
+        body + btn +
       '</article>'
     );
   }
@@ -216,7 +291,8 @@
     if (!charge || !charge.date) return '';
     return (
       '<article class="billing-card billing-card--upcoming">' +
-        '<h2 class="billing-card__title">Upcoming charge</h2>' +
+        '<h2 class="billing-section-title">Upcoming charge</h2>' +
+        '<p class="billing-upcoming__label">Next payment</p>' +
         '<p class="billing-upcoming__amount">' + esc(charge.display || formatMoney(charge.amount, charge.currency)) + '</p>' +
         '<p class="billing-upcoming__date">' + esc(formatBillingDate(charge.date)) + '</p>' +
       '</article>'
@@ -229,30 +305,32 @@
     var st = String(s.status || '').toLowerCase();
     var isActive = st === 'active' || st === 'trialing';
     var cancelScheduled = Boolean(s.cancelAtPeriodEnd);
+    var planKey = String(s.plan || 'free').toLowerCase();
 
-    var inner = '';
+    var actionsHtml = '';
     if (cancelScheduled) {
-      inner =
-        '<p class="billing-actions__notice">Subscription will end on:</p>' +
-        '<p class="billing-actions__date">' + esc(formatBillingDate(s.cancelAt || s.currentPeriodEnd)) + '</p>' +
+      actionsHtml =
+        '<p class="billing-manage__end-date">Ends on <strong>' + esc(formatBillingDate(s.cancelAt || s.currentPeriodEnd)) + '</strong></p>' +
         (a.canOpenPortal
-          ? '<button type="button" class="plan-btn" id="billingResumeBtn">Resume subscription</button>'
+          ? '<button type="button" class="plan-btn billing-manage-btn" id="billingResumeBtn">Resume subscription</button>'
           : '');
-    } else if (isActive && s.plan !== 'free') {
-      inner =
-        (a.canOpenPortal
-          ? '<button type="button" class="plan-btn plan-btn--ghost billing-btn--danger" id="billingCancelBtn">Cancel subscription</button>'
-          : '') +
-        '<p class="billing-actions__hint">Your subscription remains active until the end of the billing period.</p>';
-    } else if (s.plan === 'free') {
-      inner = '<p class="billing-actions__hint">You are on the free tier. Upgrade anytime from the Plans section or the upgrade card above.</p>';
+    } else if (isActive && planKey !== 'free' && a.canOpenPortal) {
+      actionsHtml = '<button type="button" class="plan-btn plan-btn--ghost billing-manage-btn billing-manage-btn--danger" id="billingCancelBtn">Cancel subscription</button>';
+    } else if (planKey === 'free') {
+      actionsHtml = '<p class="billing-manage__hint">Upgrade from the card above to start a paid subscription.</p>';
     } else {
-      inner = '<p class="billing-actions__hint">Manage your subscription through the billing portal when available.</p>';
+      actionsHtml = '<p class="billing-manage__hint">Subscription changes are managed through the billing portal.</p>';
     }
 
     return (
-      '<article class="billing-card billing-card--actions">' +
-        '<h2 class="billing-card__title">Subscription management</h2>' + inner +
+      '<article class="billing-card billing-card--manage">' +
+        '<div class="billing-manage">' +
+          '<div class="billing-manage__copy">' +
+            '<h2 class="billing-section-title">Manage subscription</h2>' +
+            '<p class="billing-manage__desc">Cancel or resume your subscription. Your plan stays active until the end of the billing period.</p>' +
+          '</div>' +
+          '<div class="billing-manage__actions">' + actionsHtml + '</div>' +
+        '</div>' +
       '</article>'
     );
   }
@@ -406,18 +484,22 @@
           '</div>'
         : '';
 
+      var upcomingHtml = renderUpcoming(d.upcomingCharge);
+      var bottomGridClass = upcomingHtml
+        ? 'billing-grid billing-grid--pair'
+        : 'billing-grid billing-grid--single';
+
       target.innerHTML =
         '<div class="billing-center">' +
           errorBanner +
           renderPaymentFailure(d.paymentFailure) +
-          '<div class="billing-grid billing-grid--top">' +
-            renderOverview(sub, d.usage) +
-            renderUpgrade(sub.plan, upgradeId) +
-          '</div>' +
+          renderOverviewStats(sub, d.usage) +
+          renderUsageWidget(d.usage) +
+          renderUpgrade(sub.plan, upgradeId) +
           renderHistory(d.billingHistory) +
-          '<div class="billing-grid billing-grid--bottom">' +
+          '<div class="' + bottomGridClass + '">' +
             renderPaymentMethod(d.paymentMethod, d.actions && d.actions.canOpenPortal) +
-            renderUpcoming(d.upcomingCharge) +
+            upcomingHtml +
           '</div>' +
           renderActions(sub, d.actions) +
         '</div>';
