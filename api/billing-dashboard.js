@@ -170,6 +170,45 @@ async function fetchStripeBillingExtras(subRow) {
   }
 }
 
+/** Safe empty shell — frontend can always render when API returns an error status. */
+export function emptyBillingPayload(errorMessage, partial = {}) {
+  const sub = partial.subscription || {};
+  const usage = partial.usage || {};
+  return {
+    ok: false,
+    error: errorMessage || 'Unable to load billing data',
+    subscription: {
+      plan: sub.plan || 'free',
+      planName: sub.planName || 'Free',
+      planTagline: sub.planTagline || null,
+      price: sub.price || { amount: 0, currency: 'EUR', display: '€0', periodLabel: null },
+      billingPeriod: sub.billingPeriod || 'monthly',
+      status: sub.status || 'free',
+      nextRenewalDate: sub.nextRenewalDate || null,
+      currentPeriodStart: sub.currentPeriodStart || null,
+      currentPeriodEnd: sub.currentPeriodEnd || null,
+      cancelAtPeriodEnd: Boolean(sub.cancelAtPeriodEnd),
+      cancelAt: sub.cancelAt || null,
+      stripeCustomerId: sub.stripeCustomerId || null,
+      stripeSubscriptionId: sub.stripeSubscriptionId || null
+    },
+    usage: {
+      monthlyCredits: Number(usage.monthlyCredits) || 0,
+      usedCredits: Number(usage.usedCredits) || 0,
+      remainingCredits: Number(usage.remainingCredits) || 0
+    },
+    paymentMethod: partial.paymentMethod ?? null,
+    billingHistory: Array.isArray(partial.billingHistory) ? partial.billingHistory : [],
+    upcomingCharge: partial.upcomingCharge ?? null,
+    paymentFailure: partial.paymentFailure ?? null,
+    actions: partial.actions || {
+      canOpenPortal: false,
+      canRetryPayment: false,
+      canUpgrade: true
+    }
+  };
+}
+
 export async function buildBillingDashboardPayload(email) {
   if (!isBillingDbConfigured()) {
     return { error: 'DATABASE_URL is not configured' };

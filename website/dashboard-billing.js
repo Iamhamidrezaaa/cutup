@@ -341,11 +341,44 @@
     return d;
   }
 
-  function render(ctx) {
+  function renderErrorCard(message, detail) {
+    return (
+      '<article class="billing-card billing-card--error">' +
+        '<h2 class="billing-card__title">Unable to load billing data</h2>' +
+        '<p class="billing-empty__text">' + esc(message || 'Please refresh the page or try again in a moment.') + '</p>' +
+        (detail ? '<p class="billing-empty__text billing-error-detail">' + esc(detail) + '</p>' : '') +
+        '<button type="button" class="plan-btn plan-btn--ghost" id="billingRetryLoadBtn">Try again</button>' +
+      '</article>'
+    );
+  }
+
+  function normalizePayload(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    return {
+      subscription: raw.subscription || {},
+      usage: raw.usage || { monthlyCredits: 0, usedCredits: 0, remainingCredits: 0 },
+      paymentMethod: raw.paymentMethod ?? null,
+      billingHistory: Array.isArray(raw.billingHistory) ? raw.billingHistory : [],
+      upcomingCharge: raw.upcomingCharge ?? null,
+      paymentFailure: raw.paymentFailure ?? null,
+      actions: raw.actions || {},
+      error: raw.error || null,
+      ok: raw.ok !== false
+    };
+  }
+
+  function renderBillingCenter(ctx) {
     var target = ctx && ctx.target;
     if (!target) return;
 
-    if (!ctx.data) {
+    var loadState = ctx.loadState || (ctx.data ? 'ready' : 'idle');
+    console.log('[billing]', {
+      loadState: loadState,
+      payload: ctx.data,
+      error: ctx.loadError || null
+    });
+
+    if (loadState === 'loading') {
       target.innerHTML =
         '<div class="billing-center billing-center--loading">' +
           '<p class="dashboard-muted-loading">Loading billing details…</p>' +
@@ -353,45 +386,84 @@
       return;
     }
 
-    var d = ctx.data;
-    var sub = d.subscription || {};
-    var upgradeId = 'billingUpgradePlanBtn';
+    var d = normalizePayload(ctx.data);
+    if (!d || !d.subscription) {
+      target.innerHTML =
+        '<div class="billing-center">' + renderErrorCard(ctx.loadError || 'Unable to load billing data') + '</div>';
+      target.querySelector('#billingRetryLoadBtn')?.addEventListener('click', function () {
+        if (typeof ctx.onRetryLoad === 'function') void ctx.onRetryLoad();
+      });
+      return;
+    }
 
-    target.innerHTML =
-      '<div class="billing-center">' +
-        renderPaymentFailure(d.paymentFailure) +
-        '<div class="billing-grid billing-grid--top">' +
-          renderOverview(sub, d.usage) +
-          renderUpgrade(sub.plan, upgradeId) +
-        '</div>' +
-        renderHistory(d.billingHistory) +
-        '<div class="billing-grid billing-grid--bottom">' +
-          renderPaymentMethod(d.paymentMethod, d.actions && d.actions.canOpenPortal) +
-          renderUpcoming(d.upcomingCharge) +
-        '</div>' +
-        renderActions(sub, d.actions) +
-      '</div>';
+    try {
+      var sub = d.subscription || {};
+      var upgradeId = 'billingUpgradePlanBtn';
+      var errorBanner = (!d.ok || d.error)
+        ? '<div class="billing-alert billing-alert--warn" role="status">' +
+            '<p>Some billing details could not be loaded. Showing available information.</p>' +
+            (d.error ? '<p class="billing-error-detail">' + esc(d.error) + '</p>' : '') +
+          '</div>'
+        : '';
 
-    bindActions(ctx);
+      target.innerHTML =
+        '<div class="billing-center">' +
+          errorBanner +
+          renderPaymentFailure(d.paymentFailure) +
+          '<div class="billing-grid billing-grid--top">' +
+            renderOverview(sub, d.usage) +
+            renderUpgrade(sub.plan, upgradeId) +
+          '</div>' +
+          renderHistory(d.billingHistory) +
+          '<div class="billing-grid billing-grid--bottom">' +
+            renderPaymentMethod(d.paymentMethod, d.actions && d.actions.canOpenPortal) +
+            renderUpcoming(d.upcomingCharge) +
+          '</div>' +
+          renderActions(sub, d.actions) +
+        '</div>';
+
+      bindActions(ctx);
+    } catch (err) {
+      console.error('[billing] render failed', err);
+      target.innerHTML =
+        '<div class="billing-center">' +
+          renderErrorCard('Unable to load billing data', err && err.message ? err.message : null) +
+        '</div>';
+      target.querySelector('#billingRetryLoadBtn')?.addEventListener('click', function () {
+        if (typeof ctx.onRetryLoad === 'function') void ctx.onRetryLoad();
+      });
+    }
   }
 
   async function load(ctx) {
-    if (!ctx.session || !ctx.apiBase) return null;
+    if (!ctx.session || !ctx.apiBase) {
+      return { ok: false, status: 0, error: 'no_session', data: null };
+    }
     try {
       var url = ctx.apiBase + '/api/subscription?action=billing&session=' + encodeURIComponent(ctx.session);
-      var headers = { 'X-Session-Id': ctx.session };
-      var r = await fetch(url, { headers: headers });
+      var r = await fetch(url, { headers: { 'X-Session-Id': ctx.session } });
       var data = await r.json().catch(function () { return null; });
-      if (!r.ok) return null;
-      return data;
-    } catch (_e) {
-      return null;
+      console.log('[billing] fetch', { status: r.status, ok: r.ok, body: data });
+      if (!r.ok) {
+        return {
+          ok: false,
+          status: r.status,
+          error: (data && (data.error || data.message)) || ('HTTP ' + r.status),
+          data: data && data.subscription ? data : null
+        };
+      }
+      return { ok: true, status: r.status, error: null, data: data };
+    } catch (err) {
+      console.error('[billing] fetch error', err);
+      return { ok: false, status: 0, error: err && err.message ? err.message : 'network_error', data: null };
     }
   }
 
   window.CutupBillingDashboard = {
     load: load,
-    render: render,
-    formatBillingDate: formatBillingDate
+    render: renderBillingCenter,
+    renderBillingCenter: renderBillingCenter,
+    formatBillingDate: formatBillingDate,
+    normalizePayload: normalizePayload
   };
 })();

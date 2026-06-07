@@ -3473,6 +3473,29 @@
   border: 1px solid rgba(239, 68, 68, 0.25);
 }
 
+.billing-alert--warn {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 4px;
+}
+
+.billing-alert--warn p {
+  margin: 0;
+  font-size: 14px;
+  color: #92400e;
+}
+
+.billing-card--error {
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.billing-error-detail {
+  font-size: 13px !important;
+  color: #94a3b8 !important;
+}
+
 .billing-alert__title {
   margin: 0 0 8px;
   font-size: 16px;

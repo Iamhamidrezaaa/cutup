@@ -9,7 +9,7 @@ import {
   PLAN_LABELS,
   PLAN_CREDITS
 } from './plans/permissions.js';
-import { buildBillingDashboardPayload } from './billing-dashboard.js';
+import { buildBillingDashboardPayload, emptyBillingPayload } from './billing-dashboard.js';
 import {
   isBillingDbConfigured,
   ensureUserByEmail,
@@ -229,11 +229,16 @@ export default async function handler(req, res) {
     }
 
     if (method === 'GET' && action === 'billing') {
-      const payload = await buildBillingDashboardPayload(userId);
-      if (payload.error) {
-        return res.status(503).json({ error: payload.error });
+      try {
+        const payload = await buildBillingDashboardPayload(userId);
+        if (payload.error) {
+          return res.status(503).json(emptyBillingPayload(payload.error));
+        }
+        return res.json({ ok: true, ...payload });
+      } catch (billingErr) {
+        console.error('[subscription] action=billing failed', billingErr);
+        return res.status(500).json(emptyBillingPayload(billingErr?.message || 'Billing dashboard error'));
       }
-      return res.json(payload);
     }
 
     if (method === 'GET' && action === 'check') {

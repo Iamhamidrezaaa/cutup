@@ -89,6 +89,8 @@ let subscriptionInfo = null;
 let plansCache = [];
 let historyCache = [];
 let billingDashboardCache = null;
+let billingDashboardLoadState = 'idle';
+let billingDashboardLoadError = null;
 let offersCache = [];
 let offersResolvedState = null;
 let dashboardHighlightPlan = null;
@@ -488,6 +490,9 @@ function setupNavigation() {
       document.getElementById(`${target}-section`)?.classList.add('active');
       if (target === 'profile') {
         void renderProfileSection();
+      }
+      if (target === 'financial') {
+        void ensureBillingSectionReady();
       }
       if (target === 'projects' && window.CutupDashboardProjects?.refresh) {
         void window.CutupDashboardProjects.refresh();
@@ -1582,19 +1587,84 @@ async function loadPlans() {
   plansCache = response.ok ? (data.plans || []) : [];
 }
 
+function buildBillingFallbackFromSubscriptionInfo(sub) {
+  if (!sub) return null;
+  const planKey = String(sub.plan || 'free').toLowerCase();
+  const credits = creditsFromSubscription(sub);
+  const PP = window.CutupPlanPermissions;
+  const monthly = Number(PP?.PLAN_PRICES?.[planKey]?.monthly ?? 0);
+  const priceDisplay = monthly > 0 ? `€${monthly.toFixed(2)} / month` : '€0';
+  return {
+    ok: false,
+    error: 'billing_api_unavailable',
+    subscription: {
+      plan: planKey,
+      planName: PP?.displayPlanName?.(planKey) || displayPlanTitle(sub.plan, sub.planName),
+      planTagline: sub.planTagline || null,
+      price: { amount: monthly, currency: 'EUR', display: priceDisplay, periodLabel: monthly > 0 ? 'month' : null },
+      billingPeriod: sub.subscription?.billingPeriod || 'monthly',
+      status: sub.subscription?.status || (planKey === 'free' ? 'free' : 'active'),
+      nextRenewalDate: sub.subscription?.endDate || null,
+      currentPeriodStart: sub.subscription?.startDate || null,
+      currentPeriodEnd: sub.subscription?.endDate || null,
+      cancelAtPeriodEnd: false,
+      cancelAt: null,
+      stripeCustomerId: sub.subscription?.stripeCustomerId || null,
+      stripeSubscriptionId: sub.subscription?.stripeSubscriptionId || null
+    },
+    usage: {
+      monthlyCredits: credits.limit,
+      usedCredits: credits.used,
+      remainingCredits: credits.remaining
+    },
+    paymentMethod: null,
+    billingHistory: [],
+    upcomingCharge: null,
+    paymentFailure: null,
+    actions: { canOpenPortal: false, canRetryPayment: false, canUpgrade: planKey !== 'business' }
+  };
+}
+
 async function loadBillingDashboard() {
+  billingDashboardLoadState = 'loading';
+  billingDashboardLoadError = null;
+  let result = null;
   if (window.CutupBillingDashboard?.load) {
-    billingDashboardCache = await window.CutupBillingDashboard.load({
+    result = await window.CutupBillingDashboard.load({
       session: currentSession,
       apiBase: API_BASE_URL
     });
+  } else {
+    const { response, data } = await apiGet(
+      `${API_BASE_URL}/api/subscription?action=billing&session=${currentSession}`,
+      { headers: { 'X-Session-Id': currentSession } }
+    );
+    result = {
+      ok: response.ok,
+      status: response.status,
+      error: response.ok ? null : (data?.error || `HTTP ${response.status}`),
+      data: response.ok ? data : (data?.subscription ? data : null)
+    };
+    console.log('[billing] fetch', { status: response.status, ok: response.ok, body: data });
+  }
+
+  if (result?.ok && result.data) {
+    billingDashboardCache = result.data;
+    billingDashboardLoadState = 'ready';
     return;
   }
-  const { response, data } = await apiGet(
-    `${API_BASE_URL}/api/subscription?action=billing&session=${currentSession}`,
-    { headers: { 'X-Session-Id': currentSession } }
-  );
-  billingDashboardCache = response.ok ? data : null;
+
+  billingDashboardLoadError = result?.error || 'billing_load_failed';
+  billingDashboardCache = result?.data || buildBillingFallbackFromSubscriptionInfo(subscriptionInfo);
+  billingDashboardLoadState = billingDashboardCache ? 'ready' : 'error';
+  console.warn('[billing] load failed', { error: billingDashboardLoadError, status: result?.status, fallback: Boolean(billingDashboardCache) });
+}
+
+async function ensureBillingSectionReady({ forceReload = false } = {}) {
+  if (forceReload || billingDashboardLoadState === 'idle' || billingDashboardLoadState === 'error') {
+    await loadBillingDashboard();
+  }
+  renderBillingSection();
 }
 
 async function loadSavedOutputs() {
@@ -1633,6 +1703,14 @@ async function loadDashboardHeavy({ silent = false, skipUserProfile = false } = 
   if (!skipUserProfile) tasks.push(loadUserProfile());
   tasks.push(loadSubscriptionInfo(), loadUsageHistory(), loadPlans(), loadSavedOutputs(), loadOffers(), loadBillingDashboard());
   await Promise.all(tasks);
+  if ((!billingDashboardCache || billingDashboardLoadState === 'error') && subscriptionInfo) {
+    const billingFallback = buildBillingFallbackFromSubscriptionInfo(subscriptionInfo);
+    if (billingFallback) {
+      billingDashboardCache = billingFallback;
+      billingDashboardLoadState = 'ready';
+      console.warn('[billing] using subscriptionInfo fallback after parallel load');
+    }
+  }
   initProjectsDashboard();
   if (window.__ONBOARDING_ACTIVE__) {
     pendingDashboardSectionRender = true;
@@ -1806,7 +1884,8 @@ async function initDashboard() {
     window.__ONBOARDING_ACTIVE__ = false;
     cleanDashboardProfileQueryParams();
     await runHeavySafe();
-    const hashSec = window.location.hash.replace(/^#/, '');
+    const rawHash = window.location.hash.replace(/^#/, '');
+    const hashSec = rawHash === 'billing' ? 'financial' : rawHash;
     const urlParams = new URLSearchParams(window.location.search);
     dashboardHighlightPlan = urlParams.get('highlightPlan');
     if (hashSec && document.querySelector(`.nav-item[data-section="${hashSec}"]`)) {
@@ -2519,15 +2598,23 @@ function renderBillingSection() {
   const target = document.getElementById('financialInfo');
   if (!target) return;
 
-  if (window.CutupBillingDashboard?.render) {
-    window.CutupBillingDashboard.render({
+  if (window.CutupBillingDashboard?.renderBillingCenter || window.CutupBillingDashboard?.render) {
+    const renderFn = window.CutupBillingDashboard.renderBillingCenter || window.CutupBillingDashboard.render;
+    renderFn({
       target,
       data: billingDashboardCache,
+      loadState: billingDashboardLoadState,
+      loadError: billingDashboardLoadError,
       subscriptionInfo,
       session: currentSession,
       apiBase: API_BASE_URL,
       apiPost,
       showBanner: showDashboardBanner,
+      onRetryLoad: async () => {
+        billingDashboardLoadState = 'loading';
+        renderBillingSection();
+        await ensureBillingSectionReady({ forceReload: true });
+      },
       onUpgrade: (planKey) => {
         if (planKey && typeof dashboardCheckoutForPlan === 'function') {
           dashboardCheckoutForPlan(planKey);
