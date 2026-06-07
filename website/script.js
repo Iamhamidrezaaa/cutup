@@ -1464,11 +1464,48 @@ function cutupHandlePlanSelection(planKey, options = {}) {
   return Promise.resolve({ ok: true, route: 'checkout' });
 }
 
+async function runPricingUpgradeClick(plan, source = 'pricing') {
+  const planKey = String(plan || '').trim().toLowerCase();
+  if (!planKey || !CUTUP_LANDING_PAID_PLANS.includes(planKey)) return;
+  try {
+    if (!getCutupSessionId() && typeof showAuthTransition === 'function') {
+      showAuthTransition({
+        title: 'Signing you in',
+        text: 'Redirecting to Google…',
+        sub: ''
+      });
+    }
+    await cutupHandlePlanSelection(planKey, { source });
+  } catch (err) {
+    console.error('[script] plan selection failed', err);
+    if (typeof hideAuthTransition === 'function') hideAuthTransition();
+    alert('Could not start sign-in. Please try again.');
+  }
+}
+
+function bindPricingUpgradeCta(btn, planKey) {
+  if (!btn || btn.dataset.cutupUpgradeBound === '1') return;
+  btn.dataset.cutupUpgradeBound = '1';
+  btn.addEventListener('click', (e) => {
+    if (btn.classList.contains('disabled-plan-btn')) return;
+    if (btn.getAttribute('aria-disabled') === 'true') return;
+    e.preventDefault();
+    e.stopPropagation();
+    void runPricingUpgradeClick(planKey, 'pricing');
+  });
+}
+
 function setupLandingPricingCheckoutIntercept() {
-  if (!document.getElementById('heroUrlInput')) return;
+  const hasPricing =
+    document.getElementById('pricing') ||
+    document.querySelector('.pricing-compare') ||
+    document.querySelector('a.pricing-dashboard-cta');
+  if (!hasPricing) return;
+  if (document.documentElement.dataset.cutupPricingIntercept === '1') return;
+  document.documentElement.dataset.cutupPricingIntercept = '1';
   document.addEventListener(
     'click',
-    async (e) => {
+    (e) => {
       const a = e.target.closest && e.target.closest('a.pricing-dashboard-cta');
       if (!a) return;
       if (a.classList.contains('disabled-plan-btn')) return;
@@ -1482,24 +1519,16 @@ function setupLandingPricingCheckoutIntercept() {
 
       e.preventDefault();
       e.stopPropagation();
-
-      try {
-        if (!getCutupSessionId() && typeof showAuthTransition === 'function') {
-          showAuthTransition({
-            title: 'Signing you in',
-            text: 'Redirecting to Google…',
-            sub: ''
-          });
-        }
-        await cutupHandlePlanSelection(plan, { source: 'pricing' });
-      } catch (err) {
-        console.error('[script] plan selection failed', err);
-        if (typeof hideAuthTransition === 'function') hideAuthTransition();
-        alert('Could not start sign-in. Please try again.');
-      }
+      void runPricingUpgradeClick(plan, 'pricing');
     },
     true
   );
+  document.querySelectorAll('a.pricing-dashboard-cta[data-cutup-plan]').forEach((a) => {
+    const plan = (a.getAttribute('data-cutup-plan') || '').trim();
+    if (plan && CUTUP_LANDING_PAID_PLANS.includes(plan)) {
+      bindPricingUpgradeCta(a, plan);
+    }
+  });
 }
 
 function updateCutupSocialAuthHints() {
@@ -2736,8 +2765,11 @@ function applyCutupPricingPlanLocks(user) {
         if (getCutupSessionId() && window.CutupPlanCheckout?.buildCheckoutUrl) {
           btn.setAttribute('href', window.CutupPlanCheckout.buildCheckoutUrl(planKey, { source: 'pricing' }));
         } else {
-          btn.setAttribute('href', `#pricing-upgrade-${planKey}`);
+          btn.setAttribute('href', 'javascript:void(0)');
         }
+      }
+      if (btn.classList.contains('pricing-dashboard-cta')) {
+        bindPricingUpgradeCta(btn, planKey);
       }
       if (btn.dataset.cutupOriginalLabel) {
         btn.textContent = btn.dataset.cutupOriginalLabel;
@@ -4379,7 +4411,8 @@ function setMonetizationUpgradeHref() {
   if (localStorage.getItem('cutup_session') && window.CutupPlanCheckout?.buildCheckoutUrl) {
     a.href = window.CutupPlanCheckout.buildCheckoutUrl(plan, { source: 'pricing' });
   } else {
-    a.href = '#pricing-upgrade';
+    a.href = 'javascript:void(0)';
+    bindPricingUpgradeCta(a, plan);
   }
 }
 
