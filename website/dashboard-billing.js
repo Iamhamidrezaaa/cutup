@@ -16,6 +16,10 @@
       .replace(/'/g, '&#39;');
   }
 
+  function apiRoot(ctx) {
+    return ctx && ctx.apiBase ? ctx.apiBase : '';
+  }
+
   function formatBillingDate(value, short) {
     if (!value) return '—';
     var d = new Date(value);
@@ -380,7 +384,7 @@
     if (!root) return;
 
     async function openPortal() {
-      if (!ctx.session || !ctx.apiBase) return;
+      if (!ctx.session) return;
       try {
         var res = await (ctx.apiPost || fetchPortal)(ctx);
         if (res?.url) {
@@ -415,7 +419,7 @@
         if (!id || !ctx.session) return;
         btn.disabled = true;
         try {
-          var ir = await fetch(ctx.apiBase + '/api/invoices/' + encodeURIComponent(id), {
+          var ir = await fetch(apiRoot(ctx) + '/api/invoices/' + encodeURIComponent(id), {
             headers: { 'X-Session-Id': ctx.session }
           });
           var inv = await ir.json().catch(function () { return {}; });
@@ -442,7 +446,7 @@
   }
 
   async function fetchPortal(ctx) {
-    var r = await fetch(ctx.apiBase + '/api/stripe/portal', {
+    var r = await fetch(apiRoot(ctx) + '/api/stripe/portal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Session-Id': ctx.session }
     });
@@ -499,7 +503,7 @@
 
       bindActions(ctx);
       mountBillingActivityFeed(ctx.activityFeed);
-      root.querySelector('#billingOpenLibraryBtn')?.addEventListener('click', function () {
+      target.querySelector('#billingOpenLibraryBtn')?.addEventListener('click', function () {
         if (typeof ctx.onOpenLibrary === 'function') ctx.onOpenLibrary();
       });
     } catch (err) {
@@ -512,11 +516,11 @@
   }
 
   async function load(ctx) {
-    if (!ctx.session || !ctx.apiBase) {
+    if (!ctx.session) {
       return { ok: false, status: 0, error: 'no_session', data: null };
     }
     try {
-      var url = ctx.apiBase + '/api/subscription?action=billing&session=' + encodeURIComponent(ctx.session);
+      var url = apiRoot(ctx) + '/api/subscription?action=billing&session=' + encodeURIComponent(ctx.session);
       var r = await fetch(url, { headers: { 'X-Session-Id': ctx.session } });
       var data = await r.json().catch(function () { return null });
       if (!r.ok) {
