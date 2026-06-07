@@ -99,6 +99,12 @@
         { headers: { 'X-Session-Id': state.session } }
       );
       if (!response.ok) {
+        if (response.status === 403 && data?.error) {
+          state.showBanner(data.error, 'error');
+          state.items = [];
+          state.total = 0;
+          return;
+        }
         const msg = [data?.message, data?.hint, data?.error].filter(Boolean).join(' — ') || 'load_failed';
         throw new Error(msg);
       }

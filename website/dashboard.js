@@ -197,6 +197,38 @@ function formatMonthlyVideosLineForPlanKey(planKey) {
   return `${subscriptionMonthlyGenLimit({ plan: k })} videos per month`;
 }
 
+function creditsFromSubscription(sub) {
+  const c = sub?.credits;
+  if (c && Number.isFinite(Number(c.limit))) {
+    return {
+      used: Math.max(0, Math.floor(Number(c.used) || 0)),
+      limit: Math.max(0, Math.floor(Number(c.limit) || 0)),
+      remaining: Math.max(0, Math.floor(Number(c.remaining) || 0))
+    };
+  }
+  const limit = subscriptionMonthlyGenLimit(sub);
+  const used = generationsUsedFromSubscription(sub);
+  return { used, limit, remaining: Math.max(0, limit - used) };
+}
+
+function formatRenewalCountdown(endDate) {
+  if (!endDate) return null;
+  const end = new Date(endDate);
+  if (Number.isNaN(end.getTime())) return null;
+  const diff = end.getTime() - Date.now();
+  if (diff <= 0) return 'Renewal pending';
+  const days = Math.ceil(diff / (24 * 3600 * 1000));
+  return days === 1 ? 'Renews in 1 day' : `Renews in ${days} days`;
+}
+
+function planUpgradeHint(planKey) {
+  const k = String(planKey || 'free').toLowerCase();
+  if (k === 'free') return 'Upgrade to Pro for MP4 exports';
+  if (k === 'starter') return 'Upgrade to Pro for MP4 exports and creator styles';
+  if (k === 'pro') return 'Upgrade to Business for team usage and priority support';
+  return null;
+}
+
 function nextCalendarResetLabelFromUsage(usage) {
   const m = usage?.monthly;
   if (!m || m.year == null || m.month == null) return null;
@@ -1715,20 +1747,18 @@ function renderOverview() {
   if (window.__ONBOARDING_ACTIVE__) return;
   if (!subscriptionInfo) return;
   const usage = subscriptionInfo.usage || {};
-  const genLimit = subscriptionMonthlyGenLimit(subscriptionInfo);
-  const genUsed = generationsUsedFromSubscription(subscriptionInfo);
-  const remainingVideos = isTopTierPlanKey(subscriptionInfo.plan)
-    ? 'Included'
-    : String(Math.max(0, genLimit - genUsed));
+  const credits = creditsFromSubscription(subscriptionInfo);
+  const genLimit = credits.limit;
+  const genUsed = credits.used;
+  const remainingVideos = String(credits.remaining);
   const audioCount = usage.downloads?.audio?.count || 0;
   const audioLimit = usage.downloads?.audio?.limit;
   const videoCount = usage.downloads?.video?.count || 0;
   const videoLimit = usage.downloads?.video?.limit;
-  const renewal = subscriptionInfo.subscription?.endDate
-    ? formatDateTime(subscriptionInfo.subscription.endDate)
-    : 'No scheduled renewal';
-  const dailyMinutes = usage.daily?.minutes || 0;
-  const dailyLimit = usage.dailyLimit;
+  const renewalCountdown = formatRenewalCountdown(subscriptionInfo.subscription?.endDate);
+  const planKey = String(subscriptionInfo.plan || 'free').toLowerCase();
+  const upgradeHint = planUpgradeHint(planKey);
+  const showUpgradeBtn = planKey !== 'business';
 
   renderInsights();
   renderOffersUi();
@@ -1736,28 +1766,35 @@ function renderOverview() {
 
   document.getElementById('remainingVideos').textContent = remainingVideos;
   const statLbl = document.getElementById('statRemainingLabel');
-  if (statLbl) statLbl.textContent = 'Videos left this month';
+  if (statLbl) statLbl.textContent = 'Credits remaining';
   document.getElementById('audioDownloadUsage').textContent = `${audioCount}${audioLimit != null ? `/${audioLimit}` : ''}`;
   document.getElementById('videoDownloadUsage').textContent = `${videoCount}${videoLimit != null ? `/${videoLimit}` : ''}`;
 
   const currentPlanCard = document.getElementById('currentPlanCard');
   if (currentPlanCard) {
-    const showUpgrade = ['free', 'starter'].includes((subscriptionInfo.plan || '').toLowerCase());
-    const dailyMeter =
-      shouldShowDailyUsageMeter(usage) && dailyLimit != null
-        ? `<p>Daily usage meter: <strong>${dailyMinutes}/${dailyLimit}</strong> (anti-abuse)</p>`
-        : '';
     currentPlanCard.innerHTML = `
-      <h2>Current plan</h2>
-      <p><strong>${displayPlanTitle(subscriptionInfo.plan, subscriptionInfo.planName)}</strong> · ${subscriptionInfo.subscription?.billingPeriod || 'monthly'}</p>
-      <p>Status: <strong>Active</strong></p>
-      <p>Included: <strong>${formatMonthlyVideosLineForPlanKey(subscriptionInfo.plan)}</strong> (each successful run counts as one)</p>
-      <p>This month: <strong>${genUsed}</strong> of <strong>${genLimit}</strong> used</p>
-      <p>Audio downloads: <strong>${audioCount}${audioLimit != null ? `/${audioLimit}` : ' (unlimited)'}</strong></p>
-      <p>Video downloads: <strong>${videoCount}${videoLimit != null ? `/${videoLimit}` : ' (unlimited)'}</strong></p>
-      <p>Renewal/expiry: <strong>${renewal}</strong></p>
-      ${dailyMeter}
-      ${showUpgrade ? `<button class="plan-btn" id="overviewUpgradeBtn">Upgrade plan</button>` : ''}
+      <div class="plan-status-card">
+        <h2>Your plan</h2>
+        <div class="plan-status-card__row">
+          <span class="plan-status-card__label">Plan</span>
+          <strong class="plan-status-card__value">${escapeHtml(displayPlanTitle(subscriptionInfo.plan, subscriptionInfo.planName))}</strong>
+        </div>
+        <div class="plan-status-card__row">
+          <span class="plan-status-card__label">Credits remaining</span>
+          <strong class="plan-status-card__value">${credits.remaining} / ${credits.limit}</strong>
+        </div>
+        <div class="plan-status-card__row">
+          <span class="plan-status-card__label">Monthly limit</span>
+          <strong class="plan-status-card__value">${credits.limit} credits</strong>
+        </div>
+        ${renewalCountdown
+          ? `<div class="plan-status-card__row"><span class="plan-status-card__label">Renewal</span><strong class="plan-status-card__value">${escapeHtml(renewalCountdown)}</strong></div>`
+          : ''}
+        ${upgradeHint
+          ? `<p class="plan-status-card__hint">${escapeHtml(upgradeHint)}</p>`
+          : ''}
+        ${showUpgradeBtn ? `<button class="plan-btn" id="overviewUpgradeBtn">Upgrade plan</button>` : ''}
+      </div>
     `;
     document.getElementById('overviewUpgradeBtn')?.addEventListener('click', () => {
       document.querySelector('.nav-item[data-section="subscription"]')?.click();

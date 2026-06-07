@@ -4,7 +4,8 @@ import {
   tryClaimStripeEventStandalone,
   releaseStripeWebhookClaim,
   syncPaymentSuccessByExternalId,
-  resolveUserIdForAnalytics
+  resolveUserIdForAnalytics,
+  markSubscriptionPastDueByStripeSubscriptionId
 } from './billing-repository.js';
 import { recordServerAuditEvent } from './audit-internal.js';
 import {
@@ -142,6 +143,9 @@ export default async function handler(req, res) {
         const plan = planKeyFromStripeMetadata(sub.metadata?.plan);
         const custId = typeof sub.customer === 'string' ? sub.customer : sub.customer?.id;
         const periodEnd = new Date(sub.current_period_end * 1000);
+        const periodStart = sub.current_period_start
+          ? new Date(sub.current_period_start * 1000)
+          : null;
         if (email) {
           await applyStripeSubscriptionRenewal(
             email,
@@ -149,7 +153,8 @@ export default async function handler(req, res) {
             custId || null,
             sub.id,
             periodEnd,
-            sub.status === 'active' ? 'active' : 'active'
+            sub.status === 'active' ? 'active' : 'active',
+            periodStart
           );
           console.log('[stripe-webhook] invoice.paid', plan, email, inv.id);
         } else {
@@ -168,9 +173,17 @@ export default async function handler(req, res) {
         }
         break;
       }
-      case 'invoice.payment_failed':
-        console.warn('[stripe-webhook] invoice.payment_failed', event.data.object?.id);
+      case 'invoice.payment_failed': {
+        const inv = event.data.object;
+        const subId = typeof inv.subscription === 'string' ? inv.subscription : inv.subscription?.id;
+        if (subId) {
+          await markSubscriptionPastDueByStripeSubscriptionId(subId);
+          console.warn('[stripe-webhook] invoice.payment_failed -> past_due', subId, inv.id);
+        } else {
+          console.warn('[stripe-webhook] invoice.payment_failed (no subscription)', inv?.id);
+        }
         break;
+      }
       default:
         break;
     }

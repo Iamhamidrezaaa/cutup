@@ -1639,6 +1639,48 @@
   line-height: 1.6;
 }
 
+.plan-status-card h2 {
+  margin: 0 0 14px;
+  font-size: 20px;
+}
+
+.plan-status-card__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.plan-status-card__row:last-of-type {
+  border-bottom: none;
+}
+
+.plan-status-card__label {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.plan-status-card__value {
+  font-size: 15px;
+  color: var(--text-primary, #0f172a);
+}
+
+.plan-status-card__hint {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  background: rgba(99, 102, 241, 0.06);
+  border-radius: 8px;
+  color: #4338ca;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.plan-status-card .plan-btn {
+  margin-top: 16px;
+}
+
 .dashboard-error-surface {
   background: #fef2f2 !important;
   color: #991b1b !important;

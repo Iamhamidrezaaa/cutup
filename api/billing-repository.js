@@ -1,5 +1,10 @@
 import { getPool, isBillingDbConfigured } from './db/pool.js';
 import { PLANS, getPlanDef, resolvePlanKey } from './plans-config.js';
+import {
+  getPlanPermissions,
+  getUpgradeMessage,
+  resolveApiFeature
+} from './plans/permissions.js';
 import { createHash } from 'crypto';
 
 const UNLIMITED_EMAIL = 'h.asgarizade@gmail.com';
@@ -239,20 +244,69 @@ export async function applyStripeSubscriptionDbFromCheckout(email, planKey, stri
   );
 }
 
-export async function syncStripeSubscriptionFromStripeObject(email, planKey, stripeCustomerId, stripeSubscriptionId, currentPeriodEnd, status = 'active') {
+export async function resetMonthlyCreditsForUser(userId) {
+  const pool = getPool();
+  const mk = monthKeyUtc();
+  await pool.query(
+    `UPDATE usage SET
+      minutes_used = 0,
+      audio_downloads = 0,
+      video_downloads = 0,
+      usage_month_key = $2,
+      last_reset_at = NOW()
+    WHERE user_id = $1`,
+    [userId, mk]
+  );
+}
+
+export async function syncStripeSubscriptionFromStripeObject(
+  email,
+  planKey,
+  stripeCustomerId,
+  stripeSubscriptionId,
+  currentPeriodEnd,
+  status = 'active',
+  currentPeriodStart = null
+) {
   const userId = await ensureUserByEmail(email);
   const pool = getPool();
+  const prev = await pool.query(
+    'SELECT current_period_end FROM subscriptions WHERE user_id = $1',
+    [userId]
+  );
+  const prevEnd = prev.rows[0]?.current_period_end
+    ? new Date(prev.rows[0].current_period_end).getTime()
+    : 0;
+  const nextEnd = currentPeriodEnd ? new Date(currentPeriodEnd).getTime() : 0;
+  const isRenewal = nextEnd > prevEnd && prevEnd > 0;
+
   await pool.query(
     `UPDATE subscriptions SET
       plan = $2,
       status = $3,
       stripe_customer_id = COALESCE($4, stripe_customer_id),
       stripe_subscription_id = COALESCE($5, stripe_subscription_id),
+      current_period_start = COALESCE($7, current_period_start),
       current_period_end = $6,
       updated_at = NOW()
     WHERE user_id = $1`,
-    [userId, planKey, status, stripeCustomerId, stripeSubscriptionId, currentPeriodEnd]
+    [userId, planKey, status, stripeCustomerId, stripeSubscriptionId, currentPeriodEnd, currentPeriodStart]
   );
+
+  if (isRenewal) {
+    await resetMonthlyCreditsForUser(userId);
+  }
+}
+
+export async function markSubscriptionPastDueByStripeSubscriptionId(stripeSubscriptionId) {
+  if (!stripeSubscriptionId || !isBillingDbConfigured()) return false;
+  const pool = getPool();
+  const r = await pool.query(
+    `UPDATE subscriptions SET status = 'past_due', updated_at = NOW()
+     WHERE stripe_subscription_id = $1`,
+    [stripeSubscriptionId]
+  );
+  return (r.rowCount || 0) > 0;
 }
 
 export async function downgradeStripeSubscriptionDb(email) {
@@ -2153,25 +2207,28 @@ export async function canUseFeatureDb(email, feature, videoDurationMinutes = 0) 
   const planKey = resolvePlanKey(sub?.plan || 'free');
   const plan = getPlanDef(planKey);
   if (!plan) {
-    return { allowed: false, reason: 'Invalid plan state.' };
+    return { allowed: false, reason: 'Invalid plan state.', code: 'INVALID_PLAN' };
   }
 
-  let featureKey = feature;
-  if (feature === 'srt' || feature === 'subtitles') featureKey = 'srt';
-  if (feature === 'downloadAudio' || feature === 'downloadVideo') {
-    featureKey = feature === 'downloadAudio' ? 'downloadAudio' : 'downloadVideo';
-  }
+  const perms = getPlanPermissions(planKey);
+  const featureDef = resolveApiFeature(feature);
 
-  if (!plan.features[featureKey]) {
-    return { allowed: false, reason: 'This feature is not available on your current plan.' };
+  if (featureDef?.permission && !perms[featureDef.permission]) {
+    return {
+      allowed: false,
+      reason: getUpgradeMessage(featureDef.permission),
+      code: 'FEATURE_NOT_AVAILABLE',
+      permission: featureDef.permission,
+      plan: planKey
+    };
   }
 
   if (planKey !== 'free') {
     if (sub.status === 'past_due') {
-      return { allowed: false, reason: 'Subscription is past due. Update your payment method.' };
+      return { allowed: false, reason: 'Subscription is past due. Update your payment method.', code: 'SUBSCRIPTION_INACTIVE' };
     }
     if (sub.current_period_end && new Date(sub.current_period_end) < new Date()) {
-      return { allowed: false, reason: 'Your subscription has expired. Please renew to continue.' };
+      return { allowed: false, reason: 'Your subscription has expired. Please renew to continue.', code: 'SUBSCRIPTION_INACTIVE' };
     }
   }
 
@@ -2187,45 +2244,48 @@ export async function canUseFeatureDb(email, feature, videoDurationMinutes = 0) 
       if (count >= limit) {
         return {
           allowed: false,
-          reason: `Your monthly ${isAudio ? 'audio' : 'video'} download limit (${limit}) is reached. Upgrade for more.`
+          reason: `Your monthly ${isAudio ? 'audio' : 'video'} download limit (${limit}) is reached. Upgrade for more.`,
+          code: 'LIMIT_EXCEEDED'
         };
       }
     }
     return { allowed: true };
   }
 
-  const genLimit =
-    plan.monthlyGenerationLimit != null ? plan.monthlyGenerationLimit : plan.monthlyLimit;
+  const genLimit = plan.monthlyGenerationLimit != null ? plan.monthlyGenerationLimit : plan.monthlyLimit;
   const maxJob = plan.maxJobMinutes != null ? plan.maxJobMinutes : 180;
   const usedGens = usage.monthlyMinutes;
+  const consumesCredit = featureDef?.consumesCredit === true;
 
-  if (feature === 'transcription') {
+  if (consumesCredit || feature === 'transcription') {
     if (usedGens + 1 > genLimit) {
       return {
         allowed: false,
-        reason: `You've used all ${genLimit} included generations this month. Upgrade for more capacity.`
+        reason: `You've used all ${genLimit} video processing credits this month. Upgrade for more capacity.`,
+        code: 'LIMIT_EXCEEDED',
+        credits: { used: usedGens, limit: genLimit, remaining: Math.max(0, genLimit - usedGens) }
       };
     }
     if (videoDurationMinutes > maxJob) {
       return {
         allowed: false,
-        reason: `This run exceeds the maximum length for one generation on your plan (${maxJob} minutes). Try a shorter clip or upgrade.`
+        reason: `This run exceeds the maximum length for one generation on your plan (${maxJob} minutes). Try a shorter clip or upgrade.`,
+        code: 'LIMIT_EXCEEDED'
       };
     }
-    return { allowed: true };
+    return { allowed: true, credits: { used: usedGens, limit: genLimit, remaining: Math.max(0, genLimit - usedGens - 1) } };
   }
 
-  if (feature === 'summarization' || feature === 'srt' || feature === 'subtitles') {
-    if (usedGens >= genLimit) {
-      return {
-        allowed: false,
-        reason: `You've used all ${genLimit} included generations this month. Upgrade for more capacity.`
-      };
-    }
-    return { allowed: true };
+  if (usedGens >= genLimit) {
+    return {
+      allowed: false,
+      reason: `You've used all ${genLimit} video processing credits this month. Upgrade for more capacity.`,
+      code: 'LIMIT_EXCEEDED',
+      credits: { used: usedGens, limit: genLimit, remaining: 0 }
+    };
   }
 
-  return { allowed: true };
+  return { allowed: true, credits: { used: usedGens, limit: genLimit, remaining: Math.max(0, genLimit - usedGens) } };
 }
 
 /** DB user UUID for billing row, or null. */

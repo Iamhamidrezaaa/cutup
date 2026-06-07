@@ -5,13 +5,18 @@
 (function () {
   if (typeof window === 'undefined') return;
 
-  var PLAN_MONTHLY_VIDEOS = { free: 3, starter: 15, pro: 35, business: 100 };
-
   function monthlyVideosForPlan(planKey) {
     var k = String(planKey || 'free').toLowerCase();
-    var n = PLAN_MONTHLY_VIDEOS[k];
-    return typeof n === 'number' ? n : PLAN_MONTHLY_VIDEOS.free;
+    if (window.CutupPlanPermissions && window.CutupPlanPermissions.getCreditsLimit) {
+      return window.CutupPlanPermissions.getCreditsLimit(k);
+    }
+    var fallback = { free: 3, starter: 15, pro: 35, business: 100 };
+    return typeof fallback[k] === 'number' ? fallback[k] : fallback.free;
   }
+
+  var PLAN_MONTHLY_VIDEOS = window.CutupPlanPermissions && window.CutupPlanPermissions.PLAN_CREDITS
+    ? window.CutupPlanPermissions.PLAN_CREDITS
+    : { free: 3, starter: 15, pro: 35, business: 100 };
 
   function formatMonthlyVideosLine(planKey) {
     var n = monthlyVideosForPlan(planKey);

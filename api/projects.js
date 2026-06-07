@@ -12,6 +12,7 @@
 import { setCORSHeaders } from './cors.js';
 import { sessions } from './auth.js';
 import { ensureProjectsSchema } from './db/ensure-projects-schema.js';
+import { canUseFeatureDb } from './billing-repository.js';
 import {
   isProjectsDbConfigured,
   listProjectsDb,
@@ -56,6 +57,17 @@ export default async function handler(req, res) {
 
   try {
     await ensureProjectsSchema();
+
+    const projectHistoryActions = new Set(['list', 'get', 'restore', 'latestExport', 'rename', 'duplicate', 'archive', 'delete']);
+    if (projectHistoryActions.has(action)) {
+      const access = await canUseFeatureDb(userEmail, 'projectHistory');
+      if (!access.allowed) {
+        return res.status(403).json({
+          error: access.reason || 'Project history is not available on your current plan.',
+          code: access.code || 'FEATURE_NOT_AVAILABLE'
+        });
+      }
+    }
 
     if (method === 'GET' && action === 'list') {
       const result = await listProjectsDb(userEmail, {

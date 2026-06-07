@@ -246,8 +246,15 @@
   }
 
   function canExport() {
-    const sub = global.userSubscription;
-    if (sub?.features && sub.features.srt === false) return { ok: false, reason: 'Upgrade your plan to export viral videos.' };
+    const sub = global.userSubscription || {};
+    const perms = sub.permissions || {};
+    const canMp4 = perms.canExportMp4 === true || sub.features?.mp4Export === true;
+    if (!canMp4) {
+      const msg = global.CutupPlanPermissions?.getUpgradeMessage
+        ? global.CutupPlanPermissions.getUpgradeMessage('canExportMp4')
+        : 'MP4 export is available on Pro and Business plans.';
+      return { ok: false, reason: msg };
+    }
     const payload = getExportPayload();
     if (!payload) return { ok: false, reason: 'Transcribe a video first.' };
     const hasUrl = !!resolveSourceUrl();

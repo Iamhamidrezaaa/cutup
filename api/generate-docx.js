@@ -139,7 +139,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Content is required and must be a string' });
     }
 
-    if (!(await enforceQuota(res, userEmail, 'summarization', 0, req))) return;
+    if (!(await enforceQuota(res, userEmail, 'exportDocx', 0, req))) return;
 
     console.log(`GENERATE_DOCX: Generating DOCX for ${filename || 'document'}, content length: ${content.length}`);
 

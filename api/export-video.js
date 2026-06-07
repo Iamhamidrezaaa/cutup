@@ -128,7 +128,7 @@ async function handleStart(req, res) {
   const email = requireSessionEmail(req, res);
   if (!email) return;
 
-  const allowed = await enforceQuota(res, email, 'srt', 0, req);
+  const allowed = await enforceQuota(res, email, 'mp4Export', 0, req);
   if (!allowed) return;
 
   const ff = await checkFfmpegHealth();
@@ -225,6 +225,16 @@ async function handleStart(req, res) {
       message: 'PRESET_NOT_APPLIED: missing selected preset',
       traceId
     });
+  }
+
+  const presetNorm = String(presetId).toLowerCase().replace(/[_\s]/g, '-');
+  const isCleanPreset = presetNorm === 'clean-srt' || presetNorm === 'cleansrt';
+  if (!isCleanPreset) {
+    if (!(await enforceQuota(res, email, 'creatorStyles', 0, req))) return;
+  }
+  const isPremiumPreset = presetNorm === 'tiktok-neon' || presetNorm === 'luxury-minimal';
+  if (isPremiumPreset) {
+    if (!(await enforceQuota(res, email, 'premiumStyles', 0, req))) return;
   }
 
   const firstExportCue = exportDoc?.cues?.[0];

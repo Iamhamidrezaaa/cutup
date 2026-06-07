@@ -4,7 +4,7 @@
 import { normalizeSourceUrl } from './url-cache-key.js';
 import { queueDebug } from './observability.js';
 import { isBillingDbConfigured, getSubscriptionRowByEmail } from '../billing-repository.js';
-import { resolvePlanKey } from '../plans-config.js';
+import { hasPermission, resolvePlanKey } from '../plans/permissions.js';
 
 const MAX_DOWNLOADS = Math.max(1, Number(process.env.MAX_CONCURRENT_DOWNLOADS || 2));
 const MAX_TRANSCRIBES = Math.max(1, Number(process.env.MAX_CONCURRENT_TRANSCRIBES || 1));
@@ -32,6 +32,7 @@ export async function resolveQueuePriority(userEmail) {
   try {
     const row = await getSubscriptionRowByEmail(userEmail);
     const plan = resolvePlanKey(row?.plan || 'free');
+    if (hasPermission(plan, 'canUsePriorityQueue')) return 20;
     if (plan && plan !== 'free') return 10;
   } catch {
     /* noop */

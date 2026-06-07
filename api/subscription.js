@@ -4,6 +4,12 @@ import { setCORSHeaders } from './cors.js';
 import { sessions } from './auth.js';
 import { PLANS, getPlanDef, resolvePlanKey } from './plans-config.js';
 import {
+  getPlanPermissions,
+  getComparisonMatrix,
+  PLAN_LABELS,
+  PLAN_CREDITS
+} from './plans/permissions.js';
+import {
   isBillingDbConfigured,
   ensureUserByEmail,
   getSubscriptionRowByEmail,
@@ -41,7 +47,15 @@ export async function applyStripeCheckoutCompleted(userEmail, planKey, stripeCus
 }
 
 /** invoice.paid / subscription sync — merge Stripe fields without wiping customer id. */
-export async function applyStripeSubscriptionRenewal(userEmail, planKey, stripeCustomerId, stripeSubscriptionId, currentPeriodEnd, status = 'active') {
+export async function applyStripeSubscriptionRenewal(
+  userEmail,
+  planKey,
+  stripeCustomerId,
+  stripeSubscriptionId,
+  currentPeriodEnd,
+  status = 'active',
+  currentPeriodStart = null
+) {
   if (!isBillingDbConfigured() || !userEmail || !getPlanDef(planKey)) return false;
   await syncStripeSubscriptionFromStripeObject(
     userEmail,
@@ -49,7 +63,8 @@ export async function applyStripeSubscriptionRenewal(userEmail, planKey, stripeC
     stripeCustomerId,
     stripeSubscriptionId,
     currentPeriodEnd,
-    status
+    status,
+    currentPeriodStart
   );
   console.log(`[applyStripeSubscriptionRenewal] ${userEmail} -> ${planKey}`);
   return true;
@@ -114,10 +129,16 @@ export default async function handler(req, res) {
           return {
             id: key,
             ...p,
-            monthlyGenerationLimit: p.monthlyGenerationLimit ?? p.monthlyLimit
+            monthlyGenerationLimit: p.monthlyGenerationLimit ?? p.monthlyLimit,
+            permissions: getPlanPermissions(key),
+            tagline: PLAN_LABELS[key]?.tagline || null
           };
         });
       return res.json({ plans });
+    }
+
+    if (method === 'GET' && action === 'permissions') {
+      return res.json(getComparisonMatrix());
     }
 
     if (!sessionId) {
@@ -159,13 +180,24 @@ export default async function handler(req, res) {
 
       const plan = getPlanDef(planKey);
       const usage = await getLegacyUsageShape(userId);
+      const creditLimit = plan.monthlyGenerationLimit ?? plan.monthlyLimit ?? PLAN_CREDITS[planKey] ?? 3;
+      const creditsUsed = Math.round(Number(usage.monthly?.minutes) || 0);
+      const creditsRemaining = Math.max(0, creditLimit - creditsUsed);
+      const subscriptionStatus = userId === SPECIAL_EMAIL ? 'active' : (subscriptionRow?.status || 'active');
 
       const responseData = {
         plan: planKey,
         planName: plan.nameEn || plan.name,
         planNameEn: plan.nameEn,
+        planTagline: plan.tagline || PLAN_LABELS[planKey]?.tagline || null,
         features: plan.features,
-        monthlyGenerationLimit: plan.monthlyGenerationLimit ?? plan.monthlyLimit,
+        permissions: getPlanPermissions(planKey),
+        monthlyGenerationLimit: creditLimit,
+        credits: {
+          used: creditsUsed,
+          limit: creditLimit,
+          remaining: creditsRemaining
+        },
         usage: {
           daily: usage.daily,
           monthly: usage.monthly,
@@ -183,9 +215,12 @@ export default async function handler(req, res) {
           }
         },
         subscription: {
+          status: subscriptionStatus,
           startDate: subShape.startDate,
           endDate: subShape.endDate,
-          billingPeriod: subShape.billingPeriod
+          billingPeriod: subShape.billingPeriod,
+          stripeCustomerId: subscriptionRow?.stripe_customer_id || null,
+          stripeSubscriptionId: subscriptionRow?.stripe_subscription_id || null
         }
       };
 

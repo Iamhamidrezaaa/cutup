@@ -717,6 +717,15 @@ function humanizeLimitReason(reason) {
   if (/download limit/i.test(reason)) {
     return 'You\'ve used this month\'s download allowance. Upgrade to grab more files without waiting for reset.';
   }
+  if (
+    /requires Starter or higher/i.test(reason) ||
+    /available on Starter/i.test(reason) ||
+    /available on Pro and Business/i.test(reason) ||
+    /Business plan required/i.test(reason) ||
+    /video processing credits/i.test(reason)
+  ) {
+    return reason;
+  }
   if (/not available on your current plan/i.test(reason)) {
     return 'This export needs a paid plan—you\'re one step away from full subtitles and pro workflows.';
   }
@@ -2580,6 +2589,26 @@ function normalizePlanKey(key) {
   return key;
 }
 
+function cutupGetPermissions(sub) {
+  const s = sub || window.userSubscription || {};
+  if (s.permissions && typeof s.permissions === 'object') return s.permissions;
+  const plan = normalizePlanKey(s.plan || 'free');
+  if (window.CutupPlanPermissions?.getPermissions) {
+    return window.CutupPlanPermissions.getPermissions(plan);
+  }
+  return {};
+}
+
+function cutupRequirePermission(permission, options = {}) {
+  const perms = cutupGetPermissions();
+  if (perms[permission]) return true;
+  const msg = window.CutupPlanPermissions?.getUpgradeMessage
+    ? window.CutupPlanPermissions.getUpgradeMessage(permission)
+    : (options.message || 'This feature is not available on your current plan.');
+  showMessage(options.message || msg, options.variant || 'error');
+  return false;
+}
+
 function cutupIsTopTierPlan(key) {
   return normalizePlanKey(key) === 'business';
 }
@@ -2783,10 +2812,18 @@ async function updateButtonsBasedOnSubscription(sessionId) {
     });
     
     // Store subscription info globally
+    const credits = subData.credits || {
+      used: minutesUsed,
+      limit: monthlyLimit,
+      remaining: Math.max(0, monthlyLimit - minutesUsed)
+    };
     window.userSubscription = {
       plan: userPlan,
       features: features,
+      permissions: subData.permissions || cutupGetPermissions({ plan: userPlan }),
+      credits,
       monthlyGenerationLimit: subData.monthlyGenerationLimit ?? monthlyLimit,
+      planTagline: subData.planTagline || null,
       usage: {
         ...subData.usage,
         monthlyLimit,
@@ -2795,7 +2832,8 @@ async function updateButtonsBasedOnSubscription(sessionId) {
           video: { count: videoCount, limit: videoLimit }
         },
         monthly: { minutes: minutesUsed, limit: monthlyLimit }
-      }
+      },
+      subscription: subData.subscription || null
     };
     
     const audioExceeded = audioLimit !== null && audioCount >= audioLimit;
@@ -2820,6 +2858,7 @@ async function updateButtonsBasedOnSubscription(sessionId) {
       setButtonsForPaidPlan(audioExceeded, videoExceeded, monthlyCapExceeded, limits);
     }
     applyCutupPricingPlanLocks({ plan: userPlan });
+    window.CutupPresetSelector?.applyPlanLocks?.();
     window.CutupApp.subscriptionHydration = 'ready';
   } catch (error) {
     console.error('Error loading subscription info:', error);
@@ -6135,6 +6174,7 @@ function buildCleanSrtFromSource() {
 window.buildCleanSrtFromSource = buildCleanSrtFromSource;
 
 function downloadCleanSrtFile() {
+  if (!cutupRequirePermission('canDownloadSrt')) return;
   const body = buildCleanSrtFromSource();
   if (!body) {
     showMessage('No subtitles available for clean SRT export yet.', 'info');
@@ -6216,6 +6256,7 @@ function setupTranslateButtons() {
       console.log('[translate-click]', { button: btnId });
       const sessionId = checkLogin({ pendingType: 'fulltext', payload: { mode: 'translate' } });
       if (!sessionId) return;
+      if (!cutupRequirePermission('canTranslate')) return;
       const originalLanguage = window.cutupDetectedSourceLanguage || 'auto';
       await handler(sessionId, originalLanguage);
     });
@@ -6584,6 +6625,7 @@ function setupDownloadButtons() {
 
 // Download as TXT
 function downloadAsTxt(content, filename, extension = 'txt') {
+  if (!cutupRequirePermission('canExportTxt')) return;
   const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -6598,6 +6640,7 @@ function downloadAsTxt(content, filename, extension = 'txt') {
 // Download as DOCX using API endpoint
 async function downloadAsDocx(content, filename) {
   try {
+    if (!cutupRequirePermission('canExportDocx')) return;
     showMessage('Preparing your DOCX…', 'info');
     const sessionId = localStorage.getItem('cutup_session');
     if (!sessionId) {

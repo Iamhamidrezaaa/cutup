@@ -227,7 +227,7 @@ export default async function handler(req, res) {
     }
 
     const srtMinutes = billingMinutesFromSrtSegments(segments);
-    const featureCheck = await canUseFeature(userEmail, 'srt', srtMinutes);
+    const featureCheck = await canUseFeature(userEmail, 'translate', srtMinutes);
     if (featureCheck && featureCheck.allowed === false) {
       return translateFail(res, traceId, 403, 'FEATURE_NOT_AVAILABLE', featureCheck.reason || 'Translation is not available on your current plan.', false, 'translate-parse');
     }

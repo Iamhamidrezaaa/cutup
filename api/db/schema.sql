@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   plan VARCHAR(32) NOT NULL DEFAULT 'free',
   status VARCHAR(32) NOT NULL DEFAULT 'active',
   billing_period VARCHAR(32) NOT NULL DEFAULT 'monthly',
+  current_period_start TIMESTAMPTZ,
   current_period_end TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

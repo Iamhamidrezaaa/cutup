@@ -5,6 +5,32 @@
   'use strict';
 
   const STORAGE_KEY = 'cutup_style_preset';
+  const PREMIUM_PRESET_IDS = new Set(['tiktok-neon', 'luxury-minimal']);
+
+  function resolvePermissions() {
+    const sub = global.userSubscription || {};
+    if (sub.permissions && typeof sub.permissions === 'object') return sub.permissions;
+    const plan = String(sub.plan || 'free').toLowerCase();
+    if (global.CutupPlanPermissions?.getPermissions) {
+      return global.CutupPlanPermissions.getPermissions(plan);
+    }
+    return {};
+  }
+
+  function presetRequiresUpgrade(id) {
+    const perms = resolvePermissions();
+    if (PREMIUM_PRESET_IDS.has(id)) return !perms.canUsePremiumStyles;
+    return !perms.canUseCreatorStyles;
+  }
+
+  function upgradeMessageForPreset(id) {
+    if (global.CutupPlanPermissions?.getUpgradeMessage) {
+      return PREMIUM_PRESET_IDS.has(id)
+        ? global.CutupPlanPermissions.getUpgradeMessage('canUsePremiumStyles')
+        : global.CutupPlanPermissions.getUpgradeMessage('canUseCreatorStyles');
+    }
+    return 'Creator styles are available on Pro and Business plans.';
+  }
 
   function paintActiveCards(id) {
     const visualId = id === 'clean-srt' ? 'ali-abdaal' : id;
@@ -79,11 +105,19 @@
       btn.addEventListener('click', () => {
         const id = btn.getAttribute('data-preset-id');
         if (!id || id === active) return;
+        if (presetRequiresUpgrade(id)) {
+          const msg = upgradeMessageForPreset(id);
+          if (typeof global.showMessage === 'function') global.showMessage(msg, 'error');
+          else alert(msg);
+          return;
+        }
         active = id;
         setActivePresetId(id, 'card');
         if (typeof onChange === 'function') onChange(id);
       });
     });
+
+    applyPlanLocks(container);
 
     if (!container.dataset.syncBound) {
       container.dataset.syncBound = '1';
@@ -96,10 +130,23 @@
     }
   }
 
+  function applyPlanLocks(root) {
+    const scope = root || document;
+    scope.querySelectorAll('[data-preset-id]').forEach((btn) => {
+      const id = btn.getAttribute('data-preset-id');
+      const locked = id && presetRequiresUpgrade(id);
+      btn.classList.toggle('cutup-preset-card--locked', !!locked);
+      btn.setAttribute('aria-disabled', locked ? 'true' : 'false');
+      if (locked) btn.title = upgradeMessageForPreset(id);
+      else btn.removeAttribute('title');
+    });
+  }
+
   global.CutupPresetSelector = {
     mount,
     getActivePresetId,
     setActivePresetId,
+    applyPlanLocks,
     STORAGE_KEY
   };
 })(typeof window !== 'undefined' ? window : globalThis);
