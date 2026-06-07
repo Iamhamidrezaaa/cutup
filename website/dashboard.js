@@ -496,6 +496,9 @@ function setupNavigation() {
       if (target === 'financial') {
         void ensureBillingSectionReady();
       }
+      if (target === 'saved') {
+        renderSavedOutputs();
+      }
     });
   });
 
@@ -2447,6 +2450,7 @@ function renderUsageSection() {
 
 function renderSavedOutputs() {
   if (window.__ONBOARDING_ACTIVE__) return;
+  const target = document.getElementById('savedOutputs');
   if (window.CutupSavedOutputsLibrary?.render) {
     const st = window.CutupSavedOutputsLibrary.getState?.();
     if (st && st.loaded && !st.loading) {
@@ -2454,10 +2458,12 @@ function renderSavedOutputs() {
       savedOutputsCache = st.items || [];
       return;
     }
+    if (target && !st?.loading) {
+      target.innerHTML = '<div class="sol-root"><p class="dashboard-muted-loading">Loading your library…</p></div>';
+    }
     void window.CutupSavedOutputsLibrary.reload(getSavedOutputsLibraryCtx());
     return;
   }
-  const target = document.getElementById('savedOutputs');
   if (!target) return;
   target.innerHTML = '<div class="sol-empty"><h3>Content library unavailable</h3><p>Please refresh the page.</p></div>';
 }

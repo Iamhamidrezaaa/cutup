@@ -46,6 +46,10 @@
     return (Number(st.dbTotal) || Number(st.total) || 0) > 0;
   }
 
+  function apiRoot(ctx) {
+    return ctx && ctx.apiBase ? ctx.apiBase : '';
+  }
+
   function esc(v) {
     return String(v ?? '')
       .replace(/&/g, '&amp;')
@@ -102,7 +106,7 @@
   function previewZone(item, ctx) {
     if (item.type === 'mp4' && item.mp4 && item.mp4.downloadReady && item.mp4.renderJobId) {
       var previewUrl =
-        ctx.apiBase +
+        apiRoot(ctx) +
         '/api/export-video?action=preview&jobId=' +
         encodeURIComponent(item.mp4.renderJobId) +
         '&session=' +
@@ -330,7 +334,7 @@
 
   async function reloadLegacy(ctx) {
     var r = await ctx.apiGet(
-      ctx.apiBase + '/api/subscription?action=savedOutputs&session=' + encodeURIComponent(ctx.session) + '&limit=500',
+      apiRoot(ctx) + '/api/subscription?action=savedOutputs&session=' + encodeURIComponent(ctx.session) + '&limit=500',
       { headers: { 'X-Session-Id': ctx.session } }
     );
     if (!r.response.ok) return false;
@@ -375,7 +379,14 @@
   }
 
   async function reload(ctx) {
-    if (!ctx.session || !ctx.apiBase) return;
+    if (!ctx || !ctx.target) return;
+    if (!ctx.session) {
+      state.loading = false;
+      state.loadError = 'no_session';
+      ctx.target.innerHTML =
+        '<div class="sol-root"><div class="sol-empty"><h3>Session expired</h3><p>Please sign in again to view your library.</p></div></div>';
+      return;
+    }
     state.loading = true;
     state.loadError = null;
     render(ctx);
@@ -389,7 +400,7 @@
       });
       if (state.search) qp.set('search', state.search);
       if (state.collectionId) qp.set('collectionId', state.collectionId);
-      var r = await ctx.apiGet(ctx.apiBase + '/api/subscription?' + qp.toString(), {
+      var r = await ctx.apiGet(apiRoot(ctx) + '/api/subscription?' + qp.toString(), {
         headers: { 'X-Session-Id': ctx.session }
       });
       if (r.response.ok && r.data) {
@@ -431,7 +442,7 @@
   async function recordDownload(ctx, item) {
     try {
       await ctx.apiPost(
-        ctx.apiBase + '/api/subscription?action=recordSavedOutputDownload',
+        apiRoot(ctx) + '/api/subscription?action=recordSavedOutputDownload',
         { id: item.id, kind: item.kind },
         { headers: { 'X-Session-Id': ctx.session } }
       );
@@ -445,7 +456,7 @@
 
     if (item.type === 'mp4' && item.mp4 && item.mp4.renderJobId) {
       var url =
-        ctx.apiBase +
+        apiRoot(ctx) +
         '/api/export-video?action=download&jobId=' +
         encodeURIComponent(item.mp4.renderJobId) +
         '&session=' +
@@ -457,7 +468,7 @@
 
     var ext = item.type === 'srt' || item.type === 'translation' || item.type === 'subtitle' ? 'srt' : 'txt';
     if (asDocx && item.kind === 'output') {
-      fetch(ctx.apiBase + '/api/generate-docx', {
+      fetch(apiRoot(ctx) + '/api/generate-docx', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Session-Id': ctx.session },
         body: JSON.stringify({ content: item.content || '', filename: title })
@@ -563,7 +574,7 @@
       if (!name || !String(name).trim()) return;
       try {
         var res = await ctx.apiPost(
-          ctx.apiBase + '/api/subscription?action=createSavedOutputCollection',
+          apiRoot(ctx) + '/api/subscription?action=createSavedOutputCollection',
           { name: String(name).trim() },
           { headers: { 'X-Session-Id': ctx.session } }
         );
@@ -597,7 +608,7 @@
         var id = btn.getAttribute('data-sol-duplicate');
         try {
           var res = await ctx.apiPost(
-            ctx.apiBase + '/api/subscription?action=duplicateSavedOutput',
+            apiRoot(ctx) + '/api/subscription?action=duplicateSavedOutput',
             { id: id },
             { headers: { 'X-Session-Id': ctx.session } }
           );
@@ -619,7 +630,7 @@
         if (!window.confirm('Delete "' + title + '" from your library?')) return;
         try {
           var res = await ctx.apiPost(
-            ctx.apiBase + '/api/subscription?action=deleteSavedOutput',
+            apiRoot(ctx) + '/api/subscription?action=deleteSavedOutput',
             { id: id, kind: kind },
             { headers: { 'X-Session-Id': ctx.session } }
           );
@@ -641,7 +652,7 @@
         var favorite = !item.isFavorite;
         try {
           var res = await ctx.apiPost(
-            ctx.apiBase + '/api/subscription?action=toggleSavedOutputFavorite',
+            apiRoot(ctx) + '/api/subscription?action=toggleSavedOutputFavorite',
             { id: id, favorite: favorite },
             { headers: { 'X-Session-Id': ctx.session } }
           );
@@ -670,7 +681,7 @@
         if (idx > 0 && state.collections[idx - 1]) collectionId = state.collections[idx - 1].id;
         try {
           var res = await ctx.apiPost(
-            ctx.apiBase + '/api/subscription?action=assignSavedOutputCollection',
+            apiRoot(ctx) + '/api/subscription?action=assignSavedOutputCollection',
             { id: id, collectionId: collectionId },
             { headers: { 'X-Session-Id': ctx.session } }
           );
