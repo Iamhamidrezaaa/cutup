@@ -176,6 +176,21 @@ window.CutupAdminFilterState = (function () {
     }
   }
 
+  const PATH_NAV_SECTIONS = new Set([
+    'overview', 'usage', 'outputs', 'payments', 'offers', 'creator-wall',
+    'health', 'email-preview', 'ops', 'audit'
+  ]);
+
+  function adminHaPathBase() {
+    try {
+      const path = window.location.pathname || '';
+      const lower = path.toLowerCase();
+      const i = lower.indexOf('adminha.html');
+      if (i >= 0) return path.slice(0, i + 'adminha.html'.length);
+    } catch (_e) { /* noop */ }
+    return '/adminha.html';
+  }
+
   function setAdminNavUrl(section, view, id) {
     try {
       const url = new URL(window.location.href);
@@ -184,12 +199,23 @@ window.CutupAdminFilterState = (function () {
           url.searchParams.delete(k);
         }
       });
-      if (section) url.searchParams.set('section', section);
-      else url.searchParams.delete('section');
-      if (view) url.searchParams.set('view', view);
-      else url.searchParams.delete('view');
-      if (id != null && id !== '') url.searchParams.set('id', String(id));
-      else url.searchParams.delete('id');
+      const usePathNav = section && PATH_NAV_SECTIONS.has(section) && !view && (id == null || id === '');
+      if (usePathNav) {
+        url.pathname = section === 'overview'
+          ? adminHaPathBase()
+          : `${adminHaPathBase()}/${section}`;
+        url.searchParams.delete('section');
+        url.searchParams.delete('view');
+        url.searchParams.delete('id');
+      } else {
+        url.pathname = adminHaPathBase();
+        if (section) url.searchParams.set('section', section);
+        else url.searchParams.delete('section');
+        if (view) url.searchParams.set('view', view);
+        else url.searchParams.delete('view');
+        if (id != null && id !== '') url.searchParams.set('id', String(id));
+        else url.searchParams.delete('id');
+      }
       const qs = url.searchParams.toString();
       history.replaceState({}, '', url.pathname + (qs ? `?${qs}` : ''));
     } catch (err) {

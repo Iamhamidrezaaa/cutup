@@ -939,7 +939,11 @@ app.post('/api/retention', async (req, res) => {
 });
 
 app.get(['/admin/email-preview'], (_req, res) => {
-  res.redirect(302, '/adminha.html?section=email-preview');
+  res.redirect(302, '/adminha.html/email-preview');
+});
+
+app.get(/^\/adminha\.html\/[^/]+\/?$/i, (_req, res) => {
+  res.sendFile(join(__dirname, 'website', 'adminha.html'));
 });
 
 app.get(['/admin/ops', '/admin/command-center'], (_req, res) => {

@@ -2178,10 +2178,28 @@ async function loadOpsCommandCenter() {
   }
 }
 
+function adminSectionFromPathname() {
+  try {
+    const path = (window.location.pathname || '').toLowerCase();
+    const marker = 'adminha.html/';
+    const i = path.indexOf(marker);
+    if (i < 0) return null;
+    let seg = path.slice(i + marker.length).split('/')[0].replace(/\/$/, '');
+    if (!seg) return null;
+    if (seg === 'command-center') seg = 'ops';
+    return seg;
+  } catch (_e) {
+    return null;
+  }
+}
+
 function getInitialAdminSection() {
   try {
-    const q = new URLSearchParams(window.location.search);
-    let section = (q.get('section') || '').toLowerCase();
+    let section = adminSectionFromPathname();
+    if (!section) {
+      const q = new URLSearchParams(window.location.search);
+      section = (q.get('section') || '').toLowerCase();
+    }
     if (section === 'pages' || section === 'blog' || section === 'users') return null;
     if (section === 'command-center') section = 'ops';
     if (section && document.querySelector(`.nav-btn[data-section="${section}"]`)) {

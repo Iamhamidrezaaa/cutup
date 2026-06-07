@@ -14,7 +14,7 @@
   "redirects": [
     {
       "source": "/admin/email-preview",
-      "destination": "/adminha.html?section=email-preview",
+      "destination": "/adminha.html/email-preview",
       "permanent": false
     },
     {
@@ -189,6 +189,10 @@
     {
       "src": "^/(.*\\.(js|css|png|jpg|jpeg|svg|json|ico))$",
       "dest": "/website/$1"
+    },
+    {
+      "src": "/adminha.html/(.*)",
+      "dest": "/website/adminha.html"
     },
     {
       "src": "/(.*)",
