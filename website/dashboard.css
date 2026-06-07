@@ -1298,6 +1298,10 @@
   transform: scale(1.05) translateY(-4px);
 }
 
+.paid-plan-card--highlight {
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.45), 0 12px 28px rgba(99, 102, 241, 0.12);
+}
+
 .paid-plan-card.disabled-plan,
 .paid-plan-card.plan-card-disabled {
   opacity: 0.5;

@@ -1455,12 +1455,12 @@ function cutupHandlePlanSelection(planKey, options = {}) {
   }
   const plan = String(planKey || '').trim().toLowerCase();
   if (!localStorage.getItem('cutup_session')) {
-    try {
-      sessionStorage.setItem(CUTUP_PENDING_PLAN_AFTER_AUTH_KEY, plan);
-    } catch (_e) {
-      /* noop */
+    if (window.CutupPlanCheckout?.buildLoginUrl) {
+      window.location.href = window.CutupPlanCheckout.buildLoginUrl(plan);
+      return Promise.resolve({ ok: true, route: 'login' });
     }
-    return cutupTriggerGoogleLogin();
+    window.location.href = `/login.html?redirect=plans&plan=${encodeURIComponent(plan)}`;
+    return Promise.resolve({ ok: true, route: 'login' });
   }
   window.location.href = `/checkout.html?plan=${encodeURIComponent(plan)}&source=pricing`;
   return Promise.resolve({ ok: true, route: 'checkout' });
@@ -2323,11 +2323,20 @@ window.addEventListener('DOMContentLoaded', () => {
     currentSession = savedSession;
     if (!window.__cutupAuthCallbackHandled) {
       const rpCheckout = new URLSearchParams(window.location.search);
-      if (rpCheckout.get('redirect') === 'checkout' && window.CutupPlanCheckout) {
-        const pk = window.CutupPlanCheckout.normalizePlanKey(rpCheckout.get('plan'));
-        if (pk) {
-          const target = window.CutupPlanCheckout.buildCheckoutUrl(pk, { source: 'checkout' });
-          console.log('[post-login-redirect]', { target, reason: 'homepage_query' });
+      if (window.CutupPlanCheckout) {
+        if (rpCheckout.get('redirect') === 'checkout') {
+          const pk = window.CutupPlanCheckout.normalizePlanKey(rpCheckout.get('plan'));
+          if (pk) {
+            const target = window.CutupPlanCheckout.buildCheckoutUrl(pk, { source: 'checkout' });
+            console.log('[post-login-redirect]', { target, reason: 'homepage_query_checkout' });
+            window.location.replace(target);
+            return;
+          }
+        }
+        if (rpCheckout.get('redirect') === 'plans') {
+          const pk = window.CutupPlanCheckout.normalizePlanKey(rpCheckout.get('plan'));
+          const target = window.CutupPlanCheckout.buildDashboardPlansUrl(pk);
+          console.log('[post-login-redirect]', { target, reason: 'homepage_query_plans' });
           window.location.replace(target);
           return;
         }
@@ -2717,8 +2726,14 @@ function applyCutupPricingPlanLocks(user) {
         btn.removeEventListener('click', cutupPricingPreventClick, true);
         btn._cutupPricingLockBound = false;
       }
-      if (btn.tagName === 'A' && btn.dataset.cutupOriginalHref != null) {
-        btn.setAttribute('href', btn.dataset.cutupOriginalHref);
+      if (btn.tagName === 'A') {
+        if (getCutupSessionId() && window.CutupPlanCheckout?.buildCheckoutUrl) {
+          btn.setAttribute('href', window.CutupPlanCheckout.buildCheckoutUrl(planKey, { source: 'pricing' }));
+        } else if (window.CutupPlanCheckout?.buildLoginUrl) {
+          btn.setAttribute('href', window.CutupPlanCheckout.buildLoginUrl(planKey));
+        } else if (btn.dataset.cutupOriginalHref != null) {
+          btn.setAttribute('href', btn.dataset.cutupOriginalHref);
+        }
       }
       if (btn.dataset.cutupOriginalLabel) {
         btn.textContent = btn.dataset.cutupOriginalLabel;
@@ -4357,10 +4372,12 @@ function setMonetizationUpgradeHref() {
   const a = document.getElementById('monetizationUpgradeBtn');
   if (!a) return;
   const plan = (a.getAttribute('data-cutup-plan') || 'pro').trim();
-  if (window.CutupPlanCheckout?.buildCheckoutUrl) {
+  if (localStorage.getItem('cutup_session') && window.CutupPlanCheckout?.buildCheckoutUrl) {
     a.href = window.CutupPlanCheckout.buildCheckoutUrl(plan, { source: 'pricing' });
+  } else if (window.CutupPlanCheckout?.buildLoginUrl) {
+    a.href = window.CutupPlanCheckout.buildLoginUrl(plan);
   } else {
-    a.href = `/checkout.html?plan=${encodeURIComponent(plan)}&source=pricing`;
+    a.href = `/login.html?redirect=plans&plan=${encodeURIComponent(plan)}`;
   }
 }
 

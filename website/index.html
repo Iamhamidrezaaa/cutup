@@ -78,24 +78,42 @@
           }
           if (sessionStorage.getItem('cutup_pending_action')) resume = true;
         } catch (_e2) { /* ignore */ }
-        var checkout = null;
+        var postAuth = null;
         try {
           var pendingPlan = sessionStorage.getItem('cutup_pending_plan_after_auth');
+          var pendingRedirect = sessionStorage.getItem('cutup_pending_redirect_after_auth');
           if (pendingPlan) {
             var plan = String(pendingPlan).toLowerCase();
             if (plan === 'starter' || plan === 'pro' || plan === 'business') {
-              checkout = '/checkout.html?plan=' + encodeURIComponent(plan) + '&source=checkout';
+              if (pendingRedirect === 'checkout') {
+                postAuth = '/checkout.html?plan=' + encodeURIComponent(plan) + '&source=checkout';
+              } else {
+                postAuth = '/dashboard.html?highlightPlan=' + encodeURIComponent(plan) + '#subscription';
+              }
             }
           }
         } catch (_e3) { /* ignore */ }
-        if (!checkout && params.get('redirect') === 'checkout') {
+        if (!postAuth && params.get('redirect') === 'checkout') {
           var qPlan = String(params.get('plan') || '').toLowerCase();
           if (qPlan === 'starter' || qPlan === 'pro' || qPlan === 'business') {
-            checkout = '/checkout.html?plan=' + encodeURIComponent(qPlan) + '&source=checkout';
+            postAuth = '/checkout.html?plan=' + encodeURIComponent(qPlan) + '&source=checkout';
           }
         }
-        if (checkout && !resume) {
-          window.location.replace(checkout);
+        if (!postAuth && params.get('redirect') === 'plans') {
+          var qPlan2 = String(params.get('plan') || '').toLowerCase();
+          if (qPlan2 === 'starter' || qPlan2 === 'pro' || qPlan2 === 'business') {
+            postAuth = '/dashboard.html?highlightPlan=' + encodeURIComponent(qPlan2) + '#subscription';
+          } else {
+            postAuth = '/dashboard.html#subscription';
+          }
+        }
+        if (postAuth && !resume) {
+          try {
+            sessionStorage.removeItem('cutup_pending_plan_after_auth');
+            sessionStorage.removeItem('cutup_pending_checkout_source');
+            sessionStorage.removeItem('cutup_pending_redirect_after_auth');
+          } catch (_e4) { /* ignore */ }
+          window.location.replace(postAuth);
           return;
         }
         if (resume) {
@@ -700,9 +718,9 @@ Here's the fastest path from link to publish-ready captions.
               <tr class="pricing-compare__cta-row">
                 <th scope="row" class="pricing-compare__feature-col"></th>
                 <td class="pricing-compare__cta-cell"><a href="/#tool" class="btn btn-secondary">Try free</a></td>
-                <td class="pricing-compare__cta-cell"><a href="/checkout.html?plan=starter&amp;source=pricing" class="btn btn-primary pricing-dashboard-cta" data-cutup-plan="starter">Upgrade</a></td>
-                <td class="pricing-compare__cta-cell pricing-compare__col--pro"><a href="/checkout.html?plan=pro&amp;source=pricing" class="btn btn-primary pricing-dashboard-cta" data-cutup-plan="pro">Upgrade</a></td>
-                <td class="pricing-compare__cta-cell"><a href="/checkout.html?plan=business&amp;source=pricing" class="btn btn-primary pricing-dashboard-cta" data-cutup-plan="business">Upgrade</a></td>
+                <td class="pricing-compare__cta-cell"><a href="/login.html?redirect=plans&amp;plan=starter" class="btn btn-primary pricing-dashboard-cta" data-cutup-plan="starter">Upgrade</a></td>
+                <td class="pricing-compare__cta-cell pricing-compare__col--pro"><a href="/login.html?redirect=plans&amp;plan=pro" class="btn btn-primary pricing-dashboard-cta" data-cutup-plan="pro">Upgrade</a></td>
+                <td class="pricing-compare__cta-cell"><a href="/login.html?redirect=plans&amp;plan=business" class="btn btn-primary pricing-dashboard-cta" data-cutup-plan="business">Upgrade</a></td>
               </tr>
             </tfoot>
           </table>

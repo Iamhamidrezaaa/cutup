@@ -87,6 +87,7 @@
       if (plan && window.CutupPlanCheckout?.startGoogleOAuthCheckout) {
         await window.CutupPlanCheckout.startGoogleOAuthCheckout(plan, {
           source: redirect === 'checkout' ? 'checkout' : 'pricing',
+          redirectMode: redirect === 'checkout' ? 'checkout' : 'plans',
           selectAccount: Boolean(selectAccount)
         });
         return;
@@ -138,8 +139,11 @@
     }
 
     if (redirect === 'checkout' && plan && !window.CutupPlanCheckout?.isLoggedIn()) {
-      console.log('[oauth-direct-start]', { plan, from: 'login_fallback' });
-      window.CutupPlanCheckout.startGoogleOAuthCheckout(plan, { source: 'checkout' }).catch(() => {
+      console.log('[oauth-direct-start]', { plan, from: 'login_fallback_checkout' });
+      window.CutupPlanCheckout.startGoogleOAuthCheckout(plan, {
+        source: 'checkout',
+        redirectMode: 'checkout'
+      }).catch(() => {
         const lead = document.getElementById('cutupLoginLead');
         if (lead) {
           lead.textContent = 'Sign-in could not start automatically. Use the button below.';
@@ -154,11 +158,21 @@
         window.location.replace('/?resume=1');
         return;
       }
-      const target =
-        window.CutupPlanCheckout.resolvePostLoginRedirect() ||
-        (plan ? window.CutupPlanCheckout.buildCheckoutUrl(plan, { source: 'checkout' }) : null);
+      if (redirect === 'checkout' && plan) {
+        const checkoutTarget = window.CutupPlanCheckout.buildCheckoutUrl(plan, { source: 'checkout' });
+        console.log('[checkout-after-oauth]', { target: checkoutTarget, from: 'login_page_logged_in_checkout' });
+        window.location.replace(checkoutTarget);
+        return;
+      }
+      if (redirect === 'plans') {
+        const plansTarget = window.CutupPlanCheckout.buildDashboardPlansUrl(plan);
+        console.log('[dashboard-after-oauth]', { target: plansTarget, from: 'login_page_logged_in_plans' });
+        window.location.replace(plansTarget);
+        return;
+      }
+      const target = window.CutupPlanCheckout.resolvePostLoginRedirect();
       if (target) {
-        console.log('[checkout-after-oauth]', { target, from: 'login_page_logged_in' });
+        console.log('[post-login-redirect]', { target, from: 'login_page_logged_in' });
         window.location.replace(target);
         return;
       }

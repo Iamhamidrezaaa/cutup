@@ -90,6 +90,7 @@ let plansCache = [];
 let historyCache = [];
 let offersCache = [];
 let offersResolvedState = null;
+let dashboardHighlightPlan = null;
 
 /**
  * Legacy deploys sometimes served a static profile <form> inside #cutupDashboardShell.
@@ -329,11 +330,11 @@ function showPaymentFailedWithRetry(message, variant = 'error') {
         console.log('[payment] retry started', ctx.planKey, ctx.provider);
         startPaymentCheckout(ctx.planKey, ctx.provider);
       } else {
-        document.querySelector('.nav-item[data-section="plans"]')?.click();
+        document.querySelector('.nav-item[data-section="subscription"]')?.click();
         showDashboardBanner('Choose a plan below and start checkout again.', 'neutral');
       }
     } catch (_e) {
-      document.querySelector('.nav-item[data-section="plans"]')?.click();
+      document.querySelector('.nav-item[data-section="subscription"]')?.click();
       showDashboardBanner('Choose a plan below and start checkout again.', 'neutral');
     }
   });
@@ -1735,8 +1736,21 @@ async function initDashboard() {
     cleanDashboardProfileQueryParams();
     await runHeavySafe();
     const hashSec = window.location.hash.replace(/^#/, '');
+    const urlParams = new URLSearchParams(window.location.search);
+    dashboardHighlightPlan = urlParams.get('highlightPlan');
     if (hashSec && document.querySelector(`.nav-item[data-section="${hashSec}"]`)) {
       navigateDashboardSection(hashSec);
+    } else if (dashboardHighlightPlan || hashSec === 'subscription') {
+      navigateDashboardSection('subscription');
+    }
+    if (dashboardHighlightPlan) {
+      try {
+        const clean = new URL(window.location.href);
+        clean.searchParams.delete('highlightPlan');
+        window.history.replaceState({}, document.title, `${clean.pathname}${clean.search}${clean.hash}`);
+      } catch (_e) {
+        /* noop */
+      }
     }
   }
 
@@ -2467,6 +2481,17 @@ function renderPlansSection() {
     }
   } catch (_e) {
     /* noop */
+  }
+
+  if (dashboardHighlightPlan) {
+    const hlPlan = dashboardHighlightPlan;
+    dashboardHighlightPlan = null;
+    const hlBtn = plansGrid.querySelector(`button[data-upgrade-plan="${CSS.escape(hlPlan)}"]`);
+    const hlCard = hlBtn?.closest('.paid-plan-card');
+    if (hlCard && !hlBtn?.disabled) {
+      hlCard.classList.add('paid-plan-card--highlight');
+      hlCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   }
 
   plansGrid.querySelectorAll('button[data-upgrade-plan]').forEach((btn) => {
