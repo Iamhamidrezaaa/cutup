@@ -30,6 +30,17 @@ import {
   getLifetimeMetrics
 } from './billing-repository.js';
 import { getActivityFeedDb } from './activity-feed-repository.js';
+import {
+  listSavedOutputsLibraryDb,
+  listCollectionsDb,
+  createCollectionDb,
+  assignOutputCollectionDb,
+  deleteSavedOutputDb,
+  deleteMp4ExportDb,
+  duplicateSavedOutputDb,
+  incrementOutputDownloadDb,
+  incrementMp4DownloadDb
+} from './saved-outputs-repository.js';
 
 const SPECIAL_EMAIL = 'h.asgarizade@gmail.com';
 
@@ -347,6 +358,22 @@ export default async function handler(req, res) {
       return res.json({ outputs, total: outputs.length });
     }
 
+    if (method === 'GET' && action === 'savedOutputsLibrary') {
+      const payload = await listSavedOutputsLibraryDb(userId, {
+        search: query.search || '',
+        filter: query.filter || 'all',
+        sort: query.sort || 'newest',
+        collectionId: query.collectionId || null,
+        limit: parseInt(query.limit, 10) || 200
+      });
+      return res.json({ ok: true, ...payload });
+    }
+
+    if (method === 'GET' && action === 'savedOutputCollections') {
+      const collections = await listCollectionsDb(userId);
+      return res.json({ collections });
+    }
+
     if (method === 'POST' && action === 'saveOutput') {
       const { type, title, platform, sourceUrl, language, content, metadata } = body || {};
       if (!type || !content) {
@@ -385,6 +412,57 @@ export default async function handler(req, res) {
       }
       const ok = await toggleSavedOutputFavoriteDb(userId, id, favorite);
       if (!ok) return res.status(404).json({ error: 'Saved output not found' });
+      return res.json({ success: true });
+    }
+
+    if (method === 'POST' && action === 'deleteSavedOutput') {
+      const { id, kind } = body || {};
+      if (!id) return res.status(400).json({ error: 'id is required' });
+      let ok = false;
+      if (kind === 'mp4' || String(id).startsWith('mp4:')) {
+        const exportId = String(id).replace(/^mp4:/, '');
+        ok = await deleteMp4ExportDb(userId, exportId);
+      } else {
+        ok = await deleteSavedOutputDb(userId, id);
+      }
+      if (!ok) return res.status(404).json({ error: 'Output not found' });
+      return res.json({ success: true });
+    }
+
+    if (method === 'POST' && action === 'duplicateSavedOutput') {
+      const { id } = body || {};
+      if (!id) return res.status(400).json({ error: 'id is required' });
+      const newId = await duplicateSavedOutputDb(userId, id);
+      if (!newId) return res.status(404).json({ error: 'Saved output not found' });
+      return res.json({ success: true, id: newId });
+    }
+
+    if (method === 'POST' && action === 'recordSavedOutputDownload') {
+      const { id, kind } = body || {};
+      if (!id) return res.status(400).json({ error: 'id is required' });
+      let count = false;
+      if (kind === 'mp4' || String(id).startsWith('mp4:')) {
+        const exportId = String(id).replace(/^mp4:/, '');
+        count = await incrementMp4DownloadDb(userId, exportId);
+      } else {
+        count = await incrementOutputDownloadDb(userId, id);
+      }
+      if (count === false) return res.status(404).json({ error: 'Output not found' });
+      return res.json({ success: true, downloadCount: count });
+    }
+
+    if (method === 'POST' && action === 'createSavedOutputCollection') {
+      const { name } = body || {};
+      const col = await createCollectionDb(userId, name);
+      if (!col) return res.status(400).json({ error: 'Collection name is required' });
+      return res.json({ success: true, collection: col });
+    }
+
+    if (method === 'POST' && action === 'assignSavedOutputCollection') {
+      const { id, collectionId } = body || {};
+      if (!id) return res.status(400).json({ error: 'id is required' });
+      const ok = await assignOutputCollectionDb(userId, id, collectionId || null);
+      if (!ok) return res.status(404).json({ error: 'Output or collection not found' });
       return res.json({ success: true });
     }
 

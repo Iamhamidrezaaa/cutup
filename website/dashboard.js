@@ -113,7 +113,6 @@ function removeGhostInlineProfileFormFromShell() {
 
 [0, 100, 500, 1500].forEach((ms) => setTimeout(removeGhostInlineProfileFormFromShell, ms));
 let savedOutputsCache = [];
-let savedOutputsFilter = 'all';
 
 function formatDateTime(dateValue) {
   if (!dateValue) return '—';
@@ -1672,10 +1671,27 @@ async function ensureBillingSectionReady({ forceReload = false } = {}) {
 }
 
 async function loadSavedOutputs() {
+  if (window.CutupSavedOutputsLibrary?.reload) {
+    await window.CutupSavedOutputsLibrary.reload(getSavedOutputsLibraryCtx());
+    savedOutputsCache = window.CutupSavedOutputsLibrary.getState?.()?.items || [];
+    return;
+  }
   const { response, data } = await apiGet(`${API_BASE_URL}/api/subscription?action=savedOutputs&session=${currentSession}&limit=100`, {
     headers: { 'X-Session-Id': currentSession }
   });
   savedOutputsCache = response.ok ? (data.outputs || []) : [];
+}
+
+function getSavedOutputsLibraryCtx() {
+  return {
+    target: document.getElementById('savedOutputs'),
+    session: currentSession,
+    apiBase: API_BASE_URL,
+    apiGet,
+    apiPost,
+    showBanner: showDashboardBanner,
+    openTool: openToolWithUrl
+  };
 }
 
 async function loadOffers() {
@@ -2345,197 +2361,19 @@ function renderUsageSection() {
 
 function renderSavedOutputs() {
   if (window.__ONBOARDING_ACTIVE__) return;
-  const target = document.getElementById('savedOutputs');
-  if (!target) return;
-  if (!savedOutputsCache.length) {
-    target.innerHTML = `
-      <div class="empty-state">
-        <h3>You don’t have any saved outputs yet.</h3>
-        <p class="dashboard-empty-note">Paste your first video and we’ll save transcripts, summaries, and subtitle files for you.</p>
-        <button id="savedEmptyGenerateBtn" class="plan-btn">Generate first transcript</button>
-      </div>
-    `;
-    document.getElementById('savedEmptyGenerateBtn')?.addEventListener('click', () => openToolWithUrl(''));
+  if (window.CutupSavedOutputsLibrary?.render) {
+    const st = window.CutupSavedOutputsLibrary.getState?.();
+    if (st && !st.loading && (st.items?.length || st.stats?.total != null)) {
+      window.CutupSavedOutputsLibrary.render(getSavedOutputsLibraryCtx());
+      savedOutputsCache = st.items || [];
+      return;
+    }
+    void window.CutupSavedOutputsLibrary.reload(getSavedOutputsLibraryCtx());
     return;
   }
-
-  const normalized = [...savedOutputsCache]
-    .sort((a, b) => Number(Boolean(b.isFavorite)) - Number(Boolean(a.isFavorite)))
-    .map((item) => ({
-    ...item,
-    _type: normalizeSavedOutputType(item.type)
-    }));
-  const filteredOutputs = savedOutputsFilter === 'all'
-    ? normalized
-    : normalized.filter((item) => item._type === savedOutputsFilter);
-  const counts = normalized.reduce((acc, item) => {
-    acc.all += 1;
-    acc[item._type] = (acc[item._type] || 0) + 1;
-    return acc;
-  }, { all: 0, transcript: 0, summary: 0, srt: 0 });
-
-  const cards = filteredOutputs.map((item) => {
-    const title = safeText(item.title, fallbackTitle(item.platform, item.sourceUrl || ''));
-    const created = formatDateTime(item.createdAt);
-    const typeLabel = formatSavedOutputTypeLabel(item.type);
-    const lang = safeText(item.language, 'Original');
-    const content = safeText(item.content, '');
-    const favoriteIcon = item.isFavorite ? '★' : '☆';
-    return `
-      <article class="dash-saved-card">
-        <div class="dash-saved-card__head">
-          <h3 class="dash-saved-card__title">${escapeHtml(title)}</h3>
-          <button type="button" class="dash-saved-card__pin" data-favorite-output="${item.id}" title="Pin">${favoriteIcon}</button>
-        </div>
-        <div class="dash-saved-card__meta">
-          <span>${escapeHtml(created)}</span>
-          <span class="dash-saved-card__type">${escapeHtml(typeLabel)}</span>
-          <span>${escapeHtml(lang)}</span>
-        </div>
-        <div class="dash-saved-card__actions">
-          <button type="button" class="dash-saved-action" data-view-output="${item.id}">Open</button>
-          <button type="button" class="dash-saved-action" data-download-output="${item.id}" data-output-ext="${item.type === 'srt' ? 'srt' : 'txt'}">Download</button>
-          <button type="button" class="dash-saved-action" data-copy-output="${item.id}">Duplicate</button>
-          <button type="button" class="dash-saved-action dash-saved-action--danger" data-delete-output="${item.id}">Delete</button>
-        </div>
-        <details id="saved-output-view-${item.id}" class="dash-saved-card__preview">
-          <summary>Preview</summary>
-          <pre>${escapeHtml(content)}</pre>
-        </details>
-      </article>
-    `;
-  }).join('');
-
-  target.innerHTML = `
-    <div class="saved-output-filter-row">
-      <button class="saved-filter-btn ${savedOutputsFilter === 'all' ? 'active' : ''}" data-saved-filter="all">All (${counts.all})</button>
-      <button class="saved-filter-btn ${savedOutputsFilter === 'transcript' ? 'active' : ''}" data-saved-filter="transcript">Transcript (${counts.transcript})</button>
-      <button class="saved-filter-btn ${savedOutputsFilter === 'summary' ? 'active' : ''}" data-saved-filter="summary">Summary (${counts.summary})</button>
-      <button class="saved-filter-btn ${savedOutputsFilter === 'srt' ? 'active' : ''}" data-saved-filter="srt">SRT (${counts.srt})</button>
-    </div>
-    <div class="dash-saved-grid">
-      ${cards || '<div class="dash-usage-empty">No saved outputs in this filter yet.</div>'}
-    </div>
-  `;
-
-  target.querySelectorAll('[data-saved-filter]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      savedOutputsFilter = btn.getAttribute('data-saved-filter') || 'all';
-      renderSavedOutputs();
-    });
-  });
-
-  target.querySelectorAll('[data-view-output]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const id = btn.getAttribute('data-view-output');
-      const details = document.getElementById(`saved-output-view-${id}`);
-      if (details) details.open = !details.open;
-    });
-  });
-  target.querySelectorAll('[data-delete-output]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const id = btn.getAttribute('data-delete-output');
-      const item = savedOutputsCache.find((o) => String(o.id) === String(id));
-      if (!item) return;
-      const title = safeText(item.title, 'this output');
-      if (!window.confirm(`Remove "${title}" from your saved outputs?`)) return;
-      showDashboardBanner('This output is part of your project history and can’t be removed right now.', 'neutral');
-    });
-  });
-  target.querySelectorAll('[data-favorite-output]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const id = btn.getAttribute('data-favorite-output');
-      const item = savedOutputsCache.find((o) => String(o.id) === String(id));
-      if (!item) return;
-      const favorite = !Boolean(item.isFavorite);
-      try {
-        const { response } = await apiPost(`${API_BASE_URL}/api/subscription?action=toggleSavedOutputFavorite`, {
-          id,
-          favorite
-        }, {
-          headers: { 'X-Session-Id': currentSession }
-        });
-        if (!response.ok) throw new Error('favorite_failed');
-        item.isFavorite = favorite;
-        showDashboardBanner(favorite ? 'Pinned to top.' : 'Unpinned.', 'success');
-        renderSavedOutputs();
-      } catch (_e) {
-        showDashboardBanner('Could not update favorite state right now.', 'error');
-      }
-    });
-  });
-  target.querySelectorAll('[data-copy-output]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const id = btn.getAttribute('data-copy-output');
-      const item = savedOutputsCache.find((o) => String(o.id) === String(id));
-      if (!item) return;
-      await navigator.clipboard.writeText(item.content || '');
-      showDashboardBanner('Duplicate ready — content copied.', 'success');
-    });
-  });
-  target.querySelectorAll('[data-download-output]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const id = btn.getAttribute('data-download-output');
-      const item = savedOutputsCache.find((o) => String(o.id) === String(id));
-      if (!item) return;
-      const ext = btn.getAttribute('data-output-ext') || 'txt';
-      const blob = new Blob([item.content || ''], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${safeText(item.title, 'output').replace(/\s+/g, '_')}.${ext}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    });
-  });
-  target.querySelectorAll('[data-download-txt],[data-download-srt]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const id = btn.getAttribute('data-download-txt') || btn.getAttribute('data-download-srt');
-      const item = savedOutputsCache.find((o) => String(o.id) === String(id));
-      if (!item) return;
-      const ext = btn.hasAttribute('data-download-srt') ? 'srt' : 'txt';
-      const blob = new Blob([item.content || ''], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${safeText(item.title, 'output').replace(/\s+/g, '_')}.${ext}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    });
-  });
-  target.querySelectorAll('[data-download-docx]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const id = btn.getAttribute('data-download-docx');
-      const item = savedOutputsCache.find((o) => String(o.id) === String(id));
-      if (!item) return;
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/generate-docx`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Session-Id': currentSession
-          },
-          body: JSON.stringify({ content: item.content || '', filename: safeText(item.title, 'output') })
-        });
-        if (!response.ok) throw new Error('docx_failed');
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${safeText(item.title, 'output').replace(/\s+/g, '_')}.docx`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-      } catch (_e) {
-        showDashboardBanner('Could not generate DOCX for this output right now.', 'error');
-      }
-    });
-  });
+  const target = document.getElementById('savedOutputs');
+  if (!target) return;
+  target.innerHTML = '<div class="sol-empty"><h3>Content library unavailable</h3><p>Please refresh the page.</p></div>';
 }
 
 function renderPlansSection() {

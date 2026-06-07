@@ -38,6 +38,9 @@ async function main() {
   const creditsCycleSql = readFileSync(join(__dirname, 'migrate-credits-cycle.sql'), 'utf8');
   await getPool().query(creditsCycleSql);
   console.log('Migration applied: migrate-credits-cycle.sql');
+  const savedV2Sql = readFileSync(join(__dirname, 'schema-saved-outputs-v2.sql'), 'utf8');
+  await getPool().query(savedV2Sql);
+  console.log('Migration applied: schema-saved-outputs-v2.sql');
   await closePool();
 }
 
