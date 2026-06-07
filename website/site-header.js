@@ -56,12 +56,10 @@ export function renderMarketingHeader() {
     LOGO_MARKUP +
     NAV_TOGGLE +
     '<nav id="navLinks" class="main-header-nav">' +
-    '<a href="/login.html?redirect=home&amp;source=nav" class="nav-link nav-link--cta">Start Free</a>' +
-    '<a href="/#how-it-works" class="nav-link">How it works</a>' +
-    '<a href="/#styles" class="nav-link">Styles</a>' +
+    '<a href="/#tool" class="nav-link cta">Generate subtitles</a>' +
     '<a href="/#features" class="nav-link">Features</a>' +
     '<a href="/#pricing" class="nav-link">Pricing</a>' +
-    '<a href="/#faq" class="nav-link">FAQ</a>' +
+    '<a href="/faq.html" class="nav-link">FAQ</a>' +
     '<a href="/blog.html" class="nav-link">Blog</a>' +
     homeAuthBlock() +
     '</nav>' +
