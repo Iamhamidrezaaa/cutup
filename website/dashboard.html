@@ -23,7 +23,6 @@
   <link rel="stylesheet" href="landing-page.css?v=20260607-pricing-matrix">
   <link rel="stylesheet" href="dashboard.css?v=20260602-bd-polish">
   <link rel="stylesheet" href="billing-dashboard.css?v=20260602-bd-polish">
-  <link rel="stylesheet" href="dashboard-projects.css?v=20260602-bd-polish">
   <link rel="stylesheet" href="responsive-global.css?v=1">
   <link rel="stylesheet" href="customer-role-guard.css">
 </head>
@@ -86,10 +85,6 @@
             <span class="nav-icon">📈</span>
             <span class="nav-text">Usage</span>
           </a>
-          <a href="#projects" class="nav-item" data-section="projects">
-            <span class="nav-icon">📁</span>
-            <span class="nav-text">My Projects</span>
-          </a>
           <a href="#saved" class="nav-item" data-section="saved">
             <span class="nav-icon">🗂️</span>
             <span class="nav-text">Saved outputs</span>
@@ -141,12 +136,6 @@
           <div class="usage-details" id="usageDetails"></div>
         </section>
 
-        <section class="dashboard-section" id="projects-section">
-          <h1 class="section-title">My Projects</h1>
-          <p class="dashboard-section-lead">Your transcripts, subtitles, and exports — organized and recoverable across sessions.</p>
-          <div id="cutupProjectsRoot" class="cutup-projects-root"></div>
-        </section>
-
         <section class="dashboard-section" id="saved-section">
           <h1 class="section-title">Saved outputs</h1>
           <div class="saved-outputs" id="savedOutputs"></div>
@@ -190,8 +179,7 @@
   <script src="plan-checkout-router.js?v=OAUTH_DIRECT_2026_01"></script>
   <script src="account-security-ui.js?v=ACCOUNT_SEC_2026_01"></script>
   <script src="dashboard-billing.js?v=20260602-bd-polish"></script>
-  <script src="dashboard.js?v=20260602-bd-polish"></script>
-  <script src="dashboard-projects.js?v=20260602-bd-polish"></script>
+  <script src="dashboard.js?v=20260602-no-projects"></script>
 </body>
 </html>
 

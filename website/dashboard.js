@@ -494,9 +494,6 @@ function setupNavigation() {
       if (target === 'financial') {
         void ensureBillingSectionReady();
       }
-      if (target === 'projects' && window.CutupDashboardProjects?.refresh) {
-        void window.CutupDashboardProjects.refresh();
-      }
     });
   });
 
@@ -1069,26 +1066,12 @@ function hideInitialLoader() {
   setTimeout(() => el.remove(), 230);
 }
 
-function initProjectsDashboard() {
-  if (!window.CutupDashboardProjects?.init || !currentSession) return;
-  return window.CutupDashboardProjects.init({
-    apiBase: API_BASE_URL,
-    session: currentSession,
-    escapeHtml,
-    formatDateTime,
-    showBanner: showDashboardBanner,
-    apiGet,
-    apiPost
-  });
-}
-
 function flushPendingDashboardRenders() {
   if (!pendingDashboardSectionRender) return;
   pendingDashboardSectionRender = false;
   if (!subscriptionInfo) return;
   renderOverview();
   renderUsageSection();
-  initProjectsDashboard();
   renderSavedOutputs();
   renderPlansSection();
   renderProfileSection();
@@ -1711,7 +1694,6 @@ async function loadDashboardHeavy({ silent = false, skipUserProfile = false } = 
       console.warn('[billing] using subscriptionInfo fallback after parallel load');
     }
   }
-  initProjectsDashboard();
   if (window.__ONBOARDING_ACTIVE__) {
     pendingDashboardSectionRender = true;
     if (!silent) {
