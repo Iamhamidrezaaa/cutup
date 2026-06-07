@@ -167,6 +167,10 @@
       "dest": "/api/admin-email-debug.js"
     },
     {
+      "src": "/api/admin/email-send-log",
+      "dest": "/api/admin-email-send-log.js"
+    },
+    {
       "src": "/api/admin/login",
       "dest": "/api/admin-login.js"
     },

@@ -3,6 +3,7 @@ import { getRegistryEntry } from './emailRegistry';
 import { renderEmailTemplate } from './render';
 import { sendViaResend } from './providers/resend';
 import { sendViaSmtp } from './providers/smtp';
+import { recordEmailSendLog } from './sendLog';
 import type { SendEmailInput, SendEmailResult } from './types';
 
 /**
@@ -19,7 +20,14 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
 
   if (!isEmailPlatformConfigured()) {
     console.warn('[email-platform] transport not configured; skip send', { template, to });
-    return { sent: false, skipped: true, template };
+    const skippedResult: SendEmailResult = {
+      sent: false,
+      skipped: true,
+      template,
+      to,
+    };
+    await recordEmailSendLog(skippedResult);
+    return skippedResult;
   }
 
   const entry = getRegistryEntry(template);
@@ -83,7 +91,7 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
     console.warn('[email-platform] skipped', { template, from, to, reason: 'transport_not_configured' });
   }
 
-  return {
+  const sendResult: SendEmailResult = {
     sent: Boolean(result.sent),
     skipped: result.skipped,
     error: result.error,
@@ -96,4 +104,7 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
     htmlLength: rendered.html?.length ?? 0,
     resendResponse: result.resendResponse,
   };
+
+  await recordEmailSendLog(sendResult);
+  return sendResult;
 }

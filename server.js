@@ -748,6 +748,16 @@ app.all('/api/admin/email-debug-send', async (req, res) => {
   }
 });
 
+app.all('/api/admin/email-send-log', async (req, res) => {
+  try {
+    const mod = await import('./api/admin-email-send-log.js');
+    return mod.default(req, res);
+  } catch (e) {
+    console.error('[admin-email-send-log]', e);
+    return res.status(503).json({ ok: false, error: 'handler_unavailable' });
+  }
+});
+
 app.get('/api/admin', async (req, res) => {
   if (!adminHandler) {
     return res.status(503).json({ error: 'Admin handler not loaded' });

@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  var state = { templates: [], selected: null, preview: null, dataJson: '{}' };
+  var state = { templates: [], selected: null, preview: null, dataJson: '{}', tab: 'preview' };
 
   function esc(v) {
     return String(v ?? '')
@@ -24,14 +24,20 @@
     return { ok: r.ok, data: d };
   }
 
-  function renderShell(root) {
-    root.innerHTML =
-      '<div class="admin-email-preview">' +
-        '<header class="admin-email-preview__head">' +
-          '<h2>Email Platform</h2>' +
-          '<p class="admin-muted">Preview and test all Cutup transactional emails (Resend + React Email).</p>' +
-        '</header>' +
-        '<div class="admin-email-preview__layout">' +
+  function renderTabs() {
+    var previewActive = state.tab === 'preview' ? ' is-active' : '';
+    var logsActive = state.tab === 'logs' ? ' is-active' : '';
+    return (
+      '<nav class="admin-email-tabs" aria-label="Email sections">' +
+        '<button type="button" class="admin-email-tabs__btn' + previewActive + '" data-email-tab="preview">Templates</button>' +
+        '<button type="button" class="admin-email-tabs__btn' + logsActive + '" data-email-tab="logs">Delivery Logs</button>' +
+      '</nav>'
+    );
+  }
+
+  function renderPreviewPanel() {
+    return (
+      '<div class="admin-email-preview__layout">' +
           '<aside class="admin-email-preview__list" id="emailTemplateList"><p class="admin-muted">Loading…</p></aside>' +
           '<main class="admin-email-preview__main">' +
             '<div class="admin-email-preview__toolbar">' +
@@ -46,8 +52,47 @@
             '<div class="admin-email-preview__meta" id="emailPreviewMeta"></div>' +
             '<iframe id="emailPreviewFrame" class="admin-email-preview__frame" title="Email preview"></iframe>' +
           '</main>' +
+      '</div>'
+    );
+  }
+
+  function renderShell(root) {
+    root.innerHTML =
+      '<div class="admin-email-preview">' +
+        '<header class="admin-email-preview__head">' +
+          '<h2>Emails</h2>' +
+          '<p class="admin-muted">Preview templates, send tests, and review delivery logs.</p>' +
+        '</header>' +
+        renderTabs() +
+        '<div id="emailTabPreview"' + (state.tab === 'preview' ? '' : ' hidden') + '>' +
+          renderPreviewPanel() +
         '</div>' +
+        '<div id="emailTabLogs"' + (state.tab === 'logs' ? '' : ' hidden') + '></div>' +
       '</div>';
+  }
+
+  async function switchTab(tab) {
+    state.tab = tab === 'logs' ? 'logs' : 'preview';
+    var previewHost = document.getElementById('emailTabPreview');
+    var logsHost = document.getElementById('emailTabLogs');
+    document.querySelectorAll('[data-email-tab]').forEach(function (btn) {
+      btn.classList.toggle('is-active', btn.getAttribute('data-email-tab') === state.tab);
+    });
+    if (previewHost) previewHost.hidden = state.tab !== 'preview';
+    if (logsHost) logsHost.hidden = state.tab !== 'logs';
+    if (state.tab === 'logs' && logsHost && window.CutupAdminEmailDeliveryLog?.mount) {
+      await window.CutupAdminEmailDeliveryLog.mount(logsHost);
+      return;
+    }
+    if (state.tab === 'preview') {
+      try {
+        await loadTemplates();
+        await loadPreview();
+      } catch (err) {
+        var status = document.getElementById('emailPreviewStatus');
+        if (status) status.textContent = 'Could not load templates: ' + (err?.message || err);
+      }
+    }
   }
 
   function renderList() {
@@ -160,6 +205,7 @@
       var result = res.data?.result || {};
       if (res.ok && result.sent) {
         status.textContent = 'Test email sent' + (result.messageId ? ' (id: ' + result.messageId + ')' : '') + '.';
+        if (window.CutupAdminEmailDeliveryLog?.reload) window.CutupAdminEmailDeliveryLog.reload();
       } else if (result.skipped) {
         status.textContent = 'Send skipped — Resend/SMTP not configured. Check /api/admin/email-debug.';
       } else {
@@ -169,6 +215,11 @@
   }
 
   function bindEvents() {
+    document.querySelectorAll('[data-email-tab]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        void switchTab(btn.getAttribute('data-email-tab'));
+      });
+    });
     document.getElementById('emailPreviewBtn')?.addEventListener('click', function () { void loadPreview(); });
     document.getElementById('emailSendTestBtn')?.addEventListener('click', function () { void sendTest(); });
   }
@@ -187,6 +238,9 @@
       '.admin-email-preview__item small{font-size:11px;color:#6b7280}' +
       '.admin-email-preview__frame{width:100%;min-height:520px;border:1px solid #e5e7eb;border-radius:12px;background:#fff}' +
       '.admin-email-preview__actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}' +
+      '.admin-email-tabs{display:flex;gap:8px;margin:12px 0 16px}' +
+      '.admin-email-tabs__btn{padding:8px 14px;border:1px solid #e5e7eb;border-radius:999px;background:#fff;cursor:pointer;font-size:13px}' +
+      '.admin-email-tabs__btn.is-active{border-color:#635bff;background:#f5f3ff;color:#4338ca;font-weight:600}' +
       '@media(max-width:900px){.admin-email-preview__layout{grid-template-columns:1fr}}';
     document.head.appendChild(s);
   }
@@ -197,12 +251,7 @@
       injectStyles();
       renderShell(root);
       bindEvents();
-      try {
-        await loadTemplates();
-        await loadPreview();
-      } catch (err) {
-        root.querySelector('#emailPreviewStatus').textContent = 'Could not load templates: ' + (err?.message || err);
-      }
+      await switchTab('preview');
     },
   };
 })();

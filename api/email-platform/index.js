@@ -32466,6 +32466,16 @@ async function sendViaSmtp(input) {
   }
 }
 
+// services/email/sendLog.ts
+async function recordEmailSendLog(result, extra = {}) {
+  try {
+    const mod = await import("../../api/email-platform/send-log-bridge.js");
+    await mod.logEmailSendResult(result, extra);
+  } catch (err) {
+    console.warn("[email-platform] email_send_log persist failed", err?.message || err);
+  }
+}
+
 // services/email/sendEmail.ts
 async function sendEmail(input) {
   const { template, recipient, data = {}, senderRole, tags } = input;
@@ -32475,7 +32485,14 @@ async function sendEmail(input) {
   }
   if (!isEmailPlatformConfigured()) {
     console.warn("[email-platform] transport not configured; skip send", { template, to: to4 });
-    return { sent: false, skipped: true, template };
+    const skippedResult = {
+      sent: false,
+      skipped: true,
+      template,
+      to: to4
+    };
+    await recordEmailSendLog(skippedResult);
+    return skippedResult;
   }
   const entry = getRegistryEntry(template);
   const rendered = await renderEmailTemplate(template, data);
@@ -32532,7 +32549,7 @@ async function sendEmail(input) {
   } else {
     console.warn("[email-platform] skipped", { template, from, to: to4, reason: "transport_not_configured" });
   }
-  return {
+  const sendResult = {
     sent: Boolean(result.sent),
     skipped: result.skipped,
     error: result.error,
@@ -32545,6 +32562,8 @@ async function sendEmail(input) {
     htmlLength: rendered.html?.length ?? 0,
     resendResponse: result.resendResponse
   };
+  await recordEmailSendLog(sendResult);
+  return sendResult;
 }
 
 // services/email/emailEvents.ts
