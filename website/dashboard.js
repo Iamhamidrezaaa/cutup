@@ -1771,7 +1771,7 @@ function renderOffersUi() {
   const bannerHost = document.getElementById('dashboardOfferBannerHost');
   const offersCard = document.getElementById('myOffersCard');
   const nowTs = Date.now();
-  const planEur = { starter: 9, pro: 19, business: 49 };
+  const planEur = { starter: 7.99, pro: 19.99, business: 49.99 };
   const fmtCountdown = (expiresAt) => {
     if (!expiresAt) return 'No expiry';
     const diff = new Date(expiresAt).getTime() - Date.now();
@@ -1824,7 +1824,7 @@ function renderOffersUi() {
         ? offersForCards.map((o) => `
           ${(() => {
             const targetPlan = o.targetPlan || (o.applicablePlans || [])[0] || 'pro';
-            const base = Number(({ starter: 9, pro: 19, business: 49 })[targetPlan] || 0);
+            const base = Number(({ starter: 7.99, pro: 19.99, business: 49.99 })[targetPlan] || 0);
             const final = o.discountType === 'percentage'
               ? Math.max(0, base - ((base * Number(o.discountValue || 0)) / 100))
               : Math.max(0, base - Number(o.discountValue || 0));

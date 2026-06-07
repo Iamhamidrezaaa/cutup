@@ -47,7 +47,7 @@ export const PLANS = {
       maxVideoQuality: 'unlimited'
     },
     price: { monthly: 360000, quarterly: 972000, semiannual: 1836000, annual: 3240000 },
-    priceEur: { monthly: 9 }
+    priceEur: { monthly: 7.99 }
   },
   pro: {
     name: 'Pro',
@@ -67,7 +67,7 @@ export const PLANS = {
       maxVideoQuality: 'unlimited'
     },
     price: { monthly: 900000, quarterly: 2430000, semiannual: 4590000, annual: 8100000 },
-    priceEur: { monthly: 19 }
+    priceEur: { monthly: 19.99 }
   },
   business: {
     name: 'Business',
@@ -87,7 +87,7 @@ export const PLANS = {
       maxVideoQuality: 'unlimited'
     },
     price: { monthly: 1800000, quarterly: 4860000, semiannual: 9180000, annual: 16200000 },
-    priceEur: { monthly: 49 }
+    priceEur: { monthly: 49.99 }
   }
 };
 

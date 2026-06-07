@@ -35,7 +35,7 @@
       var k = el.getAttribute('data-cutup-plan-exports');
       if (!k) return;
       var n = monthlyVideosForPlan(k);
-      el.innerHTML = '<span class="pricing-compare__export-num">' + n + '</span><span class="pricing-compare__export-unit">/mo</span>';
+      el.innerHTML = '<span class="pricing-compare__export-num">' + n + '</span><span class="pricing-compare__export-unit">videos/mo</span>';
     });
   }
 

@@ -1,7 +1,7 @@
 (function () {
   if (typeof window === 'undefined') return;
 
-  const PLAN_PRICE_EUR = { starter: 9, pro: 19, business: 49 };
+  const PLAN_PRICE_EUR = { starter: 7.99, pro: 19.99, business: 49.99 };
   const PLAN_RANK = { free: 0, starter: 1, pro: 2, business: 3 };
   const CACHE_TTL_MS = 60 * 1000;
   let cache = { at: 0, data: null };

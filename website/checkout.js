@@ -80,9 +80,9 @@
   };
 
   const PLAN_EUR = {
-    starter: 9,
-    pro: 19,
-    business: 49,
+    starter: 7.99,
+    pro: 19.99,
+    business: 49.99,
   };
 
   function inferPaymentProvider() {
