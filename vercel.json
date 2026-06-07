@@ -155,8 +155,8 @@
       "dest": "/api/admin-users-manage.js"
     },
     {
-      "src": "/api/admin",
-      "dest": "/api/admin.js"
+      "src": "/api/admin/email-preview",
+      "dest": "/api/admin-email-preview.js"
     },
     {
       "src": "/api/admin/login",
@@ -175,8 +175,8 @@
       "dest": "/api/admin-ops-state.js"
     },
     {
-      "src": "/api/admin/email-preview",
-      "dest": "/api/admin-email-preview.js"
+      "src": "/api/admin",
+      "dest": "/api/admin.js"
     },
     {
       "src": "/api/admin/forgot-password",

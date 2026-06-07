@@ -42,8 +42,21 @@ export async function previewEmailTemplate(template, data = {}) {
 
 export async function listEmailTemplates() {
   const platform = await loadPlatform();
-  if (!platform?.listAllTemplates) return [];
-  return platform.listAllTemplates();
+  if (platform?.listAllTemplates) {
+    try {
+      const list = platform.listAllTemplates();
+      if (Array.isArray(list) && list.length > 0) return list;
+    } catch (err) {
+      console.warn('[email-events-bus] listAllTemplates failed:', err?.message || err);
+    }
+  }
+  try {
+    const { listRegistryMeta } = await import('./email-registry-meta.js');
+    return listRegistryMeta();
+  } catch (err) {
+    console.warn('[email-events-bus] registry meta fallback failed:', err?.message || err);
+    return [];
+  }
 }
 
 // ——— Domain event helpers (business logic calls these) ———

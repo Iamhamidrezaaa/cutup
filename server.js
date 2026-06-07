@@ -718,6 +718,16 @@ app.post('/api/admin-offers', async (req, res) => {
   return adminOffersHandler(req, res);
 });
 
+app.all('/api/admin/email-preview', async (req, res) => {
+  try {
+    const mod = await import('./api/admin-email-preview.js');
+    return mod.default(req, res);
+  } catch (e) {
+    console.error('[admin-email-preview]', e);
+    return res.status(503).json({ ok: false, error: 'handler_unavailable' });
+  }
+});
+
 app.get('/api/admin', async (req, res) => {
   if (!adminHandler) {
     return res.status(503).json({ error: 'Admin handler not loaded' });
@@ -891,16 +901,6 @@ app.post('/api/admin/reset-password', async (req, res) => {
     return res.status(503).json({ ok: false });
   }
   return adminResetPasswordHandler(req, res);
-});
-
-app.all('/api/admin/email-preview', async (req, res) => {
-  try {
-    const mod = await import('./api/admin-email-preview.js');
-    return mod.default(req, res);
-  } catch (e) {
-    console.error('[admin-email-preview]', e);
-    return res.status(503).json({ ok: false, error: 'handler_unavailable' });
-  }
 });
 
 app.get('/api/tools-content', async (req, res) => {

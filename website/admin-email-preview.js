@@ -59,12 +59,13 @@
     }
     list.innerHTML = state.templates
       .map(function (t) {
-        var active = state.selected === t.template ? ' is-active' : '';
+        var id = t.id || t.template;
+        var active = state.selected === id ? ' is-active' : '';
         return (
-          '<button type="button" class="admin-email-preview__item' + active + '" data-tpl="' + esc(t.template) + '">' +
-            '<strong>' + esc(t.template) + '</strong>' +
-            '<span>' + esc(t.sampleSubject) + '</span>' +
-            '<small>' + esc(t.senderRole) + (t.event ? ' · ' + esc(t.event) : '') + '</small>' +
+          '<button type="button" class="admin-email-preview__item' + active + '" data-tpl="' + esc(id) + '">' +
+            '<strong>' + esc(t.name || id) + '</strong>' +
+            '<span>' + esc(t.sampleSubject || id) + '</span>' +
+            '<small>' + esc(t.senderRole || '') + (t.event ? ' · ' + esc(t.event) : '') + '</small>' +
           '</button>'
         );
       })
@@ -73,7 +74,7 @@
     list.querySelectorAll('[data-tpl]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         state.selected = btn.getAttribute('data-tpl');
-        var entry = state.templates.find(function (x) { return x.template === state.selected; });
+        var entry = state.templates.find(function (x) { return (x.id || x.template) === state.selected; });
         state.dataJson = JSON.stringify(entry?.sampleData || {}, null, 2);
         var ta = document.getElementById('emailDataJson');
         if (ta) ta.value = state.dataJson;
@@ -84,11 +85,11 @@
   }
 
   async function loadTemplates() {
-    var res = await api('/api/admin/email-preview?action=list');
-    if (!res.ok) throw new Error(res.data?.error || 'list_failed');
+    var res = await api('/api/admin/email-preview');
+    if (!res.ok) throw new Error(res.data?.error || res.data?.message || 'list_failed');
     state.templates = res.data.templates || [];
     if (!state.selected && state.templates[0]) {
-      state.selected = state.templates[0].template;
+      state.selected = state.templates[0].id || state.templates[0].template;
       state.dataJson = JSON.stringify(state.templates[0].sampleData || {}, null, 2);
     }
     renderList();
@@ -110,7 +111,6 @@
     }
     if (status) status.textContent = 'Rendering…';
     var q = new URLSearchParams({
-      action: 'preview',
       template: state.selected,
       data: JSON.stringify(data),
     });
@@ -119,7 +119,12 @@
       if (status) status.textContent = 'Preview failed: ' + (res.data?.error || 'error');
       return;
     }
-    state.preview = res.data.rendered;
+    state.preview = res.data.rendered || {
+      subject: res.data.subject,
+      preview: res.data.preview,
+      html: res.data.html,
+      text: res.data.text,
+    };
     if (meta) {
       meta.innerHTML =
         '<p><strong>Subject:</strong> ' + esc(state.preview?.subject) + '</p>' +
@@ -146,7 +151,7 @@
       return;
     }
     if (status) status.textContent = 'Sending…';
-    var res = await api('/api/admin/email-preview?action=send-test', {
+    var res = await api('/api/admin/email-preview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ template: state.selected, recipient: recipient, data: data }),
