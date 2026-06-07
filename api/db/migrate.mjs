@@ -35,6 +35,9 @@ async function main() {
   const projectsSql = readFileSync(join(__dirname, 'schema-projects.sql'), 'utf8');
   await getPool().query(projectsSql);
   console.log('Migration applied: schema-projects.sql');
+  const creditsCycleSql = readFileSync(join(__dirname, 'migrate-credits-cycle.sql'), 'utf8');
+  await getPool().query(creditsCycleSql);
+  console.log('Migration applied: migrate-credits-cycle.sql');
   await closePool();
 }
 

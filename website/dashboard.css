@@ -357,6 +357,11 @@
   font-weight: 700;
 }
 
+/* Override legacy mojibake checkmark from mis-encoded UTF-8 */
+.plan-features li::before {
+  content: '\2713' !important;
+}
+
 .plan-btn {
   width: 100%;
   padding: 12px;
@@ -3287,6 +3292,10 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 14px;
+}
+
+.dash-usage-metrics--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .dash-usage-metrics--4 {

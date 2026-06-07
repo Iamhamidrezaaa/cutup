@@ -105,7 +105,7 @@
     return (
       '<div class="bd-kpi-grid">' +
         kpiWidget('Current Plan', esc(plan.planName || plan.plan), formatPlanPrice(plan)) +
-        kpiWidget('Credits Remaining', esc(String(u.remainingCredits)), 'credits left') +
+        kpiWidget('Credits Remaining', esc(String(u.remainingCredits ?? 0)), esc(String(u.usedCredits ?? 0) + ' used · ' + String(u.monthlyCredits ?? 0) + ' limit')) +
         kpiWidget('Status', '<span class="' + badgeCls + '">' + esc(badgeText) + '</span>', '') +
         kpiWidget('Renewal', esc(formatBillingDate(plan.nextRenewalDate)), planKey === 'free' ? '' : 'Auto-renewal') +
       '</div>'
@@ -122,7 +122,7 @@
     return (
       '<section class="bd-panel bd-panel--usage bd-panel--compact">' +
         '<div class="bd-panel__toolbar">' +
-          '<span class="bd-panel__title">Monthly usage</span>' +
+          '<span class="bd-panel__title">Credits this cycle</span>' +
           '<span class="bd-panel__chip">' + pct + '%</span>' +
         '</div>' +
         '<div class="bd-usage-bar" role="progressbar" aria-valuenow="' + pct + '" aria-valuemin="0" aria-valuemax="100">' +

@@ -50,8 +50,11 @@ CREATE TABLE IF NOT EXISTS usage (
   audio_downloads INTEGER NOT NULL DEFAULT 0,
   video_downloads INTEGER NOT NULL DEFAULT 0,
   usage_month_key VARCHAR(7) NOT NULL DEFAULT (to_char((NOW() AT TIME ZONE 'UTC'), 'YYYY-MM')),
+  billing_cycle_start TIMESTAMPTZ,
   CONSTRAINT usage_one_per_user UNIQUE (user_id)
 );
+
+ALTER TABLE usage ADD COLUMN IF NOT EXISTS billing_cycle_start TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS stripe_webhook_events (
   id VARCHAR(255) PRIMARY KEY,

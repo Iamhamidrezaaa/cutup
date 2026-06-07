@@ -25,7 +25,9 @@ import {
   upgradePlanLegacyDb,
   applyStripeSubscriptionDbFromCheckout,
   syncStripeSubscriptionFromStripeObject,
-  downgradeStripeSubscriptionDb
+  downgradeStripeSubscriptionDb,
+  getCreditsSnapshot,
+  getLifetimeMetrics
 } from './billing-repository.js';
 
 const SPECIAL_EMAIL = 'h.asgarizade@gmail.com';
@@ -181,9 +183,12 @@ export default async function handler(req, res) {
 
       const plan = getPlanDef(planKey);
       const usage = await getLegacyUsageShape(userId);
-      const creditLimit = plan.monthlyGenerationLimit ?? plan.monthlyLimit ?? PLAN_CREDITS[planKey] ?? 3;
-      const creditsUsed = Math.round(Number(usage.monthly?.minutes) || 0);
-      const creditsRemaining = Math.max(0, creditLimit - creditsUsed);
+      const creditsSnapshot = userId === SPECIAL_EMAIL
+        ? { used: 0, remaining: 999999, limit: 999999, cycleStart: null, cycleEnd: subShape.endDate }
+        : await getCreditsSnapshot(userId);
+      const lifetime = userId === SPECIAL_EMAIL
+        ? { outputs: 0, mp4Exports: 0, processingJobs: 0 }
+        : await getLifetimeMetrics(userId);
       const subscriptionStatus = userId === SPECIAL_EMAIL ? 'active' : (subscriptionRow?.status || 'active');
 
       const responseData = {
@@ -193,12 +198,14 @@ export default async function handler(req, res) {
         planTagline: plan.tagline || PLAN_LABELS[planKey]?.tagline || null,
         features: plan.features,
         permissions: getPlanPermissions(planKey),
-        monthlyGenerationLimit: creditLimit,
+        monthlyGenerationLimit: creditsSnapshot.limit,
+        creditsSnapshot,
         credits: {
-          used: creditsUsed,
-          limit: creditLimit,
-          remaining: creditsRemaining
+          used: creditsSnapshot.used,
+          limit: creditsSnapshot.limit,
+          remaining: creditsSnapshot.remaining
         },
+        lifetime,
         usage: {
           daily: usage.daily,
           monthly: usage.monthly,

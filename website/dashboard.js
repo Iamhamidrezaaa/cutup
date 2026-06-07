@@ -176,21 +176,37 @@ function displayPlanTitle(planId, nameFallback) {
   return safeText(nameFallback, id || 'Free');
 }
 
-/** API `usage.monthly.minutes` = successful generations this calendar month (aligned with plan caps). */
-function subscriptionMonthlyGenLimit(sub) {
-  const fromInfo = Number(sub?.monthlyGenerationLimit);
-  if (Number.isFinite(fromInfo) && fromInfo > 0) return fromInfo;
-  const lim = Number(sub?.usage?.monthlyLimit || 0);
-  if (Number.isFinite(lim) && lim > 0) return lim;
-  const pk = String(sub?.plan || 'free').toLowerCase();
-  if (window.CutupPlanDisplay?.monthlyVideosForPlan) {
-    return window.CutupPlanDisplay.monthlyVideosForPlan(pk);
+/** Read credit counters from backend snapshot only (no client-side math). */
+function creditsFromSubscription(sub) {
+  const snap = sub?.creditsSnapshot || sub?.credits;
+  if (snap && Number.isFinite(Number(snap.limit))) {
+    return {
+      used: Math.max(0, Math.floor(Number(snap.used) || 0)),
+      limit: Math.max(0, Math.floor(Number(snap.limit) || 0)),
+      remaining: Math.max(0, Math.floor(Number(snap.remaining) || 0))
+    };
   }
-  return 3;
+  return { used: 0, limit: 0, remaining: 0 };
+}
+
+function lifetimeFromSubscription(sub) {
+  const lt = sub?.lifetime;
+  if (lt && typeof lt === 'object') {
+    return {
+      outputs: Math.max(0, Number(lt.outputs) || 0),
+      mp4Exports: Math.max(0, Number(lt.mp4Exports) || 0),
+      processingJobs: Math.max(0, Number(lt.processingJobs) || 0)
+    };
+  }
+  return { outputs: 0, mp4Exports: 0, processingJobs: 0 };
+}
+
+function subscriptionMonthlyGenLimit(sub) {
+  return creditsFromSubscription(sub).limit;
 }
 
 function generationsUsedFromSubscription(sub) {
-  return Math.max(0, Math.floor(Number(sub?.usage?.monthly?.minutes || 0)));
+  return creditsFromSubscription(sub).used;
 }
 
 function formatMonthlyVideosLineForPlanKey(planKey) {
@@ -199,20 +215,6 @@ function formatMonthlyVideosLineForPlanKey(planKey) {
     return window.CutupPlanDisplay.formatMonthlyVideosLine(k);
   }
   return `${subscriptionMonthlyGenLimit({ plan: k })} videos per month`;
-}
-
-function creditsFromSubscription(sub) {
-  const c = sub?.credits;
-  if (c && Number.isFinite(Number(c.limit))) {
-    return {
-      used: Math.max(0, Math.floor(Number(c.used) || 0)),
-      limit: Math.max(0, Math.floor(Number(c.limit) || 0)),
-      remaining: Math.max(0, Math.floor(Number(c.remaining) || 0))
-    };
-  }
-  const limit = subscriptionMonthlyGenLimit(sub);
-  const used = generationsUsedFromSubscription(sub);
-  return { used, limit, remaining: Math.max(0, limit - used) };
 }
 
 function formatRenewalCountdown(endDate) {
@@ -1595,10 +1597,20 @@ function buildBillingFallbackFromSubscriptionInfo(sub) {
       stripeCustomerId: sub.subscription?.stripeCustomerId || null,
       stripeSubscriptionId: sub.subscription?.stripeSubscriptionId || null
     },
+    creditsSnapshot: {
+      used: credits.used,
+      remaining: credits.remaining,
+      limit: credits.limit,
+      cycleStart: sub.subscription?.startDate || null,
+      cycleEnd: sub.subscription?.endDate || null
+    },
+    lifetime: sub.lifetime || { outputs: 0, mp4Exports: 0, processingJobs: 0 },
     usage: {
       monthlyCredits: credits.limit,
       usedCredits: credits.used,
-      remainingCredits: credits.remaining
+      remainingCredits: credits.remaining,
+      cycleStart: sub.creditsSnapshot?.cycleStart || sub.subscription?.startDate || null,
+      cycleEnd: sub.creditsSnapshot?.cycleEnd || sub.subscription?.endDate || null
     },
     paymentMethod: null,
     billingHistory: [],
@@ -1905,7 +1917,9 @@ function renderOverview() {
   const remainingEl = document.getElementById('remainingVideos');
   if (remainingEl) remainingEl.textContent = remainingVideos;
   const statLbl = document.getElementById('statRemainingLabel');
-  if (statLbl) statLbl.textContent = 'Credits remaining';
+  if (statLbl) {
+    statLbl.textContent = `Used ${genUsed} · Remaining ${credits.remaining} · Limit ${genLimit}`;
+  }
 
   const currentPlanCard = document.getElementById('currentPlanCard');
   if (currentPlanCard) {
@@ -2026,12 +2040,12 @@ function formatHistoryType(type) {
 function activityFeedLabel(item) {
   const type = item?.type;
   const meta = item?.metadata || {};
+  if (type === 'mp4_export' || meta.operation === 'mp4_export') return 'MP4 exported';
   if (type === 'summarization') return 'Summary generated';
-  if (meta.translationOnly) return 'Translation completed';
-  if (type === 'download' && meta.kind === 'video') return 'MP4 exported';
-  if (type === 'transcription' && meta.videoProcessed) return 'Video processed';
-  if (type === 'transcription') return 'Transcript generated';
-  if (type === 'srt') return 'Subtitles generated';
+  if (meta.translationOnly || meta.operation === 'translation') return 'Translation created';
+  if (type === 'download' && meta.kind === 'video') return 'MP4 downloaded';
+  if (type === 'transcription' || meta.operation === 'transcript') return 'Transcript created';
+  if (type === 'srt' || meta.operation === 'subtitle') return 'Subtitle created';
   return formatHistoryType(type === 'download'
     ? (meta.kind === 'audio' ? 'downloadAudio' : meta.kind === 'video' ? 'downloadVideo' : 'download')
     : type);
@@ -2150,8 +2164,10 @@ function renderInsights() {
   const target = document.getElementById('insightsGrid');
   if (!target || !subscriptionInfo) return;
   const usage = subscriptionInfo.usage || {};
-  const monthVideos = generationsUsedFromSubscription(subscriptionInfo);
-  const savedCount = savedOutputsCache.length;
+  const credits = creditsFromSubscription(subscriptionInfo);
+  const lifetime = lifetimeFromSubscription(subscriptionInfo);
+  const monthVideos = credits.used;
+  const savedCount = lifetime.outputs;
   const monthActivities = getThisMonthActivityCount();
   const mostUsed = getMostUsedFeatureLabel();
   target.innerHTML = `
@@ -2167,9 +2183,10 @@ function getUpgradeBannerState() {
   if (offersResolvedState?.selectedOffer) return { kind: 'offer_priority' };
 
   const plan = String(subscriptionInfo.plan || 'free').toLowerCase();
-  const usage = subscriptionInfo.usage || {};
-  const monthlyLimit = subscriptionMonthlyGenLimit(subscriptionInfo);
-  const monthlyMinutes = generationsUsedFromSubscription(subscriptionInfo);
+  const credits = creditsFromSubscription(subscriptionInfo);
+  const monthlyLimit = credits.limit;
+  const monthlyMinutes = credits.used;
+  const cycleEnd = subscriptionInfo.creditsSnapshot?.cycleEnd || subscriptionInfo.subscription?.endDate;
   if (!monthlyLimit || monthlyLimit <= 0) return { kind: 'none' };
 
   if (monthlyMinutes >= monthlyLimit && !isTopTierPlanKey(plan)) {
@@ -2178,7 +2195,7 @@ function getUpgradeBannerState() {
       plan,
       limit: monthlyLimit,
       used: monthlyMinutes,
-      nextResetLabel: nextCalendarResetLabelFromUsage(usage) || 'the first day of next month'
+      nextResetLabel: cycleEnd ? formatDateTime(cycleEnd) : 'your next billing date'
     };
   }
 
@@ -2252,11 +2269,9 @@ function renderUsageSection() {
   if (window.__ONBOARDING_ACTIVE__) return;
   const target = document.getElementById('usageDetails');
   if (!target || !subscriptionInfo) return;
-  const monthlyUsed = generationsUsedFromSubscription(subscriptionInfo);
-  const monthlyLimit = subscriptionMonthlyGenLimit(subscriptionInfo);
   const credits = creditsFromSubscription(subscriptionInfo);
-  const lifetime = computeUsageLifetimeStats(historyCache, subscriptionInfo);
-  const pct = monthlyLimit > 0 ? Math.min(100, Math.round((monthlyUsed / monthlyLimit) * 100)) : 0;
+  const lifetime = lifetimeFromSubscription(subscriptionInfo);
+  const pct = credits.limit > 0 ? Math.min(100, Math.round((credits.used / credits.limit) * 100)) : 0;
 
   const feedItems = historyCache.slice(0, 10).map((item) => {
     const label = activityFeedLabel(item);
@@ -2274,11 +2289,11 @@ function renderUsageSection() {
   target.innerHTML = `
     <div class="dash-usage-analytics">
       <section class="dash-usage-block">
-        <h3 class="dash-usage-block__title">Current month</h3>
+        <h3 class="dash-usage-block__title">This billing cycle</h3>
         <div class="dash-usage-metrics">
-          <div class="dash-usage-metric"><strong>${monthlyUsed}</strong><span>Videos processed</span></div>
           <div class="dash-usage-metric"><strong>${credits.used}</strong><span>Credits used</span></div>
           <div class="dash-usage-metric dash-usage-metric--accent"><strong>${credits.remaining}</strong><span>Credits remaining</span></div>
+          <div class="dash-usage-metric"><strong>${credits.limit}</strong><span>Monthly limit</span></div>
         </div>
         <div class="dash-usage-progress" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">
           <div class="dash-usage-progress__fill" style="width:${pct}%"></div>
@@ -2286,11 +2301,10 @@ function renderUsageSection() {
       </section>
       <section class="dash-usage-block">
         <h3 class="dash-usage-block__title">Lifetime</h3>
-        <div class="dash-usage-metrics dash-usage-metrics--4">
-          <div class="dash-usage-metric"><strong>${lifetime.videos}</strong><span>Videos processed</span></div>
-          <div class="dash-usage-metric"><strong>${lifetime.exports}</strong><span>Total exports</span></div>
-          <div class="dash-usage-metric"><strong>${lifetime.subtitles}</strong><span>Subtitles generated</span></div>
-          <div class="dash-usage-metric"><strong>${lifetime.downloads}</strong><span>Downloads</span></div>
+        <div class="dash-usage-metrics dash-usage-metrics--3">
+          <div class="dash-usage-metric"><strong>${lifetime.outputs}</strong><span>Lifetime outputs</span></div>
+          <div class="dash-usage-metric"><strong>${lifetime.mp4Exports}</strong><span>Lifetime MP4 exports</span></div>
+          <div class="dash-usage-metric"><strong>${lifetime.processingJobs}</strong><span>Processing jobs</span></div>
         </div>
       </section>
       <section class="dash-usage-block">
@@ -2548,7 +2562,7 @@ function renderPlansSection() {
       <div class="dash-subscription-plan-card">
         <h2 class="dash-subscription-plan-card__title">${escapeHtml(planName)}</h2>
         <p class="dash-subscription-plan-card__status">${escapeHtml(statusLabel)}</p>
-        <p class="dash-subscription-plan-card__credits">${credits.remaining} / ${credits.limit} credits remaining</p>
+        <p class="dash-subscription-plan-card__credits">Used: <strong>${credits.used}</strong> · Remaining: <strong>${credits.remaining}</strong> · Limit: <strong>${credits.limit}</strong></p>
         <p class="dash-subscription-plan-card__meta">Monthly limit: <strong>${credits.limit} credits</strong></p>
         ${renewalCountdown
           ? `<p class="dash-subscription-plan-card__meta">${escapeHtml(renewalCountdown)}</p>`

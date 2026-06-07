@@ -538,6 +538,16 @@ export async function updateExportFromJobDb(job) {
         [job.id, userId]
       );
     }
+    try {
+      const { consumeProcessingCredit } = await import('./credits-engine.js');
+      await consumeProcessingCredit(job.userEmail, 'mp4_export', {
+        jobId: job.id,
+        presetId: job.presetId || null,
+        sourceUrl: job.sourceUrl || null
+      });
+    } catch (err) {
+      console.warn('[project_exports] credit consume skipped:', err?.message || err);
+    }
   } else if (status === 'failed' && job.userEmail) {
     const userId = await resolveUserId(job.userEmail);
     if (userId) {

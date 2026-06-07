@@ -7,7 +7,9 @@ import {
   getSubscriptionRowByEmail,
   getLegacyUsageShape,
   listInvoicesByEmail,
-  isBillingDbConfigured
+  isBillingDbConfigured,
+  getCreditsSnapshot,
+  getLifetimeMetrics
 } from './billing-repository.js';
 import { getPool } from './db/pool.js';
 import { getPlanDef, resolvePlanKey } from './plans-config.js';
@@ -195,8 +197,18 @@ export function emptyBillingPayload(errorMessage, partial = {}) {
     usage: {
       monthlyCredits: Number(usage.monthlyCredits) || 0,
       usedCredits: Number(usage.usedCredits) || 0,
-      remainingCredits: Number(usage.remainingCredits) || 0
+      remainingCredits: Number(usage.remainingCredits) || 0,
+      cycleStart: usage.cycleStart || null,
+      cycleEnd: usage.cycleEnd || null
     },
+    creditsSnapshot: partial.creditsSnapshot || {
+      used: Number(usage.usedCredits) || 0,
+      remaining: Number(usage.remainingCredits) || 0,
+      limit: Number(usage.monthlyCredits) || 0,
+      cycleStart: usage.cycleStart || null,
+      cycleEnd: usage.cycleEnd || null
+    },
+    lifetime: partial.lifetime || { outputs: 0, mp4Exports: 0, processingJobs: 0 },
     paymentMethod: partial.paymentMethod ?? null,
     billingHistory: Array.isArray(partial.billingHistory) ? partial.billingHistory : [],
     upcomingCharge: partial.upcomingCharge ?? null,
@@ -228,10 +240,11 @@ export async function buildBillingDashboardPayload(email) {
 
   const planKey = resolvePlanKey(subRow?.plan || 'free');
   const plan = getPlanDef(planKey);
-  const usage = await getLegacyUsageShape(email);
-  const creditLimit = plan?.monthlyGenerationLimit ?? plan?.monthlyLimit ?? PLAN_CREDITS[planKey] ?? 3;
-  const usedCredits = Math.round(Number(usage.monthly?.minutes) || 0);
-  const remainingCredits = Math.max(0, creditLimit - usedCredits);
+  const creditsSnapshot = await getCreditsSnapshot(email);
+  const lifetime = await getLifetimeMetrics(email);
+  const creditLimit = creditsSnapshot.limit;
+  const usedCredits = creditsSnapshot.used;
+  const remainingCredits = creditsSnapshot.remaining;
 
   const stripeExtras = await fetchStripeBillingExtras(subRow);
   const status = stripeExtras.subscriptionStatus || subRow?.status || (planKey === 'free' ? 'free' : 'active');
@@ -280,8 +293,12 @@ export async function buildBillingDashboardPayload(email) {
     usage: {
       monthlyCredits: creditLimit,
       usedCredits,
-      remainingCredits
+      remainingCredits,
+      cycleStart: creditsSnapshot.cycleStart,
+      cycleEnd: creditsSnapshot.cycleEnd
     },
+    creditsSnapshot,
+    lifetime,
     paymentMethod: stripeExtras.paymentMethod,
     billingHistory,
     upcomingCharge,

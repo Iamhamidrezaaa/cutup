@@ -6,6 +6,15 @@ import {
   resolveApiFeature
 } from './plans/permissions.js';
 import { createHash } from 'crypto';
+import {
+  lockUsageForBillingCycle,
+  resolveBillingCycle,
+  getCreditsSnapshot,
+  getLifetimeMetrics,
+  consumeProcessingCredit
+} from './credits-engine.js';
+
+export { getCreditsSnapshot, getLifetimeMetrics, consumeProcessingCredit, resolveBillingCycle };
 
 const UNLIMITED_EMAIL = 'h.asgarizade@gmail.com';
 
@@ -109,77 +118,23 @@ export async function ensureUserByEmail(email) {
  */
 export async function getNormalizedUsage(userId) {
   const pool = getPool();
-  const mk = monthKeyUtc();
-  const d = dayUtc();
-
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const r = await client.query(
-      'SELECT * FROM usage WHERE user_id = $1 FOR UPDATE',
-      [userId]
-    );
-    if (r.rows.length === 0) {
-      await client.query('ROLLBACK');
-      return {
-        monthlyMinutes: 0,
-        dailyMinutes: 0,
-        audioDownloads: 0,
-        videoDownloads: 0,
-        monthKey: mk,
-        dailyDate: d
-      };
-    }
-    const row = r.rows[0];
-    let minutesUsed = Number(row.minutes_used) || 0;
-    let dailyMinutes = Number(row.daily_minutes_used) || 0;
-    let audio = Number(row.audio_downloads) || 0;
-    let video = Number(row.video_downloads) || 0;
-    let monthKey = row.usage_month_key;
-    let dailyDate = row.daily_period_date instanceof Date
-      ? row.daily_period_date.toISOString().slice(0, 10)
-      : String(row.daily_period_date).slice(0, 10);
-
-    let dirty = false;
-    if (monthKey !== mk) {
-      minutesUsed = 0;
-      audio = 0;
-      video = 0;
-      monthKey = mk;
-      dirty = true;
-    }
-    if (dailyDate !== d) {
-      dailyMinutes = 0;
-      dailyDate = d;
-      dirty = true;
-    }
-
-    if (dirty) {
-      await client.query(
-        `UPDATE usage SET
-          minutes_used = $2,
-          daily_minutes_used = $3,
-          audio_downloads = $4,
-          video_downloads = $5,
-          usage_month_key = $6,
-          daily_period_date = $7::date,
-          last_reset_at = NOW()
-        WHERE user_id = $1`,
-        [userId, minutesUsed, dailyMinutes, audio, video, monthKey, dailyDate]
-      );
-    }
+    const subR = await client.query('SELECT * FROM subscriptions WHERE user_id = $1', [userId]);
+    const u = await lockUsageForBillingCycle(client, userId, subR.rows[0]);
     await client.query('COMMIT');
-
-    const [y, m] = monthKey.split('-').map(Number);
+    const keyPart = (u.cycle?.cycleKey || '').slice(0, 7);
+    const [y, m] = keyPart.split('-').map(Number);
     return {
-      monthlyMinutes: minutesUsed,
-      dailyMinutes,
-      audioDownloads: audio,
-      videoDownloads: video,
-      monthKey,
-      dailyDate,
-      monthIndex: m - 1,
-      year: y
+      monthlyMinutes: u.creditsUsed,
+      dailyMinutes: u.dailyMinutes,
+      audioDownloads: u.audioDownloads,
+      videoDownloads: u.videoDownloads,
+      monthKey: keyPart || monthKeyUtc(),
+      dailyDate: u.dailyDate,
+      monthIndex: (m || 1) - 1,
+      year: y || new Date().getUTCFullYear()
     };
   } catch (e) {
     await client.query('ROLLBACK');
@@ -246,16 +201,18 @@ export async function applyStripeSubscriptionDbFromCheckout(email, planKey, stri
 
 export async function resetMonthlyCreditsForUser(userId) {
   const pool = getPool();
-  const mk = monthKeyUtc();
+  const subR = await pool.query('SELECT * FROM subscriptions WHERE user_id = $1', [userId]);
+  const cycle = resolveBillingCycle(subR.rows[0]);
   await pool.query(
     `UPDATE usage SET
       minutes_used = 0,
       audio_downloads = 0,
       video_downloads = 0,
-      usage_month_key = $2,
+      billing_cycle_start = $2::timestamptz,
+      usage_month_key = $3,
       last_reset_at = NOW()
     WHERE user_id = $1`,
-    [userId, mk]
+    [userId, new Date(cycle.cycleStart), cycle.cycleKey.slice(0, 7)]
   );
 }
 
@@ -439,62 +396,15 @@ async function incrementUnlimitedDownloadAtomic(email, kind, metadata = {}) {
  * Lock usage row, apply month/day resets, return current counters (inside an open transaction).
  */
 async function lockUsageAndNormalizeClient(client, userId) {
-  const mk = monthKeyUtc();
-  const d = dayUtc();
-  let r = await client.query('SELECT * FROM usage WHERE user_id = $1 FOR UPDATE', [userId]);
-  if (r.rows.length === 0) {
-    await client.query(
-      `INSERT INTO usage (user_id, usage_month_key, daily_period_date)
-       VALUES ($1, $2, $3::date)`,
-      [userId, mk, d]
-    );
-    r = await client.query('SELECT * FROM usage WHERE user_id = $1 FOR UPDATE', [userId]);
-  }
-  const row = r.rows[0];
-  let minutesUsed = Number(row.minutes_used) || 0;
-  let dailyMinutes = Number(row.daily_minutes_used) || 0;
-  let audio = Number(row.audio_downloads) || 0;
-  let video = Number(row.video_downloads) || 0;
-  let monthKey = row.usage_month_key;
-  let dailyDate =
-    row.daily_period_date instanceof Date
-      ? row.daily_period_date.toISOString().slice(0, 10)
-      : String(row.daily_period_date).slice(0, 10);
-
-  let dirty = false;
-  if (monthKey !== mk) {
-    minutesUsed = 0;
-    audio = 0;
-    video = 0;
-    monthKey = mk;
-    dirty = true;
-  }
-  if (dailyDate !== d) {
-    dailyMinutes = 0;
-    dailyDate = d;
-    dirty = true;
-  }
-  if (dirty) {
-    await client.query(
-      `UPDATE usage SET
-        minutes_used = $2,
-        daily_minutes_used = $3,
-        audio_downloads = $4,
-        video_downloads = $5,
-        usage_month_key = $6,
-        daily_period_date = $7::date,
-        last_reset_at = NOW()
-      WHERE user_id = $1`,
-      [userId, minutesUsed, dailyMinutes, audio, video, monthKey, dailyDate]
-    );
-  }
+  const subR = await client.query('SELECT * FROM subscriptions WHERE user_id = $1', [userId]);
+  const u = await lockUsageForBillingCycle(client, userId, subR.rows[0]);
   return {
-    monthlyMinutes: minutesUsed,
-    dailyMinutes,
-    audioDownloads: audio,
-    videoDownloads: video,
-    monthKey,
-    dailyDate
+    monthlyMinutes: u.creditsUsed,
+    dailyMinutes: u.dailyMinutes,
+    audioDownloads: u.audioDownloads,
+    videoDownloads: u.videoDownloads,
+    monthKey: u.billingCycleStart,
+    dailyDate: u.dailyDate
   };
 }
 
@@ -561,89 +471,24 @@ export async function applyUsageMinutesAtomic(email, deltaMinutes, usageType, me
       }
     }
 
-    const u = await lockUsageAndNormalizeClient(client, userId);
-
     if (delta > 0) {
-      if (usageType !== 'transcription') {
-        await client.query('COMMIT');
+      await client.query('ROLLBACK');
+      if (usageType === 'summarization') {
         return { ok: true };
       }
-
-      const normalizedSourceUrl = normalizeSourceUrlForQuota(metadata?.sourceUrl || metadata?.url || '');
-      const normalizedSourceHash = sourceUrlHash(normalizedSourceUrl);
-      if (normalizedSourceHash) {
-        const reused = await client.query(
-          `SELECT id
-           FROM usage_history
-           WHERE user_id = $1
-             AND type = 'transcription'
-             AND metadata->>'sourceUrlHash' = $2
-             AND created_at >= date_trunc('month', NOW())
-           ORDER BY created_at DESC
-           LIMIT 1`,
-          [userId, normalizedSourceHash]
-        );
-        if (reused.rows.length > 0) {
-          console.log('[quota-session]', {
-            sessionId: metadata?.processingSessionId || null,
-            sourceUrl: normalizedSourceUrl || null,
-            quotaIncremented: false,
-            reusedExistingPipeline: true,
-            translationOnly: false,
-            cacheHit: true
-          });
-          await client.query('COMMIT');
-          return { ok: true, reused: true };
-        }
+      if (usageType === 'transcription') {
+        return consumeProcessingCredit(email, 'transcript', metadata);
       }
-
-      const genLimit =
-        plan.monthlyGenerationLimit != null ? plan.monthlyGenerationLimit : plan.monthlyLimit;
-      const billUnits = 1;
-
-      if (planKey === 'free' && Number(plan.dailyLimit) < 50000) {
-        if (u.dailyMinutes + billUnits > plan.dailyLimit) {
-          await client.query('ROLLBACK');
-          return {
-            ok: false,
-            reason: 'Daily limit reached. Try again tomorrow or upgrade.'
-          };
-        }
+      if (usageType === 'srt') {
+        const op = metadata?.translationOnly ? 'translation' : 'subtitle';
+        return consumeProcessingCredit(email, op, metadata);
       }
-      if (u.monthlyMinutes + billUnits > genLimit) {
-        await client.query('ROLLBACK');
-        return {
-          ok: false,
-          reason: `You've used all ${genLimit} included generations this month. Upgrade for more capacity.`
-        };
-      }
+      return { ok: true };
+    }
 
-      const newMonthly = u.monthlyMinutes + billUnits;
-      const newDaily = u.dailyMinutes + billUnits;
-      await client.query(
-        `UPDATE usage SET minutes_used = $2, daily_minutes_used = $3, last_reset_at = NOW() WHERE user_id = $1`,
-        [userId, newMonthly, newDaily]
-      );
-      const usageMeta = {
-        ...(metadata || {}),
-        sourceUrlNorm: normalizedSourceUrl || null,
-        sourceUrlHash: normalizedSourceHash || null,
-        generations: billUnits
-      };
-      await client.query(
-        `INSERT INTO usage_history (user_id, type, minutes, metadata)
-         VALUES ($1, $2, $3, $4::jsonb)`,
-        [userId, usageType, billUnits, JSON.stringify(usageMeta)]
-      );
-      console.log('[quota-session]', {
-        sessionId: metadata?.processingSessionId || null,
-        sourceUrl: normalizedSourceUrl || null,
-        quotaIncremented: true,
-        reusedExistingPipeline: false,
-        translationOnly: false,
-        cacheHit: false
-      });
-    } else {
+    const u = await lockUsageAndNormalizeClient(client, userId);
+
+    if (delta < 0) {
       const refund = Math.min(Math.abs(delta), MAX_MINUTE_DELTA);
       const newMonthly = Math.max(0, u.monthlyMinutes - refund);
       const newDaily = Math.max(0, u.dailyMinutes - refund);
@@ -2232,11 +2077,12 @@ export async function canUseFeatureDb(email, feature, videoDurationMinutes = 0) 
     }
   }
 
-  const pool = getPool();
-  const uid = (await pool.query('SELECT id FROM users WHERE email = $1', [email])).rows[0].id;
-  const usage = await getNormalizedUsage(uid);
+  const creditsSnap = await getCreditsSnapshot(email);
 
   if (feature === 'downloadAudio' || feature === 'downloadVideo') {
+    const pool = getPool();
+    const uid = (await pool.query('SELECT id FROM users WHERE email = $1', [email])).rows[0].id;
+    const usage = await getNormalizedUsage(uid);
     const isAudio = feature === 'downloadAudio';
     const limit = isAudio ? plan.downloadAudioLimit : plan.downloadVideoLimit;
     if (limit != null) {
@@ -2252,18 +2098,18 @@ export async function canUseFeatureDb(email, feature, videoDurationMinutes = 0) 
     return { allowed: true };
   }
 
-  const genLimit = plan.monthlyGenerationLimit != null ? plan.monthlyGenerationLimit : plan.monthlyLimit;
+  const genLimit = creditsSnap.limit;
   const maxJob = plan.maxJobMinutes != null ? plan.maxJobMinutes : 180;
-  const usedGens = usage.monthlyMinutes;
+  const usedGens = creditsSnap.used;
   const consumesCredit = featureDef?.consumesCredit === true;
 
-  if (consumesCredit || feature === 'transcription') {
+  if (consumesCredit || feature === 'transcription' || feature === 'translate' || feature === 'subtitles' || feature === 'mp4Export') {
     if (usedGens + 1 > genLimit) {
       return {
         allowed: false,
-        reason: `You've used all ${genLimit} video processing credits this month. Upgrade for more capacity.`,
+        reason: `You've used all ${genLimit} video processing credits this cycle. Upgrade for more capacity.`,
         code: 'LIMIT_EXCEEDED',
-        credits: { used: usedGens, limit: genLimit, remaining: Math.max(0, genLimit - usedGens) }
+        credits: { used: usedGens, limit: genLimit, remaining: creditsSnap.remaining }
       };
     }
     if (videoDurationMinutes > maxJob) {

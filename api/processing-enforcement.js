@@ -5,7 +5,7 @@
 
 import { sessions } from './auth.js';
 import { setCORSHeaders } from './cors.js';
-import { isBillingDbConfigured, applyUsageMinutesAtomic } from './billing-repository.js';
+import { isBillingDbConfigured, applyUsageMinutesAtomic, consumeProcessingCredit } from './billing-repository.js';
 import { canUseFeature } from './subscription.js';
 import {
   resolveTraceId,
@@ -178,7 +178,7 @@ export function billingMinutesFromSrtSegments(segments) {
  */
 export async function consumeTranscriptionUsage(email, minutes, metadata = {}) {
   if (!email || !isBillingDbConfigured() || minutes <= 0) return { ok: true };
-  return applyUsageMinutesAtomic(email, minutes, 'transcription', metadata);
+  return consumeProcessingCredit(email, 'transcript', metadata);
 }
 
 /**
@@ -194,5 +194,14 @@ export async function consumeSummarizationUsage(email, minutes, metadata = {}) {
  */
 export async function consumeSrtUsage(email, minutes, metadata = {}) {
   if (!email || !isBillingDbConfigured() || minutes <= 0) return { ok: true };
-  return applyUsageMinutesAtomic(email, minutes, 'srt', metadata);
+  const op = metadata?.translationOnly ? 'translation' : 'subtitle';
+  return consumeProcessingCredit(email, op, metadata);
+}
+
+/**
+ * @returns {Promise<{ ok: boolean, reason?: string }>}
+ */
+export async function consumeMp4ExportUsage(email, metadata = {}) {
+  if (!email || !isBillingDbConfigured()) return { ok: true };
+  return consumeProcessingCredit(email, 'mp4_export', metadata);
 }
