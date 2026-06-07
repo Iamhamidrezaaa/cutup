@@ -138,12 +138,14 @@
       }
     }
 
-    if (redirect === 'checkout' && plan && !window.CutupPlanCheckout?.isLoggedIn()) {
-      console.log('[oauth-direct-start]', { plan, from: 'login_fallback_checkout' });
+    if ((redirect === 'checkout' || redirect === 'plans') && plan && !window.CutupPlanCheckout?.isLoggedIn()) {
+      console.log('[oauth-direct-start]', { plan, from: 'login_auto_skip_ui', redirect });
+      document.documentElement.classList.add('cutup-login-oauth-pending');
       window.CutupPlanCheckout.startGoogleOAuthCheckout(plan, {
-        source: 'checkout',
-        redirectMode: 'checkout'
+        source: redirect === 'checkout' ? 'checkout' : 'pricing',
+        redirectMode: redirect === 'checkout' ? 'checkout' : 'plans'
       }).catch(() => {
+        document.documentElement.classList.remove('cutup-login-oauth-pending');
         const lead = document.getElementById('cutupLoginLead');
         if (lead) {
           lead.textContent = 'Sign-in could not start automatically. Use the button below.';

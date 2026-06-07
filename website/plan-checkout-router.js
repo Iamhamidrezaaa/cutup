@@ -187,12 +187,7 @@
     console.log('[auth-state]', { loggedIn });
 
     if (!loggedIn) {
-      stashPendingPlanAfterAuth(plan, source);
-      stashPendingRedirectAfterAuth('plans');
-      const loginUrl = buildLoginUrl(plan);
-      console.log('[checkout-route]', { loginUrl, reason: 'guest_to_login_plans' });
-      global.location.href = loginUrl;
-      return Promise.resolve({ ok: true, route: 'login', url: loginUrl });
+      return startGoogleOAuthCheckout(plan, { source, redirectMode: 'plans', coupon: options.coupon });
     }
 
     const checkoutUrl = buildCheckoutUrl(plan, { source, coupon: options.coupon });
