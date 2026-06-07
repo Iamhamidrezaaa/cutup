@@ -758,6 +758,56 @@ app.all('/api/admin/email-send-log', async (req, res) => {
   }
 });
 
+app.get('/api/notifications/unread-count', async (req, res) => {
+  try {
+    const mod = await import('./api/notifications-unread-count.js');
+    return mod.default(req, res);
+  } catch (e) {
+    console.error('[notifications-unread-count]', e);
+    return res.status(503).json({ ok: false, error: 'handler_unavailable' });
+  }
+});
+
+app.get('/api/notifications', async (req, res) => {
+  try {
+    const mod = await import('./api/notifications.js');
+    return mod.default(req, res);
+  } catch (e) {
+    console.error('[notifications]', e);
+    return res.status(503).json({ ok: false, error: 'handler_unavailable' });
+  }
+});
+
+app.post('/api/notifications/read-all', async (req, res) => {
+  try {
+    const mod = await import('./api/notifications-read.js');
+    return mod.default(req, res);
+  } catch (e) {
+    console.error('[notifications-read-all]', e);
+    return res.status(503).json({ ok: false, error: 'handler_unavailable' });
+  }
+});
+
+app.post('/api/notifications/:id/read', async (req, res) => {
+  try {
+    const mod = await import('./api/notifications-read.js');
+    return mod.default(req, res);
+  } catch (e) {
+    console.error('[notifications-read]', e);
+    return res.status(503).json({ ok: false, error: 'handler_unavailable' });
+  }
+});
+
+app.all('/api/admin/notifications', async (req, res) => {
+  try {
+    const mod = await import('./api/admin-notifications.js');
+    return mod.default(req, res);
+  } catch (e) {
+    console.error('[admin-notifications]', e);
+    return res.status(503).json({ ok: false, error: 'handler_unavailable' });
+  }
+});
+
 app.get('/api/admin', async (req, res) => {
   if (!adminHandler) {
     return res.status(503).json({ error: 'Admin handler not loaded' });

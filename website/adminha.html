@@ -176,6 +176,7 @@
         <button class="nav-btn" data-section="creator-wall" aria-label="Open Creator Wall section"><span aria-hidden="true">🎬</span><span>Creator Wall</span></button>
         <button class="nav-btn" data-section="health" aria-label="Open System health section"><span aria-hidden="true">🩺</span><span>System health</span></button>
         <button class="nav-btn" data-section="email-preview" aria-label="Open Email preview section"><span aria-hidden="true">✉️</span><span>Emails</span></button>
+        <button class="nav-btn" data-section="notifications" aria-label="Open Notifications section"><span aria-hidden="true">🔔</span><span>Notifications</span></button>
         <button class="nav-btn" data-section="ops" aria-label="Open Operations command center"><span aria-hidden="true">🧭</span><span>Ops / AI state</span></button>
         <div id="navContentHubMount" class="cms-hub-mount content-studio-menu" aria-label="Content Studio navigation"></div>
         <button type="button" class="nav-btn" data-section="audit" id="navAuditBtn" hidden aria-label="Open Audit log section"><span aria-hidden="true">📡</span><span>Audit Log</span></button>
@@ -453,6 +454,10 @@
           <div id="emailPreviewWorkspace" aria-live="polite"></div>
         </section>
 
+        <section id="section-notifications" class="panel">
+          <div id="notificationsAdminWorkspace" aria-live="polite"></div>
+        </section>
+
         <section id="section-ops" class="panel">
           <div id="aiStateWorkspace" class="aist-root" aria-live="polite"></div>
           <div id="opsLegacyWrap" hidden aria-hidden="true">
@@ -640,6 +645,7 @@
     <script src="admin-health.js"></script>
     <script src="admin-email-delivery-log.js"></script>
     <script src="admin-email-preview.js"></script>
+    <script src="admin-notifications.js"></script>
     <script src="admin-ai-state-charts.js"></script>
     <script src="admin-ai-state.js"></script>
     <script src="admin-audit-log-charts.js"></script>

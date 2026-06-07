@@ -24,7 +24,19 @@ export function getPlatformLoadError() {
   return platformLoadError;
 }
 
+async function createInAppNotification(event, payload) {
+  try {
+    const service = await import('./notifications-service/index.js');
+    if (service?.createNotificationFromEvent) {
+      await service.createNotificationFromEvent(event, payload);
+    }
+  } catch (err) {
+    console.warn('[email-events-bus] notification skipped', event, err?.message || err);
+  }
+}
+
 export async function emitEmailEvent(event, payload) {
+  void createInAppNotification(event, payload);
   const platform = await loadPlatform();
   if (!platform?.emitEmailEvent) {
     return { ok: false, skipped: true, reason: 'platform_unavailable' };
@@ -155,4 +167,12 @@ export function emitTicketReplied(payload) {
 
 export function emitTicketClosed(payload) {
   return emitEmailEvent('ticket_closed', payload);
+}
+
+export function emitSecurityNotification(payload) {
+  return emitEmailEvent('security_notification', payload);
+}
+
+export function emitSystemNotification(payload) {
+  return emitEmailEvent('system_notification', payload);
 }

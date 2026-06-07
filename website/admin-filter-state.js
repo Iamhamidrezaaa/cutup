@@ -178,7 +178,7 @@ window.CutupAdminFilterState = (function () {
 
   const PATH_NAV_SECTIONS = new Set([
     'overview', 'usage', 'outputs', 'payments', 'offers', 'creator-wall',
-    'health', 'email-preview', 'ops', 'audit'
+    'health', 'email-preview', 'notifications', 'ops', 'audit'
   ]);
 
   function adminHaPathBase() {

@@ -146,6 +146,7 @@ export default async function handler(req, res) {
               const { emitUserRegistered } = await import('./email-events-bus.js');
               void emitUserRegistered({
                 email: user.email,
+                userId,
                 firstName: user.given_name || user.name?.split(' ')?.[0] || 'there',
               });
             }

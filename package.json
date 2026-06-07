@@ -9,8 +9,9 @@
     "deploy": "vercel --prod",
     "db:migrate": "node api/db/migrate.mjs",
     "build:emails": "node scripts/build-email-platform.mjs",
+    "build:notifications": "node scripts/build-notifications.mjs",
     "email:dev": "email dev --dir emails/templates",
-    "vercel-build": "npm run build:emails"
+    "vercel-build": "npm run build:emails && npm run build:notifications"
   },
   "keywords": [
     "chrome-extension",

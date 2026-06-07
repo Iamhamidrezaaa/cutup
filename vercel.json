@@ -18,6 +18,11 @@
       "permanent": false
     },
     {
+      "source": "/dashboard/notifications",
+      "destination": "/dashboard.html#notifications",
+      "permanent": false
+    },
+    {
       "source": "/admin/ops",
       "destination": "/adminha.html?section=ops",
       "permanent": false
@@ -169,6 +174,26 @@
     {
       "src": "/api/admin/email-send-log",
       "dest": "/api/admin-email-send-log.js"
+    },
+    {
+      "src": "/api/admin/notifications",
+      "dest": "/api/admin-notifications.js"
+    },
+    {
+      "src": "/api/notifications/unread-count",
+      "dest": "/api/notifications-unread-count.js"
+    },
+    {
+      "src": "/api/notifications/read-all",
+      "dest": "/api/notifications-read.js"
+    },
+    {
+      "src": "/api/notifications/(\\d+)/read",
+      "dest": "/api/notifications-read.js"
+    },
+    {
+      "src": "/api/notifications",
+      "dest": "/api/notifications.js"
     },
     {
       "src": "/api/admin/login",

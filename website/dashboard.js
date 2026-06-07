@@ -496,6 +496,9 @@ function setupNavigation() {
       if (target === 'financial') {
         void ensureBillingSectionReady();
       }
+      if (target === 'notifications') {
+        window.CutupDashboardNotifications?.mountPage?.();
+      }
       if (target === 'saved') {
         renderSavedOutputs();
       }
@@ -1867,6 +1870,7 @@ async function initDashboard() {
   ensureDashboardRuntimeMarkup();
   setupNavigation();
   setupEventListeners();
+  window.CutupDashboardNotifications?.init?.();
 
   let profileBundle;
   try {
