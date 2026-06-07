@@ -24,15 +24,27 @@
 
   var state = {
     items: [],
+    recent: [],
     stats: {},
+    audit: null,
     collections: [],
     filter: 'all',
     sort: 'newest',
     search: '',
     collectionId: null,
     openId: null,
-    loading: false
+    loading: false,
+    loaded: false,
+    loadError: null
   };
+
+  function dbHasContent() {
+    var a = state.audit || {};
+    var db = (Number(a.dbSavedOutputsCount) || 0) + (Number(a.dbMp4Count) || 0);
+    if (db > 0) return true;
+    var st = state.stats || {};
+    return (Number(st.dbTotal) || Number(st.total) || 0) > 0;
+  }
 
   function esc(v) {
     return String(v ?? '')
@@ -186,11 +198,35 @@
     var s = stats || {};
     return (
       '<div class="sol-stats">' +
-        '<article class="sol-stat sol-stat--accent"><span class="sol-stat__value">' + esc(s.total || 0) + '</span><span class="sol-stat__label">Total Outputs</span></article>' +
-        '<article class="sol-stat"><span class="sol-stat__value">' + esc(s.mp4 || 0) + '</span><span class="sol-stat__label">MP4 Exports</span></article>' +
+        '<article class="sol-stat sol-stat--accent"><span class="sol-stat__value">' + esc(s.dbTotal != null ? s.dbTotal : s.total || 0) + '</span><span class="sol-stat__label">Total Outputs</span></article>' +
         '<article class="sol-stat"><span class="sol-stat__value">' + esc(s.transcripts || 0) + '</span><span class="sol-stat__label">Transcripts</span></article>' +
         '<article class="sol-stat"><span class="sol-stat__value">' + esc(s.translations || 0) + '</span><span class="sol-stat__label">Translations</span></article>' +
+        '<article class="sol-stat"><span class="sol-stat__value">' + esc(s.mp4 || 0) + '</span><span class="sol-stat__label">MP4 Exports</span></article>' +
       '</div>'
+    );
+  }
+
+  function renderRecentStrip(recent, ctx) {
+    var list = Array.isArray(recent) ? recent.slice(0, 8) : [];
+    if (!list.length) return '';
+    var rows = list.map(function (item) {
+      var title = fallbackTitle(item);
+      return (
+        '<button type="button" class="sol-recent-item" data-sol-recent="' + esc(item.id) + '">' +
+          '<span class="sol-recent-item__type">' + esc(item.displayType) + '</span>' +
+          '<span class="sol-recent-item__title">' + esc(title) + '</span>' +
+          '<span class="sol-recent-item__date">' + esc(formatRelative(item.createdAt)) + '</span>' +
+        '</button>'
+      );
+    }).join('');
+    return (
+      '<section class="sol-recent">' +
+        '<div class="sol-recent__head">' +
+          '<h2 class="sol-recent__title">Recent content</h2>' +
+          '<button type="button" class="sol-btn" id="solOpenAllBtn">View all</button>' +
+        '</div>' +
+        '<div class="sol-recent__list">' + rows + '</div>' +
+      '</section>'
     );
   }
 
@@ -252,12 +288,20 @@
     }).join('');
 
     var cards = (state.items || []).map(function (it) { return renderCard(it, ctx); }).join('');
-    var hasItems = (state.stats && state.stats.total > 0);
-    var gridContent = cards || renderEmpty(ctx, hasItems);
+    var hasDbContent = dbHasContent();
+    var gridContent = cards || renderEmpty(ctx, hasDbContent);
+
+    if (state.loadError && hasDbContent) {
+      gridContent =
+        '<div class="sol-empty-filter">Could not load library items. Database has ' +
+        esc((Number(state.audit?.dbSavedOutputsCount) || 0) + (Number(state.audit?.dbMp4Count) || 0)) +
+        ' outputs. <button type="button" class="sol-btn" id="solRetryLoadBtn">Retry</button></div>';
+    }
 
     target.innerHTML =
       '<div class="sol-root">' +
         renderStats(state.stats) +
+        renderRecentStrip(state.recent, ctx) +
         '<div class="sol-toolbar">' +
           '<div class="sol-search-wrap">' +
             '<span class="sol-search-icon" aria-hidden="true">🔍</span>' +
@@ -284,9 +328,56 @@
     bindEvents(ctx);
   }
 
+  async function reloadLegacy(ctx) {
+    var r = await ctx.apiGet(
+      ctx.apiBase + '/api/subscription?action=savedOutputs&session=' + encodeURIComponent(ctx.session) + '&limit=500',
+      { headers: { 'X-Session-Id': ctx.session } }
+    );
+    if (!r.response.ok) return false;
+    var outputs = r.data?.outputs || [];
+    state.items = outputs.map(function (o) {
+      return {
+        id: String(o.id),
+        kind: 'output',
+        type: o.type === 'srt' ? 'translation' : o.type,
+        displayType: o.type,
+        title: o.title,
+        language: o.language,
+        sourceUrl: o.sourceUrl,
+        content: o.content || '',
+        preview: String(o.content || '').slice(0, 1200),
+        isFavorite: Boolean(o.isFavorite),
+        status: 'ready',
+        styleUsed: null,
+        downloadCount: 0,
+        createdAt: o.createdAt,
+        metadata: o.metadata || {},
+        mp4: null
+      };
+    });
+    state.recent = state.items.slice(0, 8);
+    state.stats = {
+      total: state.items.length,
+      dbTotal: state.items.length,
+      dbSavedOutputs: state.items.length,
+      mp4: 0,
+      transcripts: state.items.filter(function (i) { return i.type === 'transcript'; }).length,
+      translations: state.items.filter(function (i) { return i.type === 'translation' || i.type === 'srt'; }).length,
+      summaries: state.items.filter(function (i) { return i.type === 'summary'; }).length
+    };
+    state.audit = {
+      dbSavedOutputsCount: state.items.length,
+      dbMp4Count: 0,
+      finalReturned: state.items.length,
+      fallback: 'savedOutputs_legacy'
+    };
+    return true;
+  }
+
   async function reload(ctx) {
     if (!ctx.session || !ctx.apiBase) return;
     state.loading = true;
+    state.loadError = null;
     render(ctx);
     try {
       var qp = new URLSearchParams({
@@ -294,7 +385,7 @@
         session: ctx.session,
         filter: state.filter,
         sort: state.sort,
-        limit: '200'
+        limit: '500'
       });
       if (state.search) qp.set('search', state.search);
       if (state.collectionId) qp.set('collectionId', state.collectionId);
@@ -303,14 +394,33 @@
       });
       if (r.response.ok && r.data) {
         state.items = r.data.items || [];
+        state.recent = r.data.recent || state.items.slice(0, 8);
         state.stats = r.data.stats || {};
         state.collections = r.data.collections || [];
+        state.audit = r.data.audit || null;
+        state.loaded = true;
+        if (state.audit?.error && !state.items.length) {
+          state.loadError = state.audit.error;
+        }
+        console.log('[content-library] audit', state.audit);
+        console.log('[content-library] stats', state.stats, 'items', state.items.length);
+      } else {
+        state.loadError = r.data?.error || 'api_error_' + r.response.status;
+        console.warn('[content-library] API failed', state.loadError, r.data);
+        var ok = await reloadLegacy(ctx);
+        if (!ok) ctx.showBanner?.('Could not load your library right now.', 'error');
+        else state.loaded = true;
       }
-    } catch (_e) {
-      ctx.showBanner?.('Could not load your library right now.', 'error');
+    } catch (err) {
+      state.loadError = err?.message || 'network_error';
+      console.error('[content-library] load failed', state.loadError);
+      var legacyOk = await reloadLegacy(ctx);
+      if (!legacyOk) ctx.showBanner?.('Could not load your library right now.', 'error');
+      else state.loaded = true;
     } finally {
       state.loading = false;
       render(ctx);
+      if (typeof ctx.onLoaded === 'function') ctx.onLoaded(state);
     }
   }
 
@@ -391,6 +501,25 @@
 
     root.querySelector('#solEmptyCtaBtn')?.addEventListener('click', function () {
       ctx.openTool?.('');
+    });
+
+    root.querySelector('#solRetryLoadBtn')?.addEventListener('click', function () {
+      void reload(ctx);
+    });
+
+    root.querySelector('#solOpenAllBtn')?.addEventListener('click', function () {
+      var grid = root.querySelector('#solGrid');
+      if (grid) grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    root.querySelectorAll('[data-sol-recent]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-sol-recent');
+        state.openId = id;
+        render(ctx);
+        var card = root.querySelector('[data-sol-id="' + id + '"]');
+        card?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
     });
 
     var searchInput = root.querySelector('#solSearchInput');
@@ -558,6 +687,11 @@
   window.CutupSavedOutputsLibrary = {
     render: render,
     reload: reload,
-    getState: function () { return state; }
+    getState: function () { return state; },
+    dbHasContent: dbHasContent,
+    getRecent: function (n) {
+      var list = state.recent?.length ? state.recent : state.items;
+      return (list || []).slice(0, n || 5);
+    }
   };
 })();

@@ -800,7 +800,7 @@ export async function getSavedOutputsDb(email, limit = 100) {
   const rows = await pool.query(
     `SELECT s.* FROM saved_outputs s
      JOIN users u ON u.id = s.user_id
-     WHERE u.email = $1
+     WHERE lower(u.email) = lower($1)
      ORDER BY s.is_favorite DESC, s.created_at DESC
      LIMIT $2`,
     [email, limit]

@@ -198,6 +198,21 @@
     );
   }
 
+  function renderLibraryLinkSection(cycleOutputs, libraryTotal) {
+    var cycle = Number(cycleOutputs) || 0;
+    var total = Number(libraryTotal) || 0;
+    return (
+      '<section class="bd-block bd-block--panel">' +
+        '<h2 class="bd-block__title">Content library</h2>' +
+        '<div class="bd-usage-stats">' +
+          '<div class="bd-usage-stat"><strong>' + esc(cycle) + '</strong><span>Outputs this billing cycle</span></div>' +
+          '<div class="bd-usage-stat bd-usage-stat--accent"><strong>' + esc(total) + '</strong><span>Total in library</span></div>' +
+        '</div>' +
+        '<p style="margin:12px 0 0"><button type="button" class="lib-widget__link" id="billingOpenLibraryBtn">Open Content Library →</button></p>' +
+      '</section>'
+    );
+  }
+
   function renderBillingActivitySection(events) {
     return (
       '<section class="bd-block bd-block--panel bd-block--activity">' +
@@ -467,11 +482,15 @@
       if (d.paymentFailure) alerts += renderPaymentFailedAlert();
       else alerts += renderExpiringSoonAlert(sub);
 
+      var libStats = ctx.libraryStats || {};
+      var libTotal = libStats.dbTotal != null ? libStats.dbTotal : libStats.total || 0;
+
       target.innerHTML =
         '<div class="bd">' +
           alerts +
           renderOverviewKpis(sub, d.usage, d.paymentFailure) +
           renderUsageSection(d.usage) +
+          renderLibraryLinkSection(ctx.libraryCycleOutputs, libTotal) +
           renderPaymentSection(d.paymentMethod, d.actions && d.actions.canOpenPortal) +
           renderBillingActivitySection(ctx.activityFeed) +
           renderHistorySection(d.billingHistory) +
@@ -480,6 +499,9 @@
 
       bindActions(ctx);
       mountBillingActivityFeed(ctx.activityFeed);
+      root.querySelector('#billingOpenLibraryBtn')?.addEventListener('click', function () {
+        if (typeof ctx.onOpenLibrary === 'function') ctx.onOpenLibrary();
+      });
     } catch (err) {
       console.error('[billing] render failed', err);
       target.innerHTML = '<div class="bd">' + renderRetryWidget() + '</div>';

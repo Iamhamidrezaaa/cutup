@@ -1682,6 +1682,77 @@ async function loadSavedOutputs() {
   savedOutputsCache = response.ok ? (data.outputs || []) : [];
 }
 
+function navigateToContentLibrary() {
+  navigateDashboardSection('saved');
+}
+
+function getLibraryStatsFromState() {
+  const st = window.CutupSavedOutputsLibrary?.getState?.();
+  if (st?.stats && (st.stats.dbTotal != null || st.stats.total != null)) {
+    return st.stats;
+  }
+  const lifetime = lifetimeFromSubscription(subscriptionInfo);
+  return {
+    total: lifetime.outputs + lifetime.mp4Exports,
+    dbTotal: lifetime.outputs + lifetime.mp4Exports,
+    transcripts: lifetime.outputs,
+    translations: 0,
+    mp4: lifetime.mp4Exports
+  };
+}
+
+function getRecentLibraryOutputs(limit = 5) {
+  if (window.CutupSavedOutputsLibrary?.getRecent) {
+    return window.CutupSavedOutputsLibrary.getRecent(limit);
+  }
+  return (savedOutputsCache || []).slice(0, limit);
+}
+
+function renderLibraryWidgetHtml({ title = 'Content library', limit = 5, showOpen = true } = {}) {
+  const recent = getRecentLibraryOutputs(limit);
+  const stats = getLibraryStatsFromState();
+  const total = stats.dbTotal != null ? stats.dbTotal : stats.total || 0;
+  if (!total && !recent.length) {
+    return `
+      <div class="lib-widget">
+        <div class="lib-widget__head">
+          <h3 class="lib-widget__title">${escapeHtml(title)}</h3>
+          ${showOpen ? '<button type="button" class="lib-widget__link" data-open-library>Open Library</button>' : ''}
+        </div>
+        <p class="dashboard-muted-loading">No saved outputs yet. Process a video to build your library.</p>
+      </div>`;
+  }
+  const rows = recent.length
+    ? recent.map((item) => {
+        const t = safeText(item.title, item.displayType || 'Output');
+        const when = item.createdAt ? formatDateTime(item.createdAt) : '—';
+        const type = safeText(item.displayType || item.type, 'Output');
+        return `<li class="lib-widget__item"><strong>${escapeHtml(t)}</strong><span>${escapeHtml(type)} · ${escapeHtml(when)}</span></li>`;
+      }).join('')
+    : `<li class="lib-widget__item"><strong>${total} outputs</strong><span>In your library</span></li>`;
+  return `
+    <div class="lib-widget">
+      <div class="lib-widget__head">
+        <h3 class="lib-widget__title">${escapeHtml(title)}</h3>
+        ${showOpen ? '<button type="button" class="lib-widget__link" data-open-library>Open Library</button>' : ''}
+      </div>
+      <ul class="lib-widget__list">${rows}</ul>
+    </div>`;
+}
+
+function bindLibraryWidgetLinks(root) {
+  root?.querySelectorAll('[data-open-library]').forEach((btn) => {
+    btn.addEventListener('click', () => navigateToContentLibrary());
+  });
+}
+
+function renderOverviewLibraryWidget() {
+  const target = document.getElementById('overviewLibraryWidget');
+  if (!target) return;
+  target.innerHTML = renderLibraryWidgetHtml({ title: 'Recent outputs', limit: 5 });
+  bindLibraryWidgetLinks(target);
+}
+
 function getSavedOutputsLibraryCtx() {
   return {
     target: document.getElementById('savedOutputs'),
@@ -1690,7 +1761,11 @@ function getSavedOutputsLibraryCtx() {
     apiGet,
     apiPost,
     showBanner: showDashboardBanner,
-    openTool: openToolWithUrl
+    openTool: openToolWithUrl,
+    onLoaded: (libState) => {
+      savedOutputsCache = libState?.items || [];
+      renderOverviewLibraryWidget();
+    }
   };
 }
 
@@ -1945,6 +2020,7 @@ function renderOverview() {
 
   renderInsights();
   renderOverviewActivity();
+  renderOverviewLibraryWidget();
   renderOffersUi();
   renderUpgradeWarning();
 
@@ -2344,11 +2420,21 @@ function renderUsageSection() {
         </div>
       </section>
       <section class="dash-usage-block">
+        <h3 class="dash-usage-block__title">Outputs this cycle</h3>
+        <div class="dash-usage-metrics dash-usage-metrics--3">
+          <div class="dash-usage-metric"><strong>${credits.used}</strong><span>Generated this cycle</span></div>
+          <div class="dash-usage-metric"><strong>${getLibraryStatsFromState().dbTotal ?? getLibraryStatsFromState().total ?? lifetime.outputs}</strong><span>Total in library</span></div>
+          <div class="dash-usage-metric"><strong>${getRecentLibraryOutputs(1)[0] ? formatDateTime(getRecentLibraryOutputs(1)[0].createdAt) : '—'}</strong><span>Most recent</span></div>
+        </div>
+        <p style="margin:12px 0 0"><button type="button" class="lib-widget__link" id="usageOpenLibraryBtn">Open Content Library →</button></p>
+      </section>
+      <section class="dash-usage-block">
         <h3 class="dash-usage-block__title">Recent Processing Activity</h3>
         <div id="usageActivityFeed" class="af-host"></div>
       </section>
     </div>
   `;
+  document.getElementById('usageOpenLibraryBtn')?.addEventListener('click', () => navigateToContentLibrary());
   const usageFeed = document.getElementById('usageActivityFeed');
   if (usageFeed && window.CutupActivityFeed?.renderTimeline) {
     window.CutupActivityFeed.renderTimeline(usageFeed, activityFeedCache, {
@@ -2363,7 +2449,7 @@ function renderSavedOutputs() {
   if (window.__ONBOARDING_ACTIVE__) return;
   if (window.CutupSavedOutputsLibrary?.render) {
     const st = window.CutupSavedOutputsLibrary.getState?.();
-    if (st && !st.loading && (st.items?.length || st.stats?.total != null)) {
+    if (st && st.loaded && !st.loading) {
       window.CutupSavedOutputsLibrary.render(getSavedOutputsLibraryCtx());
       savedOutputsCache = st.items || [];
       return;
@@ -2391,6 +2477,7 @@ function renderPlansSection() {
   const renewalLabel = renewalCountdown
     || (cycleEnd ? formatDateTime(cycleEnd) : '—');
   const pct = credits.limit > 0 ? Math.min(100, Math.round((credits.used / credits.limit) * 100)) : 0;
+  const libTotal = getLibraryStatsFromState().dbTotal ?? getLibraryStatsFromState().total ?? 0;
 
   subscriptionInfoEl.innerHTML = `
     <div class="dash-plans">
@@ -2426,6 +2513,7 @@ function renderPlansSection() {
         <div class="dash-plans-usage__bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">
           <div class="dash-plans-usage__fill" style="width:${pct}%"></div>
         </div>
+        <p style="margin:14px 0 0"><button type="button" class="lib-widget__link" id="plansOpenLibraryBtn">View your content library (${libTotal} outputs) →</button></p>
       </section>
 
       <section class="dash-plans-matrix">
@@ -2440,6 +2528,8 @@ function renderPlansSection() {
     paywallEl.hidden = true;
     paywallEl.innerHTML = '';
   }
+
+  document.getElementById('plansOpenLibraryBtn')?.addEventListener('click', () => navigateToContentLibrary());
 
   if (window.CutupPricingMatrix?.mount) {
     window.CutupPricingMatrix.mount('#dashPlansMatrixRoot', {
@@ -2475,6 +2565,9 @@ function renderBillingSection() {
       loadError: billingDashboardLoadError,
       subscriptionInfo,
       activityFeed: activityFeedCache,
+      libraryStats: getLibraryStatsFromState(),
+      libraryCycleOutputs: creditsFromSubscription(subscriptionInfo).used,
+      onOpenLibrary: navigateToContentLibrary,
       session: currentSession,
       apiBase: API_BASE_URL,
       apiPost,

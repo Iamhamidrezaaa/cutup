@@ -364,8 +364,9 @@ export default async function handler(req, res) {
         filter: query.filter || 'all',
         sort: query.sort || 'newest',
         collectionId: query.collectionId || null,
-        limit: parseInt(query.limit, 10) || 200
+        limit: parseInt(query.limit, 10) || 500
       });
+      console.log('[savedOutputsLibrary]', userId, payload.audit);
       return res.json({ ok: true, ...payload });
     }
 

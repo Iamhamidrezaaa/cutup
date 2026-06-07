@@ -247,7 +247,7 @@ export async function getCreditsSnapshot(email) {
  */
 export async function getLifetimeMetrics(email) {
   const pool = getPool();
-  const userRes = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+  const userRes = await pool.query('SELECT id FROM users WHERE lower(email) = lower($1)', [email]);
   if (!userRes.rows.length) {
     return { outputs: 0, mp4Exports: 0, processingJobs: 0 };
   }
