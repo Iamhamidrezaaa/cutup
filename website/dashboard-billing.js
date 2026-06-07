@@ -1,5 +1,5 @@
 /**
- * Billing Center UI — subscription overview, history, payment method, actions.
+ * Billing Dashboard — widget/card architecture (not document layout).
  */
 (function () {
   'use strict';
@@ -36,12 +36,11 @@
 
   function statusBadgeClass(status) {
     var s = String(status || '').toLowerCase();
-    if (s === 'active' || s === 'paid') return 'billing-badge billing-badge--active';
-    if (s === 'trialing' || s === 'trial') return 'billing-badge billing-badge--trial';
-    if (s === 'past_due' || s === 'unpaid') return 'billing-badge billing-badge--past-due';
-    if (s === 'canceled' || s === 'cancelled' || s === 'failed') return 'billing-badge billing-badge--cancelled';
-    if (s === 'free') return 'billing-badge billing-badge--neutral';
-    return 'billing-badge billing-badge--neutral';
+    if (s === 'active' || s === 'paid') return 'bd-badge bd-badge--active';
+    if (s === 'trialing' || s === 'trial') return 'bd-badge bd-badge--trial';
+    if (s === 'past_due' || s === 'unpaid') return 'bd-badge bd-badge--warn';
+    if (s === 'canceled' || s === 'cancelled' || s === 'failed') return 'bd-badge bd-badge--danger';
+    return 'bd-badge bd-badge--neutral';
   }
 
   function statusLabel(status, planKey) {
@@ -58,19 +57,10 @@
     return s ? s.charAt(0).toUpperCase() + s.slice(1) : '—';
   }
 
-  function billingPeriodLabel(period) {
-    var p = String(period || 'monthly').toLowerCase();
-    if (p === 'annual' || p === 'yearly') return 'Annual';
-    return 'Monthly';
-  }
-
-  function progressPct(used, total) {
-    if (!total || total <= 0) return 0;
-    return Math.min(100, Math.round((used / total) * 100));
-  }
-
   function formatPlanPrice(plan) {
-    if (plan && plan.price && plan.price.display) return plan.price.display;
+    if (plan && plan.price && plan.price.display) {
+      return String(plan.price.display).replace(' / month', '/month');
+    }
     return '€0';
   }
 
@@ -83,48 +73,51 @@
     return String(pm.display || '').replace(/ending in /i, '•••• ') || null;
   }
 
-  function upgradeSubtitle(planKey) {
-    var k = String(planKey || 'free').toLowerCase();
-    if (k === 'free') return 'Unlock translation, exports, and project history.';
-    if (k === 'starter') return 'Unlock video exports and creator styles.';
-    return 'Unlock more features for your workflow.';
+  function humanizeError(err) {
+    if (!err) return null;
+    var e = String(err).toLowerCase();
+    if (e.indexOf('database') >= 0 || e.indexOf('billing_api') >= 0 || e.indexOf('503') >= 0) {
+      return 'Limited billing details';
+    }
+    if (e.indexOf('network') >= 0) return 'Connection issue';
+    return 'Some details unavailable';
   }
 
-  function statCard(icon, label, valueHtml, desc) {
+  function progressPct(used, total) {
+    if (!total || total <= 0) return 0;
+    return Math.min(100, Math.round((used / total) * 100));
+  }
+
+  /** KPI widget — label + huge value + tiny meta only */
+  function kpiWidget(label, valueHtml, meta) {
     return (
-      '<div class="billing-stat-card">' +
-        '<div class="billing-stat-card__icon" aria-hidden="true">' + icon + '</div>' +
-        '<div class="billing-stat-card__body">' +
-          '<span class="billing-stat-card__label">' + esc(label) + '</span>' +
-          '<div class="billing-stat-card__value">' + valueHtml + '</div>' +
-          (desc ? '<span class="billing-stat-card__desc">' + esc(desc) + '</span>' : '') +
-        '</div>' +
+      '<div class="bd-kpi">' +
+        '<span class="bd-kpi__label">' + esc(label) + '</span>' +
+        '<div class="bd-kpi__value">' + valueHtml + '</div>' +
+        (meta ? '<span class="bd-kpi__meta">' + esc(meta) + '</span>' : '') +
       '</div>'
     );
   }
 
-  function renderOverviewStats(sub, usage) {
+  function renderKpiGrid(sub, usage) {
     var plan = sub || {};
     var u = usage || {};
     var planKey = String(plan.plan || 'free').toLowerCase();
     var badgeCls = planKey === 'free' ? statusBadgeClass('free') : statusBadgeClass(plan.status);
-    var badgeText = (planKey === 'free' ? 'Free' : statusLabel(plan.status, plan.plan)).toUpperCase();
-    var renewalDate = formatBillingDate(plan.nextRenewalDate);
-    var renewalDesc = planKey === 'free' ? 'No active subscription' : 'Automatic renewal';
+    var badgeText = planKey === 'free' ? 'Free' : statusLabel(plan.status, plan.plan);
+    var renewalMeta = planKey === 'free' ? '—' : 'Auto-renewal';
 
     return (
-      '<section class="billing-overview-section">' +
-        '<div class="billing-stat-grid">' +
-          statCard('💳', 'Current plan', esc(plan.planName || plan.plan), formatPlanPrice(plan)) +
-          statCard('🎬', 'Credits remaining', esc(String(u.remainingCredits)), 'credits left') +
-          statCard('✓', 'Status', '<span class="' + badgeCls + ' billing-stat-badge">' + esc(badgeText) + '</span>', billingPeriodLabel(plan.billingPeriod) + ' billing') +
-          statCard('📅', 'Next renewal', esc(renewalDate), renewalDesc) +
-        '</div>' +
-      '</section>'
+      '<div class="bd-kpi-grid">' +
+        kpiWidget('Current Plan', esc(plan.planName || plan.plan), formatPlanPrice(plan)) +
+        kpiWidget('Credits Remaining', esc(String(u.remainingCredits)), 'credits left') +
+        kpiWidget('Status', '<span class="' + badgeCls + '">' + esc(badgeText) + '</span>', '') +
+        kpiWidget('Renewal', esc(formatBillingDate(plan.nextRenewalDate)), renewalMeta) +
+      '</div>'
     );
   }
 
-  function renderUsageWidget(usage) {
+  function renderUsagePanel(usage) {
     var u = usage || {};
     var used = Number(u.usedCredits) || 0;
     var remaining = Number(u.remainingCredits) || 0;
@@ -132,105 +125,105 @@
     var pct = progressPct(used, total);
 
     return (
-      '<article class="billing-card billing-card--usage">' +
-        '<div class="billing-usage-widget">' +
-          '<div class="billing-usage-widget__header">' +
-            '<h3 class="billing-section-title">Credits this month</h3>' +
-            '<span class="billing-usage-widget__pct">' + pct + '% used</span>' +
-          '</div>' +
-          '<div class="billing-usage-widget__metrics">' +
-            '<div class="billing-usage-metric">' +
-              '<span class="billing-usage-metric__value">' + esc(used) + '</span>' +
-              '<span class="billing-usage-metric__label">Used</span>' +
-            '</div>' +
-            '<div class="billing-usage-metric billing-usage-metric--remaining">' +
-              '<span class="billing-usage-metric__value">' + esc(remaining) + '</span>' +
-              '<span class="billing-usage-metric__label">Remaining</span>' +
-            '</div>' +
-            '<div class="billing-usage-metric billing-usage-metric--total">' +
-              '<span class="billing-usage-metric__value">' + esc(total) + '</span>' +
-              '<span class="billing-usage-metric__label">Monthly limit</span>' +
-            '</div>' +
-          '</div>' +
-          '<div class="billing-usage__track" role="progressbar" aria-valuenow="' + pct + '" aria-valuemin="0" aria-valuemax="100" aria-label="Credit usage">' +
-            '<div class="billing-usage__fill" style="width:' + pct + '%"></div>' +
-          '</div>' +
+      '<section class="bd-panel bd-panel--usage">' +
+        '<div class="bd-panel__toolbar">' +
+          '<span class="bd-panel__title">Usage this month</span>' +
+          '<span class="bd-panel__chip">' + pct + '%</span>' +
         '</div>' +
-      '</article>'
+        '<div class="bd-usage-bar" role="progressbar" aria-valuenow="' + pct + '" aria-valuemin="0" aria-valuemax="100">' +
+          '<div class="bd-usage-bar__fill" style="width:' + pct + '%"></div>' +
+        '</div>' +
+        '<div class="bd-usage-row">' +
+          '<div class="bd-usage-cell"><strong>' + esc(used) + '</strong><span>Used</span></div>' +
+          '<div class="bd-usage-cell bd-usage-cell--accent"><strong>' + esc(remaining) + '</strong><span>Remaining</span></div>' +
+          '<div class="bd-usage-cell"><strong>' + esc(total) + '</strong><span>Monthly limit</span></div>' +
+        '</div>' +
+      '</section>'
     );
   }
 
-  function renderUpgrade(planKey, onUpgradeId) {
+  function renderUpgrade(planKey, btnId) {
     var k = String(planKey || 'free').toLowerCase();
     if (k !== 'free' && k !== 'starter') return '';
     var PP = window.CutupPlanPermissions;
     if (!PP) return '';
     var next = PP.getNextPlanKey(k);
-    var benefits = PP.getUpgradeBenefits(k);
+    var benefits = PP.getUpgradeBenefits(k).slice(0, 5);
     var nextName = next ? PP.displayPlanName(next) : null;
     if (!next || !nextName || !benefits.length) return '';
 
     return (
-      '<article class="billing-card billing-card--upgrade billing-card--upgrade-featured">' +
-        '<div class="billing-upgrade-inner">' +
-          '<div class="billing-upgrade-copy">' +
-            '<span class="billing-upgrade-eyebrow">Recommended upgrade</span>' +
-            '<h2 class="billing-upgrade-title">Upgrade to ' + esc(nextName) + '</h2>' +
-            '<p class="billing-upgrade-subtitle">' + esc(upgradeSubtitle(k)) + '</p>' +
-            '<ul class="billing-upgrade-features">' +
-              benefits.map(function (b) { return '<li>' + esc(b) + '</li>'; }).join('') +
-            '</ul>' +
+      '<div class="bd-upgrade-slot">' +
+        '<article class="paid-plan-card featured bd-upgrade-card">' +
+          '<div class="paid-plan-header">' +
+            '<div class="bd-upgrade-icon" aria-hidden="true">⚡</div>' +
+            '<div class="paid-plan-name">Upgrade to ' + esc(nextName) + '</div>' +
+            '<div class="bd-upgrade-tagline">Video exports &amp; creator tools</div>' +
           '</div>' +
-          '<div class="billing-upgrade-cta">' +
-            '<button type="button" class="plan-btn billing-upgrade-btn" id="' + esc(onUpgradeId) + '">Upgrade to ' + esc(nextName) + '</button>' +
-          '</div>' +
-        '</div>' +
-      '</article>'
-    );
-  }
-
-  function renderPaymentFailure(failure) {
-    if (!failure) return '';
-    return (
-      '<div class="billing-alert billing-alert--danger" role="alert">' +
-        '<h3 class="billing-alert__title">Payment failed</h3>' +
-        '<p><strong>Reason:</strong> ' + esc(failure.reason || 'Payment could not be processed') + '</p>' +
-        '<p>' + esc(failure.message || 'Your subscription may be interrupted.') + '</p>' +
-        '<div class="billing-alert__actions">' +
-          '<button type="button" class="plan-btn" id="billingRetryPaymentBtn">Retry payment</button>' +
-          '<button type="button" class="plan-btn plan-btn--ghost" id="billingUpdateCardBtn">Update card</button>' +
-        '</div>' +
+          '<ul class="plan-features">' +
+            benefits.map(function (b) { return '<li>' + esc(b) + '</li>'; }).join('') +
+          '</ul>' +
+          '<button type="button" class="plan-btn bd-upgrade-cta" id="' + esc(btnId) + '">Upgrade to ' + esc(nextName) + '</button>' +
+        '</article>' +
       '</div>'
     );
   }
 
-  function renderHistory(rows) {
+  function renderSyncNotice(error) {
+    var msg = humanizeError(error);
+    if (!msg) return '';
+    return (
+      '<div class="bd-sync-notice" role="status">' +
+        '<span class="bd-sync-notice__dot" aria-hidden="true"></span>' +
+        '<span>' + esc(msg) + '</span>' +
+      '</div>'
+    );
+  }
+
+  function renderPaymentAlert(failure) {
+    if (!failure) return '';
+    return (
+      '<section class="bd-panel bd-panel--alert">' +
+        '<div class="bd-panel__toolbar">' +
+          '<span class="bd-panel__title">Payment failed</span>' +
+          '<span class="bd-badge bd-badge--danger">Action required</span>' +
+        '</div>' +
+        '<div class="bd-alert-actions">' +
+          '<button type="button" class="plan-btn plan-btn--sm" id="billingRetryPaymentBtn">Retry</button>' +
+          '<button type="button" class="plan-btn plan-btn--sm plan-btn--ghost" id="billingUpdateCardBtn">Update card</button>' +
+        '</div>' +
+      '</section>'
+    );
+  }
+
+  function renderHistoryPanel(rows) {
     var list = Array.isArray(rows) ? rows : [];
+
     if (!list.length) {
       return (
-        '<article class="billing-card billing-card--history">' +
-          '<h2 class="billing-section-title">Billing history</h2>' +
-          '<div class="billing-empty billing-empty--illustrated">' +
-            '<div class="billing-empty__icon" aria-hidden="true">' +
-              '<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-                '<rect x="8" y="6" width="32" height="36" rx="4" stroke="currentColor" stroke-width="2"/>' +
-                '<path d="M16 16h16M16 24h16M16 32h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' +
+        '<section class="bd-panel bd-panel--history">' +
+          '<div class="bd-panel__toolbar"><span class="bd-panel__title">Billing history</span></div>' +
+          '<div class="bd-empty">' +
+            '<div class="bd-empty__art" aria-hidden="true">' +
+              '<svg viewBox="0 0 80 80" width="64" height="64" fill="none">' +
+                '<rect x="16" y="12" width="48" height="56" rx="6" stroke="currentColor" stroke-width="2.5"/>' +
+                '<path d="M28 28h24M28 40h24M28 52h16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>' +
               '</svg>' +
             '</div>' +
-            '<p class="billing-empty__title">No invoices yet</p>' +
-            '<p class="billing-empty__text">Your future payments and invoices<br>will appear here.</p>' +
+            '<strong class="bd-empty__head">No invoices yet</strong>' +
+            '<span class="bd-empty__sub">Future payments will appear here</span>' +
           '</div>' +
-        '</article>'
+        '</section>'
       );
     }
 
     var tableRows = list.map(function (row) {
       var st = String(row.status || 'paid').toLowerCase();
       var download = row.downloadUrl && String(row.downloadUrl).startsWith('http')
-        ? '<a class="billing-link" href="' + esc(row.downloadUrl) + '" target="_blank" rel="noopener">Download</a>'
+        ? '<a class="bd-table-link" href="' + esc(row.downloadUrl) + '" target="_blank" rel="noopener">Download</a>'
         : (row.source === 'invoice'
-          ? '<button type="button" class="billing-link billing-link--btn" data-invoice-id="' + esc(row.id) + '">Download</button>'
-          : '<span class="billing-muted">—</span>');
+          ? '<button type="button" class="bd-table-link bd-table-link--btn" data-invoice-id="' + esc(row.id) + '">Download</button>'
+          : '<span class="bd-table-muted">—</span>');
       return (
         '<tr>' +
           '<td data-label="Date">' + esc(formatBillingDate(row.date, true)) + '</td>' +
@@ -243,63 +236,59 @@
     }).join('');
 
     return (
-      '<article class="billing-card billing-card--history">' +
-        '<h2 class="billing-section-title">Billing history</h2>' +
-        '<div class="billing-table-wrap">' +
-          '<table class="billing-table">' +
+      '<section class="bd-panel bd-panel--history">' +
+        '<div class="bd-panel__toolbar"><span class="bd-panel__title">Billing history</span></div>' +
+        '<div class="bd-table-shell">' +
+          '<table class="bd-table">' +
             '<thead><tr><th>Date</th><th>Amount</th><th>Plan</th><th>Status</th><th>Invoice</th></tr></thead>' +
             '<tbody>' + tableRows + '</tbody>' +
           '</table>' +
         '</div>' +
-      '</article>'
+      '</section>'
     );
   }
 
-  function renderPaymentMethod(pm, canPortal) {
+  function renderPaymentPanel(pm, canPortal) {
     var hasPm = pm && (pm.display || pm.last4);
     var display = formatPaymentDisplay(pm);
     var exp = pm && pm.expMonth && pm.expYear
       ? String(pm.expMonth).padStart(2, '0') + '/' + pm.expYear
       : null;
     var btnLabel = hasPm ? 'Update payment method' : 'Add payment method';
+
+    var cardInner = hasPm
+      ? '<div class="bd-wallet">' +
+          '<span class="bd-wallet__brand">' + esc(display) + '</span>' +
+          (exp ? '<span class="bd-wallet__exp">Expires ' + esc(exp) + '</span>' : '') +
+        '</div>'
+      : '<div class="bd-wallet bd-wallet--empty"><span>No card on file</span></div>';
+
     var btn = canPortal
-      ? '<button type="button" class="plan-btn plan-btn--ghost billing-pm-btn" id="billingUpdatePaymentBtn">' + esc(btnLabel) + '</button>'
+      ? '<button type="button" class="plan-btn plan-btn--ghost plan-btn--sm bd-wallet-btn" id="billingUpdatePaymentBtn">' + esc(btnLabel) + '</button>'
       : '';
 
-    var body = hasPm
-      ? '<div class="billing-pm-card">' +
-          '<div class="billing-pm-card__chip" aria-hidden="true">💳</div>' +
-          '<div class="billing-pm-card__details">' +
-            '<p class="billing-pm__brand">' + esc(display) + '</p>' +
-            (exp ? '<p class="billing-pm__exp">Expires ' + esc(exp) + '</p>' : '') +
-          '</div>' +
-        '</div>'
-      : '<div class="billing-pm-empty">' +
-          '<span class="billing-pm-empty__icon" aria-hidden="true">💳</span>' +
-          '<p class="billing-pm-empty__text">No payment method added yet</p>' +
-        '</div>';
-
     return (
-      '<article class="billing-card billing-card--payment">' +
-        '<h2 class="billing-section-title">Payment method</h2>' +
-        body + btn +
-      '</article>'
+      '<section class="bd-panel bd-panel--wallet">' +
+        '<div class="bd-panel__toolbar"><span class="bd-panel__title">Payment method</span></div>' +
+        cardInner + btn +
+      '</section>'
     );
   }
 
-  function renderUpcoming(charge) {
+  function renderUpcomingPanel(charge) {
     if (!charge || !charge.date) return '';
     return (
-      '<article class="billing-card billing-card--upcoming">' +
-        '<h2 class="billing-section-title">Upcoming charge</h2>' +
-        '<p class="billing-upcoming__label">Next payment</p>' +
-        '<p class="billing-upcoming__amount">' + esc(charge.display || formatMoney(charge.amount, charge.currency)) + '</p>' +
-        '<p class="billing-upcoming__date">' + esc(formatBillingDate(charge.date)) + '</p>' +
-      '</article>'
+      '<section class="bd-panel bd-panel--upcoming">' +
+        '<div class="bd-panel__toolbar"><span class="bd-panel__title">Upcoming charge</span></div>' +
+        '<div class="bd-upcoming">' +
+          '<strong class="bd-upcoming__amount">' + esc(charge.display || formatMoney(charge.amount, charge.currency)) + '</strong>' +
+          '<span class="bd-upcoming__date">' + esc(formatBillingDate(charge.date)) + '</span>' +
+        '</div>' +
+      '</section>'
     );
   }
 
-  function renderActions(sub, actions) {
+  function renderManagePanel(sub, actions) {
     var s = sub || {};
     var a = actions || {};
     var st = String(s.status || '').toLowerCase();
@@ -307,32 +296,55 @@
     var cancelScheduled = Boolean(s.cancelAtPeriodEnd);
     var planKey = String(s.plan || 'free').toLowerCase();
 
-    var actionsHtml = '';
-    if (cancelScheduled) {
-      actionsHtml =
-        '<p class="billing-manage__end-date">Ends on <strong>' + esc(formatBillingDate(s.cancelAt || s.currentPeriodEnd)) + '</strong></p>' +
-        (a.canOpenPortal
-          ? '<button type="button" class="plan-btn billing-manage-btn" id="billingResumeBtn">Resume subscription</button>'
-          : '');
+    var actionHtml = '';
+    if (cancelScheduled && a.canOpenPortal) {
+      actionHtml =
+        '<div class="bd-manage-row">' +
+          '<span class="bd-manage-meta">Ends ' + esc(formatBillingDate(s.cancelAt || s.currentPeriodEnd)) + '</span>' +
+          '<button type="button" class="plan-btn plan-btn--sm" id="billingResumeBtn">Resume</button>' +
+        '</div>';
     } else if (isActive && planKey !== 'free' && a.canOpenPortal) {
-      actionsHtml = '<button type="button" class="plan-btn plan-btn--ghost billing-manage-btn billing-manage-btn--danger" id="billingCancelBtn">Cancel subscription</button>';
-    } else if (planKey === 'free') {
-      actionsHtml = '<p class="billing-manage__hint">Upgrade from the card above to start a paid subscription.</p>';
-    } else {
-      actionsHtml = '<p class="billing-manage__hint">Subscription changes are managed through the billing portal.</p>';
+      actionHtml =
+        '<div class="bd-manage-row">' +
+          '<button type="button" class="plan-btn plan-btn--sm plan-btn--ghost bd-manage-cancel" id="billingCancelBtn">Cancel subscription</button>' +
+        '</div>';
     }
 
+    if (!actionHtml && planKey === 'free') return '';
+
     return (
-      '<article class="billing-card billing-card--manage">' +
-        '<div class="billing-manage">' +
-          '<div class="billing-manage__copy">' +
-            '<h2 class="billing-section-title">Manage subscription</h2>' +
-            '<p class="billing-manage__desc">Cancel or resume your subscription. Your plan stays active until the end of the billing period.</p>' +
-          '</div>' +
-          '<div class="billing-manage__actions">' + actionsHtml + '</div>' +
-        '</div>' +
-      '</article>'
+      '<section class="bd-panel bd-panel--danger">' +
+        '<div class="bd-panel__toolbar"><span class="bd-panel__title">Manage subscription</span></div>' +
+        (actionHtml || '<span class="bd-manage-meta">Portal unavailable</span>') +
+      '</section>'
     );
+  }
+
+  function renderErrorWidget(message) {
+    return (
+      '<section class="bd-panel bd-panel--error">' +
+        '<div class="bd-empty">' +
+          '<div class="bd-empty__art" aria-hidden="true">⚠️</div>' +
+          '<strong class="bd-empty__head">' + esc(message || 'Unable to load billing') + '</strong>' +
+          '<button type="button" class="plan-btn plan-btn--sm plan-btn--ghost" id="billingRetryLoadBtn">Try again</button>' +
+        '</div>' +
+      '</section>'
+    );
+  }
+
+  function normalizePayload(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    return {
+      subscription: raw.subscription || {},
+      usage: raw.usage || { monthlyCredits: 0, usedCredits: 0, remainingCredits: 0 },
+      paymentMethod: raw.paymentMethod ?? null,
+      billingHistory: Array.isArray(raw.billingHistory) ? raw.billingHistory : [],
+      upcomingCharge: raw.upcomingCharge ?? null,
+      paymentFailure: raw.paymentFailure ?? null,
+      actions: raw.actions || {},
+      error: raw.error || null,
+      ok: raw.ok !== false
+    };
   }
 
   function bindActions(ctx) {
@@ -373,11 +385,8 @@
           });
           var inv = await ir.json().catch(function () { return {}; });
           var pdf = inv?.invoice?.pdf_url;
-          if (pdf) {
-            window.open(pdf, '_blank', 'noopener');
-          } else {
-            ctx.showBanner?.('Invoice PDF is not available yet.', 'neutral');
-          }
+          if (pdf) window.open(pdf, '_blank', 'noopener');
+          else ctx.showBanner?.('Invoice PDF is not available yet.', 'neutral');
         } catch (_e) {
           ctx.showBanner?.('Could not load invoice.', 'error');
         } finally {
@@ -388,61 +397,23 @@
 
     root.querySelector('#billingRetryPaymentBtn')?.addEventListener('click', async function () {
       var btn = root.querySelector('#billingRetryPaymentBtn');
-      if (btn) {
-        btn.disabled = true;
-        btn.textContent = 'Retrying…';
-      }
+      if (btn) { btn.disabled = true; btn.textContent = '…'; }
       try {
-        if (typeof ctx.onRetryPayment === 'function') {
-          await ctx.onRetryPayment();
-        }
+        if (typeof ctx.onRetryPayment === 'function') await ctx.onRetryPayment();
       } finally {
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = 'Retry payment';
-        }
+        if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
       }
     });
   }
 
   async function fetchPortal(ctx) {
-    var url = ctx.apiBase + '/api/stripe/portal';
-    var r = await fetch(url, {
+    var r = await fetch(ctx.apiBase + '/api/stripe/portal', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Session-Id': ctx.session
-      }
+      headers: { 'Content-Type': 'application/json', 'X-Session-Id': ctx.session }
     });
     var d = await r.json().catch(function () { return {}; });
     if (!r.ok) return { error: d.message || d.error || 'Portal unavailable' };
     return d;
-  }
-
-  function renderErrorCard(message, detail) {
-    return (
-      '<article class="billing-card billing-card--error">' +
-        '<h2 class="billing-card__title">Unable to load billing data</h2>' +
-        '<p class="billing-empty__text">' + esc(message || 'Please refresh the page or try again in a moment.') + '</p>' +
-        (detail ? '<p class="billing-empty__text billing-error-detail">' + esc(detail) + '</p>' : '') +
-        '<button type="button" class="plan-btn plan-btn--ghost" id="billingRetryLoadBtn">Try again</button>' +
-      '</article>'
-    );
-  }
-
-  function normalizePayload(raw) {
-    if (!raw || typeof raw !== 'object') return null;
-    return {
-      subscription: raw.subscription || {},
-      usage: raw.usage || { monthlyCredits: 0, usedCredits: 0, remainingCredits: 0 },
-      paymentMethod: raw.paymentMethod ?? null,
-      billingHistory: Array.isArray(raw.billingHistory) ? raw.billingHistory : [],
-      upcomingCharge: raw.upcomingCharge ?? null,
-      paymentFailure: raw.paymentFailure ?? null,
-      actions: raw.actions || {},
-      error: raw.error || null,
-      ok: raw.ok !== false
-    };
   }
 
   function renderBillingCenter(ctx) {
@@ -450,24 +421,20 @@
     if (!target) return;
 
     var loadState = ctx.loadState || (ctx.data ? 'ready' : 'idle');
-    console.log('[billing]', {
-      loadState: loadState,
-      payload: ctx.data,
-      error: ctx.loadError || null
-    });
 
     if (loadState === 'loading') {
       target.innerHTML =
-        '<div class="billing-center billing-center--loading">' +
-          '<p class="dashboard-muted-loading">Loading billing details…</p>' +
+        '<div class="bd bd--loading">' +
+          '<div class="bd-kpi-grid">' +
+            new Array(4).fill('<div class="bd-kpi bd-kpi--skeleton"></div>').join('') +
+          '</div>' +
         '</div>';
       return;
     }
 
     var d = normalizePayload(ctx.data);
     if (!d || !d.subscription) {
-      target.innerHTML =
-        '<div class="billing-center">' + renderErrorCard(ctx.loadError || 'Unable to load billing data') + '</div>';
+      target.innerHTML = '<div class="bd">' + renderErrorWidget('Unable to load billing data') + '</div>';
       target.querySelector('#billingRetryLoadBtn')?.addEventListener('click', function () {
         if (typeof ctx.onRetryLoad === 'function') void ctx.onRetryLoad();
       });
@@ -475,42 +442,29 @@
     }
 
     try {
-      var sub = d.subscription || {};
-      var upgradeId = 'billingUpgradePlanBtn';
-      var errorBanner = (!d.ok || d.error)
-        ? '<div class="billing-alert billing-alert--warn" role="status">' +
-            '<p>Some billing details could not be loaded. Showing available information.</p>' +
-            (d.error ? '<p class="billing-error-detail">' + esc(d.error) + '</p>' : '') +
-          '</div>'
-        : '';
-
-      var upcomingHtml = renderUpcoming(d.upcomingCharge);
-      var bottomGridClass = upcomingHtml
-        ? 'billing-grid billing-grid--pair'
-        : 'billing-grid billing-grid--single';
+      var sub = d.subscription;
+      var upcoming = renderUpcomingPanel(d.upcomingCharge);
+      var bottomClass = upcoming ? 'bd-duo' : 'bd-duo bd-duo--single';
 
       target.innerHTML =
-        '<div class="billing-center">' +
-          errorBanner +
-          renderPaymentFailure(d.paymentFailure) +
-          renderOverviewStats(sub, d.usage) +
-          renderUsageWidget(d.usage) +
-          renderUpgrade(sub.plan, upgradeId) +
-          renderHistory(d.billingHistory) +
-          '<div class="' + bottomGridClass + '">' +
-            renderPaymentMethod(d.paymentMethod, d.actions && d.actions.canOpenPortal) +
-            upcomingHtml +
+        '<div class="bd">' +
+          renderSyncNotice(d.error) +
+          renderPaymentAlert(d.paymentFailure) +
+          renderKpiGrid(sub, d.usage) +
+          renderUsagePanel(d.usage) +
+          renderUpgrade(sub.plan, 'billingUpgradePlanBtn') +
+          renderHistoryPanel(d.billingHistory) +
+          '<div class="' + bottomClass + '">' +
+            renderPaymentPanel(d.paymentMethod, d.actions && d.actions.canOpenPortal) +
+            upcoming +
           '</div>' +
-          renderActions(sub, d.actions) +
+          renderManagePanel(sub, d.actions) +
         '</div>';
 
       bindActions(ctx);
     } catch (err) {
       console.error('[billing] render failed', err);
-      target.innerHTML =
-        '<div class="billing-center">' +
-          renderErrorCard('Unable to load billing data', err && err.message ? err.message : null) +
-        '</div>';
+      target.innerHTML = '<div class="bd">' + renderErrorWidget('Unable to load billing data') + '</div>';
       target.querySelector('#billingRetryLoadBtn')?.addEventListener('click', function () {
         if (typeof ctx.onRetryLoad === 'function') void ctx.onRetryLoad();
       });
@@ -525,7 +479,6 @@
       var url = ctx.apiBase + '/api/subscription?action=billing&session=' + encodeURIComponent(ctx.session);
       var r = await fetch(url, { headers: { 'X-Session-Id': ctx.session } });
       var data = await r.json().catch(function () { return null; });
-      console.log('[billing] fetch', { status: r.status, ok: r.ok, body: data });
       if (!r.ok) {
         return {
           ok: false,
@@ -536,8 +489,7 @@
       }
       return { ok: true, status: r.status, error: null, data: data };
     } catch (err) {
-      console.error('[billing] fetch error', err);
-      return { ok: false, status: 0, error: err && err.message ? err.message : 'network_error', data: null };
+      return { ok: false, status: 0, error: err?.message || 'network_error', data: null };
     }
   }
 
