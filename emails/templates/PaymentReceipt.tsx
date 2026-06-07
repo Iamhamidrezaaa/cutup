@@ -1,6 +1,7 @@
 import { CutupLayout } from '../layouts/CutupLayout';
 import {
   DetailRow,
+  DetailTable,
   EmailButton,
   EmailCard,
   EmailText,
@@ -36,9 +37,11 @@ export function PaymentReceipt({
       />
       <EmailCard>
         <PlanBadge plan={planName} />
-        <DetailRow label="Amount" value={amount} />
-        <DetailRow label="Plan" value={planName} />
-        <DetailRow label="Billing date" value={dateLabel} last />
+        <DetailTable>
+          <DetailRow label="Amount" value={amount} />
+          <DetailRow label="Plan" value={planName} />
+          <DetailRow label="Billing date" value={dateLabel} last />
+        </DetailTable>
       </EmailCard>
       {invoiceUrl ? <EmailButton href={invoiceUrl}>View Invoice</EmailButton> : null}
       <EmailText inset muted small>

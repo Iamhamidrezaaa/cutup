@@ -10,17 +10,20 @@ type Props = {
 
 export function HeroSection({ title, subtitle, children }: Props) {
   return (
-    <Section className="email-pad-x" style={{ padding: `0 ${BRAND.padX} 4px` }}>
+    <Section
+      className="email-pad-x email-hero-section"
+      style={{ padding: `${BRAND.heroPadTop} ${BRAND.padX} ${BRAND.heroPadBottom}` }}
+    >
       <Heading
         as="h1"
         className="email-hero-title"
         style={{
-          margin: '0 0 8px',
+          margin: '0 0 12px',
           fontSize: BRAND.heroTitleSize,
-          lineHeight: '1.2',
+          lineHeight: '1.15',
           fontWeight: 700,
           color: BRAND.text,
-          letterSpacing: '-0.03em',
+          letterSpacing: '-0.035em',
         }}
       >
         {title}
@@ -29,9 +32,9 @@ export function HeroSection({ title, subtitle, children }: Props) {
         <Text
           className="email-body-text"
           style={{
-            margin: '0 0 12px',
+            margin: '0 0 20px',
             fontSize: BRAND.bodySize,
-            lineHeight: '1.5',
+            lineHeight: '1.6',
             color: BRAND.textMuted,
           }}
         >

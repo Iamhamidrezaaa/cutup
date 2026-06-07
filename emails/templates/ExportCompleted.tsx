@@ -1,6 +1,7 @@
 import { CutupLayout } from '../layouts/CutupLayout';
 import {
   DetailRow,
+  DetailTable,
   EmailButton,
   EmailCard,
   HeroSection,
@@ -32,9 +33,11 @@ export function ExportCompleted({
         subtitle="Download your file below."
       />
       <EmailCard>
-        <DetailRow label="Project" value={projectName} />
-        <DetailRow label="Export type" value={exportType} />
-        <DetailRow label="Export date" value={dateLabel} last />
+        <DetailTable>
+          <DetailRow label="Project" value={projectName} />
+          <DetailRow label="Export type" value={exportType} />
+          <DetailRow label="Export date" value={dateLabel} last />
+        </DetailTable>
       </EmailCard>
       <EmailButton href={download}>Download Export</EmailButton>
     </CutupLayout>

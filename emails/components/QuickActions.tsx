@@ -41,7 +41,7 @@ export function QuickActions({ dashboardUrl }: Props) {
   }));
 
   return (
-    <Section className="email-pad-x" style={{ padding: `0 ${BRAND.padX} 14px` }}>
+    <Section className="email-pad-x" style={{ padding: `0 ${BRAND.padX} 24px` }}>
       <Text
         style={{
           margin: '0 0 8px',

@@ -8,14 +8,14 @@ type Props = {
   href: string;
   children: React.ReactNode;
   variant?: Variant;
-  /** @deprecated All CTAs are centered with max-width 280px for mobile safety */
+  /** Centers CTA with max-width — preferred for all templates */
   fullWidth?: boolean;
 };
 
 export function EmailButton({ href, children, variant = 'primary' }: Props) {
   const isPrimary = variant === 'primary';
   return (
-    <Section className="email-pad-x" style={{ padding: `0 ${BRAND.padX} 10px`, textAlign: 'center' }}>
+    <Section className="email-pad-x" style={{ padding: `0 ${BRAND.padX} 20px`, textAlign: 'center' }}>
       <table
         cellPadding={0}
         cellSpacing={0}
@@ -32,10 +32,12 @@ export function EmailButton({ href, children, variant = 'primary' }: Props) {
             <td
               align="center"
               style={{
-                borderRadius: BRAND.radius,
+                borderRadius: '14px',
+                background: isPrimary ? BRAND.gradient : BRAND.card,
                 backgroundColor: isPrimary ? BRAND.primary : BRAND.card,
                 border: isPrimary ? 'none' : `1px solid ${BRAND.border}`,
-                padding: '13px 20px',
+                boxShadow: isPrimary ? BRAND.shadowButton : BRAND.shadowSm,
+                padding: '16px 32px',
               }}
             >
               <a
@@ -46,7 +48,7 @@ export function EmailButton({ href, children, variant = 'primary' }: Props) {
                   fontWeight: 600,
                   color: isPrimary ? '#FFFFFF' : BRAND.text,
                   textDecoration: 'none',
-                  lineHeight: '1.3',
+                  lineHeight: '1.2',
                   textAlign: 'center',
                   fontFamily: BRAND.fontFamily,
                 }}

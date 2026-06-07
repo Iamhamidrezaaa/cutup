@@ -8,7 +8,7 @@ export function EmailDivider() {
         style={{
           borderColor: BRAND.border,
           borderWidth: '1px',
-          margin: '12px 0',
+          margin: '16px 0',
         }}
       />
     </Section>

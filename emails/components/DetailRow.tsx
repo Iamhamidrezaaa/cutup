@@ -7,7 +7,7 @@ type Props = {
   last?: boolean;
 };
 
-/** Stacked label → value rows (Gmail mobile safe, no two-column overflow). */
+/** Desktop: label | value. Mobile (≤600px): stacked via media query. */
 export function DetailRow({ label, value, last }: Props) {
   return (
     <table
@@ -15,41 +15,19 @@ export function DetailRow({ label, value, last }: Props) {
       cellSpacing={0}
       role="presentation"
       width="100%"
+      className="email-detail-row"
       style={{
         width: '100%',
-        marginBottom: last ? 0 : '10px',
-        paddingBottom: last ? 0 : '10px',
+        tableLayout: 'fixed',
+        marginBottom: last ? 0 : '12px',
         borderBottom: last ? 'none' : `1px solid ${BRAND.border}`,
+        paddingBottom: last ? 0 : '12px',
       }}
     >
       <tbody>
         <tr>
-          <td
-            className="email-word-break"
-            style={{
-              fontSize: '12px',
-              color: BRAND.textMuted,
-              paddingBottom: '3px',
-              lineHeight: '1.3',
-              fontWeight: 500,
-            }}
-          >
-            {label}
-          </td>
-        </tr>
-        <tr>
-          <td
-            className="email-word-break"
-            style={{
-              fontSize: '15px',
-              fontWeight: 600,
-              color: BRAND.text,
-              lineHeight: '1.4',
-              wordBreak: 'break-word',
-            }}
-          >
-            {value}
-          </td>
+          <td className="email-detail-label email-word-break">{label}</td>
+          <td className="email-detail-value email-word-break">{value}</td>
         </tr>
       </tbody>
     </table>

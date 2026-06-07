@@ -2,6 +2,7 @@ import { Text } from '@react-email/components';
 import { CutupLayout } from '../layouts/CutupLayout';
 import {
   DetailRow,
+  DetailTable,
   EmailButton,
   EmailCard,
   FeatureList,
@@ -41,7 +42,9 @@ export function SubscriptionUpgraded({
       <EmailCard>
         <PlanBadge plan={planName} />
         {monthlyCredits != null ? (
-          <DetailRow label="Credits included" value={`${monthlyCredits} / month`} />
+          <DetailTable>
+            <DetailRow label="Credits included" value={`${monthlyCredits} / month`} last />
+          </DetailTable>
         ) : null}
         <Text style={{ margin: '10px 0 8px', fontSize: '12px', fontWeight: 600, color: BRAND.textMuted }}>
           Included

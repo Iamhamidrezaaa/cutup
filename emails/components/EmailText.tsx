@@ -14,14 +14,14 @@ export function EmailText({ children, muted, small, style, inset }: Props) {
   return (
     <Section
       className={inset ? 'email-pad-x' : undefined}
-      style={{ padding: inset ? `0 ${BRAND.padX}` : 0, margin: '0 0 12px' }}
+      style={{ padding: inset ? `0 ${BRAND.padX}` : 0, margin: '0 0 16px' }}
     >
       <Text
-        className="email-body-text email-word-break"
+        className={small ? 'email-meta-text email-word-break' : 'email-body-text email-word-break'}
         style={{
           margin: 0,
-          fontSize: small ? '14px' : BRAND.bodySize,
-          lineHeight: '1.5',
+          fontSize: small ? BRAND.metaSize : BRAND.bodySize,
+          lineHeight: small ? '1.5' : '1.6',
           color: muted ? BRAND.textMuted : BRAND.text,
           ...style,
         }}

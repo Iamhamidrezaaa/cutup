@@ -20,14 +20,14 @@ const VARIANT_STYLES: Record<Variant, { bg: string; text: string }> = {
 export function StatusBadge({ children, variant = 'neutral' }: Props) {
   const colors = VARIANT_STYLES[variant];
   return (
-    <Section className="email-pad-x" style={{ padding: `4px ${BRAND.padX} 0` }}>
+    <Section className="email-pad-x" style={{ padding: `8px ${BRAND.padX} 0` }}>
       <Text
         style={{
           display: 'inline-block',
-          margin: '0 0 6px',
-          padding: '5px 10px',
+          margin: '0 0 8px',
+          padding: '6px 12px',
           borderRadius: '999px',
-          fontSize: '11px',
+          fontSize: '12px',
           fontWeight: 600,
           letterSpacing: '0.04em',
           textTransform: 'uppercase',

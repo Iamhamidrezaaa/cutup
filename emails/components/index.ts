@@ -1,5 +1,6 @@
 export { EmailHeadStyles } from './EmailHeadStyles';
 export { DetailRow } from './DetailRow';
+export { DetailTable } from './DetailTable';
 export { EmailButton } from './EmailButton';
 export { EmailCard } from './EmailCard';
 export { EmailDivider } from './EmailDivider';

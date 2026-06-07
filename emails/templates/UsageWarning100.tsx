@@ -1,6 +1,7 @@
 import { CutupLayout } from '../layouts/CutupLayout';
 import {
   DetailRow,
+  DetailTable,
   EmailButton,
   EmailCard,
   EmailText,
@@ -32,8 +33,10 @@ export function UsageWarning100({
       <EmailCard>
         <PlanBadge plan={planName} />
         <UsageProgressBar used={used} limit={limit} label="Monthly usage" />
-        <DetailRow label="Used" value={used} />
-        <DetailRow label="Remaining" value={remaining} last />
+        <DetailTable>
+          <DetailRow label="Used" value={used} />
+          <DetailRow label="Remaining" value={remaining} last />
+        </DetailTable>
       </EmailCard>
       <EmailButton href={upgrade} fullWidth>
         Upgrade Plan

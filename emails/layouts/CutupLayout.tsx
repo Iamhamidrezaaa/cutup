@@ -34,7 +34,7 @@ export function CutupLayout({ preview, children }: Props) {
       <Preview>{preview}</Preview>
       <Tailwind config={tailwindConfig}>
         <Body
-          className="m-0 p-0"
+          className="email-body-wrap m-0 p-0"
           style={{
             backgroundColor: BRAND.background,
             fontFamily: BRAND.fontFamily,

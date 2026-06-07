@@ -34,7 +34,7 @@ export function SupportTicketReply({
         <Text
           style={{
             margin: '0 0 12px',
-            fontSize: '13px',
+            fontSize: BRAND.metaSize,
             fontWeight: 600,
             color: BRAND.textMuted,
             textTransform: 'uppercase',
@@ -43,7 +43,10 @@ export function SupportTicketReply({
         >
           {agentName}
         </Text>
-        <Text style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: '15px', lineHeight: '1.65', color: BRAND.text }}>
+        <Text
+          className="email-body-text email-word-break"
+          style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: BRAND.bodySize, lineHeight: '1.6', color: BRAND.text }}
+        >
           {replyText || '—'}
         </Text>
       </EmailCard>

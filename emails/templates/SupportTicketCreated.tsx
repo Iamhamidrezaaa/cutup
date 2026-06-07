@@ -1,6 +1,7 @@
 import { CutupLayout } from '../layouts/CutupLayout';
 import {
   DetailRow,
+  DetailTable,
   EmailButton,
   EmailCard,
   EmailText,
@@ -36,9 +37,11 @@ export function SupportTicketCreated({
       />
       <EmailCard>
         <StatusBadge variant="info">#{ticketNumber}</StatusBadge>
-        <DetailRow label="Subject" value={subject} />
-        <DetailRow label="Created" value={dateLabel} />
-        <DetailRow label="Response time" value="Within 24 hours" last />
+        <DetailTable>
+          <DetailRow label="Subject" value={subject} />
+          <DetailRow label="Created" value={dateLabel} />
+          <DetailRow label="Response time" value="Within 24 hours" last />
+        </DetailTable>
       </EmailCard>
       <EmailButton href={url} fullWidth>
         View Ticket
