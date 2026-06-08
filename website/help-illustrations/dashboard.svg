@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" fill="none" role="img" aria-label="Cutup dashboard">
+  <rect width="640" height="360" rx="16" fill="#F8FAFC"/>
+  <rect x="24" y="24" width="140" height="312" rx="12" fill="#fff" stroke="#E2E8F0"/>
+  <rect x="40" y="48" width="80" height="10" rx="5" fill="#E0E7FF"/>
+  <rect x="40" y="72" width="108" height="8" rx="4" fill="#F1F5F9"/>
+  <rect x="40" y="92" width="108" height="8" rx="4" fill="#F1F5F9"/>
+  <rect x="40" y="112" width="108" height="8" rx="4" fill="#635BFF" opacity=".25"/>
+  <rect x="184" y="24" width="432" height="312" rx="12" fill="#fff" stroke="#E2E8F0"/>
+  <rect x="208" y="48" width="200" height="16" rx="6" fill="#0F172A" opacity=".12"/>
+  <rect x="208" y="84" width="384" height="72" rx="10" fill="#FAFAFF" stroke="#C7D2FE"/>
+  <rect x="224" y="104" width="120" height="32" rx="8" fill="#635BFF"/>
+  <rect x="208" y="176" width="180" height="100" rx="10" fill="#F8FAFC" stroke="#E2E8F0"/>
+  <rect x="404" y="176" width="188" height="100" rx="10" fill="#F8FAFC" stroke="#E2E8F0"/>
+</svg>

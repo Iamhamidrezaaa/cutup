@@ -27,7 +27,7 @@ export default async function handler(req, res) {
       const slug = String(req.query?.slug || '').trim();
       const result = await getHelpArticle(slug);
       if (!result.ok) return res.status(404).json({ ok: false, error: result.reason });
-      return res.json({ ok: true, article: result.article });
+      return res.json({ ok: true, article: result.article, related: result.related || [] });
     }
 
     if (action === 'search') {

@@ -1,133 +1,51 @@
 import { getPool, isBillingDbConfigured } from './db/pool.js';
 import { ensureOperationsV3Schema } from './operations-bootstrap.js';
+import { HELP_ARTICLES, HELP_CATEGORIES, HELP_CONTENT_VERSION } from './help-center-content.js';
+import { fuzzySearchArticles } from './help-fuzzy-search.js';
 
-const CATEGORIES = [
-  { slug: 'getting-started', title: 'Getting Started', description: 'Set up your workspace and first project', icon: '🚀', sort_order: 1 },
-  { slug: 'exports', title: 'Exports', description: 'Download transcripts, subtitles, and video', icon: '📤', sort_order: 2 },
-  { slug: 'transcripts', title: 'Transcripts', description: 'Accuracy, editing, and formatting', icon: '📝', sort_order: 3 },
-  { slug: 'translation', title: 'Translation', description: 'Multilingual captions and dubbing', icon: '🌐', sort_order: 4 },
-  { slug: 'billing', title: 'Billing', description: 'Plans, invoices, and payments', icon: '💳', sort_order: 5 },
-  { slug: 'credits', title: 'Credits', description: 'Usage limits and top-ups', icon: '⚡', sort_order: 6 },
-  { slug: 'account', title: 'Account', description: 'Profile, preferences, and teams', icon: '👤', sort_order: 7 },
-  { slug: 'security', title: 'Security', description: 'Privacy, data retention, and access', icon: '🔒', sort_order: 8 },
-  { slug: 'api', title: 'API', description: 'Integrations and developer access', icon: '🔌', sort_order: 9 },
-];
+let helpSeededVersion = 0;
 
-const ARTICLES = [
-  {
-    slug: 'quick-start-guide',
-    category_slug: 'getting-started',
-    title: 'Quick start guide',
-    summary: 'Paste a link or upload a file to generate your first transcript in minutes.',
-    body: 'Open Cutup and choose your source — YouTube, Instagram, or a local file. Run a preview to scan the transcript before exporting. Fix names and numbers in the first minute, then export as SRT or plain text.',
-    tags: ['onboarding', 'first project'],
-    is_popular: true,
-  },
-  {
-    slug: 'supported-video-formats',
-    category_slug: 'getting-started',
-    title: 'Supported video formats',
-    summary: 'MP4, MOV, WEBM uploads and major social platforms.',
-    body: 'Cutup supports direct uploads up to your plan limit plus link-based imports from YouTube and Instagram. For best results use clear audio and minimal background noise.',
-    tags: ['formats', 'upload'],
-    is_popular: true,
-  },
-  {
-    slug: 'export-srt-subtitles',
-    category_slug: 'exports',
-    title: 'Export SRT subtitles',
-    summary: 'Download broadcast-ready SRT files for your editor.',
-    body: 'After reviewing your transcript, open Export and choose SRT. Timing is preserved from the source video. Import the file into Premiere, DaVinci, or Final Cut.',
-    tags: ['srt', 'export'],
-    is_popular: true,
-  },
-  {
-    slug: 'export-burned-video',
-    category_slug: 'exports',
-    title: 'Burn-in captions to MP4',
-    summary: 'Render captions directly onto your video file.',
-    body: 'Use the video export workflow to burn captions with your chosen style. Processing time depends on video length and queue load.',
-    tags: ['mp4', 'burn-in'],
-    is_popular: false,
-  },
-  {
-    slug: 'improve-transcript-accuracy',
-    category_slug: 'transcripts',
-    title: 'Improve transcript accuracy',
-    summary: 'Tips for cleaner automated transcripts.',
-    body: 'Review the first 60 seconds carefully — fix proper nouns once and they propagate. Use punctuation edits to improve readability before sharing with your team.',
-    tags: ['accuracy', 'editing'],
-    is_popular: true,
-  },
-  {
-    slug: 'translate-captions',
-    category_slug: 'translation',
-    title: 'Translate captions',
-    summary: 'Generate multilingual subtitle tracks from one source.',
-    body: 'Run translation after your base transcript is finalized. Choose target languages from the translation panel and export each language as a separate SRT.',
-    tags: ['translate', 'languages'],
-    is_popular: true,
-  },
-  {
-    slug: 'change-subscription-plan',
-    category_slug: 'billing',
-    title: 'Change your subscription plan',
-    summary: 'Upgrade, downgrade, or switch billing cycle.',
-    body: 'Open Dashboard → Plans to compare tiers. Upgrades take effect immediately; downgrades apply at the end of the current billing period.',
-    tags: ['plans', 'upgrade'],
-    is_popular: true,
-  },
-  {
-    slug: 'understand-credit-usage',
-    category_slug: 'credits',
-    title: 'Understand credit usage',
-    summary: 'How minutes and exports consume credits.',
-    body: 'Each transcription and export draws from your monthly credit pool. Check Usage & activity for a breakdown by workflow type.',
-    tags: ['credits', 'usage'],
-    is_popular: true,
-  },
-  {
-    slug: 'update-profile-settings',
-    category_slug: 'account',
-    title: 'Update profile settings',
-    summary: 'Manage name, email preferences, and country.',
-    body: 'Go to Profile & settings in the sidebar. Changes sync to billing and support communications automatically.',
-    tags: ['profile'],
-    is_popular: false,
-  },
-  {
-    slug: 'data-privacy-retention',
-    category_slug: 'security',
-    title: 'Data privacy and retention',
-    summary: 'How Cutup stores and protects your content.',
-    body: 'Uploaded media and transcripts are encrypted at rest. You can request account deletion from Profile settings; deletion is processed within 30 days.',
-    tags: ['privacy', 'gdpr'],
-    is_popular: false,
-  },
-  {
-    slug: 'api-access-overview',
-    category_slug: 'api',
-    title: 'API access overview',
-    summary: 'Programmatic access for enterprise workflows.',
-    body: 'API access is available on Business plans. Contact support to enable keys and review rate limits for your organization.',
-    tags: ['api', 'enterprise'],
-    is_popular: false,
-  },
-];
+function parseArticleBody(raw) {
+  if (!raw) {
+    return {
+      content: '',
+      steps: [],
+      tips: [],
+      troubleshooting: [],
+      faq: [],
+      related_slugs: [],
+      reading_minutes: 3,
+      hero_image: null,
+    };
+  }
+  if (typeof raw === 'object') return raw;
+  const str = String(raw).trim();
+  if (str.startsWith('{')) {
+    try {
+      return JSON.parse(str);
+    } catch {
+      return { content: str, steps: [], tips: [], troubleshooting: [], faq: [], related_slugs: [], reading_minutes: 3 };
+    }
+  }
+  return { content: str, steps: [], tips: [], troubleshooting: [], faq: [], related_slugs: [], reading_minutes: 3 };
+}
 
-let helpSeeded = false;
-
-function mapArticle(row) {
+function mapArticle(row, extra = {}) {
+  const body = parseArticleBody(row.body);
   return {
     id: Number(row.id),
     slug: row.slug,
     category_slug: row.category_slug,
+    category_title: row.category_title || extra.category_title || null,
+    category_icon: row.category_icon || null,
     title: row.title,
     summary: row.summary,
-    body: row.body,
+    body,
     tags: row.tags || [],
     is_popular: Boolean(row.is_popular),
     view_count: Number(row.view_count || 0),
+    reading_minutes: body.reading_minutes || 3,
+    hero_image: body.hero_image || null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -136,10 +54,14 @@ function mapArticle(row) {
 export async function ensureHelpCenterSeed() {
   if (!isBillingDbConfigured()) return { ok: false, reason: 'db_not_configured' };
   await ensureOperationsV3Schema();
-  if (helpSeeded) return { ok: true, cached: true };
+  if (helpSeededVersion >= HELP_CONTENT_VERSION) return { ok: true, cached: true };
 
   const pool = getPool();
-  for (const cat of CATEGORIES) {
+
+  await pool.query(`DELETE FROM help_articles WHERE category_slug = 'api'`);
+  await pool.query(`DELETE FROM help_categories WHERE slug = 'api'`);
+
+  for (const cat of HELP_CATEGORIES) {
     await pool.query(
       `INSERT INTO help_categories (slug, title, description, icon, sort_order)
        VALUES ($1, $2, $3, $4, $5)
@@ -147,15 +69,24 @@ export async function ensureHelpCenterSeed() {
       [cat.slug, cat.title, cat.description, cat.icon, cat.sort_order],
     );
   }
-  for (const art of ARTICLES) {
+
+  for (const art of HELP_ARTICLES) {
     await pool.query(
       `INSERT INTO help_articles (slug, category_slug, title, summary, body, tags, is_popular)
        VALUES ($1, $2, $3, $4, $5, $6::text[], $7)
-       ON CONFLICT (slug) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary, body = EXCLUDED.body, tags = EXCLUDED.tags, is_popular = EXCLUDED.is_popular, updated_at = NOW()`,
+       ON CONFLICT (slug) DO UPDATE SET
+         category_slug = EXCLUDED.category_slug,
+         title = EXCLUDED.title,
+         summary = EXCLUDED.summary,
+         body = EXCLUDED.body,
+         tags = EXCLUDED.tags,
+         is_popular = EXCLUDED.is_popular,
+         updated_at = NOW()`,
       [art.slug, art.category_slug, art.title, art.summary, art.body, art.tags, art.is_popular],
     );
   }
-  helpSeeded = true;
+
+  helpSeededVersion = HELP_CONTENT_VERSION;
   return { ok: true };
 }
 
@@ -166,16 +97,29 @@ export async function listHelpCategories() {
     `SELECT c.*, COUNT(a.id)::int AS article_count
      FROM help_categories c
      LEFT JOIN help_articles a ON a.category_slug = c.slug
+     WHERE c.slug != 'api'
      GROUP BY c.id ORDER BY c.sort_order ASC`,
   );
   return { ok: true, categories: rows };
+}
+
+async function fetchAllArticlesMeta() {
+  const pool = getPool();
+  const { rows } = await pool.query(
+    `SELECT a.*, c.title AS category_title, c.icon AS category_icon
+     FROM help_articles a
+     JOIN help_categories c ON c.slug = a.category_slug
+     WHERE c.slug != 'api'
+     ORDER BY a.is_popular DESC, a.updated_at DESC`,
+  );
+  return rows.map((r) => mapArticle(r));
 }
 
 export async function listHelpArticles({ category, q, popular, limit = 50 } = {}) {
   await ensureHelpCenterSeed();
   const pool = getPool();
   const params = [];
-  const where = [];
+  const where = [`c.slug != 'api'`];
   let n = 1;
 
   if (category) {
@@ -187,12 +131,9 @@ export async function listHelpArticles({ category, q, popular, limit = 50 } = {}
     where.push('a.is_popular = TRUE');
   }
   if (q) {
-    where.push(`(
-      a.title ILIKE $${n} OR a.summary ILIKE $${n} OR $${n + 1} = ANY(a.tags)
-    )`);
-    const term = `%${String(q).trim()}%`;
-    params.push(term, String(q).trim().toLowerCase());
-    n += 2;
+    const all = await fetchAllArticlesMeta();
+    const fuzzy = fuzzySearchArticles(q, all, limit);
+    return { ok: true, articles: fuzzy };
   }
 
   const safeLimit = Math.min(100, Math.max(1, Number(limit) || 50));
@@ -202,12 +143,12 @@ export async function listHelpArticles({ category, q, popular, limit = 50 } = {}
     `SELECT a.*, c.title AS category_title, c.icon AS category_icon
      FROM help_articles a
      JOIN help_categories c ON c.slug = a.category_slug
-     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-     ORDER BY a.is_popular DESC, a.updated_at DESC
+     WHERE ${where.join(' AND ')}
+     ORDER BY a.is_popular DESC, a.title ASC
      LIMIT $${n}`,
     params,
   );
-  return { ok: true, articles: rows.map(mapArticle) };
+  return { ok: true, articles: rows.map((r) => mapArticle(r)) };
 }
 
 export async function getHelpArticle(slug) {
@@ -222,13 +163,47 @@ export async function getHelpArticle(slug) {
   );
   if (!rows[0]) return { ok: false, reason: 'not_found' };
   await pool.query(`UPDATE help_articles SET view_count = view_count + 1 WHERE id = $1`, [rows[0].id]);
-  return { ok: true, article: mapArticle(rows[0]) };
+
+  const article = mapArticle(rows[0]);
+  let related = [];
+  const relatedSlugs = article.body?.related_slugs || [];
+  if (relatedSlugs.length) {
+    const { rows: relRows } = await pool.query(
+      `SELECT a.*, c.title AS category_title, c.icon AS category_icon
+       FROM help_articles a
+       JOIN help_categories c ON c.slug = a.category_slug
+       WHERE a.slug = ANY($1::text[])`,
+      [relatedSlugs],
+    );
+    related = relRows.map((r) => mapArticle(r));
+  }
+  if (related.length < 3) {
+    const { rows: more } = await pool.query(
+      `SELECT a.*, c.title AS category_title, c.icon AS category_icon
+       FROM help_articles a
+       JOIN help_categories c ON c.slug = a.category_slug
+       WHERE a.category_slug = $1 AND a.slug != $2
+       ORDER BY a.is_popular DESC LIMIT 4`,
+      [article.category_slug, article.slug],
+    );
+    const seen = new Set(related.map((r) => r.slug));
+    for (const r of more) {
+      if (!seen.has(r.slug) && related.length < 4) {
+        related.push(mapArticle(r));
+        seen.add(r.slug);
+      }
+    }
+  }
+
+  return { ok: true, article, related };
 }
 
-export async function searchHelpForDeflection(query, limit = 5) {
+export async function searchHelpForDeflection(query, limit = 8) {
   const q = String(query || '').trim();
-  if (q.length < 2) return { ok: true, articles: [] };
-  return listHelpArticles({ q, limit });
+  if (q.length < 1) return { ok: true, articles: [] };
+  await ensureHelpCenterSeed();
+  const all = await fetchAllArticlesMeta();
+  return { ok: true, articles: fuzzySearchArticles(q, all, limit) };
 }
 
 export async function getRecentlyUpdatedArticles(limit = 6) {
@@ -239,8 +214,9 @@ export async function getRecentlyUpdatedArticles(limit = 6) {
     `SELECT a.*, c.title AS category_title
      FROM help_articles a
      JOIN help_categories c ON c.slug = a.category_slug
+     WHERE c.slug != 'api'
      ORDER BY a.updated_at DESC LIMIT $1`,
     [safeLimit],
   );
-  return { ok: true, articles: rows.map(mapArticle) };
+  return { ok: true, articles: rows.map((r) => mapArticle(r)) };
 }

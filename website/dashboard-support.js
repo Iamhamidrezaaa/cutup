@@ -811,6 +811,16 @@
     state.loading = false;
     root.innerHTML = renderListView();
     bindListEvents(root);
+    maybeOpenCreateFromSession();
+  }
+
+  function maybeOpenCreateFromSession() {
+    try {
+      if (sessionStorage.getItem('cutup_open_support_modal') === '1') {
+        sessionStorage.removeItem('cutup_open_support_modal');
+        openModal();
+      }
+    } catch (_e) { /* noop */ }
   }
 
   window.CutupDashboardSupport = {
@@ -818,6 +828,7 @@
     mount: mount,
     navigateToList: navigateToList,
     navigateToTicket: navigateToTicket,
+    openCreateTicket: openModal,
   };
 
   window.addEventListener('hashchange', function () {

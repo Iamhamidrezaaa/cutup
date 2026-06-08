@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" fill="none" role="img" aria-label="Billing screen">
+  <rect width="640" height="360" rx="16" fill="#F8FAFC"/>
+  <rect x="80" y="48" width="480" height="264" rx="14" fill="#fff" stroke="#E2E8F0"/>
+  <rect x="108" y="80" width="160" height="14" rx="5" fill="#0F172A" opacity=".12"/>
+  <rect x="108" y="120" width="200" height="120" rx="10" fill="#FAFAFF" stroke="#C7D2FE"/>
+  <rect x="128" y="148" width="80" height="24" rx="6" fill="#635BFF"/>
+  <rect x="332" y="120" width="200" height="120" rx="10" fill="#F8FAFC" stroke="#E2E8F0"/>
+  <rect x="352" y="148" width="80" height="24" rx="6" fill="#E2E8F0"/>
+</svg>
