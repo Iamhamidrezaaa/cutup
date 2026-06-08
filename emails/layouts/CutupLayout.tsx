@@ -1,5 +1,4 @@
 import { Body, Container, Head, Html, Preview, Section } from '@react-email/components';
-import { Tailwind } from '@react-email/tailwind';
 import * as React from 'react';
 import { BRAND } from '../brand';
 import { EmailFooter } from '../components/EmailFooter';
@@ -9,17 +8,6 @@ import { EmailHeader } from '../components/EmailHeader';
 type Props = {
   preview: string;
   children: React.ReactNode;
-};
-
-const tailwindConfig = {
-  theme: {
-    extend: {
-      colors: {
-        brand: BRAND.primary,
-        'brand-dark': BRAND.primaryDark,
-      },
-    },
-  },
 };
 
 export function CutupLayout({ preview, children }: Props) {
@@ -32,43 +20,38 @@ export function CutupLayout({ preview, children }: Props) {
         <EmailHeadStyles />
       </Head>
       <Preview>{preview}</Preview>
-      <Tailwind config={tailwindConfig}>
-        <Body
-          className="email-body-wrap m-0 p-0"
+      <Body
+        className="email-body-wrap"
+        style={{
+          backgroundColor: BRAND.background,
+          fontFamily: BRAND.fontFamily,
+          WebkitFontSmoothing: 'antialiased',
+          margin: 0,
+          width: '100%',
+        }}
+      >
+        <Container
+          className="email-container"
           style={{
-            backgroundColor: BRAND.background,
-            fontFamily: BRAND.fontFamily,
-            WebkitFontSmoothing: 'antialiased',
-            margin: 0,
-            padding: BRAND.padBody,
             width: '100%',
+            maxWidth: BRAND.maxWidth,
+            margin: '0 auto',
           }}
         >
-          <Container
-            className="email-container mx-auto"
+          <Section
             style={{
-              width: '100%',
-              maxWidth: BRAND.maxWidth,
-              margin: '0 auto',
+              backgroundColor: BRAND.card,
+              borderRadius: BRAND.radiusLg,
+              border: `1px solid ${BRAND.border}`,
+              boxShadow: BRAND.shadowSm,
             }}
           >
-            <Section
-              style={{
-                backgroundColor: BRAND.card,
-                borderRadius: BRAND.radiusLg,
-                border: `1px solid ${BRAND.border}`,
-                boxShadow: BRAND.shadowSm,
-              }}
-            >
-              <EmailHeader />
-              <Section className="email-section-gap" style={{ paddingBottom: '12px' }}>
-                {children}
-              </Section>
-            </Section>
-            <EmailFooter />
-          </Container>
-        </Body>
-      </Tailwind>
+            <EmailHeader />
+            {children}
+          </Section>
+          <EmailFooter />
+        </Container>
+      </Body>
     </Html>
   );
 }

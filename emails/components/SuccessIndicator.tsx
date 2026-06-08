@@ -7,7 +7,7 @@ type Props = {
 
 export function SuccessIndicator({ label = 'Success' }: Props) {
   return (
-    <Section className="email-pad-x" style={{ padding: `0 ${BRAND.padX} 16px`, textAlign: 'center' }}>
+    <Section className="email-block-badge" style={{ textAlign: 'center', paddingBottom: '8px' }}>
       <Text
         style={{
           display: 'inline-block',

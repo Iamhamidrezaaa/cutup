@@ -3,7 +3,7 @@ import { BRAND, SITE } from '../brand';
 
 export function EmailHeader() {
   return (
-    <Section className="email-pad-x" style={{ padding: `32px ${BRAND.padX} 20px` }}>
+    <Section className="email-block-header">
       <table cellPadding={0} cellSpacing={0} role="presentation" width="100%" style={{ width: '100%' }}>
         <tbody>
           <tr>
@@ -36,7 +36,7 @@ export function EmailHeader() {
               </Link>
               <Text
                 style={{
-                  margin: '4px 0 0',
+                  margin: '6px 0 0',
                   fontSize: BRAND.metaSize,
                   color: BRAND.textMuted,
                   letterSpacing: '0.01em',

@@ -12,10 +12,7 @@ type Props = {
 
 export function EmailText({ children, muted, small, style, inset }: Props) {
   return (
-    <Section
-      className={inset ? 'email-pad-x' : undefined}
-      style={{ padding: inset ? `0 ${BRAND.padX}` : 0, margin: '0 0 16px' }}
-    >
+    <Section className={inset ? 'email-block-inset' : undefined} style={{ margin: inset ? 0 : '0 0 16px' }}>
       <Text
         className={small ? 'email-meta-text email-word-break' : 'email-body-text email-word-break'}
         style={{

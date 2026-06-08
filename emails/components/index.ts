@@ -1,4 +1,5 @@
 export { EmailHeadStyles } from './EmailHeadStyles';
+export { EmailSpacer } from './EmailSpacer';
 export { DetailRow } from './DetailRow';
 export { DetailTable } from './DetailTable';
 export { EmailButton } from './EmailButton';

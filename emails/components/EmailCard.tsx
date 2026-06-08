@@ -23,7 +23,6 @@ export function EmailCard({ children, style }: Props) {
           borderRadius: BRAND.radiusLg,
           border: `1px solid ${BRAND.border}`,
           boxShadow: BRAND.shadowSm,
-          padding: BRAND.cardPad,
         }}
       >
         {children}

@@ -10,7 +10,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const BUNDLE_PATH = join(__dirname, 'email-platform', 'index.js');
 const STAMP_PATH = join(__dirname, 'email-platform', 'BUILD_STAMP.json');
 
-export const EMAIL_TEMPLATE_VERSION = 'V3';
+export const EMAIL_TEMPLATE_VERSION = 'V3.1';
 
 export const TEMPLATE_SOURCE_PATHS = {
   WELCOME_EMAIL: 'emails/templates/WelcomeEmail.tsx',

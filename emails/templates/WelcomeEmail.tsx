@@ -18,8 +18,8 @@ export function WelcomeEmail({ firstName = 'there' }: WelcomeEmailData) {
     <CutupLayout preview="Welcome to your AI video workspace">
       <StatusBadge variant="success">Welcome</StatusBadge>
       <HeroSection
-        title="Welcome to your AI video workspace"
-        subtitle={`Hi ${name}, your account is ready.`}
+        title="Welcome to Cutup"
+        subtitle={`Hi ${name}, your AI video workspace is ready.`}
       />
       <EmailButton href={SITE.dashboardUrl}>Open Dashboard</EmailButton>
       <QuickActions />

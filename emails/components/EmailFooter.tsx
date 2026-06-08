@@ -16,7 +16,7 @@ export function EmailFooter() {
   const contact = contactEmail || SITE.supportEmail;
 
   return (
-    <Section className="email-pad-x" style={{ padding: `20px ${BRAND.padX} 44px` }}>
+    <Section className="email-block-footer">
       <EmailDivider />
       <Text
         style={{

@@ -7,7 +7,7 @@ type Variant = 'success' | 'warning' | 'danger' | 'info' | 'neutral';
 type Props = {
   children: React.ReactNode;
   variant?: Variant;
-  /** Inside EmailCard — no extra horizontal section padding */
+  /** Inside EmailCard — no outer section padding */
   inline?: boolean;
 };
 
@@ -25,12 +25,12 @@ export function StatusBadge({ children, variant = 'neutral', inline = false }: P
     <Text
       style={{
         display: 'inline-block',
-        margin: inline ? '0 0 14px' : '0 0 10px',
-        padding: '6px 12px',
+        margin: inline ? '0 0 16px' : 0,
+        padding: '7px 14px',
         borderRadius: '999px',
-        fontSize: '12px',
-        fontWeight: 600,
-        letterSpacing: '0.04em',
+        fontSize: '11px',
+        fontWeight: 700,
+        letterSpacing: '0.06em',
         textTransform: 'uppercase',
         backgroundColor: colors.bg,
         color: colors.text,
@@ -41,9 +41,5 @@ export function StatusBadge({ children, variant = 'neutral', inline = false }: P
     </Text>
   );
   if (inline) return badge;
-  return (
-    <Section className="email-pad-x" style={{ padding: `16px ${BRAND.padX} 8px` }}>
-      {badge}
-    </Section>
-  );
+  return <Section className="email-block-badge">{badge}</Section>;
 }

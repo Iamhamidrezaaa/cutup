@@ -8,14 +8,13 @@ type Props = {
   href: string;
   children: React.ReactNode;
   variant?: Variant;
-  /** Centers CTA with max-width — preferred for all templates */
   fullWidth?: boolean;
 };
 
 export function EmailButton({ href, children, variant = 'primary' }: Props) {
   const isPrimary = variant === 'primary';
   return (
-    <Section className="email-pad-x" style={{ padding: `4px ${BRAND.padX} 24px`, textAlign: 'center' }}>
+    <Section className="email-block-cta" style={{ textAlign: 'center' }}>
       <table
         cellPadding={0}
         cellSpacing={0}
@@ -37,7 +36,7 @@ export function EmailButton({ href, children, variant = 'primary' }: Props) {
                 backgroundColor: isPrimary ? BRAND.primary : BRAND.card,
                 border: isPrimary ? 'none' : `1px solid ${BRAND.border}`,
                 boxShadow: isPrimary ? BRAND.shadowButton : BRAND.shadowSm,
-                padding: '16px 32px',
+                padding: '16px 36px',
               }}
             >
               <a

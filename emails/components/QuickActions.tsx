@@ -41,13 +41,13 @@ export function QuickActions({ dashboardUrl }: Props) {
   }));
 
   return (
-    <Section className="email-pad-x" style={{ padding: `8px ${BRAND.padX} 32px` }}>
+    <Section className="email-block-actions">
       <Text
         style={{
-          margin: '0 0 12px',
+          margin: '0 0 14px',
           fontSize: '11px',
-          fontWeight: 600,
-          letterSpacing: '0.06em',
+          fontWeight: 700,
+          letterSpacing: '0.08em',
           textTransform: 'uppercase',
           color: BRAND.textMuted,
         }}
@@ -58,7 +58,7 @@ export function QuickActions({ dashboardUrl }: Props) {
         <tbody>
           {actions.map((action, i) => (
             <tr key={action.title}>
-              <td style={{ paddingBottom: i < actions.length - 1 ? '10px' : 0 }}>
+              <td style={{ paddingBottom: i < actions.length - 1 ? '12px' : 0 }}>
                 <table
                   cellPadding={0}
                   cellSpacing={0}
@@ -66,48 +66,48 @@ export function QuickActions({ dashboardUrl }: Props) {
                   width="100%"
                   style={{
                     width: '100%',
-                    backgroundColor: BRAND.card,
+                    backgroundColor: BRAND.surface,
                     border: `1px solid ${BRAND.border}`,
                     borderRadius: BRAND.radius,
                   }}
                 >
                   <tbody>
                     <tr>
-                      <td style={{ padding: '14px 16px' }}>
+                      <td style={{ padding: '16px 18px' }}>
                         <Link href={action.href} style={{ textDecoration: 'none', color: 'inherit' }}>
                           <table cellPadding={0} cellSpacing={0} role="presentation" width="100%">
                             <tbody>
                               <tr>
                                 <td
-                                  width="32"
+                                  width="36"
                                   style={{
-                                    width: '32px',
-                                    verticalAlign: 'top',
-                                    fontSize: '22px',
+                                    width: '36px',
+                                    verticalAlign: 'middle',
+                                    fontSize: '24px',
                                     lineHeight: '1',
-                                    paddingRight: '10px',
+                                    paddingRight: '14px',
                                   }}
                                 >
                                   {action.icon}
                                 </td>
-                                <td style={{ verticalAlign: 'top' }}>
+                                <td style={{ verticalAlign: 'middle' }}>
                                   <Text
                                     style={{
                                       margin: 0,
-                                      fontSize: '14px',
+                                      fontSize: '15px',
                                       fontWeight: 600,
                                       color: BRAND.text,
-                                      lineHeight: '1.25',
+                                      lineHeight: '1.3',
                                     }}
                                   >
                                     {action.title}
                                   </Text>
                                   <Text
                                     style={{
-                                      margin: '2px 0 0',
-                                      fontSize: '12px',
+                                      margin: '4px 0 0',
+                                      fontSize: '13px',
                                       color: BRAND.textMuted,
-                                      lineHeight: '1.35',
+                                      lineHeight: '1.4',
                                     }}
                                   >
                                     {action.description}
