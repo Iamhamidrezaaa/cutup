@@ -4,25 +4,24 @@ Each article uses **two** images:
 
 | File | Where it appears |
 |------|------------------|
-| `{slug}-hero.png` | Top of the article (below title) |
-| `{slug}-inline.png` | Middle of the article (after step-by-step guide) |
+| `{slug}-hero.jpg` | Top of the article (below title) |
+| `{slug}-inline.jpg` | Middle of the article (after step-by-step guide) |
 
-## Upload your own screenshots
-
-1. Take a screenshot from the Cutup dashboard that matches the article topic.
-2. Save as PNG with the exact names above (e.g. `translate-captions-hero.png`).
-3. Place files in this folder: `website/help-illustrations/articles/`
-4. Recommended size: **1400×780px** or similar 16:9 aspect ratio.
-
-The UI tries `.png` first, then falls back to the generated `.svg` if PNG is missing.
-
-## Regenerate SVG placeholders
+## Regenerate all images (SVG + JPG)
 
 ```bash
-node scripts/generate-help-illustrations.mjs
+npm run help:illustrations
 ```
 
-This creates `{slug}-hero.svg` and `{slug}-inline.svg` for all 48 articles.
+This creates `{slug}-hero.jpg` and `{slug}-inline.jpg` for all 48 articles (96 files total).
+SVG sources are kept as fallback.
+
+## Replace with real dashboard screenshots
+
+1. Take a screenshot from Cutup that matches the article topic.
+2. Save as JPG with the **exact same filename** (e.g. `translate-captions-hero.jpg`).
+3. Drop into this folder — no code changes needed.
+4. Recommended size: **1400×780px** (16:9).
 
 ## All article slugs
 

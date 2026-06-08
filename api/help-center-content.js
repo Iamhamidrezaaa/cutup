@@ -19,8 +19,8 @@ function article(slug, category, title, summary, sections, opts = {}) {
     is_popular: Boolean(opts.is_popular),
     body: JSON.stringify({
       reading_minutes,
-      hero_image: opts.hero_image || `/help-illustrations/articles/${slug}-hero.svg`,
-      inline_image: opts.inline_image || `/help-illustrations/articles/${slug}-inline.svg`,
+      hero_image: opts.hero_image || `/help-illustrations/articles/${slug}-hero.jpg`,
+      inline_image: opts.inline_image || `/help-illustrations/articles/${slug}-inline.jpg`,
       inline_caption: opts.inline_caption || `Example: ${title}`,
       overview: enriched.content,
       content: enriched.content,
@@ -44,7 +44,7 @@ export const HELP_CATEGORIES = [
   { slug: 'security', title: 'Security', description: 'Privacy, data retention, and access', icon: '🔒', sort_order: 8 },
 ];
 
-export const HELP_CONTENT_VERSION = 5;
+export const HELP_CONTENT_VERSION = 6;
 
 export const HELP_ARTICLES = [
   // ——— Getting Started ———

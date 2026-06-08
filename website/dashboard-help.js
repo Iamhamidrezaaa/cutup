@@ -407,15 +407,18 @@
 
   function helpImgSrc(path, slug, kind) {
     if (path) return path;
-    return '/help-illustrations/articles/' + slug + '-' + kind + '.svg';
+    return '/help-illustrations/articles/' + slug + '-' + kind + '.jpg';
   }
 
   function renderFigure(src, alt, caption, extraClass) {
-    var png = src.replace(/\.svg$/i, '.png');
-    var svg = src.replace(/\.png$/i, '.svg');
+    var svg = src.replace(/\.(jpg|jpeg|png|webp)$/i, '.svg');
+    var jpg = src.replace(/\.svg$/i, '.jpg');
     return (
       '<figure class="cutup-help-figure' + (extraClass ? ' ' + extraClass : '') + '">' +
-        '<img src="' + esc(png) + '" data-fallback="' + esc(svg) + '" alt="' + esc(alt) + '" loading="lazy" decoding="async">' +
+        '<picture>' +
+          '<source srcset="' + esc(jpg) + '" type="image/jpeg">' +
+          '<img src="' + esc(svg) + '" alt="' + esc(alt) + '" loading="lazy" decoding="async">' +
+        '</picture>' +
         (caption ? '<figcaption class="cutup-help-figure__caption">' + esc(caption) + '</figcaption>' : '') +
       '</figure>'
     );
@@ -593,22 +596,9 @@
     });
   }
 
-  function bindFigureFallbacks(root) {
-    (root || document).querySelectorAll('.cutup-help-figure img[data-fallback]').forEach(function (img) {
-      if (img.dataset.fbkBound === '1') return;
-      img.dataset.fbkBound = '1';
-      img.addEventListener('error', function () {
-        if (img.dataset.fbkDone === '1') return;
-        img.dataset.fbkDone = '1';
-        img.src = img.getAttribute('data-fallback') || img.src;
-      });
-    });
-  }
-
   function bindEvents(root) {
     bindContactButtons(root);
     bindBrowseHelpButtons(root);
-    bindFigureFallbacks(root);
     bindSearch(root);
 
     root.querySelector('#cutupHelpBackCat')?.addEventListener('click', function () {

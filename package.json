@@ -10,6 +10,7 @@
     "db:migrate": "node api/db/migrate.mjs",
     "build:emails": "node scripts/build-email-platform.mjs",
     "build:notifications": "node scripts/build-notifications.mjs",
+    "help:illustrations": "node scripts/generate-help-illustrations.mjs && node scripts/svg-to-help-jpg.mjs",
     "email:dev": "email dev --dir emails/templates",
     "vercel-build": "npm run build:emails && npm run build:notifications"
   },
@@ -23,19 +24,18 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@types/react": "^19.0.0",
     "@vercel/node": "^3.0.0",
     "esbuild": "^0.25.0",
     "react-email": "^3.0.0",
+    "sharp": "^0.34.5",
     "typescript": "^5.7.0"
   },
   "dependencies": {
     "@react-email/components": "^0.0.31",
     "@react-email/render": "^1.0.4",
     "@react-email/tailwind": "^1.0.4",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "resend": "^4.1.2",
     "bcryptjs": "^2.4.3",
     "busboy": "^1.6.0",
     "cors": "^2.8.5",
@@ -47,6 +47,9 @@
     "nodemailer": "^6.10.1",
     "openai": "^4.20.0",
     "pg": "^8.13.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "resend": "^4.1.2",
     "stripe": "^17.7.0",
     "ws": "^8.20.0"
   }

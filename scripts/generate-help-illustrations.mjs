@@ -61,11 +61,11 @@ function lines(x, y, w, n, accentIdx = -1) {
 }
 
 function cutupChrome(main, label = 'Cutup') {
-  return `
+  return shell(label, `
   <rect x="44" y="68" width="632" height="36" rx="8" fill="#F8FAFC" stroke="${BORDER}"/>
   <circle cx="64" cy="86" r="6" fill="#FCA5A5"/><circle cx="82" cy="86" r="6" fill="#FCD34D"/><circle cx="100" cy="86" r="6" fill="#86EFAC"/>
   <text x="360" y="90" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="${MUTED}">${escXml(label)}</text>
-  ${main}`;
+  ${main}`);
 }
 
 const SCENES = {
@@ -127,7 +127,7 @@ const SCENES = {
     <text x="230" y="150" font-family="system-ui,sans-serif" font-size="11" fill="${MUTED}">Credits remaining</text>
     <text x="230" y="190" font-family="system-ui,sans-serif" font-size="32" font-weight="700" fill="${BRAND}">128</text>
     ${card(424, 120, 232, 110)}
-    <text x="444" y="150" font-family="system-ui,sans-serif" font-size="12" fill="${SLATE}">🔔 Notifications</text>
+    <text x="444" y="150" font-family="system-ui,sans-serif" font-size="12" fill="${SLATE}">Notifications</text>
     ${card(210, 246, 446, 114)}
     <text x="230" y="276" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="${SLATE}">Recent projects</text>
     ${bar(230, 296, 380, 0.45)}`, 'Dashboard'),
@@ -169,12 +169,12 @@ const SCENES = {
 
   'export-download': () => cutupChrome(`${card(64, 120, 592, 200, true)}
     ${bar(88, 170, 520, 1)}
-    <text x="88" y="200" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="#16A34A">✓ Export complete</text>
+    <text x="88" y="200" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="#16A34A">Export complete</text>
     ${btn(88, 230, 180, 'Download MP4')}`),
 
   'srt-preview': () => cutupChrome(`
     <rect x="64" y="120" width="360" height="240" rx="10" fill="#0F172A"/>
-    <text x="88" y="300" font-family="monospace" font-size="11" fill="#fff">1\n00:00:01,000 --&gt; 00:00:04,000\nHello world</text>
+    <text x="88" y="280" font-family="monospace" font-size="10" fill="#fff">00:00:01 - 00:00:04  Hello world</text>
     ${card(440, 120, 216, 240, true)}
     <text x="464" y="156" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="${SLATE}">SRT format</text>
     ${lines(464, 172, 170, 5)}`),
@@ -216,9 +216,9 @@ const SCENES = {
     <text x="68" y="110" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="${SLATE}">Clear speech waveform</text>
     ${Array.from({length: 40}, (_, i) => `<rect x="${68 + i * 14}" y="${200 - (i % 7) * 8}" width="8" height="${20 + (i % 5) * 12}" rx="2" fill="${i % 3 ? '#C7D2FE' : BRAND}"/>`).join('')}`),
 
-  'accuracy-tips': () => cutupChrome(`<text x="88" y="160" font-family="system-ui,sans-serif" font-size="12" fill="${SLATE}">✓ Reduce background music</text>
-    <text x="88" y="190" font-family="system-ui,sans-serif" font-size="12" fill="${SLATE}">✓ Use external mic</text>
-    <text x="88" y="220" font-family="system-ui,sans-serif" font-size="12" fill="${SLATE}">✓ Fix names in first minute</text>`),
+  'accuracy-tips': () => cutupChrome(`<text x="88" y="160" font-family="system-ui,sans-serif" font-size="12" fill="${SLATE}">- Reduce background music</text>
+    <text x="88" y="190" font-family="system-ui,sans-serif" font-size="12" fill="${SLATE}">- Use external mic</text>
+    <text x="88" y="220" font-family="system-ui,sans-serif" font-size="12" fill="${SLATE}">- Fix names in first minute</text>`),
 
   'editor-highlight': () => cutupChrome(`${card(64, 120, 592, 240, true)}
     ${lines(88, 156, 520, 5, 2)}
@@ -231,7 +231,7 @@ const SCENES = {
     <rect x="120" y="188" width="4" height="28" fill="${BRAND}"/><rect x="280" y="188" width="4" height="28" fill="${BRAND}"/><rect x="440" y="188" width="4" height="28" fill="${BRAND}"/>
     <text x="88" y="170" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="${SLATE}">Caption timeline</text>`),
 
-  'cue-adjust': () => cutupChrome(`<text x="88" y="170" font-family="monospace" font-size="11" fill="${SLATE}">00:00:12,500 → 00:00:15,000</text>${btn(88, 200, 120, 'Apply')}`),
+  'cue-adjust': () => cutupChrome(`<text x="88" y="170" font-family="monospace" font-size="11" fill="${SLATE}">00:00:12,500 to 00:00:15,000</text>${btn(88, 200, 120, 'Apply')}`),
 
   'speaker-tags': () => cutupChrome(`
     <rect x="88" y="160" width="80" height="24" rx="6" fill="${BRAND_LIGHT}"/><text x="100" y="177" font-family="system-ui,sans-serif" font-size="10" fill="${BRAND}">Speaker 1</text>
@@ -281,9 +281,9 @@ const SCENES = {
 
   'dual-preview': () => SCENES['dual-track'](),
 
-  'review-translation': () => cutupChrome(`${lines(88, 160, 520, 4, 2)}<text x="88" y="280" font-family="system-ui,sans-serif" font-size="11" fill="#DC2626">⚠ Review idiom on line 3</text>`),
+  'review-translation': () => cutupChrome(`${lines(88, 160, 520, 4, 2)}<text x="88" y="280" font-family="system-ui,sans-serif" font-size="11" fill="#DC2626">Review idiom on line 3</text>`),
 
-  'glossary-edit': () => cutupChrome(`<rect x="88" y="160" width="160" height="32" rx="6" fill="${BRAND_LIGHT}"/><text x="104" y="182" font-family="system-ui,sans-serif" font-size="11" fill="${BRAND}">Brand term → glossary</text>`),
+  'glossary-edit': () => cutupChrome(`<rect x="88" y="160" width="160" height="32" rx="6" fill="${BRAND_LIGHT}"/><text x="104" y="182" font-family="system-ui,sans-serif" font-size="11" fill="${BRAND}">Brand term - glossary</text>`),
 
   'translated-srt': () => SCENES['srt-preview'](),
 
@@ -369,7 +369,7 @@ const SCENES = {
     <rect x="88" y="172" width="400" height="52" rx="10" fill="#fff" stroke="${BORDER}"/><text x="104" y="204" font-family="system-ui,sans-serif" font-size="11" fill="${SLATE}">How do I update my invoice?</text>
     <rect x="88" y="236" width="360" height="44" rx="10" fill="${BRAND_LIGHT}"/><text x="104" y="264" font-family="system-ui,sans-serif" font-size="11" fill="${BRAND}">Support team replied</text>`, 'Support'),
 
-  'ticket-attach': () => cutupChrome(`<rect x="88" y="160" width="140" height="44" rx="8" fill="#F8FAFC" stroke="${BORDER}"/><text x="104" y="188" font-family="system-ui,sans-serif" font-size="11" fill="${MUTED}">📎 screenshot.png</text>`),
+  'ticket-attach': () => cutupChrome(`<rect x="88" y="160" width="140" height="44" rx="8" fill="#F8FAFC" stroke="${BORDER}"/><text x="104" y="188" font-family="system-ui,sans-serif" font-size="11" fill="${MUTED}">screenshot.png</text>`),
 
   'security-overview': () => cutupChrome(`<path d="M360 150l-36-20v40l36 20 36-20v-40l-36 20z" fill="${BRAND_LIGHT}" stroke="${BRAND}" stroke-width="2"/>
     <text x="88" y="160" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="${SLATE}">Your account is protected</text>${lines(88, 190, 240, 3)}`),

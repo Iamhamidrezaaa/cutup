@@ -1,4 +1,17 @@
-
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 400" role="img" aria-label="Translation">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FAFAFF"/><stop offset="100%" stop-color="#F8FAFC"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#635BFF"/><stop offset="100%" stop-color="#818CF8"/>
+    </linearGradient>
+  </defs>
+  <rect width="720" height="400" rx="16" fill="url(#bg)"/>
+  <rect x="20" y="20" width="680" height="360" rx="14" fill="#fff" stroke="#E2E8F0"/>
+  <text x="44" y="52" font-family="system-ui,-apple-system,sans-serif" font-size="13" font-weight="600" fill="#64748B">Translation</text>
+  
   <rect x="44" y="68" width="632" height="36" rx="8" fill="#F8FAFC" stroke="#E2E8F0"/>
   <circle cx="64" cy="86" r="6" fill="#FCA5A5"/><circle cx="82" cy="86" r="6" fill="#FCD34D"/><circle cx="100" cy="86" r="6" fill="#86EFAC"/>
   <text x="360" y="90" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#64748B">Translation</text>
@@ -10,3 +23,4 @@
     <rect x="416" y="120" width="240" height="240" rx="12" fill="#EEF2FF" stroke="#C7D2FE"/>
     <text x="440" y="156" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#635BFF">Target · Spanish</text>
     <rect x="440" y="172" width="200" height="10" rx="4" fill="#E2E8F0"/><rect x="440" y="194" width="160" height="10" rx="4" fill="#C7D2FE"/><rect x="440" y="216" width="120" height="10" rx="4" fill="#E2E8F0"/><rect x="440" y="238" width="200" height="10" rx="4" fill="#E2E8F0"/><rect x="440" y="260" width="160" height="10" rx="4" fill="#E2E8F0"/>
+</svg>
