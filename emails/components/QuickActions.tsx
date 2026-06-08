@@ -1,5 +1,6 @@
-import { Link, Section, Text } from '@react-email/components';
+import { Link, Text } from '@react-email/components';
 import { BRAND, SITE } from '../brand';
+import { EmailBlock } from './EmailBlock';
 
 type Action = {
   icon: string;
@@ -9,24 +10,9 @@ type Action = {
 };
 
 const DEFAULT_ACTIONS: Action[] = [
-  {
-    icon: '🎙',
-    title: 'Create Transcript',
-    description: 'AI transcripts instantly',
-    href: SITE.dashboardUrl,
-  },
-  {
-    icon: '🌍',
-    title: 'Translate Video',
-    description: 'Multi-language translation',
-    href: SITE.dashboardUrl,
-  },
-  {
-    icon: '🎬',
-    title: 'Export MP4',
-    description: 'Shareable video exports',
-    href: SITE.dashboardUrl,
-  },
+  { icon: '🎙', title: 'Create Transcript', description: 'AI transcripts instantly', href: SITE.dashboardUrl },
+  { icon: '🌍', title: 'Translate Video', description: 'Multi-language translation', href: SITE.dashboardUrl },
+  { icon: '🎬', title: 'Export MP4', description: 'Shareable video exports', href: SITE.dashboardUrl },
 ];
 
 type Props = {
@@ -41,7 +27,7 @@ export function QuickActions({ dashboardUrl }: Props) {
   }));
 
   return (
-    <Section className="email-block-actions">
+    <EmailBlock padding={BRAND.actionsPad}>
       <Text
         style={{
           margin: '0 0 14px',
@@ -126,6 +112,6 @@ export function QuickActions({ dashboardUrl }: Props) {
           ))}
         </tbody>
       </table>
-    </Section>
+    </EmailBlock>
   );
 }

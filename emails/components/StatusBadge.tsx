@@ -1,13 +1,13 @@
-import { Section, Text } from '@react-email/components';
+import { Text } from '@react-email/components';
 import * as React from 'react';
 import { BRAND } from '../brand';
+import { EmailBlock } from './EmailBlock';
 
 type Variant = 'success' | 'warning' | 'danger' | 'info' | 'neutral';
 
 type Props = {
   children: React.ReactNode;
   variant?: Variant;
-  /** Inside EmailCard — no outer section padding */
   inline?: boolean;
 };
 
@@ -41,5 +41,5 @@ export function StatusBadge({ children, variant = 'neutral', inline = false }: P
     </Text>
   );
   if (inline) return badge;
-  return <Section className="email-block-badge">{badge}</Section>;
+  return <EmailBlock padding={BRAND.badgePad}>{badge}</EmailBlock>;
 }

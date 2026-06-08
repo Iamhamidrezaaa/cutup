@@ -21,12 +21,12 @@ export function CutupLayout({ preview, children }: Props) {
       </Head>
       <Preview>{preview}</Preview>
       <Body
-        className="email-body-wrap"
         style={{
           backgroundColor: BRAND.background,
           fontFamily: BRAND.fontFamily,
           WebkitFontSmoothing: 'antialiased',
           margin: 0,
+          padding: BRAND.padBody,
           width: '100%',
         }}
       >
@@ -44,6 +44,7 @@ export function CutupLayout({ preview, children }: Props) {
               borderRadius: BRAND.radiusLg,
               border: `1px solid ${BRAND.border}`,
               boxShadow: BRAND.shadowSm,
+              margin: 0,
             }}
           >
             <EmailHeader />

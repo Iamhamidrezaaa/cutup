@@ -41,7 +41,7 @@ writeFileSync(
   JSON.stringify(
     {
       builtAt: new Date().toISOString(),
-      templateVersion: 'V3.1',
+      templateVersion: 'V3.2-td-padding',
       bundleMtime: st.mtime.toISOString(),
       bundleSize: st.size,
       entry: 'services/email/runtime-entry.ts',

@@ -186,6 +186,7 @@
             '<p style="margin:0;"><strong>Build stamp:</strong> ' + esc(dbg.buildStamp?.builtAt || 'missing') + '</p>' +
             '<p style="margin:0;"><strong>Hero size (bundle/html):</strong> ' + esc(dbg.bundle?.heroTitleSizeInBundle) + ' / ' + esc(dbg.rendered?.heroCssSizeInHtml) + '</p>' +
             '<p style="margin:0;"><strong>FAQ (bundle/html):</strong> ' + esc(String(dbg.bundle?.hasFaqInBundle)) + ' / ' + esc(String(dbg.rendered?.hasFaqInHtml)) + '</p>' +
+            '<p style="margin:0;"><strong>TD padding (40px):</strong> ' + esc(String(dbg.rendered?.tdInlinePadding40px)) + ' · EmailBlock: ' + esc(String(dbg.rendered?.usesEmailBlockTdPadding)) + '</p>' +
             (dbg.cache?.suspectedStaleModuleCache
               ? '<p style="margin:6px 0 0;color:#dc2626;font-weight:600;">⚠ Stale Node module cache — restart server after build:emails</p>'
               : '') +

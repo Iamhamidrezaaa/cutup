@@ -1,6 +1,7 @@
-import { Heading, Section, Text } from '@react-email/components';
+import { Heading, Text } from '@react-email/components';
 import * as React from 'react';
 import { BRAND } from '../brand';
+import { EmailBlock } from './EmailBlock';
 
 type Props = {
   title: string;
@@ -10,7 +11,7 @@ type Props = {
 
 export function HeroSection({ title, subtitle, children }: Props) {
   return (
-    <Section className="email-block-hero">
+    <EmailBlock padding={BRAND.heroPad}>
       <Heading
         as="h1"
         className="email-hero-title email-word-break"
@@ -39,6 +40,6 @@ export function HeroSection({ title, subtitle, children }: Props) {
         </Text>
       ) : null}
       {children}
-    </Section>
+    </EmailBlock>
   );
 }

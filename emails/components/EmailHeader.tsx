@@ -1,9 +1,10 @@
-import { Img, Link, Section, Text } from '@react-email/components';
+import { Img, Link, Text } from '@react-email/components';
 import { BRAND, SITE } from '../brand';
+import { EmailBlock } from './EmailBlock';
 
 export function EmailHeader() {
   return (
-    <Section className="email-block-header">
+    <EmailBlock padding={BRAND.headerPad}>
       <table cellPadding={0} cellSpacing={0} role="presentation" width="100%" style={{ width: '100%' }}>
         <tbody>
           <tr>
@@ -49,6 +50,6 @@ export function EmailHeader() {
           </tr>
         </tbody>
       </table>
-    </Section>
+    </EmailBlock>
   );
 }

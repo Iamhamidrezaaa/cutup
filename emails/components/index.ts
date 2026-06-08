@@ -1,3 +1,4 @@
+export { EmailBlock } from './EmailBlock';
 export { EmailHeadStyles } from './EmailHeadStyles';
 export { EmailSpacer } from './EmailSpacer';
 export { DetailRow } from './DetailRow';

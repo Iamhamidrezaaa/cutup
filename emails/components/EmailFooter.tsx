@@ -1,6 +1,7 @@
-import { Link, Section, Text } from '@react-email/components';
+import { Link, Text } from '@react-email/components';
 import { BRAND, SITE } from '../brand';
 import { useEmailExtras } from '../EmailExtras';
+import { EmailBlock } from './EmailBlock';
 import { EmailDivider } from './EmailDivider';
 
 const linkStyle = {
@@ -16,7 +17,7 @@ export function EmailFooter() {
   const contact = contactEmail || SITE.supportEmail;
 
   return (
-    <Section className="email-block-footer">
+    <EmailBlock padding={BRAND.footerPad}>
       <EmailDivider />
       <Text
         style={{
@@ -75,6 +76,6 @@ export function EmailFooter() {
       >
         You received this email because you have a Cutup account.
       </Text>
-    </Section>
+    </EmailBlock>
   );
 }

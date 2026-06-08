@@ -1,5 +1,6 @@
-import { Section, Text } from '@react-email/components';
+import { Text } from '@react-email/components';
 import { BRAND } from '../brand';
+import { EmailBlock } from './EmailBlock';
 
 type Props = {
   label?: string;
@@ -7,7 +8,7 @@ type Props = {
 
 export function SuccessIndicator({ label = 'Success' }: Props) {
   return (
-    <Section className="email-block-badge" style={{ textAlign: 'center', paddingBottom: '8px' }}>
+    <EmailBlock padding={`12px 40px 8px`} style={{ textAlign: 'center' }}>
       <Text
         style={{
           display: 'inline-block',
@@ -40,6 +41,6 @@ export function SuccessIndicator({ label = 'Success' }: Props) {
           {label}
         </Text>
       ) : null}
-    </Section>
+    </EmailBlock>
   );
 }

@@ -1,6 +1,6 @@
-import { Section } from '@react-email/components';
 import * as React from 'react';
 import { BRAND } from '../brand';
+import { EmailBlock } from './EmailBlock';
 
 type Variant = 'primary' | 'secondary';
 
@@ -14,7 +14,7 @@ type Props = {
 export function EmailButton({ href, children, variant = 'primary' }: Props) {
   const isPrimary = variant === 'primary';
   return (
-    <Section className="email-block-cta" style={{ textAlign: 'center' }}>
+    <EmailBlock padding={BRAND.ctaPad} style={{ textAlign: 'center' }}>
       <table
         cellPadding={0}
         cellSpacing={0}
@@ -58,6 +58,6 @@ export function EmailButton({ href, children, variant = 'primary' }: Props) {
           </tr>
         </tbody>
       </table>
-    </Section>
+    </EmailBlock>
   );
 }
