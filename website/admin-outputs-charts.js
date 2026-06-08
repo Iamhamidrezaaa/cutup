@@ -45,7 +45,8 @@ window.CutupOutputsCharts = (function () {
         datasets: [
           { label: 'Transcript', data: timeline.map((x) => x.transcript), backgroundColor: primary, stack: 'a' },
           { label: 'Summary', data: timeline.map((x) => x.summary), backgroundColor: '#0d9488', stack: 'a' },
-          { label: 'SRT', data: timeline.map((x) => x.srt), backgroundColor: '#4338ca', stack: 'a' }
+          { label: 'Translation', data: timeline.map((x) => x.translation), backgroundColor: '#a21caf', stack: 'a' },
+          { label: 'Subtitle', data: timeline.map((x) => x.subtitle), backgroundColor: '#4338ca', stack: 'a' }
         ]
       },
       options: {
@@ -63,19 +64,21 @@ window.CutupOutputsCharts = (function () {
     setChart('outputsChartType', {
       type: 'doughnut',
       data: {
-        labels: ['Transcript', 'Summary', 'SRT', 'Other'],
+        labels: ['Transcript', 'Summary', 'Translation', 'Subtitle', 'MP4', 'Other'],
         datasets: [
           {
             data: [
               types.transcript || 0,
               types.summary || 0,
-              types.srt || 0,
+              types.translation || 0,
+              types.subtitle || 0,
+              types.mp4 || 0,
               Object.entries(types).reduce((s, [k, v]) => {
-                if (['transcript', 'summary', 'srt'].includes(k)) return s;
+                if (['transcript', 'summary', 'translation', 'subtitle', 'mp4'].includes(k)) return s;
                 return s + Number(v || 0);
               }, 0)
             ],
-            backgroundColor: [primary, '#0d9488', '#4338ca', '#94a3b8']
+            backgroundColor: [primary, '#0d9488', '#a21caf', '#4338ca', '#f59e0b', '#94a3b8']
           }
         ]
       },
@@ -118,17 +121,24 @@ window.CutupOutputsCharts = (function () {
       }
     });
 
-    const fav = analytics.breakdowns?.favoriteTrend || [];
-    setChart('outputsChartFavorites', {
+    setChart('outputsChartTranslation', {
       type: 'line',
       data: {
-        labels: fav.map((x) => x.day),
+        labels: timeline.map((x) => x.day),
         datasets: [
           {
-            label: 'Favorites saved',
-            data: fav.map((x) => x.favorites),
-            borderColor: '#f59e0b',
-            backgroundColor: 'rgba(245, 158, 11, 0.12)',
+            label: 'Translation',
+            data: timeline.map((x) => x.translation),
+            borderColor: '#a21caf',
+            backgroundColor: 'rgba(162, 28, 175, 0.1)',
+            fill: true,
+            tension: 0.3
+          },
+          {
+            label: 'Subtitle',
+            data: timeline.map((x) => x.subtitle),
+            borderColor: '#4338ca',
+            backgroundColor: 'rgba(67, 56, 202, 0.08)',
             fill: true,
             tension: 0.3
           }
@@ -137,7 +147,7 @@ window.CutupOutputsCharts = (function () {
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } } },
         scales: { y: { beginAtZero: true, grid: { color: grid } }, x: { grid: { display: false } } }
       }
     });

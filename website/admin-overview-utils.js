@@ -42,5 +42,22 @@ window.CutupDashFmt = {
   planLabel(plan) {
     const p = String(plan || 'free');
     return p.charAt(0).toUpperCase() + p.slice(1);
+  },
+  periodLabel(key) {
+    const map = {
+      today: 'Today',
+      '7d': 'Last 7 days',
+      '30d': 'Last 30 days',
+      '90d': 'Last 90 days',
+      all: 'All time'
+    };
+    return map[String(key || '30d').toLowerCase()] || 'Selected period';
+  },
+  periodRange(range, key) {
+    if (!range) return '';
+    if (String(key || '').toLowerCase() === 'all') return 'All recorded history';
+    const from = range.from ? this.date(range.from) : 'beginning';
+    const to = range.to ? this.date(range.to) : 'now';
+    return `${from} → ${to}`;
   }
 };

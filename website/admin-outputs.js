@@ -4,6 +4,8 @@
 window.CutupAdminOutputs = (function () {
   const RECENT_KEY = 'cutup_admin_output_recent_searches';
   const SEARCH_DEBOUNCE_MS = 320;
+  const REFRESH_MS = 20000;
+  const STATUS_TICK_MS = 1000;
 
   const state = {
     preset: 'all',
@@ -14,7 +16,6 @@ window.CutupAdminOutputs = (function () {
     language: 'all',
     plan: 'all',
     search: '',
-    favoritesOnly: false,
     highLength: false,
     aiHeavy: false,
     showArchived: false,
@@ -26,7 +27,12 @@ window.CutupAdminOutputs = (function () {
     data: null,
     previewCache: new Map(),
     hasRendered: false,
-    searchTimer: null
+    searchTimer: null,
+    lastUpdatedAt: null,
+    lastRefreshError: null,
+    refreshTimer: null,
+    statusTickTimer: null,
+    refreshInFlight: false
   };
 
   const PLATFORM_ICON = {
@@ -43,7 +49,45 @@ window.CutupAdminOutputs = (function () {
   const TYPE_META = {
     transcript: { label: 'Transcript', icon: '🎙️', cls: 'out-badge--transcript' },
     summary: { label: 'Summary', icon: '📝', cls: 'out-badge--summary' },
-    srt: { label: 'SRT', icon: '📄', cls: 'out-badge--srt' }
+    translation: { label: 'Translation', icon: '🌐', cls: 'out-badge--translation' },
+    subtitle: { label: 'Subtitle', icon: '📄', cls: 'out-badge--subtitle' },
+    srt: { label: 'Subtitle', icon: '📄', cls: 'out-badge--subtitle' },
+    mp4: { label: 'MP4 export', icon: '🎬', cls: 'out-badge--mp4' }
+  };
+
+  const TYPE_LABELS = {
+    all: 'All types',
+    transcript: 'Transcript',
+    summary: 'Summary',
+    translation: 'Translation',
+    subtitle: 'Subtitle (SRT)',
+    mp4: 'MP4 export'
+  };
+
+  const PLATFORM_LABELS = {
+    all: 'All platforms',
+    youtube: 'YouTube',
+    instagram: 'Instagram',
+    tiktok: 'TikTok',
+    twitter: 'X / Twitter',
+    facebook: 'Facebook',
+    vimeo: 'Vimeo',
+    upload: 'Upload'
+  };
+
+  const PLAN_LABELS = {
+    all: 'All plans',
+    free: 'Free',
+    starter: 'Starter',
+    pro: 'Pro',
+    business: 'Business'
+  };
+
+  const PRESET_LABELS = {
+    all: 'All time',
+    '7d': '7 days',
+    '30d': '30 days',
+    custom: 'Custom'
   };
 
   function esc(s) {
@@ -100,10 +144,32 @@ window.CutupAdminOutputs = (function () {
     localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 8)));
   }
 
+  function persistableState() {
+    return {
+      preset: state.preset,
+      startDate: state.startDate,
+      endDate: state.endDate,
+      type: state.type,
+      platform: state.platform,
+      language: state.language,
+      plan: state.plan,
+      search: state.search,
+      highLength: state.highLength,
+      aiHeavy: state.aiHeavy,
+      showArchived: state.showArchived,
+      page: state.page,
+      pageSize: state.pageSize,
+      sort: state.sort,
+      sortDir: state.sortDir
+    };
+  }
+
   function readUrlState() {
     const saved = window.CutupAdminFilterState?.loadAdminFilterState?.('outputs');
     if (saved) {
-      Object.assign(state, saved);
+      Object.assign(state, persistableState(), saved);
+      state.selected = new Set();
+      state.previewCache = new Map();
       return;
     }
     const p = new URLSearchParams(window.location.search);
@@ -116,7 +182,6 @@ window.CutupAdminOutputs = (function () {
     if (p.get('outPage')) state.page = Number(p.get('outPage')) || 1;
     if (p.get('outStart')) state.startDate = p.get('outStart') || '';
     if (p.get('outEnd')) state.endDate = p.get('outEnd') || '';
-    state.favoritesOnly = p.get('outFav') === '1';
     state.highLength = p.get('outLong') === '1';
     state.aiHeavy = p.get('outAi') === '1';
     state.showArchived = p.get('outArch') === '1';
@@ -124,22 +189,148 @@ window.CutupAdminOutputs = (function () {
   }
 
   function writeUrlState() {
-    window.CutupAdminFilterState?.saveAdminFilterState?.('outputs', { ...state });
+    window.CutupAdminFilterState?.saveAdminFilterState?.('outputs', persistableState());
+  }
+
+  function formatUpdatedAgo(ts) {
+    if (!ts) return '—';
+    const sec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+    if (sec < 8) return 'just now';
+    if (sec < 60) return `${sec}s ago`;
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}m ago`;
+    return `${Math.floor(min / 60)}h ago`;
+  }
+
+  function updateLiveStatus(phase = 'ok') {
+    const el = document.getElementById('outputsLiveStatus');
+    const updatedEl = document.getElementById('outputsLiveUpdated');
+    if (!el) return;
+    el.classList.remove('out-live-status--syncing', 'out-live-status--error');
+    if (phase === 'syncing') el.classList.add('out-live-status--syncing');
+    if (phase === 'error') el.classList.add('out-live-status--error');
+    const label = el.querySelector('.out-live-label');
+    if (label) {
+      label.textContent = phase === 'error' ? 'Update paused — showing last data' : 'Live updates enabled';
+    }
+    if (updatedEl) {
+      updatedEl.textContent = state.lastUpdatedAt
+        ? `Updated ${formatUpdatedAgo(state.lastUpdatedAt)}`
+        : 'Loading…';
+    }
   }
 
   function activeChips() {
     const chips = [];
-    if (state.preset !== 'all') chips.push(`Period: ${state.preset}`);
-    if (state.type !== 'all') chips.push(`Type: ${state.type}`);
-    if (state.platform !== 'all') chips.push(`Platform: ${state.platform}`);
-    if (state.language !== 'all') chips.push(`Language: ${state.language}`);
-    if (state.plan !== 'all') chips.push(`Plan: ${state.plan}`);
-    if (state.search) chips.push(`Search: ${state.search}`);
-    if (state.favoritesOnly) chips.push('Favorites');
-    if (state.highLength) chips.push('Long outputs');
-    if (state.aiHeavy) chips.push('AI-heavy');
-    if (state.showArchived) chips.push('Archived');
+    if (state.preset !== 'all') chips.push({ text: `Period: ${PRESET_LABELS[state.preset] || state.preset}` });
+    if (state.type !== 'all') chips.push({ text: `Type: ${TYPE_LABELS[state.type] || state.type}` });
+    if (state.platform !== 'all') chips.push({ text: `Platform: ${PLATFORM_LABELS[state.platform] || state.platform}` });
+    if (state.language !== 'all') chips.push({ text: `Language: ${state.language}` });
+    if (state.plan !== 'all') chips.push({ text: `Plan: ${PLAN_LABELS[state.plan] || state.plan}` });
+    if (state.search) chips.push({ text: `Search: ${state.search}` });
+    if (state.highLength) chips.push({ text: 'Long outputs' });
+    if (state.aiHeavy) chips.push({ text: 'AI-heavy' });
+    if (state.showArchived) chips.push({ text: 'Archived' });
     return chips;
+  }
+
+  function resolveOutputKind(type, metadata = {}) {
+    const t = String(type || '').toLowerCase();
+    if (t === 'mp4') return 'mp4';
+    if (t === 'summary' || t === 'summarization') return 'summary';
+    if (t === 'translation') return 'translation';
+    if (t === 'subtitle' || t === 'srt') return 'subtitle';
+    if (t === 'transcript' || t === 'transcription') return 'transcript';
+    const meta = metadata || {};
+    if (
+      meta.translationOnly === true ||
+      String(meta.translationOnly || '').toLowerCase() === 'true' ||
+      meta.operation === 'translation' ||
+      meta.outputType === 'translation'
+    ) {
+      return 'translation';
+    }
+    if (t === 'srt') return 'subtitle';
+    return t || 'transcript';
+  }
+
+  function srtToReadable(srt) {
+    const lines = String(srt || '').split('\n');
+    const cues = [];
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i].trim();
+      if (/^\d+$/.test(line)) {
+        i += 1;
+        continue;
+      }
+      if (/\d{2}:\d{2}:\d{2},\d{3}\s*-->\s*\d{2}:\d{2}:\d{2},\d{3}/.test(line)) {
+        i += 1;
+        const textLines = [];
+        while (i < lines.length && lines[i].trim()) {
+          textLines.push(lines[i].trim());
+          i += 1;
+        }
+        if (textLines.length) cues.push(textLines.join(' '));
+        continue;
+      }
+      i += 1;
+    }
+    const unique = [];
+    cues.forEach((c) => {
+      if (!unique.length || unique[unique.length - 1] !== c) unique.push(c);
+    });
+    return unique.join('\n\n');
+  }
+
+  function formatContentPreview(detail) {
+    const kind = resolveOutputKind(detail.type, detail.metadata);
+    const raw = String(detail.content || '').trim();
+
+    if (kind === 'mp4') {
+      const meta = detail.metadata || {};
+      const lines = [
+        ['Export file', meta.quality ? `${detail.title} (${meta.quality})` : detail.title || '—'],
+        ['Resolution', meta.resolution || '—'],
+        ['Duration', meta.videoDurationSec != null ? `${Math.round(meta.videoDurationSec)}s` : '—'],
+        ['File size', fmt().bytes?.(detail.contentLength) || detail.contentLength || '—'],
+        ['Expires', meta.expiresAt ? fmt().date?.(meta.expiresAt) || meta.expiresAt : '—']
+      ];
+      return {
+        html: `<dl class="out-preview-meta">${lines
+          .map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`)
+          .join('')}</dl>`,
+        plain: lines.map(([k, v]) => `${k}: ${v}`).join('\n')
+      };
+    }
+
+    if (!raw) {
+      return { html: '<p class="out-preview-empty">No text content stored for this output.</p>', plain: '' };
+    }
+
+    if (kind === 'subtitle' || kind === 'translation') {
+      const readable = srtToReadable(raw);
+      const cues = readable.split('\n\n').filter(Boolean).slice(0, 16);
+      return {
+        html: `<div class="out-preview-cues">${cues.map((c) => `<p>${esc(c)}</p>`).join('')}${
+          readable.split('\n\n').length > 16 ? '<p class="out-preview-more">… more cues in full export</p>' : ''
+        }</div>`,
+        plain: readable
+      };
+    }
+
+    if (kind === 'summary') {
+      return {
+        html: `<div class="out-preview-prose">${esc(raw).replace(/\n/g, '<br>')}</div>`,
+        plain: raw
+      };
+    }
+
+    const excerpt = raw.length > 4000 ? `${raw.slice(0, 4000)}…` : raw;
+    return {
+      html: `<div class="out-preview-prose">${esc(excerpt).replace(/\n/g, '<br>')}</div>`,
+      plain: excerpt
+    };
   }
 
   function renderInsightsBlock(insights) {
@@ -160,9 +351,10 @@ window.CutupAdminOutputs = (function () {
       ['Outputs this week', f.num(kpis.outputsThisWeek), kpis.trends?.outputsThisWeek],
       ['Transcript share', `${f.num(kpis.transcriptPct, 1)}%`, null],
       ['Summary share', `${f.num(kpis.summaryPct, 1)}%`, null],
+      ['Translation share', `${f.num(kpis.translationPct, 1)}%`, null],
+      ['MP4 exports', f.num(kpis.mp4Count), null],
       ['Top platform', kpis.mostActivePlatform, null],
       ['Top language', kpis.mostActiveLanguage, null],
-      ['Favorite rate', `${f.num(kpis.favoriteRate, 1)}%`, null],
       ['Avg output length', f.bytes(kpis.avgOutputLength), null],
       ['Est. AI cost', f.eur(kpis.estimatedAiCostEur), null]
     ];
@@ -186,7 +378,7 @@ window.CutupAdminOutputs = (function () {
       <div class="out-charts-row out-charts-row--triple">
         <div class="out-chart-card"><h3>Platform distribution</h3><div class="out-chart-wrap"><canvas id="outputsChartPlatform"></canvas></div></div>
         <div class="out-chart-card"><h3>Language distribution</h3><div class="out-chart-wrap"><canvas id="outputsChartLanguage"></canvas></div></div>
-        <div class="out-chart-card"><h3>Favorite trend</h3><div class="out-chart-wrap"><canvas id="outputsChartFavorites"></canvas></div></div>
+        <div class="out-chart-card"><h3>Translation & subtitles</h3><div class="out-chart-wrap"><canvas id="outputsChartTranslation"></canvas></div></div>
       </div>`;
   }
 
@@ -201,52 +393,81 @@ window.CutupAdminOutputs = (function () {
     const recentHtml = recent.length
       ? `<div class="out-recent" id="outRecentSearches">${recent.map((t) => `<button type="button" class="out-recent-btn" data-recent="${esc(t)}">${esc(t)}</button>`).join('')}</div>`
       : '';
+    const customVisible = state.preset === 'custom';
     return `
       <div class="out-filters-sticky">
-        <div class="out-filter-bar">
-          <div class="out-search-wrap">
-            <input type="search" id="outSearchInput" class="out-search-input" placeholder="Search title, email, URL…" value="${esc(state.search)}" autocomplete="off" />
-            ${recentHtml}
+        <div class="out-filters-card">
+          <div class="out-filters-period">
+            <div class="out-filters-period-main">
+              <span class="out-filters-label">Time range</span>
+              <div class="out-segment" role="group" aria-label="Date preset">
+                ${['all', '7d', '30d', 'custom']
+                  .map((p) => {
+                    const label = PRESET_LABELS[p] || p;
+                    return `<button type="button" data-out-preset="${p}" class="${state.preset === p ? 'active' : ''}">${label}</button>`;
+                  })
+                  .join('')}
+              </div>
+            </div>
+            <div id="outCustomDates" class="out-filters-custom${customVisible ? ' is-visible' : ''}">
+              <label class="out-filter-field out-filter-field--date">
+                <span>From</span>
+                <input type="date" id="outStartInput" class="out-filter-input" value="${esc(state.startDate)}" />
+              </label>
+              <label class="out-filter-field out-filter-field--date">
+                <span>To</span>
+                <input type="date" id="outEndInput" class="out-filter-input" value="${esc(state.endDate)}" />
+              </label>
+            </div>
           </div>
-          <div class="out-segment" role="group" aria-label="Date preset">
-            ${['all', '7d', '30d', 'custom']
-              .map((p) => {
-                const label = p === 'all' ? 'All time' : p === '7d' ? '7 days' : p === '30d' ? '30 days' : 'Custom';
-                return `<button type="button" data-out-preset="${p}" class="${state.preset === p ? 'active' : ''}">${label}</button>`;
-              })
-              .join('')}
+          <div class="out-filters-grid">
+            <label class="out-filter-field out-filter-field--search">
+              <span>Search</span>
+              <input type="search" id="outSearchInput" class="out-filter-input" placeholder="Title, email, URL…" value="${esc(state.search)}" autocomplete="off" />
+              ${recentHtml}
+            </label>
+            <label class="out-filter-field">
+              <span>Output type</span>
+              <select id="outTypeSelect" class="out-filter-input" aria-label="Output type">
+                ${Object.entries(TYPE_LABELS)
+                  .map(([value, label]) => `<option value="${value}"${state.type === value ? ' selected' : ''}>${label}</option>`)
+                  .join('')}
+              </select>
+            </label>
+            <label class="out-filter-field">
+              <span>Platform</span>
+              <select id="outPlatformSelect" class="out-filter-input" aria-label="Platform">
+                ${Object.entries(PLATFORM_LABELS)
+                  .map(([value, label]) => `<option value="${value}"${state.platform === value ? ' selected' : ''}>${label}</option>`)
+                  .join('')}
+              </select>
+            </label>
+            <label class="out-filter-field">
+              <span>Language</span>
+              <input type="text" id="outLanguageInput" class="out-filter-input" placeholder="e.g. en" value="${state.language !== 'all' ? esc(state.language) : ''}" />
+            </label>
+            <label class="out-filter-field">
+              <span>Plan</span>
+              <select id="outPlanSelect" class="out-filter-input" aria-label="Plan">
+                ${Object.entries(PLAN_LABELS)
+                  .map(([value, label]) => `<option value="${value}"${state.plan === value ? ' selected' : ''}>${label}</option>`)
+                  .join('')}
+              </select>
+            </label>
           </div>
-          <select id="outTypeSelect" class="out-select">
-            <option value="all">All types</option>
-            <option value="transcript"${state.type === 'transcript' ? ' selected' : ''}>Transcript</option>
-            <option value="summary"${state.type === 'summary' ? ' selected' : ''}>Summary</option>
-            <option value="srt"${state.type === 'srt' ? ' selected' : ''}>SRT</option>
-          </select>
-          <select id="outPlatformSelect" class="out-select">
-            <option value="all">All platforms</option>
-            ${['youtube', 'instagram', 'tiktok', 'twitter', 'facebook', 'vimeo']
-              .map((pl) => `<option value="${pl}"${state.platform === pl ? ' selected' : ''}>${pl}</option>`)
-              .join('')}
-          </select>
-          <input type="text" id="outLanguageInput" class="out-select" placeholder="Language" value="${state.language !== 'all' ? esc(state.language) : ''}" />
-          <select id="outPlanSelect" class="out-select">
-            <option value="all">All plans</option>
-            <option value="free"${state.plan === 'free' ? ' selected' : ''}>Free</option>
-            <option value="starter"${state.plan === 'starter' ? ' selected' : ''}>Starter</option>
-            <option value="pro"${state.plan === 'pro' ? ' selected' : ''}>Pro</option>
-          </select>
-          <label class="out-check"><input type="checkbox" id="outFavOnly"${state.favoritesOnly ? ' checked' : ''} /> Favorites</label>
-          <label class="out-check"><input type="checkbox" id="outLongOnly"${state.highLength ? ' checked' : ''} /> Long</label>
-          <label class="out-check"><input type="checkbox" id="outAiOnly"${state.aiHeavy ? ' checked' : ''} /> AI-heavy</label>
-          <label class="out-check"><input type="checkbox" id="outArchOnly"${state.showArchived ? ' checked' : ''} /> Archived</label>
-          <span id="outCustomDates" style="${state.preset === 'custom' ? '' : 'display:none'}">
-            <input type="date" id="outStartInput" value="${esc(state.startDate)}" />
-            <input type="date" id="outEndInput" value="${esc(state.endDate)}" />
-          </span>
-          <button type="button" class="btn" id="outApplyBtn">Apply</button>
-          <button type="button" class="btn ghost" id="outResetBtn">Reset</button>
+          <div class="out-filters-toggles">
+            <label class="out-check"><input type="checkbox" id="outLongOnly"${state.highLength ? ' checked' : ''} /> Long outputs</label>
+            <label class="out-check"><input type="checkbox" id="outAiOnly"${state.aiHeavy ? ' checked' : ''} /> AI-heavy</label>
+            <label class="out-check"><input type="checkbox" id="outArchOnly"${state.showArchived ? ' checked' : ''} /> Archived</label>
+          </div>
+          <div class="out-filters-footer">
+            ${chips.length ? `<div class="out-chips">${chips.map((c) => `<span class="out-chip">${esc(c.text)}</span>`).join('')}</div>` : '<span class="out-filters-hint">Browse transcripts, summaries, subtitles, translations, and MP4 exports.</span>'}
+            <div class="out-filters-actions">
+              <button type="button" class="btn ghost" id="outResetBtn">Reset</button>
+              <button type="button" class="btn" id="outApplyBtn">Apply filters</button>
+            </div>
+          </div>
         </div>
-        ${chips.length ? `<div class="out-chips">${chips.map((c) => `<span class="out-chip">${esc(c)}</span>`).join('')}</div>` : ''}
       </div>`;
   }
 
@@ -271,7 +492,6 @@ window.CutupAdminOutputs = (function () {
               ${typeBadge(row.type)}
               <span class="out-platform" title="${esc(plat)}">${icon} ${esc(plat)}</span>
               <span class="out-lang">${esc(row.language)}</span>
-              ${row.isFavorite ? '<span class="out-fav" title="Favorite">★</span>' : ''}
               ${row.isArchived ? '<span class="out-arch">Archived</span>' : ''}
             </div>
           </header>
@@ -300,21 +520,26 @@ window.CutupAdminOutputs = (function () {
     return `
       <div id="outBulkBar" class="out-bulk-bar${state.selected.size ? '' : ' hidden'}">
         ${state.selected.size ? `<span><strong>${state.selected.size}</strong> selected</span>
-        <button type="button" class="btn ghost" data-bulk="favorite">Favorite</button>
         <button type="button" class="btn ghost" data-bulk="archive">Archive</button>
         <button type="button" class="btn ghost" data-bulk="export">Export CSV</button>
         <button type="button" class="btn ghost" data-bulk="lookup">User lookup</button>
         <button type="button" class="btn danger" data-bulk="delete">Delete</button>
         <button type="button" class="btn ghost" data-bulk="clear">Clear</button>` : ''}
       </div>
-      <div class="out-list-head">
+      <div class="out-list-toolbar">
+        <div class="out-list-toolbar-main">
+          <h3 class="out-list-title">Saved content</h3>
+          <span class="out-list-count">${fmt().num(total)} outputs</span>
+        </div>
         <label class="out-check"><input type="checkbox" id="outSelectAll" /> Select page</label>
-        <span class="out-list-count">${fmt().num(total)} outputs · page ${page} / ${totalPages}</span>
       </div>
       <div class="out-card-list">${outputs.map(renderCard).join('')}</div>
       <div class="out-pagination">
-        <button type="button" class="btn ghost" id="outPrevPage" ${page <= 1 ? 'disabled' : ''}>Previous</button>
-        <button type="button" class="btn ghost" id="outNextPage" ${page >= totalPages ? 'disabled' : ''}>Next</button>
+        <span class="out-pagination-meta">Page <strong>${page}</strong> of <strong>${totalPages}</strong></span>
+        <div class="out-pagination-actions">
+          <button type="button" class="btn ghost" id="outPrevPage" ${page <= 1 ? 'disabled' : ''}>← Previous</button>
+          <button type="button" class="btn ghost" id="outNextPage" ${page >= totalPages ? 'disabled' : ''}>Next →</button>
+        </div>
       </div>`;
   }
 
@@ -325,7 +550,6 @@ window.CutupAdminOutputs = (function () {
     const lang = document.getElementById('outLanguageInput')?.value?.trim().toLowerCase() || '';
     state.language = lang ? lang : 'all';
     state.plan = document.getElementById('outPlanSelect')?.value || 'all';
-    state.favoritesOnly = Boolean(document.getElementById('outFavOnly')?.checked);
     state.highLength = Boolean(document.getElementById('outLongOnly')?.checked);
     state.aiHeavy = Boolean(document.getElementById('outAiOnly')?.checked);
     state.showArchived = Boolean(document.getElementById('outArchOnly')?.checked);
@@ -343,7 +567,6 @@ window.CutupAdminOutputs = (function () {
       language: state.language,
       plan: state.plan,
       search: state.search,
-      favoritesOnly: state.favoritesOnly ? '1' : '',
       highLength: state.highLength ? '1' : '',
       aiHeavy: state.aiHeavy ? '1' : '',
       showArchived: state.showArchived ? '1' : '',
@@ -363,11 +586,11 @@ window.CutupAdminOutputs = (function () {
   }
 
   function buildDrawerHtml(detail, meta) {
-    const content = detail.content || '';
+    const preview = formatContentPreview(detail);
     return `
       <div class="out-drawer-section">
         <h4>${esc(detail.title)}</h4>
-        <div class="out-drawer-badges">${typeBadge(detail.type)} <span class="out-plan">${esc(detail.plan)}</span></div>
+        <div class="out-drawer-badges">${typeBadge(detail.type)} <span class="out-plan">${esc(fmt().planLabel?.(detail.plan) || detail.plan)}</span></div>
       </div>
       <div class="out-drawer-grid">
         <div><span class="lbl">User</span><span>${esc(detail.email)}</span></div>
@@ -378,9 +601,10 @@ window.CutupAdminOutputs = (function () {
         <div><span class="lbl">Est. cost</span><span>${fmt().eur(detail.costEstimateEur)}</span></div>
       </div>
       ${detail.sourceUrl ? `<p class="out-drawer-link"><a href="${esc(detail.sourceUrl)}" target="_blank" rel="noopener noreferrer">Open source</a></p>` : ''}
-      <div class="out-drawer-section"><h5>Content preview</h5>
-        <pre class="out-drawer-pre">${esc(content.slice(0, 12000))}${content.length > 12000 ? '\n…' : ''}</pre>
+      <div class="out-drawer-section"><h5>Preview</h5>
+        <div class="out-drawer-preview">${preview.html}</div>
       </div>
+      <details class="out-drawer-meta"><summary>Raw content</summary><pre class="out-drawer-pre">${esc(preview.plain || detail.content || '—')}</pre></details>
       <details class="out-drawer-meta"><summary>Metadata</summary><pre>${esc(JSON.stringify(meta, null, 2))}</pre></details>
       <details class="out-drawer-meta"><summary>Timeline</summary>
         <ul class="out-timeline">
@@ -417,11 +641,11 @@ window.CutupAdminOutputs = (function () {
   function exportCsv(ids) {
     const rows = (state.data?.outputs || []).filter((r) => ids.includes(String(r.id)));
     if (!rows.length) return;
-    const header = ['id', 'email', 'title', 'type', 'platform', 'language', 'favorite', 'length', 'cost_eur', 'created_at'];
+    const header = ['id', 'email', 'title', 'type', 'platform', 'language', 'length', 'cost_eur', 'created_at'];
     const lines = [
       header.join(','),
       ...rows.map((r) =>
-        [r.id, r.email, r.title, r.type, r.platform, r.language, r.isFavorite, r.contentLength, r.costEstimateEur, r.createdAt]
+        [r.id, r.email, r.title, r.type, r.platform, r.language, r.contentLength, r.costEstimateEur, r.createdAt]
           .map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`)
           .join(',')
       )
@@ -451,7 +675,7 @@ window.CutupAdminOutputs = (function () {
       exportCsv(ids);
       return;
     }
-    const map = { favorite: 'favorite', archive: 'archive', delete: 'delete' };
+    const map = { archive: 'archive', delete: 'delete' };
     const operation = map[op];
     if (!operation) return;
     await apiPost('bulkSavedOutputs', { operation, ids });
@@ -481,7 +705,7 @@ window.CutupAdminOutputs = (function () {
         state.preset = btn.getAttribute('data-out-preset') || 'all';
         state.page = 1;
         const custom = document.getElementById('outCustomDates');
-        if (custom) custom.style.display = state.preset === 'custom' ? '' : 'none';
+        if (custom) custom.classList.toggle('is-visible', state.preset === 'custom');
         document.querySelectorAll('[data-out-preset]').forEach((b) => b.classList.toggle('active', b === btn));
         if (state.preset !== 'custom') load();
       });
@@ -527,7 +751,6 @@ window.CutupAdminOutputs = (function () {
         language: 'all',
         plan: 'all',
         search: '',
-        favoritesOnly: false,
         highLength: false,
         aiHeavy: false,
         showArchived: false,
@@ -607,43 +830,90 @@ window.CutupAdminOutputs = (function () {
     const legacyWrap = document.getElementById('outputsLegacyWrap');
     if (!root) return;
 
+    if (silent && !state.hasRendered) {
+      return load({ fullRender: true, silent: false });
+    }
+    if (state.refreshInFlight && silent) return;
+
     if (fullRender && !silent) {
       root.classList.add('out-skeleton');
       root.innerHTML = '<div class="out-kpi-grid out-kpi-grid--skel"></div>';
+      updateLiveStatus('syncing');
+    } else if (silent) {
+      updateLiveStatus('syncing');
     }
 
     writeUrlState();
+    state.refreshInFlight = true;
 
     try {
       const data = await fetchData();
       state.data = data;
       const outputs = data.outputs || [];
       state.hasRendered = true;
+      state.lastUpdatedAt = Date.now();
+      state.lastRefreshError = null;
       if (legacyWrap) legacyWrap.hidden = true;
       paintWorkspace(root, data, outputs, data.total || 0, data.page || 1, data.totalPages || 1);
-
-      if (!outputs.length && typeof renderOutputsTable === 'function' && legacyWrap) {
-        legacyWrap.hidden = false;
-        const legacy = await apiGet('savedOutputs', { legacy: '1', limit: 300 });
-        renderOutputsTable(legacy.outputs || []);
-      }
+      updateLiveStatus('ok');
     } catch (e) {
+      state.lastRefreshError = e;
       if (silent && state.hasRendered) {
         console.warn('[Cutup Outputs] refresh failed', e);
+        updateLiveStatus('error');
         return;
       }
       root.classList.remove('out-skeleton');
+      if (state.hasRendered && state.data) {
+        updateLiveStatus('error');
+        return;
+      }
       try {
         const legacy = await apiGet('savedOutputs', { legacy: '1', limit: 300 });
-        root.innerHTML = `${renderFilters()}<p class="out-partial-note">Dashboard unavailable; showing legacy table.</p>`;
+        root.innerHTML = `${renderFilters()}<p class="out-partial-note">Dashboard unavailable; showing simplified list.</p>`;
         bindWorkspaceEvents();
+        state.hasRendered = true;
+        state.lastUpdatedAt = Date.now();
         if (legacyWrap) {
           legacyWrap.hidden = false;
           renderOutputsTable(legacy.outputs || []);
         }
+        updateLiveStatus('error');
       } catch (e2) {
         root.innerHTML = `<p class="out-empty">Failed to load outputs: ${esc(e.message || e2.message)}</p>`;
+        updateLiveStatus('error');
       }
+    } finally {
+      state.refreshInFlight = false;
+    }
+  }
+
+  function isOutputsSectionActive() {
+    return document.getElementById('section-outputs')?.classList.contains('active');
+  }
+
+  function startAutoRefresh() {
+    stopAutoRefresh();
+    state.refreshTimer = setInterval(() => {
+      if (!isOutputsSectionActive()) return;
+      load({ fullRender: false, silent: true });
+    }, REFRESH_MS);
+    if (!state.statusTickTimer) {
+      state.statusTickTimer = setInterval(() => {
+        if (!isOutputsSectionActive() || !state.lastUpdatedAt) return;
+        updateLiveStatus(state.refreshInFlight ? 'syncing' : state.lastRefreshError ? 'error' : 'ok');
+      }, STATUS_TICK_MS);
+    }
+  }
+
+  function stopAutoRefresh() {
+    if (state.refreshTimer) {
+      clearInterval(state.refreshTimer);
+      state.refreshTimer = null;
+    }
+    if (state.statusTickTimer) {
+      clearInterval(state.statusTickTimer);
+      state.statusTickTimer = null;
     }
   }
 
@@ -655,9 +925,10 @@ window.CutupAdminOutputs = (function () {
         : (state.data?.outputs || []).map((r) => String(r.id));
       exportCsv(ids);
     });
+    if (isOutputsSectionActive()) startAutoRefresh();
   }
 
   initGlobal();
 
-  return { load, readUrlState, getState: () => ({ ...state }) };
+  return { load, readUrlState, startAutoRefresh, stopAutoRefresh, openDrawer, getState: () => ({ ...state }) };
 })();

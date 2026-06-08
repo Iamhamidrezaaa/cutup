@@ -18,12 +18,33 @@ const OUTPUTS_FROM = `
   LEFT JOIN user_profiles up ON up.user_id = u.id
 `;
 
+const TRANSLATION_META_SQL = `(
+  LOWER(COALESCE(s.metadata->>'translationOnly', '')) IN ('true', '1', 'yes')
+  OR (s.metadata->'translationOnly')::text = 'true'
+  OR LOWER(COALESCE(s.metadata->>'operation', '')) = 'translation'
+  OR LOWER(COALESCE(s.metadata->>'outputType', '')) = 'translation'
+)`;
+
 const TYPE_NORM_SQL = `CASE
   WHEN LOWER(s.type) IN ('transcript', 'transcription', 'text') THEN 'transcript'
   WHEN LOWER(s.type) IN ('summary', 'summarization') THEN 'summary'
-  WHEN LOWER(s.type) = 'srt' THEN 'srt'
+  WHEN LOWER(s.type) = 'srt' AND (${TRANSLATION_META_SQL}) THEN 'translation'
+  WHEN LOWER(s.type) = 'srt' THEN 'subtitle'
   ELSE LOWER(COALESCE(s.type, 'unknown'))
 END`;
+
+async function tableExists(pool, tableName) {
+  try {
+    const r = await pool.query(
+      `SELECT 1 FROM information_schema.tables
+       WHERE table_schema = 'public' AND table_name = $1 LIMIT 1`,
+      [tableName]
+    );
+    return r.rows.length > 0;
+  } catch {
+    return false;
+  }
+}
 
 function startOfUtcDay(d) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
@@ -84,9 +105,6 @@ function buildOutputsWhere(opts, params) {
   if (opts.plan && opts.plan !== 'all') {
     params.push(String(opts.plan).toLowerCase());
     where.push(`LOWER(COALESCE(sub.plan, 'free')) = $${params.length}`);
-  }
-  if (opts.favoritesOnly) {
-    where.push('s.is_favorite = TRUE');
   }
   if (opts.highLength) {
     where.push(`LENGTH(COALESCE(s.content, '')) >= ${HIGH_LENGTH_CHARS}`);
@@ -152,7 +170,118 @@ function mapDetailRow(row) {
   };
 }
 
+function buildMp4Where(opts, params) {
+  const where = [];
+  const { from, to } = opts.range || {};
+  if (from) {
+    params.push(from.toISOString());
+    where.push(`COALESCE(e.completed_at, e.created_at) >= $${params.length}::timestamptz`);
+  }
+  if (to) {
+    params.push(to.toISOString());
+    where.push(`COALESCE(e.completed_at, e.created_at) <= $${params.length}::timestamptz`);
+  }
+  if (opts.platform && opts.platform !== 'all') {
+    params.push(String(opts.platform).toLowerCase());
+    where.push(`LOWER(COALESCE(e.metadata->>'platform', 'unknown')) = $${params.length}`);
+  }
+  if (opts.plan && opts.plan !== 'all') {
+    params.push(String(opts.plan).toLowerCase());
+    where.push(`LOWER(COALESCE(sub.plan, 'free')) = $${params.length}`);
+  }
+  if (opts.search) {
+    params.push(`%${String(opts.search).toLowerCase()}%`);
+    const i = params.length;
+    where.push(
+      `(LOWER(u.email) LIKE $${i} OR LOWER(COALESCE(e.output_filename, '')) LIKE $${i} OR LOWER(COALESCE(e.source_url, '')) LIKE $${i})`
+    );
+  }
+  return where.join(' AND ');
+}
+
+function mapMp4ListRow(row) {
+  const meta = row.metadata && typeof row.metadata === 'object' ? row.metadata : {};
+  const title = row.project_title || row.output_filename || row.preset_name || 'MP4 export';
+  return {
+    id: `mp4:${row.id}`,
+    userId: row.user_id ? String(row.user_id) : null,
+    email: row.email,
+    plan: resolvePlanKey(row.plan || 'free'),
+    type: 'mp4',
+    rawType: 'mp4',
+    title,
+    platform: meta.platform || 'unknown',
+    sourceUrl: row.source_url || '',
+    language: meta.language || '—',
+    isFavorite: false,
+    isArchived: false,
+    createdAt: row.completed_at?.toISOString?.() || row.created_at?.toISOString?.() || row.created_at,
+    updatedAt: row.updated_at?.toISOString?.() || row.updated_at,
+    contentLength: Number(row.file_size_bytes || 0),
+    wordEstimate: 0,
+    previewSnippet: row.output_filename ? `Video export · ${row.output_filename}` : 'Completed MP4 export',
+    costEstimateEur: 0,
+    metadata: {
+      ...meta,
+      quality: row.quality,
+      resolution: row.resolution,
+      videoDurationSec: row.video_duration_sec,
+      renderDurationSec: row.render_duration_sec,
+      expiresAt: row.expires_at?.toISOString?.() || row.expires_at || null
+    }
+  };
+}
+
+async function queryMp4OutputsList(pool, opts) {
+  if (!(await tableExists(pool, 'project_exports'))) {
+    return { outputs: [], total: 0, page: 1, pageSize: opts.pageSize || 50, totalPages: 1 };
+  }
+  const page = Math.max(1, Number(opts.page) || 1);
+  const pageSize = Math.min(100, Math.max(10, Number(opts.pageSize) || 50));
+  const offset = (page - 1) * pageSize;
+  const params = [];
+  const whereSql = buildMp4Where(opts, params);
+
+  const countRes = await pool.query(
+    `SELECT COUNT(*)::int AS c
+     FROM project_exports e
+     JOIN users u ON u.id = e.user_id
+     LEFT JOIN subscriptions sub ON sub.user_id = u.id
+     LEFT JOIN user_profiles up ON up.user_id = u.id
+     WHERE e.status = 'completed'${whereSql ? ` AND ${whereSql}` : ''}`,
+    params
+  );
+  const total = Number(countRes.rows[0]?.c || 0);
+  const limitIdx = params.length + 1;
+  const offsetIdx = params.length + 2;
+  params.push(pageSize, offset);
+
+  const r = await pool.query(
+    `SELECT e.*, u.email, COALESCE(sub.plan, 'free') AS plan, p.title AS project_title
+     FROM project_exports e
+     JOIN users u ON u.id = e.user_id
+     LEFT JOIN subscriptions sub ON sub.user_id = u.id
+     LEFT JOIN user_profiles up ON up.user_id = u.id
+     LEFT JOIN projects p ON p.id = e.project_id
+     WHERE e.status = 'completed'${whereSql ? ` AND ${whereSql}` : ''}
+     ORDER BY COALESCE(e.completed_at, e.created_at) DESC, e.id DESC
+     LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+    params
+  );
+
+  return {
+    outputs: r.rows.map(mapMp4ListRow),
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize))
+  };
+}
+
 async function queryOutputsList(pool, opts) {
+  if (opts.type === 'mp4') {
+    return queryMp4OutputsList(pool, opts);
+  }
   const page = Math.max(1, Number(opts.page) || 1);
   const pageSize = Math.min(100, Math.max(10, Number(opts.pageSize) || 50));
   const offset = (page - 1) * pageSize;
@@ -190,7 +319,7 @@ async function queryOutputsList(pool, opts) {
             LEFT(COALESCE(s.content, ''), 320) AS preview_snippet
      ${OUTPUTS_FROM}
      ${whereSql}
-     ORDER BY s.is_favorite DESC, ${sortCol} ${sortDir}, s.id DESC
+     ORDER BY ${sortCol} ${sortDir}, s.id DESC
      LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
     params
   );
@@ -214,8 +343,8 @@ async function queryKpis(pool, range, prevRange, opts) {
          COUNT(*) FILTER (WHERE s.created_at >= NOW() - INTERVAL '7 days')::int AS week_count,
          COUNT(*) FILTER (WHERE ${TYPE_NORM_SQL} = 'transcript')::int AS transcripts,
          COUNT(*) FILTER (WHERE ${TYPE_NORM_SQL} = 'summary')::int AS summaries,
-         COUNT(*) FILTER (WHERE ${TYPE_NORM_SQL} = 'srt')::int AS srts,
-         COUNT(*) FILTER (WHERE s.is_favorite = TRUE)::int AS favorites,
+         COUNT(*) FILTER (WHERE ${TYPE_NORM_SQL} = 'translation')::int AS translations,
+         COUNT(*) FILTER (WHERE ${TYPE_NORM_SQL} = 'subtitle')::int AS subtitles,
          COALESCE(AVG(LENGTH(COALESCE(s.content, ''))), 0)::float AS avg_length,
          COALESCE(SUM(LENGTH(COALESCE(s.content, ''))), 0)::bigint AS total_chars
        ${OUTPUTS_FROM}
@@ -252,18 +381,37 @@ async function queryKpis(pool, range, prevRange, opts) {
 
   const transcripts = Number(cur.transcripts || 0);
   const summaries = Number(cur.summaries || 0);
-  const srts = Number(cur.srts || 0);
-  const typed = transcripts + summaries + srts || total || 1;
+  const translations = Number(cur.translations || 0);
+  const subtitles = Number(cur.subtitles || 0);
+  let mp4Count = 0;
+  const includeMp4 = !opts.type || opts.type === 'all' || opts.type === 'mp4';
+  if (includeMp4 && (await tableExists(pool, 'project_exports'))) {
+    const mp4Params = [];
+    const mp4Where = buildMp4Where({ ...opts, range }, mp4Params);
+    const mp4Res = await pool.query(
+      `SELECT COUNT(*)::int AS c
+       FROM project_exports e
+       JOIN users u ON u.id = e.user_id
+       LEFT JOIN subscriptions sub ON sub.user_id = u.id
+       LEFT JOIN user_profiles up ON up.user_id = u.id
+       WHERE e.status = 'completed'${mp4Where ? ` AND ${mp4Where}` : ''}`,
+      mp4Params
+    );
+    mp4Count = Number(mp4Res.rows[0]?.c || 0);
+  }
+  const typed = transcripts + summaries + translations + subtitles + mp4Count || total || 1;
 
   return {
-    totalSaved: total,
+    totalSaved: total + mp4Count,
     outputsThisWeek: Number(cur.week_count || 0),
     transcriptPct: Math.round((transcripts / typed) * 1000) / 10,
     summaryPct: Math.round((summaries / typed) * 1000) / 10,
-    srtPct: Math.round((srts / typed) * 1000) / 10,
+    translationPct: Math.round((translations / typed) * 1000) / 10,
+    subtitlePct: Math.round((subtitles / typed) * 1000) / 10,
+    mp4Pct: Math.round((mp4Count / typed) * 1000) / 10,
+    mp4Count,
     mostActivePlatform: platRes.rows[0]?.name || '—',
     mostActiveLanguage: langRes.rows[0]?.name || '—',
-    favoriteRate: total > 0 ? Math.round((Number(cur.favorites || 0) / total) * 1000) / 10 : 0,
     avgOutputLength: Math.round(Number(cur.avg_length || 0)),
     estimatedAiCostEur: estCostFromChars(Number(cur.total_chars || 0)),
     trends: {
@@ -280,7 +428,8 @@ async function queryTimeline(pool, range, opts) {
     `SELECT date_trunc('day', s.created_at AT TIME ZONE 'UTC')::date AS day,
             COUNT(*) FILTER (WHERE ${TYPE_NORM_SQL} = 'transcript')::int AS transcript,
             COUNT(*) FILTER (WHERE ${TYPE_NORM_SQL} = 'summary')::int AS summary,
-            COUNT(*) FILTER (WHERE ${TYPE_NORM_SQL} = 'srt')::int AS srt,
+            COUNT(*) FILTER (WHERE ${TYPE_NORM_SQL} = 'translation')::int AS translation,
+            COUNT(*) FILTER (WHERE ${TYPE_NORM_SQL} = 'subtitle')::int AS subtitle,
             COUNT(*)::int AS total
      ${OUTPUTS_FROM}
      ${whereSql}
@@ -291,7 +440,8 @@ async function queryTimeline(pool, range, opts) {
     day: row.day?.toISOString?.()?.slice(0, 10) || String(row.day),
     transcript: Number(row.transcript || 0),
     summary: Number(row.summary || 0),
-    srt: Number(row.srt || 0),
+    translation: Number(row.translation || 0),
+    subtitle: Number(row.subtitle || 0),
     total: Number(row.total || 0)
   }));
 }
@@ -300,7 +450,7 @@ async function queryBreakdowns(pool, range, opts) {
   const params = [];
   const whereSql = outputsWhere({ ...opts, range }, params);
 
-  const [platform, language, type, topUsers, topSources, favorites] = await Promise.all([
+  const [platform, language, type, topUsers, topSources] = await Promise.all([
     pool.query(
       `SELECT LOWER(COALESCE(s.platform, 'unknown')) AS name, COUNT(*)::int AS count
        ${OUTPUTS_FROM} ${whereSql} GROUP BY 1 ORDER BY count DESC LIMIT 8`,
@@ -330,25 +480,32 @@ async function queryBreakdowns(pool, range, opts) {
        GROUP BY 1 ORDER BY count DESC LIMIT 8`,
       params
     ),
-    pool.query(
-      `SELECT date_trunc('day', s.created_at AT TIME ZONE 'UTC')::date AS day,
-              COUNT(*) FILTER (WHERE s.is_favorite = TRUE)::int AS favorites
-       ${OUTPUTS_FROM} ${whereSql}
-       GROUP BY 1 ORDER BY 1 ASC`,
-      [...params]
-    )
   ]);
+
+  const byType = Object.fromEntries(type.rows.map((r) => [r.name, Number(r.count || 0)]));
+  const includeMp4 = !opts.type || opts.type === 'all' || opts.type === 'mp4';
+  if (includeMp4 && (await tableExists(pool, 'project_exports'))) {
+    const mp4Params = [];
+    const mp4Where = buildMp4Where({ ...opts, range }, mp4Params);
+    const mp4Res = await pool.query(
+      `SELECT COUNT(*)::int AS c
+       FROM project_exports e
+       JOIN users u ON u.id = e.user_id
+       LEFT JOIN subscriptions sub ON sub.user_id = u.id
+       LEFT JOIN user_profiles up ON up.user_id = u.id
+       WHERE e.status = 'completed'${mp4Where ? ` AND ${mp4Where}` : ''}`,
+      mp4Params
+    );
+    const mp4Count = Number(mp4Res.rows[0]?.c || 0);
+    if (mp4Count > 0) byType.mp4 = mp4Count;
+  }
 
   return {
     byPlatform: platform.rows.map((r) => ({ name: r.name, count: Number(r.count || 0) })),
     byLanguage: language.rows.map((r) => ({ name: r.name, count: Number(r.count || 0) })),
-    byType: Object.fromEntries(type.rows.map((r) => [r.name, Number(r.count || 0)])),
+    byType,
     topUsers: topUsers.rows.map((r) => ({ email: r.email, count: Number(r.count || 0) })),
-    topSources: topSources.rows.map((r) => ({ name: r.name, count: Number(r.count || 0) })),
-    favoriteTrend: favorites.rows.map((r) => ({
-      day: r.day?.toISOString?.()?.slice(0, 10) || String(r.day),
-      favorites: Number(r.favorites || 0)
-    }))
+    topSources: topSources.rows.map((r) => ({ name: r.name, count: Number(r.count || 0) }))
   };
 }
 
@@ -426,6 +583,29 @@ function trendRangeFor(range) {
 export async function getAdminSavedOutputDetailDb(id) {
   if (!isBillingDbConfigured()) return null;
   const pool = getPool();
+  const rawId = String(id || '');
+  if (rawId.startsWith('mp4:')) {
+    if (!(await tableExists(pool, 'project_exports'))) return null;
+    const exportId = rawId.slice(4);
+    const r = await pool.query(
+      `SELECT e.*, u.email, COALESCE(sub.plan, 'free') AS plan, p.title AS project_title
+       FROM project_exports e
+       JOIN users u ON u.id = e.user_id
+       LEFT JOIN subscriptions sub ON sub.user_id = u.id
+       LEFT JOIN projects p ON p.id = e.project_id
+       WHERE e.id = $1::uuid AND e.status = 'completed'
+       LIMIT 1`,
+      [exportId]
+    );
+    if (!r.rows.length) return null;
+    const row = r.rows[0];
+    const mapped = mapMp4ListRow(row);
+    return {
+      ...mapped,
+      content: '',
+      metadata: mapped.metadata
+    };
+  }
   const r = await pool.query(
     `SELECT s.*, u.email, COALESCE(sub.plan, 'free') AS plan,
             (${isArchivedSql('s')}) AS is_archived,
@@ -511,7 +691,6 @@ export async function getAdminOutputsDashboardDb(filters = {}) {
     language: filters.language || 'all',
     plan: filters.plan || 'all',
     search: filters.search || '',
-    favoritesOnly: String(filters.favoritesOnly || '') === '1' || filters.favoritesOnly === true,
     highLength: String(filters.highLength || '') === '1' || filters.highLength === true,
     aiHeavy: String(filters.aiHeavy || '') === '1' || filters.aiHeavy === true,
     showArchived: String(filters.showArchived || '') === '1' || filters.showArchived === true,

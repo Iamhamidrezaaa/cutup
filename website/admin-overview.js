@@ -99,6 +99,13 @@ window.CutupAdminOverview = (function () {
       .join('')}</tbody></table></div>`;
   }
 
+  function renderPeriodBanner(d) {
+    const f = fmt();
+    const label = f.periodLabel(d.period);
+    const range = f.periodRange(d.range, d.period);
+    return `<p class="dash-period-banner" role="status"><strong>${esc(label)}</strong>${range ? ` · ${esc(range)}` : ''}</p>`;
+  }
+
   function renderDashboard(d) {
     const f = fmt();
     const rev = d.revenue || {};
@@ -109,25 +116,27 @@ window.CutupAdminOverview = (function () {
     const conv = d.conversion || {};
 
     return `
+      ${renderPeriodBanner(d)}
       ${renderInsights(d.insights)}
-      <section><h3 class="dash-section-title">Revenue</h3><div class="dash-kpi-grid">${[
+      <section><h3 class="dash-section-title">Revenue <span class="dash-section-tag">period</span></h3><div class="dash-kpi-grid">${[
         kpiCard('Total revenue', f.eur(rev.total), 'Successful payments in period', rev.growthPct),
-        kpiCard('MRR (estimate)', f.eur(rev.mrr), 'Active paid plans × list price'),
+        kpiCard('MRR (estimate)', f.eur(rev.mrr), 'Current snapshot · active paid plans'),
         kpiCard('Successful payments', f.num(rev.payments), 'In selected period'),
         kpiCard('Revenue growth', rev.growthPct != null ? `${rev.growthPct}%` : '—', 'Vs previous period')
       ].join('')}</div></section>
-      <section><h3 class="dash-section-title">Subscriptions</h3><div class="dash-kpi-grid">${[
-        kpiCard('Active subscriptions', f.num(sub.active), 'Paid plans, active status'),
-        kpiCard('Trial users', f.num(sub.trial), 'Status trialing'),
-        kpiCard('Expired / canceled', f.num(sub.expired), 'Non-active paid'),
-        kpiCard('Churn rate', `${sub.churnRate ?? 0}%`, 'Last 30 days'),
-        kpiCard('Upgrade / downgrade ratio', sub.upgradeDowngradeRatio != null ? String(sub.upgradeDowngradeRatio) : '—', '90d payment heuristic')
+      <section><h3 class="dash-section-title">Subscriptions <span class="dash-section-tag">live</span></h3><div class="dash-kpi-grid">${[
+        kpiCard('Active subscriptions', f.num(sub.active), 'Current snapshot'),
+        kpiCard('Trial users', f.num(sub.trial), 'Current snapshot'),
+        kpiCard('Expired / canceled', f.num(sub.expired), 'Current snapshot'),
+        kpiCard('Churn rate', `${sub.churnRate ?? 0}%`, 'Rolling 30 days'),
+        kpiCard('Upgrade / downgrade ratio', sub.upgradeDowngradeRatio != null ? String(sub.upgradeDowngradeRatio) : '—', 'Rolling 90 days')
       ].join('')}</div></section>
       <section><h3 class="dash-section-title">Users</h3><div class="dash-kpi-grid">${[
         kpiCard('New users', f.num(users.newUsers), 'Registered in period'),
-        kpiCard('DAU', f.num(users.dau), 'Distinct users, 24h'),
-        kpiCard('WAU', f.num(users.wau), '7-day window'),
-        kpiCard('MAU', f.num(users.mau), '30-day window'),
+        kpiCard('Active users', f.num(users.activeInPeriod), 'Used product in period'),
+        kpiCard('DAU', f.num(users.dau), 'Rolling 24h snapshot'),
+        kpiCard('WAU', f.num(users.wau), 'Rolling 7-day snapshot'),
+        kpiCard('MAU', f.num(users.mau), 'Rolling 30-day snapshot'),
         kpiCard('Returning users', users.returningPct != null ? `${users.returningPct}%` : '—', '2+ active days in 30d')
       ].join('')}</div></section>
       <section><h3 class="dash-section-title">AI usage</h3><div class="dash-kpi-grid">${[
@@ -139,19 +148,19 @@ window.CutupAdminOverview = (function () {
         kpiCard('Summaries', f.num(ai.summaryUsage), 'Summarization runs'),
         kpiCard('Cost per user', ai.costPerUser != null ? f.eur(ai.costPerUser) : '—', 'Active in period')
       ].join('')}</div></section>
-      <section><h3 class="dash-section-title">Storage &amp; outputs</h3><div class="dash-kpi-grid">${[
-        kpiCard('Saved transcripts', f.num(storage.savedTranscripts), 'Saved outputs'),
-        kpiCard('Summaries saved', f.num(storage.summaries), 'Saved outputs'),
-        kpiCard('SRT exports', f.num(storage.srtExports), 'Type srt'),
-        kpiCard('DOCX exports', f.num(storage.docxExports), 'Type docx'),
-        kpiCard('TXT exports', f.num(storage.txtExports), 'Type txt'),
-        kpiCard('Storage estimate', f.bytes(storage.storageBytes), 'Content bytes in DB')
+      <section><h3 class="dash-section-title">Storage &amp; outputs <span class="dash-section-tag">period</span></h3><div class="dash-kpi-grid">${[
+        kpiCard('Saved transcripts', f.num(storage.savedTranscripts), 'Created in period'),
+        kpiCard('Summaries saved', f.num(storage.summaries), 'Created in period'),
+        kpiCard('SRT exports', f.num(storage.srtExports), 'Created in period'),
+        kpiCard('DOCX exports', f.num(storage.docxExports), 'Created in period'),
+        kpiCard('TXT exports', f.num(storage.txtExports), 'Created in period'),
+        kpiCard('Storage estimate', f.bytes(storage.storageBytes), 'Output bytes in period')
       ].join('')}</div></section>
-      <section><h3 class="dash-section-title">Offers &amp; conversion</h3><div class="dash-kpi-grid">${[
-        kpiCard('Conversion rate', `${conv.conversionRate ?? 0}%`, 'Success / pricing views (30d)'),
+      <section><h3 class="dash-section-title">Offers &amp; conversion <span class="dash-section-tag">period</span></h3><div class="dash-kpi-grid">${[
+        kpiCard('Conversion rate', `${conv.conversionRate ?? 0}%`, 'Success / pricing views'),
         kpiCard('Checkout completion', `${conv.checkoutCompletionPct ?? 0}%`, 'Success / started'),
         kpiCard('Abandoned checkouts', f.num(conv.abandonedCheckouts), 'Started − success'),
-        kpiCard('Coupon usage', f.num(conv.couponUsage), `${conv.activeOffers ?? 0} active offers`)
+        kpiCard('Coupon usage', f.num(conv.couponUsage), `${conv.activeOffers ?? 0} active offers (live)`)
       ].join('')}</div></section>
       <section>
         <h3 class="dash-section-title">Analytics charts</h3>
@@ -167,11 +176,11 @@ window.CutupAdminOverview = (function () {
       ${renderLive(d.live)}
       <div class="dash-two-col">
         <section style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;">
-          <h3 class="dash-section-title">Recent activity</h3>
+          <h3 class="dash-section-title">Recent activity <span class="dash-section-tag">period</span></h3>
           ${renderActivity(d.activity)}
         </section>
         <section style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;">
-          <h3 class="dash-section-title">Top customers</h3>
+          <h3 class="dash-section-title">Top customers <span class="dash-section-tag">period</span></h3>
           ${renderTopCustomers(d.topCustomers)}
         </section>
       </div>

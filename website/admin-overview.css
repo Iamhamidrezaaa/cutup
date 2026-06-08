@@ -54,6 +54,31 @@
   color: var(--muted);
   margin: 0 0 12px;
 }
+.dash-section-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  color: var(--primary);
+  background: var(--primary-soft);
+  vertical-align: middle;
+}
+.dash-period-banner {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  font-size: 13px;
+  color: var(--muted);
+}
+.dash-period-banner strong {
+  color: var(--text-primary, #0f172a);
+}
 .dash-kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));

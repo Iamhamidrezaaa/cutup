@@ -141,56 +141,121 @@ window.CutupAdminUsage = (function () {
     });
   }
 
+  const TYPE_LABELS = {
+    all: 'All types',
+    transcription: 'Transcription',
+    summarization: 'Summarization',
+    srt: 'SRT export',
+    download: 'Download'
+  };
+
+  const PLATFORM_LABELS = {
+    all: 'All platforms',
+    youtube: 'YouTube',
+    instagram: 'Instagram',
+    tiktok: 'TikTok',
+    upload: 'Upload'
+  };
+
+  const PLAN_LABELS = {
+    all: 'All plans',
+    free: 'Free',
+    starter: 'Starter',
+    pro: 'Pro',
+    business: 'Business'
+  };
+
+  const PRESET_LABELS = {
+    all: 'All time',
+    today: 'Today',
+    yesterday: 'Yesterday',
+    '7d': '7 days',
+    '30d': '30 days',
+    custom: 'Custom'
+  };
+
   function activeChips() {
     const chips = [];
-    if (state.preset !== 'all') chips.push(`Period: ${state.preset}`);
-    if (state.type !== 'all') chips.push(`Type: ${state.type}`);
-    if (state.platform !== 'all') chips.push(`Platform: ${state.platform}`);
-    if (state.plan !== 'all') chips.push(`Plan: ${state.plan}`);
-    if (state.country !== 'all') chips.push(`Country: ${state.country}`);
-    if (state.search) chips.push(`Search: ${state.search}`);
+    if (state.preset !== 'all') chips.push({ key: 'preset', text: `Period: ${PRESET_LABELS[state.preset] || state.preset}` });
+    if (state.type !== 'all') chips.push({ key: 'type', text: `Type: ${TYPE_LABELS[state.type] || state.type}` });
+    if (state.platform !== 'all') chips.push({ key: 'platform', text: `Platform: ${PLATFORM_LABELS[state.platform] || state.platform}` });
+    if (state.plan !== 'all') chips.push({ key: 'plan', text: `Plan: ${PLAN_LABELS[state.plan] || state.plan}` });
+    if (state.country !== 'all') chips.push({ key: 'country', text: `Country: ${state.country}` });
+    if (state.search) chips.push({ key: 'search', text: `Email: ${state.search}` });
     return chips;
   }
 
   function renderFilters() {
     const chips = activeChips();
+    const customVisible = state.preset === 'custom';
     return `
       <div class="usage-filters-sticky">
-        <div class="usage-filter-bar">
-          <div class="usage-segment" role="group" aria-label="Date preset">
-            ${['all', 'today', 'yesterday', '7d', '30d', 'custom']
-              .map((p) => {
-                const label =
-                  p === 'all' ? 'All time' : p === '7d' ? '7 days' : p === '30d' ? '30 days' : p.charAt(0).toUpperCase() + p.slice(1);
-                return `<button type="button" data-preset="${p}" class="${state.preset === p ? 'active' : ''}">${label}</button>`;
-              })
-              .join('')}
+        <div class="usage-filters-card">
+          <div class="usage-filters-period">
+            <div class="usage-filters-period-main">
+              <span class="usage-filters-label">Time range</span>
+              <div class="usage-segment" role="group" aria-label="Date preset">
+                ${['all', 'today', 'yesterday', '7d', '30d', 'custom']
+                  .map((p) => {
+                    const label = PRESET_LABELS[p] || p;
+                    return `<button type="button" data-preset="${p}" class="${state.preset === p ? 'active' : ''}">${label}</button>`;
+                  })
+                  .join('')}
+              </div>
+            </div>
+            <div id="usageCustomDates" class="usage-filters-custom${customVisible ? ' is-visible' : ''}">
+              <label class="usage-filter-field usage-filter-field--date">
+                <span>From</span>
+                <input type="date" id="usageStartInput" value="${esc(state.startDate)}" />
+              </label>
+              <label class="usage-filter-field usage-filter-field--date">
+                <span>To</span>
+                <input type="date" id="usageEndInput" value="${esc(state.endDate)}" />
+              </label>
+            </div>
           </div>
-          <input type="search" id="usageSearchInput" placeholder="Search email…" value="${esc(state.search)}" />
-          <select id="usageTypeSelect">
-            ${['all', 'transcription', 'summarization', 'srt', 'download']
-              .map((t) => `<option value="${t}"${state.type === t ? ' selected' : ''}>${t}</option>`)
-              .join('')}
-          </select>
-          <select id="usagePlatformSelect">
-            ${['all', 'youtube', 'instagram', 'tiktok', 'upload']
-              .map((t) => `<option value="${t}"${state.platform === t ? ' selected' : ''}>${t}</option>`)
-              .join('')}
-          </select>
-          <select id="usagePlanSelect">
-            ${['all', 'free', 'starter', 'pro', 'business']
-              .map((t) => `<option value="${t}"${state.plan === t ? ' selected' : ''}>${t}</option>`)
-              .join('')}
-          </select>
-          <input type="text" id="usageCountryInput" placeholder="Country (DE)" maxlength="2" value="${esc(state.country === 'all' ? '' : state.country)}" style="width:72px" />
-          <span id="usageCustomDates" style="${state.preset === 'custom' ? '' : 'display:none'}">
-            <input type="date" id="usageStartInput" value="${esc(state.startDate)}" />
-            <input type="date" id="usageEndInput" value="${esc(state.endDate)}" />
-          </span>
-          <button type="button" class="btn" id="usageApplyBtn">Apply</button>
-          <button type="button" class="btn ghost" id="usageResetBtn">Reset</button>
+          <div class="usage-filters-grid">
+            <label class="usage-filter-field usage-filter-field--search">
+              <span>Search user</span>
+              <input type="search" id="usageSearchInput" class="usage-filter-input" placeholder="Filter by email…" value="${esc(state.search)}" autocomplete="off" />
+            </label>
+            <label class="usage-filter-field">
+              <span>Activity type</span>
+              <select id="usageTypeSelect" class="usage-filter-input" aria-label="Activity type">
+                ${Object.entries(TYPE_LABELS)
+                  .map(([value, label]) => `<option value="${value}"${state.type === value ? ' selected' : ''}>${label}</option>`)
+                  .join('')}
+              </select>
+            </label>
+            <label class="usage-filter-field">
+              <span>Platform</span>
+              <select id="usagePlatformSelect" class="usage-filter-input" aria-label="Platform">
+                ${Object.entries(PLATFORM_LABELS)
+                  .map(([value, label]) => `<option value="${value}"${state.platform === value ? ' selected' : ''}>${label}</option>`)
+                  .join('')}
+              </select>
+            </label>
+            <label class="usage-filter-field">
+              <span>Plan</span>
+              <select id="usagePlanSelect" class="usage-filter-input" aria-label="Plan">
+                ${Object.entries(PLAN_LABELS)
+                  .map(([value, label]) => `<option value="${value}"${state.plan === value ? ' selected' : ''}>${label}</option>`)
+                  .join('')}
+              </select>
+            </label>
+            <label class="usage-filter-field usage-filter-field--country">
+              <span>Country</span>
+              <input type="text" id="usageCountryInput" class="usage-filter-input" placeholder="ISO code" maxlength="2" value="${esc(state.country === 'all' ? '' : state.country)}" aria-label="Country ISO code" />
+            </label>
+          </div>
+          <div class="usage-filters-footer">
+            ${chips.length ? `<div class="usage-chips">${chips.map((c) => `<span class="usage-chip">${esc(c.text)}</span>`).join('')}</div>` : '<span class="usage-filters-hint">Refine usage events, KPIs, and charts with the filters above.</span>'}
+            <div class="usage-filters-actions">
+              <button type="button" class="btn ghost" id="usageResetBtn">Reset</button>
+              <button type="button" class="btn" id="usageApplyBtn">Apply filters</button>
+            </div>
+          </div>
         </div>
-        ${chips.length ? `<div class="usage-chips">${chips.map((c) => `<span class="usage-chip">${esc(c)}</span>`).join('')}</div>` : ''}
       </div>`;
   }
 
@@ -236,6 +301,13 @@ window.CutupAdminUsage = (function () {
     return `<span class="usage-badge ${esc(cls)}">${esc(t)}</span>`;
   }
 
+  const SORT_LABELS = {
+    created_at: 'Date',
+    minutes: 'Duration',
+    email: 'Email',
+    type: 'Activity type'
+  };
+
   function renderTable(rows, total, page, totalPages) {
     const head = `
       <thead><tr>
@@ -263,32 +335,44 @@ window.CutupAdminUsage = (function () {
           .join('')
       : `<tr><td colspan="11" class="usage-empty">No usage events match your filters.</td></tr>`;
 
+    const sortSummary = `${SORT_LABELS[state.sort] || state.sort} · ${state.sortDir === 'asc' ? 'Oldest first' : 'Newest first'}`;
+
     return `
       <div class="usage-table-card">
         <div class="usage-table-toolbar">
-          <strong>${esc(total)} events</strong>
-          <div>
-            <label class="metric-subtle">Sort</label>
-            <select id="usageSortSelect">
-              <option value="created_at"${state.sort === 'created_at' ? ' selected' : ''}>Date</option>
-              <option value="minutes"${state.sort === 'minutes' ? ' selected' : ''}>Duration</option>
-              <option value="email"${state.sort === 'email' ? ' selected' : ''}>Email</option>
-              <option value="type"${state.sort === 'type' ? ' selected' : ''}>Type</option>
-            </select>
-            <select id="usageSortDirSelect">
-              <option value="desc"${state.sortDir === 'desc' ? ' selected' : ''}>Desc</option>
-              <option value="asc"${state.sortDir === 'asc' ? ' selected' : ''}>Asc</option>
-            </select>
+          <div class="usage-table-toolbar-main">
+            <h3 class="usage-table-title">Activity log</h3>
+            <span class="usage-table-count">${esc(fmt().num?.(total) ?? total)} events</span>
+          </div>
+          <div class="usage-table-controls">
+            <label class="usage-filter-field usage-filter-field--sort">
+              <span>Sort by</span>
+              <select id="usageSortSelect" class="usage-filter-input" aria-label="Sort by">
+                ${Object.entries(SORT_LABELS)
+                  .map(([value, label]) => `<option value="${value}"${state.sort === value ? ' selected' : ''}>${label}</option>`)
+                  .join('')}
+              </select>
+            </label>
+            <div class="usage-filter-field usage-filter-field--order">
+              <span>Order</span>
+              <div class="usage-segment usage-segment--compact" role="group" aria-label="Sort order">
+                <button type="button" data-sort-dir="desc" class="${state.sortDir === 'desc' ? 'active' : ''}">Newest</button>
+                <button type="button" data-sort-dir="asc" class="${state.sortDir === 'asc' ? 'active' : ''}">Oldest</button>
+              </div>
+            </div>
           </div>
         </div>
         <div class="usage-table-scroll">
           <table>${head}<tbody>${body}</tbody></table>
         </div>
         <div class="usage-pagination">
-          <span>Page ${page} of ${totalPages}</span>
-          <div>
-            <button type="button" class="btn ghost" id="usagePrevPage" ${page <= 1 ? 'disabled' : ''}>Previous</button>
-            <button type="button" class="btn ghost" id="usageNextPage" ${page >= totalPages ? 'disabled' : ''}>Next</button>
+          <span class="usage-pagination-meta">
+            Page <strong>${page}</strong> of <strong>${totalPages}</strong>
+            <span class="usage-pagination-sort">${esc(sortSummary)}</span>
+          </span>
+          <div class="usage-pagination-actions">
+            <button type="button" class="btn ghost" id="usagePrevPage" ${page <= 1 ? 'disabled' : ''}>← Previous</button>
+            <button type="button" class="btn ghost" id="usageNextPage" ${page >= totalPages ? 'disabled' : ''}>Next →</button>
           </div>
         </div>
       </div>`;
@@ -410,7 +494,7 @@ window.CutupAdminUsage = (function () {
     state.startDate = document.getElementById('usageStartInput')?.value || '';
     state.endDate = document.getElementById('usageEndInput')?.value || '';
     state.sort = document.getElementById('usageSortSelect')?.value || 'created_at';
-    state.sortDir = document.getElementById('usageSortDirSelect')?.value || 'desc';
+    state.sortDir = document.querySelector('[data-sort-dir].active')?.getAttribute('data-sort-dir') || state.sortDir || 'desc';
   }
 
   function bindWorkspaceEvents() {
@@ -419,10 +503,17 @@ window.CutupAdminUsage = (function () {
         state.preset = btn.getAttribute('data-preset') || 'all';
         state.page = 1;
         const custom = document.getElementById('usageCustomDates');
-        if (custom) custom.style.display = state.preset === 'custom' ? '' : 'none';
+        if (custom) custom.classList.toggle('is-visible', state.preset === 'custom');
         document.querySelectorAll('[data-preset]').forEach((b) => b.classList.toggle('active', b === btn));
         if (state.preset !== 'custom') load();
       });
+    });
+    document.getElementById('usageSearchInput')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        collectFiltersFromDom();
+        state.page = 1;
+        load();
+      }
     });
     document.getElementById('usageApplyBtn')?.addEventListener('click', () => {
       collectFiltersFromDom();
@@ -458,12 +549,15 @@ window.CutupAdminUsage = (function () {
       }
     });
     document.getElementById('usageSortSelect')?.addEventListener('change', () => {
-      collectFiltersFromDom();
+      state.sort = document.getElementById('usageSortSelect')?.value || 'created_at';
       load({ fullRender: false });
     });
-    document.getElementById('usageSortDirSelect')?.addEventListener('change', () => {
-      collectFiltersFromDom();
-      load({ fullRender: false });
+    document.querySelectorAll('[data-sort-dir]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.sortDir = btn.getAttribute('data-sort-dir') || 'desc';
+        document.querySelectorAll('[data-sort-dir]').forEach((b) => b.classList.toggle('active', b === btn));
+        load({ fullRender: false });
+      });
     });
     document.querySelectorAll('.usage-table-scroll tbody tr[data-id]').forEach((tr) => {
       tr.addEventListener('click', () => {

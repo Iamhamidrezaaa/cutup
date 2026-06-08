@@ -6,7 +6,7 @@
   <title>Admin Login | Cutup</title>
   <meta name="robots" content="noindex, nofollow">
   <link rel="stylesheet" href="admin.css">
-  <link rel="stylesheet" href="admin-overview.css">
+  <link rel="stylesheet" href="admin-overview.css?v=20260609-overview-v1">
   <link rel="stylesheet" href="admin-usage.css">
   <link rel="stylesheet" href="admin-outputs.css">
   <link rel="stylesheet" href="admin-payments.css">
@@ -261,6 +261,11 @@
               <p class="out-subtitle">AI content archive — transcripts, summaries, and exports across your user base.</p>
             </div>
             <div class="out-header-actions">
+              <p id="outputsLiveStatus" class="out-live-status" role="status" aria-live="polite">
+                <span class="out-live-dot" aria-hidden="true"></span>
+                <span class="out-live-label">Live updates enabled</span>
+                <span class="out-live-updated" id="outputsLiveUpdated">Loading…</span>
+              </p>
               <button type="button" class="btn ghost" id="outputsExportCsvBtn">Export CSV</button>
             </div>
           </div>
@@ -639,9 +644,9 @@
     <script src="admin-auth.js"></script>
     <script src="admin-creator-wall.js"></script>
     <script src="admin.js"></script>
-    <script src="admin-overview-utils.js"></script>
-    <script src="admin-overview-charts.js"></script>
-    <script src="admin-overview.js"></script>
+    <script src="admin-overview-utils.js?v=20260609-overview-v1"></script>
+    <script src="admin-overview-charts.js?v=20260609-overview-v1"></script>
+    <script src="admin-overview.js?v=20260609-overview-v1"></script>
     <script src="admin-usage-charts.js"></script>
     <script src="admin-usage.js"></script>
     <script src="admin-outputs-charts.js"></script>

@@ -229,26 +229,56 @@ async function queryUserMetrics(pool, from, to) {
     /* optional */
   }
 
-  const countriesRes = await pool.query(
-    `SELECT COALESCE(NULLIF(TRIM(country), ''), '—') AS country, COUNT(*)::int AS count
-     FROM user_profiles
-     GROUP BY 1
-     ORDER BY count DESC
-     LIMIT 12`
+  const activeParams = [];
+  const wActive = dateWhere('h.created_at', from, to, activeParams);
+  const activeInPeriodRes = await pool.query(
+    `SELECT COUNT(DISTINCT h.user_id)::int AS c FROM usage_history h
+     WHERE h.user_id IS NOT NULL AND ${wActive}`,
+    activeParams
   );
 
+  let countriesRes;
+  if (from || to) {
+    const countryParams = [];
+    const wSignup = dateWhere('u.created_at', from, to, countryParams);
+    const wUsage = dateWhere('h.created_at', from, to, countryParams);
+    countriesRes = await pool.query(
+      `SELECT COALESCE(NULLIF(TRIM(up.country), ''), '—') AS country, COUNT(DISTINCT u.id)::int AS count
+       FROM users u
+       JOIN user_profiles up ON up.user_id = u.id
+       LEFT JOIN usage_history h ON h.user_id = u.id
+       WHERE (${wSignup}) OR (${wUsage})
+       GROUP BY 1
+       ORDER BY count DESC
+       LIMIT 12`,
+      countryParams
+    );
+  } else {
+    countriesRes = await pool.query(
+      `SELECT COALESCE(NULLIF(TRIM(country), ''), '—') AS country, COUNT(*)::int AS count
+       FROM user_profiles
+       GROUP BY 1
+       ORDER BY count DESC
+       LIMIT 12`
+    );
+  }
+
+  const topParams = [];
+  const wTop = dateWhere('h.created_at', from, to, topParams);
   const topActiveRes = await pool.query(
     `SELECT u.email, COALESCE(SUM(h.minutes), 0)::float AS usage_minutes, MAX(h.created_at) AS last_active
      FROM usage_history h
      JOIN users u ON u.id = h.user_id
-     WHERE h.created_at >= NOW() - INTERVAL '30 days'
+     WHERE ${wTop}
      GROUP BY u.email
      ORDER BY usage_minutes DESC
-     LIMIT 8`
+     LIMIT 8`,
+    topParams
   );
 
   return {
     newUsers: Number(newUsersRes.rows[0]?.c || 0),
+    activeInPeriod: Number(activeInPeriodRes.rows[0]?.c || 0),
     dau: Number(dauRes.rows[0]?.c || 0),
     wau: Number(wauRes.rows[0]?.c || 0),
     mau: Number(mauRes.rows[0]?.c || 0),
@@ -322,8 +352,11 @@ async function queryStorage(pool, from, to) {
        COALESCE(SUM(video_downloads), 0)::int AS video
      FROM usage`
   );
+  const sizeParams = [];
+  const wSize = dateWhere('created_at', from, to, sizeParams);
   const sizeRes = await pool.query(
-    `SELECT COALESCE(SUM(LENGTH(COALESCE(content, ''))), 0)::bigint AS bytes FROM saved_outputs`
+    `SELECT COALESCE(SUM(LENGTH(COALESCE(content, ''))), 0)::bigint AS bytes FROM saved_outputs WHERE ${wSize}`,
+    sizeParams
   );
   return {
     savedTranscripts: Number(byType.transcript || byType.transcription || 0) + Number(byType.text || 0),
@@ -447,16 +480,19 @@ async function queryLiveMetrics(pool) {
   };
 }
 
-async function queryConversion(pool) {
-  const funnel = await pool.query(`
-    SELECT
+async function queryConversion(pool, from, to) {
+  const params = [];
+  const w = dateWhere('created_at', from, to, params);
+  const funnel = await pool.query(
+    `SELECT
       COUNT(*) FILTER (WHERE event = 'pricing_viewed')::int AS views,
       COUNT(*) FILTER (WHERE event = 'payment_started')::int AS started,
       COUNT(*) FILTER (WHERE event = 'payment_success')::int AS success,
       COUNT(*) FILTER (WHERE event = 'payment_failed')::int AS failed
     FROM analytics_events
-    WHERE created_at >= NOW() - INTERVAL '30 days'
-  `);
+    WHERE ${w}`,
+    params
+  );
   const row = funnel.rows[0] || {};
   const views = Number(row.views || 0);
   const started = Number(row.started || 0);
@@ -475,25 +511,28 @@ async function queryConversion(pool) {
   };
 }
 
-async function queryTopCustomers(pool) {
+async function queryTopCustomers(pool, from, to) {
+  const params = [];
+  const wPay = dateWhere('p.created_at', from, to, params);
+  const wUsage = dateWhere('uh.created_at', from, to, params);
   const r = await pool.query(
     `SELECT u.email,
             COALESCE(s.plan, 'free') AS plan,
             COALESCE(up.country, '') AS country,
             COALESCE(SUM(CASE WHEN p.status = 'success' THEN COALESCE(p.amount_eur, p.amount, 0) ELSE 0 END), 0)::numeric AS revenue,
-            COALESCE(us.minutes_used, 0)::float AS usage_minutes,
-            GREATEST(u.created_at, uh.last_use) AS last_active
+            COALESCE(SUM(CASE WHEN uh.minutes > 0 THEN uh.minutes ELSE 0 END), 0)::float AS usage_minutes,
+            GREATEST(u.created_at, MAX(uh.created_at)) AS last_active
      FROM users u
      LEFT JOIN subscriptions s ON s.user_id = u.id
      LEFT JOIN user_profiles up ON up.user_id = u.id
-     LEFT JOIN usage us ON us.user_id = u.id
-     LEFT JOIN payments p ON p.user_id = u.id
-     LEFT JOIN LATERAL (
-       SELECT MAX(created_at) AS last_use FROM usage_history WHERE user_id = u.id
-     ) uh ON true
-     GROUP BY u.id, u.email, s.plan, up.country, us.minutes_used, u.created_at, uh.last_use
+     LEFT JOIN payments p ON p.user_id = u.id AND p.status = 'success' AND ${wPay}
+     LEFT JOIN usage_history uh ON uh.user_id = u.id AND ${wUsage}
+     GROUP BY u.id, u.email, s.plan, up.country, u.created_at
+     HAVING COALESCE(SUM(CASE WHEN p.status = 'success' THEN COALESCE(p.amount_eur, p.amount, 0) ELSE 0 END), 0) > 0
+         OR COALESCE(SUM(CASE WHEN uh.minutes > 0 THEN uh.minutes ELSE 0 END), 0) > 0
      ORDER BY revenue DESC, usage_minutes DESC
-     LIMIT 12`
+     LIMIT 12`,
+    params
   );
   return r.rows.map((row) => ({
     email: row.email,
@@ -505,10 +544,13 @@ async function queryTopCustomers(pool) {
   }));
 }
 
-async function queryActivityFeed(pool) {
+async function queryActivityFeed(pool, from, to) {
   const items = [];
+  const userParams = [];
+  const wUsers = dateWhere('created_at', from, to, userParams);
   const users = await pool.query(
-    `SELECT email, created_at FROM users ORDER BY created_at DESC LIMIT 8`
+    `SELECT email, created_at FROM users WHERE ${wUsers} ORDER BY created_at DESC LIMIT 8`,
+    userParams
   );
   for (const row of users.rows) {
     items.push({
@@ -518,10 +560,14 @@ async function queryActivityFeed(pool) {
       at: row.created_at?.toISOString?.() || row.created_at
     });
   }
+  const payParams = [];
+  const wPay = dateWhere('p.created_at', from, to, payParams);
   const pays = await pool.query(
     `SELECT u.email, p.status, p.plan, COALESCE(p.amount_eur, p.amount, 0) AS amount, p.created_at
      FROM payments p JOIN users u ON u.id = p.user_id
-     ORDER BY p.created_at DESC LIMIT 12`
+     WHERE ${wPay}
+     ORDER BY p.created_at DESC LIMIT 12`,
+    payParams
   );
   for (const row of pays.rows) {
     items.push({
@@ -531,10 +577,14 @@ async function queryActivityFeed(pool) {
       at: row.created_at?.toISOString?.() || row.created_at
     });
   }
+  const usageParams = [];
+  const wUsage = dateWhere('h.created_at', from, to, usageParams);
   const usage = await pool.query(
     `SELECT u.email, h.type, h.minutes, h.created_at
      FROM usage_history h JOIN users u ON u.id = h.user_id
-     ORDER BY h.created_at DESC LIMIT 10`
+     WHERE ${wUsage}
+     ORDER BY h.created_at DESC LIMIT 10`,
+    usageParams
   );
   for (const row of usage.rows) {
     items.push({
@@ -546,11 +596,15 @@ async function queryActivityFeed(pool) {
   }
   try {
     await ensureAuditEventsTable();
+    const auditParams = [];
+    const wAudit = dateWhere('created_at', from, to, auditParams);
     const audit = await pool.query(
       `SELECT event_name, event_type, COALESCE(metadata->>'email', '') AS email, created_at
        FROM audit_events
        WHERE event_name IN ('login', 'admin_action', 'payment_success', 'export')
-       ORDER BY created_at DESC LIMIT 10`
+         AND ${wAudit}
+       ORDER BY created_at DESC LIMIT 10`,
+      auditParams
     );
     for (const row of audit.rows) {
       items.push({
@@ -675,9 +729,9 @@ async function computeDashboard(periodKey) {
     queryPlansDistribution(pool),
     queryCostVsRevenueTimeline(pool, chartFrom, period.to),
     queryLiveMetrics(pool),
-    queryConversion(pool),
-    queryTopCustomers(pool),
-    queryActivityFeed(pool)
+    queryConversion(pool, period.from, period.to),
+    queryTopCustomers(pool, period.from, period.to),
+    queryActivityFeed(pool, period.from, period.to)
   ]);
 
   const growthPct = pctChange(currentRev.revenue, prevRev.revenue);

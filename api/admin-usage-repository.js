@@ -101,10 +101,11 @@ const USAGE_FROM = `
   LEFT JOIN user_profiles up ON up.user_id = u.id
 `;
 
-async function queryKpis(pool, range, prevRange) {
+async function queryKpis(pool, opts, prevRange) {
+  const range = opts.range || {};
   const run = async (from, to) => {
     const params = [];
-    const whereSql = usageWhere({ range: { from, to } }, params);
+    const whereSql = usageWhere({ ...opts, range: { from, to } }, params);
     const r = await pool.query(
       `SELECT
          COALESCE(SUM(CASE WHEN h.minutes > 0 THEN h.minutes ELSE 0 END), 0)::float AS total_minutes,
@@ -133,7 +134,7 @@ async function queryKpis(pool, range, prevRange) {
   const [cur, prev] = await Promise.all([run(range.from, range.to), run(prevRange.from, prevRange.to)]);
 
   const params2 = [];
-  const where2 = usageWhere({ range }, params2);
+  const where2 = usageWhere(opts, params2);
   const countryExtra = where2 ? `${where2} AND up.country IS NOT NULL` : `WHERE up.country IS NOT NULL`;
   const [platformRes, countryRes, activeTodayRes, avgLenRes] = await Promise.all([
     pool.query(
@@ -176,20 +177,25 @@ async function queryKpis(pool, range, prevRange) {
       avgDuration: pctChange(cur.avgDuration, prev.avgDuration),
       estimatedCostEur: pctChange(cur.estimatedCostEur, prev.estimatedCostEur)
     },
-    sparklines: await querySparklines(pool, range)
+    sparklines: await querySparklines(pool, opts)
   };
 }
 
-async function querySparklines(pool, range) {
+async function querySparklines(pool, opts) {
+  const range = opts.range || {};
   const to = range.to || new Date();
   const from = range.from || new Date(to.getTime() - 90 * 86400000);
-  const params = [from.toISOString(), to.toISOString()];
+  const params = [];
+  const whereSql = usageWhere({ ...opts, range: { from, to } }, params);
   const r = await pool.query(
     `SELECT to_char(date_trunc('day', h.created_at), 'YYYY-MM-DD') AS day,
             COALESCE(SUM(CASE WHEN h.minutes > 0 THEN h.minutes ELSE 0 END), 0)::float AS minutes,
             COUNT(*)::int AS jobs
      FROM usage_history h
-     WHERE h.created_at >= $1::timestamptz AND h.created_at <= $2::timestamptz
+     JOIN users u ON u.id = h.user_id
+     LEFT JOIN subscriptions s ON s.user_id = u.id
+     LEFT JOIN user_profiles up ON up.user_id = u.id
+     ${whereSql}
      GROUP BY 1 ORDER BY 1 ASC`,
     params
   );
@@ -199,9 +205,9 @@ async function querySparklines(pool, range) {
   };
 }
 
-async function queryTimeline(pool, range) {
+async function queryTimeline(pool, opts) {
   const params = [];
-  const whereSql = usageWhere({ range }, params);
+  const whereSql = usageWhere(opts, params);
   const r = await pool.query(
     `SELECT to_char(date_trunc('day', h.created_at), 'YYYY-MM-DD') AS day,
        COUNT(*) FILTER (WHERE h.type = 'transcription' AND NOT (${TRANSLATION_ONLY_SQL}))::int AS transcript,
@@ -209,7 +215,7 @@ async function queryTimeline(pool, range) {
        COUNT(*) FILTER (WHERE h.type = 'summarization')::int AS summary,
        COUNT(*) FILTER (WHERE h.type = 'download' AND COALESCE(h.metadata->>'kind','') = 'audio')::int AS download_audio,
        COUNT(*) FILTER (WHERE h.type = 'download' AND COALESCE(h.metadata->>'kind','') = 'video')::int AS download_video,
-       COUNT(*) FILTER (WHERE h.type = 'srt')::int AS srt
+       COUNT(*) FILTER (WHERE h.type = 'srt' AND NOT (${TRANSLATION_ONLY_SQL}))::int AS srt
      ${USAGE_FROM}
      ${whereSql}
      GROUP BY 1 ORDER BY 1 ASC`,
@@ -226,9 +232,9 @@ async function queryTimeline(pool, range) {
   }));
 }
 
-async function queryBreakdowns(pool, range) {
+async function queryBreakdowns(pool, opts) {
   const params = [];
-  const whereSql = usageWhere({ range }, params);
+  const whereSql = usageWhere(opts, params);
 
   const [byFeature, byPlatform, byCountry, byPlan, expensive] = await Promise.all([
     pool.query(
@@ -238,7 +244,7 @@ async function queryBreakdowns(pool, range) {
          COUNT(*) FILTER (WHERE h.type = 'summarization')::int AS summary,
          COUNT(*) FILTER (WHERE h.type = 'download' AND COALESCE(h.metadata->>'kind','') = 'audio')::int AS download_audio,
          COUNT(*) FILTER (WHERE h.type = 'download' AND COALESCE(h.metadata->>'kind','') = 'video')::int AS download_video,
-         COUNT(*) FILTER (WHERE h.type = 'srt')::int AS srt
+         COUNT(*) FILTER (WHERE h.type = 'srt' AND NOT (${TRANSLATION_ONLY_SQL}))::int AS srt
        ${USAGE_FROM} ${whereSql}`,
       params
     ),
@@ -483,19 +489,19 @@ export async function getAdminUsageDashboardDb(filters = {}) {
   let timeline = [];
   let breakdowns = null;
   try {
-    kpis = await queryKpis(pool, range, prevRange);
+    kpis = await queryKpis(pool, opts, prevRange);
   } catch (e) {
     console.error('[admin usage] kpis failed', e);
     widgetErrors.push({ widget: 'kpis', message: e?.message || String(e) });
   }
   try {
-    timeline = await queryTimeline(pool, range);
+    timeline = await queryTimeline(pool, opts);
   } catch (e) {
     console.error('[admin usage] timeline failed', e);
     widgetErrors.push({ widget: 'timeline', message: e?.message || String(e) });
   }
   try {
-    breakdowns = await queryBreakdowns(pool, range);
+    breakdowns = await queryBreakdowns(pool, opts);
   } catch (e) {
     console.error('[admin usage] breakdowns failed', e);
     widgetErrors.push({ widget: 'breakdowns', message: e?.message || String(e) });

@@ -295,6 +295,7 @@ function activateAdminSection(section) {
   stopAuditAutoRefresh();
   stopAuditLiveWs();
   if (section !== 'usage') window.CutupAdminUsage?.stopAutoRefresh?.();
+  if (section !== 'outputs') window.CutupAdminOutputs?.stopAutoRefresh?.();
   document.querySelectorAll('.nav-btn[data-section]').forEach((n) => {
     if (!n.closest('#navContentHub') && !n.closest('#navUsersHub')) n.classList.remove('active');
   });
@@ -1405,20 +1406,43 @@ function renderUsageTable(rows) {
 function renderOutputsTable(rows) {
   const el = document.getElementById('outputsTable');
   if (!el) return;
+  const list = rows.length ? rows : [];
   el.innerHTML = `
-    <thead><tr><th>User</th><th>Title</th><th>Type</th><th>Platform</th><th>Language</th><th>Favorite</th><th>Created</th><th>Preview</th></tr></thead>
+    <thead><tr><th>User</th><th>Title</th><th>Type</th><th>Platform</th><th>Language</th><th>Created</th><th>Preview</th></tr></thead>
     <tbody>
-      ${(rows.length ? rows : []).map((o) => `<tr>
+      ${list.map((o) => `<tr>
         <td>${escapeHtml(o.email)}</td>
         <td>${escapeHtml(o.title || '—')}</td>
         <td>${statusBadge(o.type || 'unknown')}</td>
         <td>${escapeHtml(o.platform || '—')}</td>
         <td>${escapeHtml(o.language || '—')}</td>
-        <td>${o.isFavorite ? statusBadge('Pinned', 'ok') : '<span class="muted">—</span>'}</td>
         <td>${fmtDate(o.createdAt)}</td>
-        <td><details><summary>View</summary><pre>${escapeHtml(o.content || '')}</pre></details></td>
-      </tr>`).join('') || emptyRow(8, 'No saved outputs available yet.')}
+        <td><button type="button" class="btn ghost out-legacy-view" data-id="${escapeHtml(String(o.id))}">View</button></td>
+      </tr>`).join('') || emptyRow(7, 'No saved outputs available yet.')}
     </tbody>`;
+  el.querySelectorAll('.out-legacy-view').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute('data-id');
+      const row = list.find((r) => String(r.id) === String(id));
+      if (!row || !window.CutupAdminOutputs?.openDrawer) return;
+      window.CutupAdminOutputs.openDrawer({
+        id: row.id,
+        email: row.email,
+        type: row.type,
+        title: row.title,
+        platform: row.platform,
+        language: row.language,
+        plan: row.plan || 'free',
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt || row.createdAt,
+        contentLength: String(row.content || '').length,
+        costEstimateEur: 0,
+        sourceUrl: row.sourceUrl || '',
+        metadata: row.metadata || {}
+      });
+    });
+  });
 }
 
 function renderPaymentsPanel(data, abData) {
@@ -1724,6 +1748,7 @@ async function loadUsage() {
 async function loadOutputs() {
   if (window.CutupAdminOutputs?.load) {
     window.CutupAdminOutputs.readUrlState?.();
+    window.CutupAdminOutputs.startAutoRefresh?.();
     return window.CutupAdminOutputs.load({ fullRender: true });
   }
   const data = await apiGet('savedOutputs', { legacy: '1', limit: 300 });

@@ -81,7 +81,6 @@ window.CutupAdminFilterState = (function () {
       page: Number(p.get('outPage')) || 1,
       startDate: p.get('outStart') || '',
       endDate: p.get('outEnd') || '',
-      favoritesOnly: p.get('outFav') === '1',
       highLength: p.get('outLong') === '1',
       aiHeavy: p.get('outAi') === '1',
       showArchived: p.get('outArch') === '1'
