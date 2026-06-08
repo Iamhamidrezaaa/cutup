@@ -9,6 +9,7 @@
     "deploy": "vercel --prod",
     "db:migrate": "node api/db/migrate.mjs",
     "build:emails": "node scripts/build-email-platform.mjs",
+    "deploy:emails": "npm run build:emails && node -e \"console.log('\\n✅ Email bundle rebuilt. Upload api/email-platform/ to server then pm2 restart cutup-api (or wait — auto-reload on next preview).\\n')\"",
     "build:notifications": "node scripts/build-notifications.mjs",
     "help:illustrations": "node scripts/generate-help-illustrations.mjs && node scripts/svg-to-help-jpg.mjs",
     "email:dev": "email dev --dir emails/templates",

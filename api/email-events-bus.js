@@ -1,23 +1,85 @@
 /**
  * Event-driven email bus — business logic emits events here; never calls Resend directly.
  */
+import { existsSync, readFileSync, statSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import { setLastRenderError, setLastSendResult } from './email-debug-state.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const BUNDLE_PATH = join(__dirname, 'email-platform', 'index.js');
+const STAMP_PATH = join(__dirname, 'email-platform', 'BUILD_STAMP.json');
 
 let platformPromise = null;
 let platformLoadError = null;
+/** Tracks which bundle generation is loaded — busts Node ESM import cache when file changes. */
+let platformLoadedKey = null;
+
+export function getEmailPlatformBundleKey() {
+  return resolveBundleCacheKey();
+}
+
+function resolveBundleCacheKey() {
+  try {
+    if (existsSync(STAMP_PATH)) {
+      const stamp = JSON.parse(readFileSync(STAMP_PATH, 'utf8'));
+      return String(stamp.builtAt || stamp.bundleMtime || '').trim();
+    }
+  } catch (_e) {
+    /* fall through */
+  }
+  try {
+    if (existsSync(BUNDLE_PATH)) {
+      return statSync(BUNDLE_PATH).mtime.toISOString();
+    }
+  } catch (_e2) {
+    /* fall through */
+  }
+  return 'default';
+}
 
 async function loadPlatform() {
-  if (!platformPromise) {
-    platformPromise = import('./email-platform/index.js').catch((err) => {
+  const cacheKey = resolveBundleCacheKey();
+  if (platformPromise && platformLoadedKey === cacheKey) {
+    return platformPromise;
+  }
+
+  platformLoadedKey = cacheKey;
+  platformLoadError = null;
+
+  const importHref = new URL(
+    `./email-platform/index.js?build=${encodeURIComponent(cacheKey)}`,
+    import.meta.url,
+  ).href;
+
+  platformPromise = import(importHref)
+    .then((mod) => {
+      console.log('[email-events-bus] loaded email-platform bundle', { cacheKey });
+      return mod;
+    })
+    .catch((err) => {
       platformLoadError = {
         message: err?.message || String(err),
         stack: err?.stack || null,
       };
-      console.warn('[email-events-bus] platform unavailable:', platformLoadError.message, platformLoadError.stack);
+      platformPromise = null;
+      platformLoadedKey = null;
+      console.warn(
+        '[email-events-bus] platform unavailable:',
+        platformLoadError.message,
+        platformLoadError.stack,
+      );
       return null;
     });
-  }
+
   return platformPromise;
+}
+
+/** Admin/debug: force next render to reload bundle from disk. */
+export function invalidateEmailPlatformCache() {
+  platformPromise = null;
+  platformLoadedKey = null;
+  platformLoadError = null;
 }
 
 export function getPlatformLoadError() {

@@ -42,7 +42,7 @@ export function StatusBadge({ children, variant = 'neutral', inline = false }: P
   );
   if (inline) return badge;
   return (
-    <Section className="email-pad-x" style={{ padding: `12px ${BRAND.padX} 0` }}>
+    <Section className="email-pad-x" style={{ padding: `16px ${BRAND.padX} 8px` }}>
       {badge}
     </Section>
   );

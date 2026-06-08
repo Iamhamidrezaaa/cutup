@@ -41,10 +41,10 @@ export function QuickActions({ dashboardUrl }: Props) {
   }));
 
   return (
-    <Section className="email-pad-x" style={{ padding: `0 ${BRAND.padX} 24px` }}>
+    <Section className="email-pad-x" style={{ padding: `8px ${BRAND.padX} 32px` }}>
       <Text
         style={{
-          margin: '0 0 8px',
+          margin: '0 0 12px',
           fontSize: '11px',
           fontWeight: 600,
           letterSpacing: '0.06em',
@@ -58,7 +58,7 @@ export function QuickActions({ dashboardUrl }: Props) {
         <tbody>
           {actions.map((action, i) => (
             <tr key={action.title}>
-              <td style={{ paddingBottom: i < actions.length - 1 ? '6px' : 0 }}>
+              <td style={{ paddingBottom: i < actions.length - 1 ? '10px' : 0 }}>
                 <table
                   cellPadding={0}
                   cellSpacing={0}
@@ -73,17 +73,17 @@ export function QuickActions({ dashboardUrl }: Props) {
                 >
                   <tbody>
                     <tr>
-                      <td style={{ padding: '10px 12px' }}>
+                      <td style={{ padding: '14px 16px' }}>
                         <Link href={action.href} style={{ textDecoration: 'none', color: 'inherit' }}>
                           <table cellPadding={0} cellSpacing={0} role="presentation" width="100%">
                             <tbody>
                               <tr>
                                 <td
-                                  width="28"
+                                  width="32"
                                   style={{
-                                    width: '28px',
+                                    width: '32px',
                                     verticalAlign: 'top',
-                                    fontSize: '18px',
+                                    fontSize: '22px',
                                     lineHeight: '1',
                                     paddingRight: '10px',
                                   }}

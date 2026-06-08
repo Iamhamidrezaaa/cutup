@@ -38,8 +38,8 @@ export const BRAND = {
   cardPad: '28px',
   cardPadMobile: '20px',
   cardMarginBottom: '20px',
-  heroPadTop: '24px',
-  heroPadBottom: '20px',
+  heroPadTop: '8px',
+  heroPadBottom: '24px',
   detailWrapPad: '0',
 } as const;
 

@@ -31532,8 +31532,8 @@ var BRAND = {
   cardPad: "28px",
   cardPadMobile: "20px",
   cardMarginBottom: "20px",
-  heroPadTop: "24px",
-  heroPadBottom: "20px",
+  heroPadTop: "8px",
+  heroPadBottom: "24px",
   detailWrapPad: "0"
 };
 var PLAN_COLORS = {
@@ -32091,12 +32091,12 @@ function QuickActions({ dashboardUrl }) {
     ...a,
     href: a.href.replace(SITE.dashboardUrl, base)
   }));
-  return /* @__PURE__ */ jsxs9(Section, { className: "email-pad-x", style: { padding: `0 ${BRAND.padX} 24px` }, children: [
+  return /* @__PURE__ */ jsxs9(Section, { className: "email-pad-x", style: { padding: `8px ${BRAND.padX} 32px` }, children: [
     /* @__PURE__ */ jsx28(
       Text3,
       {
         style: {
-          margin: "0 0 8px",
+          margin: "0 0 12px",
           fontSize: "11px",
           fontWeight: 600,
           letterSpacing: "0.06em",
@@ -32106,7 +32106,7 @@ function QuickActions({ dashboardUrl }) {
         children: "Quick actions"
       }
     ),
-    /* @__PURE__ */ jsx28("table", { cellPadding: 0, cellSpacing: 0, role: "presentation", width: "100%", style: { width: "100%" }, children: /* @__PURE__ */ jsx28("tbody", { children: actions.map((action, i) => /* @__PURE__ */ jsx28("tr", { children: /* @__PURE__ */ jsx28("td", { style: { paddingBottom: i < actions.length - 1 ? "6px" : 0 }, children: /* @__PURE__ */ jsx28(
+    /* @__PURE__ */ jsx28("table", { cellPadding: 0, cellSpacing: 0, role: "presentation", width: "100%", style: { width: "100%" }, children: /* @__PURE__ */ jsx28("tbody", { children: actions.map((action, i) => /* @__PURE__ */ jsx28("tr", { children: /* @__PURE__ */ jsx28("td", { style: { paddingBottom: i < actions.length - 1 ? "10px" : 0 }, children: /* @__PURE__ */ jsx28(
       "table",
       {
         cellPadding: 0,
@@ -32119,15 +32119,15 @@ function QuickActions({ dashboardUrl }) {
           border: `1px solid ${BRAND.border}`,
           borderRadius: BRAND.radius
         },
-        children: /* @__PURE__ */ jsx28("tbody", { children: /* @__PURE__ */ jsx28("tr", { children: /* @__PURE__ */ jsx28("td", { style: { padding: "10px 12px" }, children: /* @__PURE__ */ jsx28(Link, { href: action.href, style: { textDecoration: "none", color: "inherit" }, children: /* @__PURE__ */ jsx28("table", { cellPadding: 0, cellSpacing: 0, role: "presentation", width: "100%", children: /* @__PURE__ */ jsx28("tbody", { children: /* @__PURE__ */ jsxs9("tr", { children: [
+        children: /* @__PURE__ */ jsx28("tbody", { children: /* @__PURE__ */ jsx28("tr", { children: /* @__PURE__ */ jsx28("td", { style: { padding: "14px 16px" }, children: /* @__PURE__ */ jsx28(Link, { href: action.href, style: { textDecoration: "none", color: "inherit" }, children: /* @__PURE__ */ jsx28("table", { cellPadding: 0, cellSpacing: 0, role: "presentation", width: "100%", children: /* @__PURE__ */ jsx28("tbody", { children: /* @__PURE__ */ jsxs9("tr", { children: [
           /* @__PURE__ */ jsx28(
             "td",
             {
-              width: "28",
+              width: "32",
               style: {
-                width: "28px",
+                width: "32px",
                 verticalAlign: "top",
-                fontSize: "18px",
+                fontSize: "22px",
                 lineHeight: "1",
                 paddingRight: "10px"
               },
@@ -32198,7 +32198,7 @@ function StatusBadge({ children, variant = "neutral", inline = false }) {
     }
   );
   if (inline) return badge;
-  return /* @__PURE__ */ jsx29(Section, { className: "email-pad-x", style: { padding: `12px ${BRAND.padX} 0` }, children: badge });
+  return /* @__PURE__ */ jsx29(Section, { className: "email-pad-x", style: { padding: `16px ${BRAND.padX} 8px` }, children: badge });
 }
 
 // emails/components/SuccessIndicator.tsx
