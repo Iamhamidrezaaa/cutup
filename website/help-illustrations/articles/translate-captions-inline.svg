@@ -1,0 +1,11 @@
+
+  <rect x="44" y="68" width="632" height="36" rx="8" fill="#F8FAFC" stroke="#E2E8F0"/>
+  <circle cx="64" cy="86" r="6" fill="#FCA5A5"/><circle cx="82" cy="86" r="6" fill="#FCD34D"/><circle cx="100" cy="86" r="6" fill="#86EFAC"/>
+  <text x="360" y="90" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#64748B">Cutup</text>
+  
+    <rect x="88" y="160" width="240" height="44" rx="10" fill="#fff" stroke="#C7D2FE"/>
+    <text x="104" y="188" font-family="system-ui,sans-serif" font-size="12" fill="#0F172A">Target language ▾</text>
+    <rect x="88" y="216" width="240" height="120" rx="10" fill="#fff" stroke="#E2E8F0"/>
+    <text x="104" y="244" font-family="system-ui,sans-serif" font-size="11" fill="#635BFF">Spanish</text>
+    <text x="104" y="268" font-family="system-ui,sans-serif" font-size="11" fill="#0F172A">French</text>
+    <text x="104" y="292" font-family="system-ui,sans-serif" font-size="11" fill="#0F172A">German</text>

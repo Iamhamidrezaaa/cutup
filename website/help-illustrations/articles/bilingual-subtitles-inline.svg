@@ -1,0 +1,7 @@
+
+  <rect x="44" y="68" width="632" height="36" rx="8" fill="#F8FAFC" stroke="#E2E8F0"/>
+  <circle cx="64" cy="86" r="6" fill="#FCA5A5"/><circle cx="82" cy="86" r="6" fill="#FCD34D"/><circle cx="100" cy="86" r="6" fill="#86EFAC"/>
+  <text x="360" y="90" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#64748B">Cutup</text>
+  
+    <rect x="88" y="160" width="520" height="36" rx="8" fill="#fff" stroke="#E2E8F0"/><text x="104" y="184" font-family="system-ui,sans-serif" font-size="11" fill="#0F172A">EN: Welcome to the show</text>
+    <rect x="88" y="206" width="520" height="36" rx="8" fill="#EEF2FF" stroke="#C7D2FE"/><text x="104" y="230" font-family="system-ui,sans-serif" font-size="11" fill="#635BFF">ES: Bienvenidos al programa</text>

@@ -85,17 +85,11 @@
   }
 
   function contactSupport() {
-    try {
-      sessionStorage.setItem('cutup_open_support_modal', '1');
-    } catch (_e) { /* noop */ }
     if (typeof navigateDashboardSection === 'function') {
       navigateDashboardSection('support');
     } else {
       window.location.hash = 'support';
     }
-    setTimeout(function () {
-      window.CutupDashboardSupport?.openCreateTicket?.();
-    }, 250);
   }
 
   function browseHelpHome() {
@@ -180,7 +174,6 @@
         '</div>' +
         '<h3>' + esc(c.title) + '</h3>' +
         '<p>' + esc(c.desc) + '</p>' +
-        btnPrimary('Contact Support', 'data-contact-support') +
       '</div>'
     );
   }
@@ -241,7 +234,7 @@
           '<p class="cutup-help-search-dropdown__empty-title">No articles found</p>' +
           '<p class="cutup-help-search-dropdown__empty-desc">Try different keywords or browse categories below.</p>' +
         '</div>' +
-        '<button type="button" class="cutup-help-search-dropdown__support cutup-help-btn cutup-help-btn--secondary" data-contact-support data-no-icon>Can&apos;t find your answer? Contact Support</button>'
+        '<div class="cutup-help-search-dropdown__hint cutup-help-search-dropdown__hint--bottom">Can&apos;t find your answer? Use Contact Support in the top-right corner.</div>'
       );
     }
 
@@ -261,7 +254,7 @@
           );
         })
         .join('') +
-      '<button type="button" class="cutup-help-search-dropdown__support cutup-help-btn cutup-help-btn--secondary" data-contact-support data-no-icon>Can&apos;t find your answer? Contact Support</button>'
+      '<div class="cutup-help-search-dropdown__hint cutup-help-search-dropdown__hint--bottom">Can&apos;t find your answer? Use Contact Support in the top-right corner.</div>'
     );
   }
 
@@ -321,7 +314,6 @@
             '</div>' +
           '</section>' +
         '</div>' +
-        btnPrimary('Contact Support', 'data-contact-support class="cutup-help-mobile-cta"') +
       '</div>'
     );
   }
@@ -368,7 +360,6 @@
           ? '<section class="cutup-help-category-list"><h3 class="cutup-help-section-label">All articles</h3>' +
               '<div class="cutup-help-articles">' + rest.map(function (a) { return renderArticleCard(a, false); }).join('') + '</div></section>'
           : renderEmptyState('category')) +
-        btnPrimary('Contact Support', 'data-contact-support class="cutup-help-mobile-cta"') +
       '</div>'
     );
   }
@@ -405,13 +396,28 @@
       '<section class="cutup-help-cta-card">' +
         '<div class="cutup-help-cta-card__copy">' +
           '<h2>Need more help?</h2>' +
-          '<p>Our support team can help with billing, exports, transcripts, translations and account issues.</p>' +
+          '<p>Our support team can help with billing, exports, transcripts, translations and account issues. Use <strong>Contact Support</strong> in the top-right corner or open the Support tab.</p>' +
         '</div>' +
         '<div class="cutup-help-cta-card__actions">' +
-          btnPrimary('Contact Support', 'data-contact-support') +
           btnSecondary('Browse Help Center', 'data-browse-help') +
         '</div>' +
       '</section>'
+    );
+  }
+
+  function helpImgSrc(path, slug, kind) {
+    if (path) return path;
+    return '/help-illustrations/articles/' + slug + '-' + kind + '.svg';
+  }
+
+  function renderFigure(src, alt, caption, extraClass) {
+    var png = src.replace(/\.svg$/i, '.png');
+    var svg = src.replace(/\.png$/i, '.svg');
+    return (
+      '<figure class="cutup-help-figure' + (extraClass ? ' ' + extraClass : '') + '">' +
+        '<img src="' + esc(png) + '" data-fallback="' + esc(svg) + '" alt="' + esc(alt) + '" loading="lazy" decoding="async">' +
+        (caption ? '<figcaption class="cutup-help-figure__caption">' + esc(caption) + '</figcaption>' : '') +
+      '</figure>'
     );
   }
 
@@ -420,10 +426,13 @@
     if (!a) return renderEmptyState('search');
     var body = a.body || {};
     var cat = categoryBySlug(a.category_slug);
-    var hero = a.hero_image || body.hero_image || '/help-illustrations/articles/' + a.slug + '.svg';
+    var hero = helpImgSrc(a.hero_image || body.hero_image, a.slug, 'hero');
+    var inlineImg = helpImgSrc(body.inline_image, a.slug, 'inline');
+    var inlineCaption = body.inline_caption || ('Example: ' + a.title);
     var overview = body.overview || body.content;
     return (
       '<div class="cutup-help-root cutup-help-root--article">' +
+        renderHeader() +
         btnSecondary('← Back to ' + (cat?.title || a.category_title || 'Category'), 'id="cutupHelpBackCat" data-no-icon') +
         '<article class="cutup-help-article-view">' +
           '<header class="cutup-help-article-hero">' +
@@ -436,9 +445,10 @@
               '<span>Updated ' + esc(fmtDate(a.updated_at)) + '</span>' +
             '</div>' +
           '</header>' +
-          '<figure class="cutup-help-figure"><img src="' + esc(hero) + '" alt="' + esc(a.title) + ' illustration" loading="lazy" decoding="async"></figure>' +
+          renderFigure(hero, a.title + ' — overview', '', '') +
           (overview ? '<section class="cutup-help-section cutup-help-section--overview"><h2>Overview</h2><div class="cutup-help-prose"><p>' + esc(overview) + '</p></div></section>' : '') +
           renderBodySection('Step-by-step guide', body.steps, true) +
+          renderFigure(inlineImg, a.title + ' — walkthrough', inlineCaption, 'cutup-help-figure--inline') +
           renderBodySection('Best practices', body.tips, false) +
           renderQaSection('Troubleshooting', body.troubleshooting) +
           renderQaSection('FAQ', body.faq) +
@@ -449,7 +459,6 @@
             : '') +
           renderNeedHelpCard() +
         '</article>' +
-        btnPrimary('Contact Support', 'data-contact-support class="cutup-help-mobile-cta"') +
       '</div>'
     );
   }
@@ -584,9 +593,22 @@
     });
   }
 
+  function bindFigureFallbacks(root) {
+    (root || document).querySelectorAll('.cutup-help-figure img[data-fallback]').forEach(function (img) {
+      if (img.dataset.fbkBound === '1') return;
+      img.dataset.fbkBound = '1';
+      img.addEventListener('error', function () {
+        if (img.dataset.fbkDone === '1') return;
+        img.dataset.fbkDone = '1';
+        img.src = img.getAttribute('data-fallback') || img.src;
+      });
+    });
+  }
+
   function bindEvents(root) {
     bindContactButtons(root);
     bindBrowseHelpButtons(root);
+    bindFigureFallbacks(root);
     bindSearch(root);
 
     root.querySelector('#cutupHelpBackCat')?.addEventListener('click', function () {

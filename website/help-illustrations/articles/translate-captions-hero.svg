@@ -1,0 +1,12 @@
+
+  <rect x="44" y="68" width="632" height="36" rx="8" fill="#F8FAFC" stroke="#E2E8F0"/>
+  <circle cx="64" cy="86" r="6" fill="#FCA5A5"/><circle cx="82" cy="86" r="6" fill="#FCD34D"/><circle cx="100" cy="86" r="6" fill="#86EFAC"/>
+  <text x="360" y="90" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#64748B">Translation</text>
+  
+    <rect x="64" y="120" width="280" height="240" rx="12" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <text x="88" y="156" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#0F172A">Source · English</text>
+    <rect x="88" y="172" width="220" height="10" rx="4" fill="#E2E8F0"/><rect x="88" y="194" width="180" height="10" rx="4" fill="#E2E8F0"/><rect x="88" y="216" width="140" height="10" rx="4" fill="#E2E8F0"/><rect x="88" y="238" width="220" height="10" rx="4" fill="#E2E8F0"/><rect x="88" y="260" width="180" height="10" rx="4" fill="#E2E8F0"/>
+    <path d="M360 240h40" stroke="#635BFF" stroke-width="3"/><path d="M388 224l16 16-16 16" stroke="#635BFF" stroke-width="3" fill="none"/>
+    <rect x="416" y="120" width="240" height="240" rx="12" fill="#EEF2FF" stroke="#C7D2FE"/>
+    <text x="440" y="156" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#635BFF">Target · Spanish</text>
+    <rect x="440" y="172" width="200" height="10" rx="4" fill="#E2E8F0"/><rect x="440" y="194" width="160" height="10" rx="4" fill="#C7D2FE"/><rect x="440" y="216" width="120" height="10" rx="4" fill="#E2E8F0"/><rect x="440" y="238" width="200" height="10" rx="4" fill="#E2E8F0"/><rect x="440" y="260" width="160" height="10" rx="4" fill="#E2E8F0"/>

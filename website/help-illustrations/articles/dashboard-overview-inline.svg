@@ -1,0 +1,13 @@
+
+  <rect x="44" y="68" width="632" height="36" rx="8" fill="#F8FAFC" stroke="#E2E8F0"/>
+  <circle cx="64" cy="86" r="6" fill="#FCA5A5"/><circle cx="82" cy="86" r="6" fill="#FCD34D"/><circle cx="100" cy="86" r="6" fill="#86EFAC"/>
+  <text x="360" y="90" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#64748B">Navigation</text>
+  
+    <rect x="64" y="120" width="160" height="240" rx="10" fill="#EEF2FF" stroke="#C7D2FE"/>
+    <text x="84" y="152" font-family="system-ui,sans-serif" font-size="11" font-weight="600" fill="#635BFF">Content Library</text>
+    <text x="84" y="178" font-family="system-ui,sans-serif" font-size="11" fill="#0F172A">Plans</text>
+    <text x="84" y="204" font-family="system-ui,sans-serif" font-size="11" fill="#0F172A">Help Center</text>
+    <text x="84" y="230" font-family="system-ui,sans-serif" font-size="11" fill="#0F172A">Support</text>
+    <rect x="240" y="120" width="416" height="240" rx="12" fill="#F8FAFC" stroke="#E2E8F0"/>
+    <text x="264" y="156" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="#0F172A">Pick a section to get started</text>
+    <rect x="264" y="180" width="360" height="10" rx="4" fill="#E2E8F0"/><rect x="264" y="202" width="320" height="10" rx="4" fill="#E2E8F0"/><rect x="264" y="224" width="280" height="10" rx="4" fill="#E2E8F0"/><rect x="264" y="246" width="360" height="10" rx="4" fill="#E2E8F0"/><rect x="264" y="268" width="320" height="10" rx="4" fill="#E2E8F0"/>
