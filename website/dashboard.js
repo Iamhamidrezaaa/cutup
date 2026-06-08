@@ -512,6 +512,17 @@ function setupNavigation() {
     });
   });
 
+  document.querySelector('.dashboard-content')?.addEventListener('click', (e) => {
+    const link = e.target.closest('a[href^="#"]');
+    if (!link || link.classList.contains('nav-item')) return;
+    const raw = String(link.getAttribute('href') || '').replace(/^#/, '').trim();
+    if (!raw) return;
+    const base = raw.split('/')[0];
+    if (!document.querySelector(`.nav-item[data-section="${base}"]`)) return;
+    e.preventDefault();
+    navigateDashboardSection(raw);
+  });
+
   document.getElementById('userProfileLink')?.addEventListener('click', (e) => {
     e.preventDefault();
     navigateDashboardSection('profile');
