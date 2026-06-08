@@ -118,6 +118,7 @@ export default async function handler(req, res) {
           priority: body.priority || 'NORMAL',
           subject: body.subject,
           message: body.message,
+          attachments: body.attachments,
         });
         if (!result.ok) return res.status(400).json({ ok: false, error: result.reason });
         try {

@@ -86,6 +86,39 @@ export async function resolveAgentIdentity(adminId, adminEmail) {
   };
 }
 
+export async function upsertAdminProfile(adminId, input = {}) {
+  await ensureAdminProfilesSchema();
+  const id = Number(adminId);
+  if (!Number.isFinite(id) || id <= 0) return { ok: false, reason: 'invalid_admin' };
+
+  const displayName = String(input.displayName || input.display_name || '').trim();
+  if (!displayName || displayName.length < 2) return { ok: false, reason: 'invalid_display_name' };
+
+  const avatarUrl = String(input.avatarUrl || input.avatar_url || '').trim() || null;
+  const jobTitle = String(input.jobTitle || input.job_title || '').trim() || 'Customer Success';
+
+  const pool = getPool();
+  const { rows } = await pool.query(
+    `INSERT INTO admin_profiles (admin_user_id, display_name, avatar_url, job_title, is_visible, updated_at)
+     VALUES ($1, $2, $3, $4, TRUE, NOW())
+     ON CONFLICT (admin_user_id) DO UPDATE SET
+       display_name = EXCLUDED.display_name,
+       avatar_url = EXCLUDED.avatar_url,
+       job_title = EXCLUDED.job_title,
+       updated_at = NOW()
+     RETURNING *`,
+    [id, displayName, avatarUrl, jobTitle],
+  );
+  const profile = mapProfile(rows[0]);
+  return {
+    ok: true,
+    profile: {
+      ...profile,
+      avatar_url: profile.avatar_url || avatarFallbackUrl(profile.display_name),
+    },
+  };
+}
+
 export async function listAdminsWithProfiles() {
   await ensureAdminProfilesSchema();
   const pool = getPool();

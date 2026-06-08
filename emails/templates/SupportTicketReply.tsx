@@ -1,4 +1,4 @@
-import { Text } from '@react-email/components';
+import { Img, Text } from '@react-email/components';
 import { CutupLayout } from '../layouts/CutupLayout';
 import {
   EmailButton,
@@ -11,6 +11,8 @@ import type { SupportTicketData } from './SupportTicketCreated';
 
 export type SupportTicketReplyData = SupportTicketData & {
   agentName?: string;
+  agentAvatarUrl?: string;
+  agentJobTitle?: string;
   replyText?: string;
 };
 
@@ -18,6 +20,8 @@ export function SupportTicketReply({
   firstName = 'there',
   ticketNumber = '0000',
   agentName = 'Cutup Support',
+  agentAvatarUrl,
+  agentJobTitle = 'Customer Success',
   replyText = '',
   ticketUrl,
 }: SupportTicketReplyData) {
@@ -31,17 +35,39 @@ export function SupportTicketReply({
         subtitle={`Hi ${firstName}, ${agentName} replied to your support request.`}
       />
       <EmailCard>
+        {agentAvatarUrl ? (
+          <Img
+            src={agentAvatarUrl}
+            width="48"
+            height="48"
+            alt={agentName}
+            style={{
+              borderRadius: '999px',
+              margin: '0 0 12px',
+              display: 'block',
+              border: '1px solid #e5e7eb',
+            }}
+          />
+        ) : null}
+        <Text
+          style={{
+            margin: '0 0 4px',
+            fontSize: '15px',
+            fontWeight: 700,
+            color: BRAND.text,
+          }}
+        >
+          {agentName}
+        </Text>
         <Text
           style={{
             margin: '0 0 12px',
             fontSize: BRAND.metaSize,
-            fontWeight: 600,
+            fontWeight: 500,
             color: BRAND.textMuted,
-            textTransform: 'uppercase',
-            letterSpacing: '0.06em',
           }}
         >
-          {agentName}
+          {agentJobTitle}
         </Text>
         <Text
           className="email-card-body-text email-word-break"

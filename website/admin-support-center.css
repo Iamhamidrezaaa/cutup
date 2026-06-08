@@ -22,6 +22,123 @@
 }
 .sc-page-head p { margin: 0; color: var(--sc-muted); font-size: 13px; }
 
+.sc-agent-profile {
+  margin-bottom: 16px;
+  border: 1px solid var(--sc-border);
+  border-radius: var(--sc-radius);
+  background: #fff;
+  box-shadow: var(--sc-shadow);
+  overflow: hidden;
+}
+.sc-agent-profile__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+}
+.sc-agent-profile__preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.sc-agent-profile__preview img {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--sc-border);
+  flex-shrink: 0;
+}
+.sc-agent-profile__preview strong {
+  display: block;
+  font-size: 14px;
+}
+.sc-agent-profile__preview p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--sc-muted);
+}
+.sc-agent-profile__form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 0 16px 16px;
+  border-top: 1px solid #f1f5f9;
+}
+.sc-agent-profile__form .sc-field-label { grid-column: span 1; }
+.sc-agent-profile__upload {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.sc-field-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--sc-muted);
+  margin-bottom: 6px;
+}
+.sc-input {
+  width: 100%;
+  height: var(--sc-control-h);
+  padding: 0 14px;
+  border: 1px solid var(--sc-border);
+  border-radius: var(--sc-control-radius);
+  font: inherit;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+.sc-btn--ghost { background: transparent; }
+.sc-btn--tool { height: 38px; padding: 0 12px; font-size: 13px; }
+
+.sc-composer__identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--sc-muted);
+}
+.sc-composer__identity img {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--sc-border);
+}
+.sc-composer__identity strong { color: var(--sc-text); }
+.sc-composer__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.sc-ticket-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--sc-muted);
+}
+.sc-ticket-agent img {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.sc-card__agent--pending { color: var(--sc-muted); font-style: italic; }
+
+@media (max-width: 900px) {
+  .sc-agent-profile__form { grid-template-columns: 1fr; }
+}
+
 .sc-kpi-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));

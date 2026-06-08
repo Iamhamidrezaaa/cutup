@@ -18,7 +18,12 @@ import {
   getSupportAnalytics,
   getUserProfileByUserId,
 } from './support-tickets-repository.js';
-import { listAdminsWithProfiles, resolveAgentIdentity } from './admin-profiles-repository.js';
+import {
+  getAdminProfile,
+  listAdminsWithProfiles,
+  resolveAgentIdentity,
+  upsertAdminProfile,
+} from './admin-profiles-repository.js';
 import {
   notifyTicketReplied,
   notifyTicketAssigned,
@@ -92,6 +97,21 @@ export default async function handler(req, res) {
         return res.json({ ok: true, admins, currentAdminId: admin.adminId });
       }
 
+      if (action === 'profile') {
+        const agent = await resolveAgentIdentity(admin.adminId, admin.email);
+        const profile = await getAdminProfile(admin.adminId);
+        return res.json({
+          ok: true,
+          profile: {
+            admin_user_id: admin.adminId,
+            display_name: agent.display_name,
+            avatar_url: agent.avatar_url,
+            job_title: agent.job_title,
+            is_visible: profile?.is_visible !== false,
+          },
+        });
+      }
+
       const ticketNumber = String(req.query?.ticket || '').trim();
       if (ticketNumber || action === 'detail') {
         const detail = await getTicketForAdmin(ticketNumber);
@@ -142,6 +162,8 @@ export default async function handler(req, res) {
           userEmail: result.userEmail,
           firstName: profile?.first_name || 'there',
           agentName: result.agentName || agent.display_name,
+          agentAvatarUrl: result.agentAvatarUrl || agent.avatar_url,
+          agentJobTitle: result.agentJobTitle || agent.job_title,
           replyText: body?.message,
         });
         return res.json({ ok: true, message: result.message, ticket: result.ticket });
@@ -201,6 +223,16 @@ export default async function handler(req, res) {
         });
         if (!result.ok) return res.status(400).json({ ok: false, error: result.reason });
         return res.json({ ok: true, note: result.note });
+      }
+
+      if (action === 'update_profile') {
+        const saved = await upsertAdminProfile(admin.adminId, {
+          displayName: body?.displayName || body?.display_name,
+          avatarUrl: body?.avatarUrl || body?.avatar_url,
+          jobTitle: body?.jobTitle || body?.job_title,
+        });
+        if (!saved.ok) return res.status(400).json({ ok: false, error: saved.reason });
+        return res.json({ ok: true, profile: saved.profile });
       }
 
       return res.status(400).json({ ok: false, error: 'invalid_action' });

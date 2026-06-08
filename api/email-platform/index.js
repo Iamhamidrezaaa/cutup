@@ -230,6 +230,8 @@ var sample = {
   subject: "Export not downloading",
   createdAt: "Jun 2, 2026",
   agentName: "Sara",
+  agentAvatarUrl: "https://api.dicebear.com/7.x/initials/svg?seed=Sara&backgroundColor=635bff,e0e7ff,f5f3ff&fontSize=42",
+  agentJobTitle: "Customer Success",
   replyText: "Thanks for reaching out \u2014 we fixed the issue on your account.",
   ticketUrl: goLink({ dest: "support", ticket: "1042" }),
   cancelUrl: goLink({ dest: "profile" }),
@@ -356,6 +358,8 @@ var EMAIL_REGISTRY = {
       firstName: sample.firstName,
       ticketNumber: sample.ticketNumber,
       agentName: sample.agentName,
+      agentAvatarUrl: sample.agentAvatarUrl,
+      agentJobTitle: sample.agentJobTitle,
       replyText: sample.replyText,
       ticketUrl: sample.ticketUrl
     },
@@ -12937,6 +12941,8 @@ function SupportTicketReply({
   firstName = "there",
   ticketNumber = "0000",
   agentName = "Cutup Support",
+  agentAvatarUrl,
+  agentJobTitle = "Customer Success",
   replyText = "",
   ticketUrl
 }) {
@@ -12951,18 +12957,43 @@ function SupportTicketReply({
       }
     ),
     /* @__PURE__ */ jsxs21(EmailCard, { children: [
+      agentAvatarUrl ? /* @__PURE__ */ jsx45(
+        Img,
+        {
+          src: agentAvatarUrl,
+          width: "48",
+          height: "48",
+          alt: agentName,
+          style: {
+            borderRadius: "999px",
+            margin: "0 0 12px",
+            display: "block",
+            border: "1px solid #e5e7eb"
+          }
+        }
+      ) : null,
+      /* @__PURE__ */ jsx45(
+        Text3,
+        {
+          style: {
+            margin: "0 0 4px",
+            fontSize: "15px",
+            fontWeight: 700,
+            color: BRAND.text
+          },
+          children: agentName
+        }
+      ),
       /* @__PURE__ */ jsx45(
         Text3,
         {
           style: {
             margin: "0 0 12px",
             fontSize: BRAND.metaSize,
-            fontWeight: 600,
-            color: BRAND.textMuted,
-            textTransform: "uppercase",
-            letterSpacing: "0.06em"
+            fontWeight: 500,
+            color: BRAND.textMuted
           },
-          children: agentName
+          children: agentJobTitle
         }
       ),
       /* @__PURE__ */ jsx45(

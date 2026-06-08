@@ -34,6 +34,7 @@
     loading: false,
     createFormOpen: false,
     pendingAttachments: [],
+    createPendingAttachments: [],
     selectedRating: 0,
   };
 
@@ -337,7 +338,14 @@
           '</div>' +
           '<label>Subject<input name="subject" id="cutupSupportSubject" type="text" required minlength="3" maxlength="200" placeholder="Brief summary"></label>' +
           '<div id="cutupSupportDeflect" class="cutup-support-deflect" hidden></div>' +
-          '<label>Message<textarea name="message" required minlength="10" maxlength="8000" placeholder="Describe your issue in detail…" rows="4"></textarea></label>' +
+          '<label>Message<textarea name="message" maxlength="8000" placeholder="Describe your issue in detail…" rows="4"></textarea></label>' +
+          '<div id="cutupSupportCreateAttachPreview" class="cutup-support-attach-preview" hidden></div>' +
+          '<div class="cutup-support-create-attach-row">' +
+            '<label class="cutup-support-attach-btn" title="Attach file">' +
+              '<input type="file" id="cutupSupportCreateFile" accept=".pdf,.jpg,.jpeg,.png,.webp,.txt,.zip,.heif,.heic,image/png,image/jpeg,image/webp,image/heic,image/heif,application/pdf,text/plain,application/zip" hidden>' +
+              ICON_CLIP +
+            '</label>' +
+          '</div>' +
           '<div id="cutupSupportTurnstile" class="cf-turnstile" data-sitekey="' + esc(TURNSTILE_SITE_KEY) + '"></div>' +
           '<p id="cutupSupportFormError" class="cutup-support-form-error" hidden role="alert"></p>' +
           '<div class="cutup-support-form__actions">' +
@@ -465,11 +473,26 @@
     );
   }
 
+  function formatMessageHtml(text) {
+    if (!text) return '';
+    var safe = esc(text);
+    safe = safe.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, function (_m, label, url) {
+      return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + esc(label) + '</a>';
+    });
+    safe = safe.replace(/(https?:\/\/[^\s<]+)/g, function (url) {
+      return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + url + '</a>';
+    });
+    return safe;
+  }
+
   function renderMessageBubble(m) {
     var isUser = m.sender_type === 'user';
-    var who = isUser ? 'You' : (m.sender_name || m.sender_email || 'Cutup Support');
+    var who = isUser ? 'You' : (m.sender_name || 'Cutup Support');
     var side = isUser ? 'cutup-support-msg--user' : 'cutup-support-msg--admin';
-    var avatar = avatarUrl(who, isUser);
+    var avatar = isUser ? avatarUrl(who, true) : (m.sender_avatar_url || avatarUrl(who, false));
+    var role = !isUser && m.sender_job_title
+      ? '<span class="cutup-support-msg__role">' + esc(m.sender_job_title) + '</span>'
+      : '';
     var attach = Array.isArray(m.attachments) ? m.attachments : null;
     return (
       '<article class="cutup-support-msg ' + side + '">' +
@@ -477,10 +500,11 @@
         '<div class="cutup-support-msg__body">' +
           '<header class="cutup-support-msg__head">' +
             '<span class="cutup-support-msg__name">' + esc(who) + '</span>' +
+            role +
             '<time class="cutup-support-msg__time" datetime="' + esc(m.created_at) + '" title="' + esc(fmtDate(m.created_at)) + '">' + esc(fmtDate(m.created_at)) + '</time>' +
           '</header>' +
           '<div class="cutup-support-msg__bubble">' +
-            (m.message ? esc(m.message) : '') +
+            (m.message ? formatMessageHtml(m.message) : '') +
             renderAttachments(attach) +
           '</div>' +
         '</div>' +
@@ -598,7 +622,7 @@
             '<textarea id="cutupSupportReply" placeholder="Write a reply…" rows="3"></textarea>' +
             '<div class="cutup-support-reply__actions">' +
               '<label class="cutup-support-attach-btn" title="Attach file">' +
-                '<input type="file" id="cutupSupportFile" accept=".pdf,.jpg,.jpeg,.png,.heif,.heic,image/png,image/jpeg,image/heic,image/heif,application/pdf" hidden>' +
+                '<input type="file" id="cutupSupportFile" accept=".pdf,.jpg,.jpeg,.png,.webp,.txt,.zip,.heif,.heic,image/png,image/jpeg,image/webp,image/heic,image/heif,application/pdf,text/plain,application/zip" hidden>' +
                 ICON_CLIP +
               '</label>' +
               btnPrimary('Send', 'id="cutupSupportSendReply" data-no-icon') +
@@ -619,7 +643,10 @@
                 deptBadge(ticket.department) +
                 slaBadge(ticket) +
                 '<span>Created ' + esc(fmtDate(ticket.created_at)) + '</span>' +
-                (ticket.assigned_admin_email ? '<span>' + esc(ticket.assigned_admin_email) + '</span>' : '') +
+                (ticket.assigned_agent
+                  ? '<span class="cutup-support-assigned"><img src="' + esc(ticket.assigned_agent.avatar_url) + '" alt="" width="20" height="20"> ' +
+                    esc(ticket.assigned_agent.display_name) + '</span>'
+                  : '') +
               '</div>' +
             '</header>' +
             closedBanner(ticket) +
@@ -629,8 +656,8 @@
             '<div class="cutup-support-conversation">' +
               '<div class="cutup-support-thread" id="cutupSupportThread">' + renderConversation(messages, events) + '</div>' +
               composer +
-              renderCloseSection(ticket) +
             '</div>' +
+            renderCloseSection(ticket) +
           '</div>' +
           '<aside class="cutup-support-detail__sidebar">' +
             '<div class="cutup-support-sidebar-card">' +
@@ -667,6 +694,7 @@
     var panel = document.getElementById('cutupSupportCreatePanel');
     if (panel) panel.hidden = !state.createFormOpen;
     if (!state.createFormOpen) {
+      state.createPendingAttachments = [];
       if (window.turnstile) {
         try { window.turnstile.reset(); } catch (_e) { /* noop */ }
       }
@@ -701,11 +729,32 @@
       toggleCreateForm(false);
     });
 
+    bindCreateAttachmentInput(
+      document.getElementById('cutupSupportCreateFile'),
+      document.getElementById('cutupSupportCreateAttachPreview'),
+    );
+
     root.querySelector('#cutupSupportForm')?.addEventListener('submit', async function (e) {
       e.preventDefault();
       var form = e.target;
       var errEl = document.getElementById('cutupSupportFormError');
       var submitBtn = document.getElementById('cutupSupportFormSubmit');
+      var msg = form.message.value.trim();
+      var hasAttach = state.createPendingAttachments.length > 0;
+      if (!msg && !hasAttach) {
+        if (errEl) {
+          errEl.textContent = 'Please enter a message or attach a file.';
+          errEl.hidden = false;
+        }
+        return;
+      }
+      if (msg && msg.length < 10 && !hasAttach) {
+        if (errEl) {
+          errEl.textContent = 'Message must be at least 10 characters, or attach a file.';
+          errEl.hidden = false;
+        }
+        return;
+      }
       var token = form.querySelector('[name="cf-turnstile-response"]')?.value;
       if (!token) {
         if (errEl) {
@@ -720,7 +769,8 @@
         department: form.department.value,
         priority: form.priority.value,
         subject: form.subject.value.trim(),
-        message: form.message.value.trim(),
+        message: msg,
+        attachments: hasAttach ? state.createPendingAttachments : undefined,
         cfToken: token,
         website: form.website?.value || '',
       });
@@ -733,6 +783,9 @@
         if (window.turnstile) window.turnstile.reset();
         return;
       }
+      state.createPendingAttachments = [];
+      var createPreview = document.getElementById('cutupSupportCreateAttachPreview');
+      if (createPreview) { createPreview.hidden = true; createPreview.innerHTML = ''; }
       toggleCreateForm(false);
       form.reset();
       window.CutupDashboardNotifications?.refreshUnreadCount?.();
@@ -796,7 +849,7 @@
     if (!file) return 'No file selected.';
     if (file.size > ATTACH_MAX_BYTES) return 'File must be 3 MB or smaller.';
     if (!ATTACH_EXT_RE.test(String(file.name || ''))) {
-      return 'Only PDF, JPG, JPEG, PNG, and HEIF files are allowed.';
+      return 'Only PDF, JPG, PNG, WEBP, TXT, and ZIP files are allowed.';
     }
     return null;
   }
@@ -804,7 +857,7 @@
   function attachUploadErrorMessage(data) {
     if (!data) return 'Upload failed. Try again.';
     if (data.error === 'file_too_large') return 'File must be 3 MB or smaller.';
-    if (data.error === 'invalid_file_type') return 'Only PDF, JPG, JPEG, PNG, and HEIF files are allowed.';
+    if (data.error === 'invalid_file_type') return 'Only PDF, JPG, PNG, WEBP, TXT, and ZIP files are allowed.';
     if (data.error === 'no_session' || data.error === 'invalid_session') return 'Session expired. Refresh the page and try again.';
     return 'Upload failed. Try again.';
   }
@@ -820,6 +873,39 @@
     });
     var d = await r.json().catch(function () { return {}; });
     return { ok: r.ok, data: d };
+  }
+
+  function bindCreateAttachmentInput(fileInput, previewHost) {
+    if (!fileInput || fileInput.dataset.bound === '1') return;
+    fileInput.dataset.bound = '1';
+    fileInput.addEventListener('change', async function () {
+      var file = fileInput.files?.[0];
+      if (!file) return;
+      var validationErr = attachValidationError(file);
+      if (validationErr) {
+        if (typeof showDashboardBanner === 'function') showDashboardBanner(validationErr, 'error');
+        fileInput.value = '';
+        return;
+      }
+      var up = await uploadAttachment(file);
+      fileInput.value = '';
+      if (!up.ok) {
+        if (typeof showDashboardBanner === 'function') {
+          showDashboardBanner(attachUploadErrorMessage(up.data), 'error');
+        }
+        return;
+      }
+      state.createPendingAttachments = [up.data.attachment];
+      if (previewHost) {
+        previewHost.hidden = false;
+        previewHost.innerHTML = '<span>📎 ' + esc(up.data.attachment.filename) + '</span> <button type="button" id="cutupSupportCreateClearAttach">Remove</button>';
+        previewHost.querySelector('#cutupSupportCreateClearAttach')?.addEventListener('click', function () {
+          state.createPendingAttachments = [];
+          previewHost.hidden = true;
+          previewHost.innerHTML = '';
+        });
+      }
+    });
   }
 
   function bindDetailEvents(root, ticketNumber) {

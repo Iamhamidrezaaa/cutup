@@ -80,7 +80,14 @@ export async function notifyTicketCreated({ ticket, userEmail, firstName }) {
   return userResult;
 }
 
-export async function notifyTicketReplied({ ticket, userEmail, firstName, agentName, replyText }) {
+function absoluteAssetUrl(url) {
+  const raw = String(url || '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return `${SITE}${raw.startsWith('/') ? raw : `/${raw}`}`;
+}
+
+export async function notifyTicketReplied({ ticket, userEmail, firstName, agentName, agentAvatarUrl, agentJobTitle, replyText }) {
   const bus = await import('./email-events-bus.js');
   return bus.emitTicketReplied({
     email: userEmail,
@@ -88,6 +95,8 @@ export async function notifyTicketReplied({ ticket, userEmail, firstName, agentN
     firstName: firstName || 'there',
     ticketNumber: ticket.ticket_number,
     agentName: agentName || 'Cutup Support',
+    agentAvatarUrl: absoluteAssetUrl(agentAvatarUrl),
+    agentJobTitle: agentJobTitle || 'Customer Success',
     replyText: replyText || '',
     ticketUrl: supportTicketUrl(ticket.ticket_number),
   });

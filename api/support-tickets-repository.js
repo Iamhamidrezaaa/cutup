@@ -98,6 +98,7 @@ export async function createSupportTicket({
   priority = 'NORMAL',
   subject,
   message,
+  attachments = null,
   metadata = {},
 }) {
   if (!isBillingDbConfigured()) return { ok: false, reason: 'db_not_configured' };
@@ -108,11 +109,13 @@ export async function createSupportTicket({
   const pri = String(priority || 'NORMAL').trim().toUpperCase();
   const subj = String(subject || '').trim();
   const body = String(message || '').trim();
+  const attach = Array.isArray(attachments) && attachments.length ? attachments : null;
 
   if (!isValidDepartment(dept)) return { ok: false, reason: 'invalid_department' };
   if (!isValidPriority(pri)) return { ok: false, reason: 'invalid_priority' };
   if (!subj || subj.length < 3) return { ok: false, reason: 'invalid_subject' };
-  if (!body || body.length < 10) return { ok: false, reason: 'invalid_message' };
+  if (!body && !attach) return { ok: false, reason: 'invalid_message' };
+  if (body && body.length < 10 && !attach) return { ok: false, reason: 'invalid_message' };
 
   const pool = getPool();
   const client = await pool.connect();
@@ -129,9 +132,9 @@ export async function createSupportTicket({
     );
     const ticket = rows[0];
     await client.query(
-      `INSERT INTO support_ticket_messages (ticket_id, sender_type, sender_user_id, message)
-       VALUES ($1, 'user', $2::uuid, $3)`,
-      [ticket.id, userId, body],
+      `INSERT INTO support_ticket_messages (ticket_id, sender_type, sender_user_id, message, attachments)
+       VALUES ($1, 'user', $2::uuid, $3, $4::jsonb)`,
+      [ticket.id, userId, body || '', attach ? JSON.stringify(attach) : null],
     );
     await logTicketEvent(client, ticket.id, 'created', 'user', userId, { department: dept, priority: pri });
     await client.query('COMMIT');
@@ -236,11 +239,16 @@ export async function listUserTickets(userId, { page = 1, limit = 20 } = {}) {
 export async function getTicketForUser(userId, ticketNumber) {
   if (!isBillingDbConfigured()) return { ok: false, reason: 'db_not_configured' };
   await ensureSupportTicketsSchema();
+  await ensureAdminProfilesSchema();
   const pool = getPool();
   const { rows } = await pool.query(
-    `SELECT t.*, a.email AS assigned_admin_email
+    `SELECT t.*, a.email AS assigned_admin_email,
+      ap.display_name AS assigned_agent_name,
+      ap.avatar_url AS assigned_agent_avatar,
+      ap.job_title AS assigned_agent_title
      FROM support_tickets t
      LEFT JOIN admins a ON a.id = t.assigned_admin_id
+     LEFT JOIN admin_profiles ap ON ap.admin_user_id = t.assigned_admin_id
      WHERE t.ticket_number = $1 AND t.user_id = $2::uuid
      LIMIT 1`,
     [String(ticketNumber).trim(), userId],
@@ -250,11 +258,15 @@ export async function getTicketForUser(userId, ticketNumber) {
     pool.query(
       `SELECT m.*,
         CASE WHEN m.sender_type = 'admin' THEN a.email ELSE u.email END AS sender_email,
-        CASE WHEN m.sender_type = 'admin' THEN a.email ELSE COALESCE(up.first_name, u.email) END AS sender_name
+        CASE WHEN m.sender_type = 'admin' THEN COALESCE(ap.display_name, a.email)
+             ELSE COALESCE(NULLIF(TRIM(up.first_name), ''), SPLIT_PART(u.email, '@', 1), u.email) END AS sender_name,
+        CASE WHEN m.sender_type = 'admin' THEN COALESCE(ap.avatar_url, '') ELSE '' END AS sender_avatar_url,
+        CASE WHEN m.sender_type = 'admin' THEN ap.job_title ELSE NULL END AS sender_job_title
        FROM support_ticket_messages m
        LEFT JOIN users u ON u.id = m.sender_user_id
        LEFT JOIN user_profiles up ON up.user_id = u.id
        LEFT JOIN admins a ON a.id = m.sender_admin_id
+       LEFT JOIN admin_profiles ap ON ap.admin_user_id = m.sender_admin_id
        WHERE m.ticket_id = $1
        ORDER BY m.created_at ASC`,
       [rows[0].id],
@@ -267,10 +279,25 @@ export async function getTicketForUser(userId, ticketNumber) {
       [rows[0].id, USER_VISIBLE_EVENT_TYPES],
     ),
   ]);
+  const ticket = withSla(rows[0]);
+  ticket.assigned_agent = rows[0].assigned_admin_id
+    ? {
+        display_name: rows[0].assigned_agent_name || rows[0].assigned_admin_email,
+        avatar_url: rows[0].assigned_agent_avatar || avatarFallbackUrl(rows[0].assigned_agent_name || 'Agent'),
+        job_title: rows[0].assigned_agent_title || null,
+      }
+    : null;
+
   return {
     ok: true,
-    ticket: withSla(rows[0]),
-    messages: messages.rows.map(mapMessage),
+    ticket,
+    messages: messages.rows.map((row) => {
+      const msg = mapMessage(row);
+      if (msg.sender_type === 'admin') {
+        msg.sender_avatar_url = row.sender_avatar_url || avatarFallbackUrl(msg.sender_name);
+      }
+      return msg;
+    }),
     events: events.rows.map(mapEvent),
   };
 }
@@ -609,11 +636,16 @@ export async function addAdminReply({ ticketNumber, adminId, adminEmail, message
       [detail.ticket.id, adminId, body || '', attach ? JSON.stringify(attach) : null],
     );
 
-    const updates = [`status = 'WAITING_FOR_USER'`, `updated_at = NOW()`];
+    const updates = [
+      `status = 'WAITING_FOR_USER'`,
+      `updated_at = NOW()`,
+      `assigned_admin_id = $2`,
+    ];
+    const updateParams = [detail.ticket.id, adminId];
     if (!detail.ticket.first_response_at) {
       updates.push(`first_response_at = NOW()`, `sla_status = 'healthy'`);
     }
-    await client.query(`UPDATE support_tickets SET ${updates.join(', ')} WHERE id = $1`, [detail.ticket.id]);
+    await client.query(`UPDATE support_tickets SET ${updates.join(', ')} WHERE id = $1`, updateParams);
     await logTicketEvent(client, detail.ticket.id, 'admin_reply', 'admin', String(adminId), {
       agentName: agent.display_name,
     });
@@ -629,10 +661,17 @@ export async function addAdminReply({ ticketNumber, adminId, adminEmail, message
     return {
       ok: true,
       message: msg,
-      ticket: { ...detail.ticket, status: 'WAITING_FOR_USER', first_response_at: detail.ticket.first_response_at || new Date().toISOString() },
+      ticket: {
+        ...detail.ticket,
+        status: 'WAITING_FOR_USER',
+        assigned_admin_id: adminId,
+        first_response_at: detail.ticket.first_response_at || new Date().toISOString(),
+      },
       userId: detail.ticket.user_id,
       userEmail: detail.ticket.user_email,
       agentName: agent.display_name,
+      agentAvatarUrl: agent.avatar_url,
+      agentJobTitle: agent.job_title,
     };
   } catch (err) {
     await client.query('ROLLBACK');
@@ -646,7 +685,10 @@ export async function assignSupportTicket({ ticketNumber, adminId, assigneeAdmin
   const detail = await getTicketForAdmin(ticketNumber);
   if (!detail.ok) return detail;
 
-  const assignee = assigneeAdminId == null || assigneeAdminId === '' ? null : Number(assigneeAdminId);
+  const assignee = Number(assigneeAdminId);
+  if (!Number.isFinite(assignee) || assignee <= 0) {
+    return { ok: false, reason: 'assignee_required' };
+  }
   const pool = getPool();
   let assigneeEmail = null;
   if (assignee) {

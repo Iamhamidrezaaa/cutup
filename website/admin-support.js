@@ -40,7 +40,15 @@
     composerTab: 'reply',
     pendingAttachments: [],
     lightboxUrl: null,
+    myProfile: null,
+    profilePanelOpen: false,
   };
+
+  function currentAgentProfile() {
+    if (state.myProfile) return state.myProfile;
+    var me = state.admins.find(function (a) { return String(a.id) === String(state.currentAdminId); });
+    return me?.profile || null;
+  }
 
   function esc(v) {
     return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -133,6 +141,18 @@
     );
   }
 
+  function formatMessageHtml(text) {
+    if (!text) return '';
+    var safe = esc(text);
+    safe = safe.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, function (_m, label, url) {
+      return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + esc(label) + '</a>';
+    });
+    safe = safe.replace(/(https?:\/\/[^\s<]+)/g, function (url) {
+      return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + url + '</a>';
+    });
+    return safe;
+  }
+
   function renderMessage(m) {
     var isUser = m.sender_type === 'user';
     var side = isUser ? 'sc-msg--user' : 'sc-msg--admin';
@@ -148,7 +168,7 @@
             '<time class="sc-msg__time" datetime="' + esc(m.created_at) + '">' + esc(fmtDate(m.created_at)) + '</time>' +
           '</header>' +
           '<div class="sc-msg__bubble">' +
-            (m.message ? esc(m.message) : '') +
+            (m.message ? formatMessageHtml(m.message) : '') +
             renderMessageAttachments(m.attachments) +
           '</div>' +
         '</div>' +
@@ -192,12 +212,60 @@
     }).join('');
   }
 
+  function renderAgentProfilePanel() {
+    var p = state.myProfile || { display_name: '', avatar_url: '', job_title: 'Customer Success' };
+    var avatar = p.avatar_url || 'https://api.dicebear.com/7.x/initials/svg?seed=Agent';
+    return (
+      '<section class="sc-agent-profile' + (state.profilePanelOpen ? ' is-open' : '') + '" id="scAgentProfile">' +
+        '<div class="sc-agent-profile__head">' +
+          '<div class="sc-agent-profile__preview">' +
+            '<img id="scAgentAvatarPreview" src="' + esc(avatar) + '" alt="" width="56" height="56">' +
+            '<div><strong>Agent identity</strong><p>Nickname & avatar appear in customer chat and reply emails.</p></div>' +
+          '</div>' +
+          '<button type="button" class="sc-btn sc-btn--ghost" id="scToggleProfilePanel">' +
+            (state.profilePanelOpen ? 'Close' : 'Edit profile') +
+          '</button>' +
+        '</div>' +
+        '<div class="sc-agent-profile__form"' + (state.profilePanelOpen ? '' : ' hidden') + '>' +
+          '<label class="sc-field-label">Nickname<input class="sc-input" id="scAgentDisplayName" value="' + esc(p.display_name || '') + '" placeholder="e.g. Sarah" maxlength="80"></label>' +
+          '<label class="sc-field-label">Job title<input class="sc-input" id="scAgentJobTitle" value="' + esc(p.job_title || 'Customer Success') + '" placeholder="Customer Success" maxlength="80"></label>' +
+          '<label class="sc-field-label">Avatar URL<input class="sc-input" id="scAgentAvatarUrl" value="' + esc(p.avatar_url || '') + '" placeholder="https://… or upload below"></label>' +
+          '<div class="sc-agent-profile__upload">' +
+            '<label class="sc-btn"><input type="file" id="scAgentAvatarFile" accept="image/png,image/jpeg,image/webp" hidden>Upload avatar image</label>' +
+            '<button type="button" class="sc-btn sc-btn--primary" id="scSaveAgentProfile">Save profile</button>' +
+          '</div>' +
+          '<p id="scAgentProfileStatus" class="sc-muted"></p>' +
+        '</div>' +
+      '</section>'
+    );
+  }
+
+  function insertReplyLink() {
+    var ta = document.getElementById('scReplyText');
+    if (!ta) return;
+    var url = window.prompt('Link URL (https://…)');
+    if (!url) return;
+    var trimmed = String(url).trim();
+    if (!/^https?:\/\//i.test(trimmed)) {
+      alert('Please enter a valid http(s) URL.');
+      return;
+    }
+    var label = window.prompt('Link label (optional)', trimmed) || trimmed;
+    var insert = label === trimmed ? trimmed : '[' + label + '](' + trimmed + ')';
+    var start = ta.selectionStart || 0;
+    var end = ta.selectionEnd || 0;
+    var val = ta.value || '';
+    ta.value = val.slice(0, start) + insert + val.slice(end);
+    ta.focus();
+    ta.selectionStart = ta.selectionEnd = start + insert.length;
+  }
+
   function renderTicketCard(t) {
     var sel = state.selected === t.ticket_number ? ' is-selected' : '';
     var agent = t.assigned_agent;
     var agentHtml = agent
       ? '<span class="sc-card__agent"><img src="' + esc(agent.avatar_url) + '" alt="">' + esc(agent.display_name) + '</span>'
-      : '<span>Unassigned</span>';
+      : '<span class="sc-card__agent sc-card__agent--pending">Awaiting agent</span>';
     var attachBadge = t.attachment_count > 0 ? badge('attach', '📎 ' + t.attachment_count) : '';
     return (
       '<button type="button" class="sc-card' + sel + '" data-ticket="' + esc(t.ticket_number) + '">' +
@@ -290,11 +358,18 @@
         ' <button type="button" class="sc-btn" id="scClearAttach" style="height:32px;padding:0 10px">Remove</button></span>'
       : '';
 
-    var assignOptions = '<option value="">Unassigned</option>' +
-      state.admins.map(function (a) {
-        var name = a.profile?.display_name || a.email;
-        return '<option value="' + esc(a.id) + '"' + (String(t.assigned_admin_id) === String(a.id) ? ' selected' : '') + '>' + esc(name) + '</option>';
-      }).join('');
+    var me = currentAgentProfile();
+    var replyingAs = me
+      ? '<div class="sc-composer__identity"><img src="' + esc(me.avatar_url) + '" alt="" width="28" height="28">' +
+        '<span>Replying as <strong>' + esc(me.display_name) + '</strong>' +
+        (me.job_title ? ' · ' + esc(me.job_title) : '') + '</span></div>'
+      : '';
+
+    var defaultAssignee = t.assigned_admin_id || state.currentAdminId;
+    var assignOptions = state.admins.map(function (a) {
+      var name = a.profile?.display_name || ('Agent #' + a.id);
+      return '<option value="' + esc(a.id) + '"' + (String(defaultAssignee) === String(a.id) ? ' selected' : '') + '>' + esc(name) + '</option>';
+    }).join('');
 
     return (
       '<div class="sc-composer">' +
@@ -304,11 +379,15 @@
           '<button type="button" class="sc-composer__tab' + statusActive + '" data-composer-tab="status">Status Update</button>' +
         '</div>' +
         '<div class="sc-composer__panel' + replyActive + '" data-composer-panel="reply">' +
+          replyingAs +
           '<textarea id="scReplyText" placeholder="Write a reply to the customer…"></textarea>' +
+          '<div class="sc-composer__toolbar">' +
+            '<label class="sc-btn sc-btn--tool" for="scAttachInput"><input type="file" id="scAttachInput" accept=".png,.jpg,.jpeg,.webp,.pdf,.txt,.zip" hidden>📎 Attach</label>' +
+            '<button type="button" class="sc-btn sc-btn--tool" id="scInsertLink">🔗 Insert link</button>' +
+            attachPreview +
+          '</div>' +
           '<div class="sc-composer__actions">' +
             '<button type="button" class="sc-btn sc-btn--primary" id="scSendReply">Send Reply</button>' +
-            '<label class="sc-btn"><input type="file" id="scAttachInput" accept=".png,.jpg,.jpeg,.webp,.pdf,.txt,.zip" hidden>Attach File</label>' +
-            attachPreview +
           '</div>' +
         '</div>' +
         '<div class="sc-composer__panel' + noteActive + '" data-composer-panel="note">' +
@@ -321,8 +400,8 @@
               return '<option value="' + s + '"' + (t.status === s ? ' selected' : '') + '>' + s.replace(/_/g, ' ') + '</option>';
             }).join('') +
           '</select>' +
-          '<label style="display:block;margin-bottom:8px;font-size:12px;font-weight:700;color:#6b7280">ASSIGN AGENT</label>' +
-          '<select id="scAssignSelect">' + assignOptions + '</select>' +
+          '<label style="display:block;margin-bottom:8px;font-size:12px;font-weight:700;color:#6b7280">ASSIGNED AGENT</label>' +
+          '<select id="scAssignSelect" required>' + assignOptions + '</select>' +
           '<div class="sc-composer__actions" style="margin-top:8px">' +
             '<button type="button" class="sc-btn sc-btn--primary" id="scSaveStatus">Update Status</button>' +
             '<button type="button" class="sc-btn" id="scSaveAssign">Assign</button>' +
@@ -343,6 +422,10 @@
       return '<li>' + esc(fmtDate(e.created_at)) + ' — ' + esc(String(e.event_type || '').replace(/_/g, ' ')) + '</li>';
     }).join('');
 
+    var assignedHead = t.assigned_agent
+      ? '<span class="sc-ticket-agent"><img src="' + esc(t.assigned_agent.avatar_url) + '" alt="" width="24" height="24"> Assigned: <strong>' + esc(t.assigned_agent.display_name) + '</strong></span>'
+      : '';
+
     return (
       '<div class="sc-workspace__scroll">' +
         '<div class="sc-ticket-head">' +
@@ -351,6 +434,7 @@
             badge(String(t.status || '').toLowerCase(), String(t.status || '').replace(/_/g, ' ')) +
             badge(String(t.priority || 'normal').toLowerCase(), t.priority) +
             '<span class="sc-badge sc-badge--attach">' + esc(t.ticket_number) + '</span>' +
+            assignedHead +
           '</div>' +
         '</div>' +
         '<section class="sc-section"><h4 class="sc-section__title">Customer Info</h4>' + renderCustomerPanel(d.customer) + '</section>' +
@@ -370,6 +454,7 @@
           '<h2>Support Inbox</h2>' +
           '<p>Intercom-style conversations with Linear triage — customer context, attachments, and agent identity in one workspace.</p>' +
         '</header>' +
+        renderAgentProfilePanel() +
         renderAnalytics() +
         '<div class="sc-inbox" id="scInbox">' +
           '<aside class="sc-queues" aria-label="Queues">' + renderQueues() + '</aside>' +
@@ -441,10 +526,16 @@
     return d.attachment;
   }
 
+  async function loadMyProfile() {
+    var res = await apiGet('/api/admin/support?action=profile');
+    if (res.ok && res.data.profile) state.myProfile = res.data.profile;
+  }
+
   async function refreshList() {
     var results = await Promise.all([
       apiGet('/api/admin/support?action=analytics'),
       apiGet('/api/admin/support?action=admins'),
+      apiGet('/api/admin/support?action=profile'),
       apiGet(buildListQuery()),
     ]);
     if (results[0].ok) state.analytics = results[0].data.analytics;
@@ -452,11 +543,12 @@
       state.admins = results[1].data.admins || [];
       state.currentAdminId = results[1].data.currentAdminId || null;
     }
-    if (results[2].ok) {
-      state.tickets = results[2].data.tickets || [];
-      state.page = results[2].data.page || 1;
-      state.totalPages = results[2].data.totalPages || 1;
-      if (results[2].data.currentAdminId) state.currentAdminId = results[2].data.currentAdminId;
+    if (results[2].ok && results[2].data.profile) state.myProfile = results[2].data.profile;
+    if (results[3].ok) {
+      state.tickets = results[3].data.tickets || [];
+      state.page = results[3].data.page || 1;
+      state.totalPages = results[3].data.totalPages || 1;
+      if (results[3].data.currentAdminId) state.currentAdminId = results[3].data.currentAdminId;
     }
   }
 
@@ -541,9 +633,40 @@
         state.pendingAttachments = [];
         refreshWorkspaceDom();
       }
+      if (e.target.id === 'scInsertLink') {
+        insertReplyLink();
+        return;
+      }
+      if (e.target.id === 'scToggleProfilePanel') {
+        state.profilePanelOpen = !state.profilePanelOpen;
+        var panel = document.getElementById('scAgentProfile');
+        if (panel) panel.outerHTML = renderAgentProfilePanel();
+        return;
+      }
+      if (e.target.id === 'scSaveAgentProfile') {
+        void saveAgentProfile();
+        return;
+      }
     });
 
     root.addEventListener('change', function (e) {
+      if (e.target.id === 'scAgentAvatarFile' && e.target.files?.[0]) {
+        void (async function () {
+          try {
+            var att = await uploadAttachment(e.target.files[0]);
+            if (att?.url) {
+              var urlInput = document.getElementById('scAgentAvatarUrl');
+              var preview = document.getElementById('scAgentAvatarPreview');
+              if (urlInput) urlInput.value = att.url;
+              if (preview) preview.src = att.url;
+            }
+          } catch (err) {
+            alert(err?.message || 'Avatar upload failed');
+          }
+          e.target.value = '';
+        })();
+        return;
+      }
       if (e.target.id === 'scAttachInput' && e.target.files?.[0]) {
         void (async function () {
           try {
@@ -604,14 +727,32 @@
     refreshCardsDom();
   }
 
+  async function saveAgentProfile() {
+    var status = document.getElementById('scAgentProfileStatus');
+    var res = await apiPost({
+      action: 'update_profile',
+      displayName: document.getElementById('scAgentDisplayName')?.value?.trim(),
+      jobTitle: document.getElementById('scAgentJobTitle')?.value?.trim(),
+      avatarUrl: document.getElementById('scAgentAvatarUrl')?.value?.trim(),
+    });
+    if (status) status.textContent = res.ok ? 'Profile saved.' : 'Could not save profile.';
+    if (res.ok && res.data.profile) {
+      state.myProfile = res.data.profile;
+      await refreshList();
+      var panel = document.getElementById('scAgentProfile');
+      if (panel) panel.outerHTML = renderAgentProfilePanel();
+      if (state.selected) refreshWorkspaceDom();
+    }
+  }
+
   async function saveAssign() {
     var ticket = state.selected;
     var val = document.getElementById('scAssignSelect')?.value;
-    if (!ticket) return;
+    if (!ticket || !val) return;
     await apiPost({
       action: 'assign',
       ticketNumber: ticket,
-      assigneeAdminId: val === '' ? null : Number(val),
+      assigneeAdminId: Number(val),
     });
     await loadPreview(ticket);
     await refreshList();
@@ -633,7 +774,7 @@
     var link = document.createElement('link');
     link.id = 'cutup-admin-support-center-css';
     link.rel = 'stylesheet';
-    link.href = 'admin-support-center.css?v=20260602-support-v4';
+    link.href = 'admin-support-center.css?v=20260609-agent-v1';
     document.head.appendChild(link);
   }
 

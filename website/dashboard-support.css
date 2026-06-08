@@ -500,9 +500,21 @@
   text-decoration: none;
 }
 
-.cutup-support-attach--img img {
-  max-width: 180px;
-  max-height: 120px;
+.cutup-support-attach--img {
+  display: block;
+  max-width: min(100%, 240px);
+  overflow: hidden;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.cutup-support-attach--img img,
+.cutup-support-msg__bubble img {
+  max-width: min(100%, 240px);
+  max-height: 180px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
   border-radius: 8px;
   display: block;
 }
@@ -520,6 +532,14 @@
   gap: 8px;
   font-size: 12px;
   color: #64748b;
+  margin-top: 8px;
+}
+
+.cutup-support-create-attach-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 12px;
 }
 
 .cutup-support-attach-preview button {
@@ -635,15 +655,35 @@
   font-weight: 600;
 }
 
+.cutup-support-assigned {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cutup-support-assigned img {
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.cutup-support-detail__main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
 .cutup-support-conversation {
   display: flex;
   flex-direction: column;
+  height: min(78vh, 720px);
   min-height: 480px;
   max-height: min(78vh, 720px);
   border: 1px solid var(--border-color, #e5e7eb);
   border-radius: 14px;
   background: #f8fafc;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .cutup-support-thread {
@@ -651,9 +691,10 @@
   flex-direction: column;
   gap: 18px;
   padding: 20px 16px;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -717,6 +758,21 @@
   font-size: 11px;
   color: #94a3b8;
   white-space: nowrap;
+}
+
+.cutup-support-msg__role {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.cutup-support-msg__bubble a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.cutup-support-msg--user .cutup-support-msg__bubble a {
+  color: #fff;
 }
 
 .cutup-support-msg__bubble {
@@ -937,7 +993,8 @@
   text-align: center;
   margin-top: 0;
   padding: 16px 16px 18px;
-  border-top: 1px solid #f1f5f9;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 14px;
   background: #fafafa;
   flex-shrink: 0;
 }
@@ -1167,6 +1224,7 @@
   }
 
   .cutup-support-conversation {
+    height: min(72vh, 640px);
     min-height: 420px;
     max-height: min(72vh, 640px);
   }
