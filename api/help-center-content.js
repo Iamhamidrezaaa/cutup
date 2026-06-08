@@ -1,15 +1,15 @@
 /**
- * Help Center V2 — structured article content (48 articles, 8 categories).
- * Body stored as JSON in help_articles.body
+ * Help Center V3 — structured article content (48 articles, 8 categories).
  */
+import { enrichArticleSections } from './help-article-depth.js';
 
 function article(slug, category, title, summary, sections, opts = {}) {
-  const steps = sections.steps || [];
+  const enriched = enrichArticleSections(slug, category, title, sections);
   const wordCount =
-    [summary, sections.content, ...steps, ...(sections.tips || []), ...(sections.troubleshooting || []).map((t) => t.a)]
+    [summary, enriched.content, ...enriched.steps, ...enriched.tips, ...enriched.troubleshooting.map((t) => t.a), ...enriched.faq.map((f) => f.a)]
       .join(' ')
       .split(/\s+/).length;
-  const reading_minutes = Math.max(2, Math.min(12, Math.ceil(wordCount / 180)));
+  const reading_minutes = Math.max(3, Math.min(14, Math.ceil(wordCount / 160)));
   return {
     slug,
     category_slug: category,
@@ -19,12 +19,13 @@ function article(slug, category, title, summary, sections, opts = {}) {
     is_popular: Boolean(opts.is_popular),
     body: JSON.stringify({
       reading_minutes,
-      hero_image: opts.hero_image || `/help-illustrations/${opts.illustration || category}.svg`,
-      content: sections.content,
-      steps,
-      tips: sections.tips || [],
-      troubleshooting: sections.troubleshooting || [],
-      faq: sections.faq || [],
+      hero_image: opts.hero_image || `/help-illustrations/articles/${slug}.svg`,
+      overview: enriched.content,
+      content: enriched.content,
+      steps: enriched.steps,
+      tips: enriched.tips,
+      troubleshooting: enriched.troubleshooting,
+      faq: enriched.faq,
       related_slugs: opts.related || [],
     }),
   };
@@ -41,7 +42,7 @@ export const HELP_CATEGORIES = [
   { slug: 'security', title: 'Security', description: 'Privacy, data retention, and access', icon: '🔒', sort_order: 8 },
 ];
 
-export const HELP_CONTENT_VERSION = 2;
+export const HELP_CONTENT_VERSION = 4;
 
 export const HELP_ARTICLES = [
   // ——— Getting Started ———
@@ -57,7 +58,7 @@ export const HELP_ARTICLES = [
     tips: ['Start with a 2–5 minute clip to learn the workflow before processing long videos.', 'Quiet audio and clear speech dramatically improve first-pass accuracy.'],
     troubleshooting: [{ q: 'Transcription stuck on loading', a: 'Refresh the page and retry. If the source is private or geo-blocked, upload the file directly instead.' }],
     faq: [{ q: 'Do I need to install software?', a: 'No. Cutup runs entirely in your browser.' }],
-  }, { is_popular: true, illustration: 'dashboard', related: ['supported-video-formats', 'dashboard-overview'] }),
+  }, { is_popular: true, related: ['supported-video-formats', 'dashboard-overview'] }),
 
   article('supported-video-formats', 'getting-started', 'Supported video formats', 'MP4, MOV, WEBM uploads and major social platforms.', {
     content: 'Cutup accepts direct uploads and link-based imports. Knowing supported formats upfront saves time when a source fails to load.',
@@ -81,7 +82,7 @@ export const HELP_ARTICLES = [
     tips: ['Wired connections are more reliable than mobile hotspots for large files.'],
     troubleshooting: [{ q: 'Upload stops at 90%', a: 'Check your connection. Retry with a smaller file or lower resolution export from your editor.' }],
     faq: [],
-  }, { illustration: 'export' }),
+  }, {}),
 
   article('dashboard-overview', 'getting-started', 'Dashboard overview', 'Understand credits, library, billing, and support in one place.', {
     content: 'Your Cutup dashboard is the hub for projects, usage, and account settings.',
@@ -89,7 +90,7 @@ export const HELP_ARTICLES = [
     tips: ['Pin the dashboard in your browser for quick access to exports.'],
     troubleshooting: [],
     faq: [{ q: 'Where are my old projects?', a: 'Open Content library — items are sorted by most recent activity.' }],
-  }, { is_popular: true, illustration: 'dashboard' }),
+  }, { is_popular: true }),
 
   article('credits-and-plans-overview', 'getting-started', 'Credits and plans overview', 'How monthly credits work across transcription and exports.', {
     content: 'Every plan includes a monthly credit pool. Different actions consume different amounts.',
@@ -106,7 +107,7 @@ export const HELP_ARTICLES = [
     tips: ['Preview on mobile before publishing — small text may be hard to read.', 'Long videos queue longer during peak hours.'],
     troubleshooting: [{ q: 'Export failed', a: 'See Failed exports article. Often caused by expired source or insufficient credits.' }],
     faq: [{ q: 'Can I change font after export?', a: 'Re-export with new style settings — burned-in text cannot be edited in the MP4.' }],
-  }, { is_popular: true, illustration: 'export', related: ['export-srt-subtitles', 'failed-exports'] }),
+  }, { is_popular: true, related: ['export-srt-subtitles', 'failed-exports'] }),
 
   article('export-srt-subtitles', 'exports', 'Export SRT subtitles', 'Download broadcast-ready SRT files for your editor.', {
     content: 'SRT is the industry standard for subtitles in Premiere, DaVinci Resolve, Final Cut, and YouTube.',
@@ -155,7 +156,7 @@ export const HELP_ARTICLES = [
     tips: ['Reduce background music in source audio when possible.'],
     troubleshooting: [{ q: 'Wrong language detected', a: 'Manually select source language before transcribing.' }],
     faq: [],
-  }, { is_popular: true, illustration: 'transcript' }),
+  }, { is_popular: true }),
 
   article('edit-transcript-text', 'transcripts', 'Edit transcript text', 'Fix wording without breaking timing.', {
     content: 'Inline editing lets you correct words while preserving cue boundaries.',
@@ -204,7 +205,7 @@ export const HELP_ARTICLES = [
     tips: ['Idioms may need manual adjustment — AI translation is a strong draft.'],
     troubleshooting: [{ q: 'Wrong target language', a: 'Delete translation output and re-run with correct language pair.' }],
     faq: [],
-  }, { is_popular: true, illustration: 'translation' }),
+  }, { is_popular: true }),
 
   article('translation-languages', 'translation', 'Supported translation languages', 'See which languages Cutup supports today.', {
     content: 'Language coverage expands over time. Always verify your pair in the translation picker.',
@@ -253,7 +254,7 @@ export const HELP_ARTICLES = [
     tips: ['Annual billing often reduces effective monthly cost.'],
     troubleshooting: [{ q: 'Payment declined', a: 'See Payment failures article or try a different card.' }],
     faq: [],
-  }, { is_popular: true, illustration: 'billing', related: ['downgrade-plan'] }),
+  }, { is_popular: true, related: ['downgrade-plan'] }),
 
   article('downgrade-plan', 'billing', 'Downgrade your plan', 'Switch to a lower tier at period end.', {
     content: 'Downgrades protect you from losing access mid-cycle — changes apply at renewal.',
@@ -351,7 +352,7 @@ export const HELP_ARTICLES = [
     tips: ['Use your legal name for invoices if required by finance.'],
     troubleshooting: [{ q: 'Save button disabled', a: 'Fill required fields marked with asterisk.' }],
     faq: [],
-  }, { illustration: 'profile', related: ['notification-preferences'] }),
+  }, { related: ['notification-preferences'] }),
 
   article('notification-preferences', 'account', 'Change notification preferences', 'Control email and in-app updates.', {
     content: 'Choose which product updates and alerts you receive.',
@@ -400,7 +401,7 @@ export const HELP_ARTICLES = [
     tips: ['Delete library items you no longer need to minimize stored data.'],
     troubleshooting: [],
     faq: [],
-  }, { is_popular: true, illustration: 'security' }),
+  }, { is_popular: true }),
 
   article('encryption-data-storage', 'security', 'Encryption and data storage', 'Technical safeguards for your files.', {
     content: 'Cutup applies industry-standard encryption and access controls on infrastructure.',

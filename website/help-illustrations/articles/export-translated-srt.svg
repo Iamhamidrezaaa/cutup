@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 400" role="img">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FAFAFF"/>
+      <stop offset="100%" stop-color="#F8FAFC"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#635BFF"/>
+      <stop offset="100%" stop-color="#818CF8"/>
+    </linearGradient>
+  </defs>
+  <rect width="720" height="400" rx="16" fill="url(#bg)"/>
+  <rect x="24" y="24" width="672" height="352" rx="14" fill="#fff" stroke="#E2E8F0"/>
+  <text x="48" y="58" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="#64748B">Export translated SRT files</text>
+  
+      <rect x="48" y="80" width="280" height="260" rx="12" fill="#F8FAFC" stroke="#E2E8F0"/>
+      <text x="72" y="112" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#0F172A">Source · English</text>
+      <rect x="72" y="128" width="232" height="8" rx="4" fill="#E2E8F0"/><rect x="72" y="148" width="200" height="8" rx="4" fill="#E2E8F0"/>
+      <path d="M344 200h32" stroke="#635BFF" stroke-width="3"/><path d="M368 188l12 12-12 12" stroke="#635BFF" stroke-width="3" fill="none"/>
+      <rect x="400" y="80" width="272" height="260" rx="12" fill="#EEF2FF" stroke="#C7D2FE"/>
+      <text x="424" y="112" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#635BFF">Target · Spanish</text>
+      <rect x="424" y="128" width="224" height="8" rx="4" fill="#C7D2FE"/><rect x="424" y="148" width="180" height="8" rx="4" fill="#C7D2FE"/>
+</svg>

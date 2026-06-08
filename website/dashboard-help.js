@@ -1,8 +1,11 @@
 /**
- * Cutup dashboard — Help Center V2 (premium UX)
+ * Cutup dashboard — Help Center V3 (final polish)
  */
 (function () {
   'use strict';
+
+  var RECENT_KEY = 'cutup_help_recent_searches';
+  var MAX_RECENT = 5;
 
   var state = {
     view: 'home',
@@ -17,8 +20,14 @@
     searchQuery: '',
     searchResults: [],
     searchOpen: false,
+    searchFocusIndex: -1,
     loading: false,
   };
+
+  var ICON_MSG =
+    '<svg class="cutup-help-btn__icon" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+    '<path d="M21 15a4 4 0 01-4 4H7l-4 4V7a4 4 0 014-4h10a4 4 0 014 4v8z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>' +
+    '</svg>';
 
   function apiBase() {
     return typeof API_BASE_URL !== 'undefined' ? String(API_BASE_URL).replace(/\/$/, '') : window.location.origin;
@@ -64,6 +73,17 @@
     return state.categories.find(function (c) { return c.slug === slug; });
   }
 
+  function btnPrimary(label, attrs) {
+    attrs = attrs || '';
+    var icon = /data-no-icon/.test(attrs) ? '' : ICON_MSG;
+    return '<button type="button" class="cutup-help-btn cutup-help-btn--primary" ' + attrs + '>' + icon + '<span>' + esc(label) + '</span></button>';
+  }
+
+  function btnSecondary(label, attrs) {
+    attrs = attrs || '';
+    return '<button type="button" class="cutup-help-btn cutup-help-btn--secondary" ' + attrs + '><span>' + esc(label) + '</span></button>';
+  }
+
   function contactSupport() {
     try {
       sessionStorage.setItem('cutup_open_support_modal', '1');
@@ -78,16 +98,72 @@
     }, 250);
   }
 
+  function browseHelpHome() {
+    goHome();
+  }
+
+  function goHome() {
+    state.view = 'home';
+    state.slug = null;
+    state.category = '';
+    state.current = null;
+    state.related = [];
+    state.searchQuery = '';
+    state.searchResults = [];
+    state.searchOpen = false;
+    state.searchFocusIndex = -1;
+    if (window.location.hash !== '#help') {
+      window.location.hash = 'help';
+    }
+    void mount(null);
+  }
+
   function navigateToHelp(slug) {
     window.location.hash = slug ? 'help/' + encodeURIComponent(slug) : 'help';
     state.slug = slug || null;
-    void mount(slug || null);
+    if (!slug) goHome();
+    else void mount(slug);
   }
 
   function openCategory(catSlug) {
     state.category = catSlug;
     state.view = 'category';
     void mountCategory(catSlug);
+  }
+
+  function readRecent() {
+    try {
+      var raw = localStorage.getItem(RECENT_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch (_e) {
+      return [];
+    }
+  }
+
+  function pushRecent(q) {
+    if (!q || q.length < 2) return;
+    var list = readRecent().filter(function (x) { return x !== q; });
+    list.unshift(q);
+    try {
+      localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, MAX_RECENT)));
+    } catch (_e) { /* noop */ }
+  }
+
+  function highlightMatch(text, query) {
+    if (!query) return esc(text);
+    var raw = String(text || '');
+    var q = query.trim();
+    if (!q) return esc(raw);
+    var lower = raw.toLowerCase();
+    var qi = lower.indexOf(q.toLowerCase());
+    if (qi < 0) return esc(raw);
+    return (
+      esc(raw.slice(0, qi)) +
+      '<mark class="cutup-help-mark">' +
+      esc(raw.slice(qi, qi + q.length)) +
+      '</mark>' +
+      esc(raw.slice(qi + q.length))
+    );
   }
 
   function renderEmptyState(type) {
@@ -104,7 +180,7 @@
         '</div>' +
         '<h3>' + esc(c.title) + '</h3>' +
         '<p>' + esc(c.desc) + '</p>' +
-        '<button type="button" class="btn-primary" data-contact-support>Contact Support</button>' +
+        btnPrimary('Contact Support', 'data-contact-support') +
       '</div>'
     );
   }
@@ -116,7 +192,7 @@
           '<h1 class="section-title">Help Center</h1>' +
           '<p class="dashboard-section-lead">Guides, tutorials, FAQs and troubleshooting.</p>' +
         '</div>' +
-        '<button type="button" class="btn-primary cutup-help-head__cta" data-contact-support>Contact Support</button>' +
+        btnPrimary('Contact Support', 'data-contact-support id="cutupHelpHeadCta"') +
       '</header>'
     );
   }
@@ -124,7 +200,7 @@
   function renderSearchWrap() {
     return (
       '<div class="cutup-help-search-wrap">' +
-        '<div class="cutup-help-search" role="combobox" aria-expanded="' + (state.searchOpen ? 'true' : 'false') + '">' +
+        '<div class="cutup-help-search" role="combobox" aria-expanded="' + (state.searchOpen ? 'true' : 'false') + '" aria-haspopup="listbox">' +
           '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M20 20l-3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>' +
           '<input type="search" id="cutupHelpSearch" placeholder="Search guides, billing, exports…" value="' + esc(state.searchQuery) + '" autocomplete="off" aria-autocomplete="list" aria-controls="cutupHelpSearchDropdown">' +
         '</div>' +
@@ -133,25 +209,59 @@
     );
   }
 
-  function renderSearchDropdown() {
-    if (!state.searchQuery || state.searchQuery.length < 1) return '';
-    if (!state.searchResults.length) {
-      return (
-        '<div class="cutup-help-search-dropdown__empty">' + renderEmptyState('search') + '</div>' +
-        '<button type="button" class="cutup-help-search-dropdown__support" data-contact-support>Can&apos;t find your answer? Contact Support</button>'
-      );
+  function catIcon(cat) {
+    return esc(cat?.category_icon || cat?.icon || categoryBySlug(cat?.category_slug || cat)?.icon || '📄');
+  }
+
+  function renderRecentSearches() {
+    var recent = readRecent();
+    if (!recent.length) {
+      return '<div class="cutup-help-search-dropdown__hint">Start typing to search articles…</div>';
     }
     return (
-      state.searchResults.map(function (a) {
-        return (
-          '<button type="button" class="cutup-help-search-dropdown__item" role="option" data-slug="' + esc(a.slug) + '">' +
-            '<strong>' + esc(a.title) + '</strong>' +
-            '<span class="cutup-help-search-dropdown__cat">' + esc(a.category_title || a.category_slug) + '</span>' +
-            '<span class="cutup-help-search-dropdown__desc">' + esc(a.summary) + '</span>' +
-          '</button>'
-        );
-      }).join('') +
-      '<button type="button" class="cutup-help-search-dropdown__support" data-contact-support>Can&apos;t find your answer? Contact Support</button>'
+      '<div class="cutup-help-search-dropdown__section-label">Recent searches</div>' +
+      recent.map(function (q, i) {
+        var active = i === state.searchFocusIndex ? ' is-focused' : '';
+        return '<button type="button" class="cutup-help-search-dropdown__recent' + active + '" role="option" data-recent="' + esc(q) + '" data-idx="' + i + '">' + esc(q) + '</button>';
+      }).join('')
+    );
+  }
+
+  function renderSearchDropdown() {
+    var q = state.searchQuery;
+    if (!state.searchOpen) return '';
+
+    if (!q) {
+      return renderRecentSearches();
+    }
+
+    if (!state.searchResults.length) {
+      return (
+        '<div class="cutup-help-search-dropdown__empty">' +
+          '<p class="cutup-help-search-dropdown__empty-title">No articles found</p>' +
+          '<p class="cutup-help-search-dropdown__empty-desc">Try different keywords or browse categories below.</p>' +
+        '</div>' +
+        '<button type="button" class="cutup-help-search-dropdown__support cutup-help-btn cutup-help-btn--secondary" data-contact-support data-no-icon>Can&apos;t find your answer? Contact Support</button>'
+      );
+    }
+
+    return (
+      state.searchResults
+        .map(function (a, i) {
+          var active = i === state.searchFocusIndex ? ' is-focused' : '';
+          return (
+            '<button type="button" class="cutup-help-search-dropdown__item' + active + '" role="option" data-slug="' + esc(a.slug) + '" data-idx="' + i + '">' +
+              '<span class="cutup-help-search-dropdown__icon" aria-hidden="true">' + catIcon(a) + '</span>' +
+              '<span class="cutup-help-search-dropdown__body">' +
+                '<strong>' + highlightMatch(a.title, q) + '</strong>' +
+                '<span class="cutup-help-search-dropdown__cat">' + esc(a.category_title || a.category_slug) + '</span>' +
+                '<span class="cutup-help-search-dropdown__desc">' + highlightMatch(a.summary, q) + '</span>' +
+              '</span>' +
+            '</button>'
+          );
+        })
+        .join('') +
+      '<button type="button" class="cutup-help-search-dropdown__support cutup-help-btn cutup-help-btn--secondary" data-contact-support data-no-icon>Can&apos;t find your answer? Contact Support</button>'
     );
   }
 
@@ -177,9 +287,13 @@
   }
 
   function renderArticleCard(a, compact) {
+    var popular = a.is_popular ? '<span class="cutup-help-badge cutup-help-badge--popular">Popular</span>' : '';
     return (
       '<button type="button" class="cutup-help-article' + (compact ? ' cutup-help-article--compact' : '') + '" data-slug="' + esc(a.slug) + '">' +
-        '<span class="cutup-help-article__cat">' + esc(a.category_title || a.category_slug) + '</span>' +
+        '<span class="cutup-help-article__row">' +
+          '<span class="cutup-help-article__cat">' + esc(a.category_title || a.category_slug) + '</span>' +
+          popular +
+        '</span>' +
         '<strong class="cutup-help-article__title">' + esc(a.title) + '</strong>' +
         '<p class="cutup-help-article__summary">' + esc(a.summary) + '</p>' +
         (!compact ? '<span class="cutup-help-article__meta">' + esc(a.reading_minutes || 3) + ' min read · Updated ' + esc(fmtDate(a.updated_at)) + '</span>' : '') +
@@ -207,27 +321,54 @@
             '</div>' +
           '</section>' +
         '</div>' +
-        '<button type="button" class="cutup-help-mobile-cta btn-primary" data-contact-support>Contact Support</button>' +
+        btnPrimary('Contact Support', 'data-contact-support class="cutup-help-mobile-cta"') +
       '</div>'
     );
   }
 
-  function renderListSection(title, items) {
-    if (!items.length) return renderEmptyState('category');
-    return '<div class="cutup-help-articles">' + items.map(function (a) { return renderArticleCard(a, false); }).join('') + '</div>';
+  function featuredArticle(articles) {
+    if (!articles.length) return null;
+    var popular = articles.find(function (a) { return a.is_popular; });
+    return popular || articles[0];
+  }
+
+  function renderCategoryHero(cat, articles) {
+    var feat = featuredArticle(articles);
+    return (
+      '<section class="cutup-help-category-hero">' +
+        '<div class="cutup-help-category-hero__icon" aria-hidden="true">' + esc(cat?.icon || '📄') + '</div>' +
+        '<div class="cutup-help-category-hero__body">' +
+          '<h2 class="cutup-help-category-title">' + esc(cat?.title || 'Articles') + '</h2>' +
+          '<p class="cutup-help-category-desc">' + esc(cat?.description || '') + '</p>' +
+          '<span class="cutup-help-category-count">' + esc(articles.length) + ' articles</span>' +
+        '</div>' +
+        (feat
+          ? '<div class="cutup-help-featured">' +
+              '<span class="cutup-help-featured__label">Featured guide</span>' +
+              renderArticleCard(feat, false) +
+            '</div>'
+          : '') +
+      '</section>'
+    );
   }
 
   function renderCategoryView() {
     var cat = categoryBySlug(state.category);
+    var rest = state.articles.filter(function (a) {
+      var f = featuredArticle(state.articles);
+      return !f || a.slug !== f.slug;
+    });
     return (
       '<div class="cutup-help-root">' +
         renderHeader() +
         renderSearchWrap() +
-        '<button type="button" class="cutup-help-back" id="cutupHelpBackHome">← Help Center</button>' +
-        '<h2 class="cutup-help-category-title">' + esc(cat?.title || 'Articles') + '</h2>' +
-        '<p class="cutup-help-category-desc">' + esc(cat?.description || '') + '</p>' +
-        renderListSection('Articles', state.articles) +
-        '<button type="button" class="cutup-help-mobile-cta btn-primary" data-contact-support>Contact Support</button>' +
+        btnSecondary('← Help Center', 'id="cutupHelpBackHome" data-no-icon') +
+        renderCategoryHero(cat, state.articles) +
+        (rest.length
+          ? '<section class="cutup-help-category-list"><h3 class="cutup-help-section-label">All articles</h3>' +
+              '<div class="cutup-help-articles">' + rest.map(function (a) { return renderArticleCard(a, false); }).join('') + '</div></section>'
+          : renderEmptyState('category')) +
+        btnPrimary('Contact Support', 'data-contact-support class="cutup-help-mobile-cta"') +
       '</div>'
     );
   }
@@ -237,7 +378,7 @@
     var inner = ordered
       ? '<ol class="cutup-help-steps">' + items.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ol>'
       : '<ul class="cutup-help-tips">' + items.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>';
-    return '<section class="cutup-help-section"><h2>' + esc(title) + '</h2>' + inner + '</section>';
+    return '<section class="cutup-help-section"><h2>' + esc(title) + '</h2><div class="cutup-help-prose">' + inner + '</div></section>';
   }
 
   function renderQaSection(title, items) {
@@ -259,15 +400,31 @@
     );
   }
 
+  function renderNeedHelpCard() {
+    return (
+      '<section class="cutup-help-cta-card">' +
+        '<div class="cutup-help-cta-card__copy">' +
+          '<h2>Need more help?</h2>' +
+          '<p>Our support team can help with billing, exports, transcripts, translations and account issues.</p>' +
+        '</div>' +
+        '<div class="cutup-help-cta-card__actions">' +
+          btnPrimary('Contact Support', 'data-contact-support') +
+          btnSecondary('Browse Help Center', 'data-browse-help') +
+        '</div>' +
+      '</section>'
+    );
+  }
+
   function renderArticle() {
     var a = state.current;
     if (!a) return renderEmptyState('search');
     var body = a.body || {};
     var cat = categoryBySlug(a.category_slug);
-    var hero = a.hero_image || body.hero_image;
+    var hero = a.hero_image || body.hero_image || '/help-illustrations/articles/' + a.slug + '.svg';
+    var overview = body.overview || body.content;
     return (
       '<div class="cutup-help-root cutup-help-root--article">' +
-        '<button type="button" class="cutup-help-back" id="cutupHelpBackCat">← Back to ' + esc(cat?.title || a.category_title || 'Category') + '</button>' +
+        btnSecondary('← Back to ' + (cat?.title || a.category_title || 'Category'), 'id="cutupHelpBackCat" data-no-icon') +
         '<article class="cutup-help-article-view">' +
           '<header class="cutup-help-article-hero">' +
             '<span class="cutup-help-article-view__cat">' + esc(a.category_title || '') + '</span>' +
@@ -279,51 +436,66 @@
               '<span>Updated ' + esc(fmtDate(a.updated_at)) + '</span>' +
             '</div>' +
           '</header>' +
-          (hero ? '<figure class="cutup-help-figure"><img src="' + esc(hero) + '" alt="" loading="lazy" decoding="async"></figure>' : '') +
-          (body.content ? '<div class="cutup-help-article-view__intro">' + esc(body.content) + '</div>' : '') +
-          renderBodySection('Step-by-step', body.steps, true) +
-          renderBodySection('Helpful tips', body.tips, false) +
+          '<figure class="cutup-help-figure"><img src="' + esc(hero) + '" alt="' + esc(a.title) + ' illustration" loading="lazy" decoding="async"></figure>' +
+          (overview ? '<section class="cutup-help-section cutup-help-section--overview"><h2>Overview</h2><div class="cutup-help-prose"><p>' + esc(overview) + '</p></div></section>' : '') +
+          renderBodySection('Step-by-step guide', body.steps, true) +
+          renderBodySection('Best practices', body.tips, false) +
           renderQaSection('Troubleshooting', body.troubleshooting) +
           renderQaSection('FAQ', body.faq) +
           (state.related.length
-            ? '<section class="cutup-help-section"><h2>Related articles</h2><div class="cutup-help-related">' +
+            ? '<section class="cutup-help-section cutup-help-section--related"><h2>Related articles</h2><div class="cutup-help-related">' +
                 state.related.map(function (r) { return renderArticleCard(r, true); }).join('') +
               '</div></section>'
             : '') +
-          '<section class="cutup-help-cta-card">' +
-            '<h2>Need more help?</h2>' +
-            '<p>Create a support ticket and our team will respond as soon as possible.</p>' +
-            '<button type="button" class="btn-primary" data-contact-support>Contact Support</button>' +
-          '</section>' +
+          renderNeedHelpCard() +
         '</article>' +
-        '<button type="button" class="cutup-help-mobile-cta btn-primary" data-contact-support>Contact Support</button>' +
+        btnPrimary('Contact Support', 'data-contact-support class="cutup-help-mobile-cta"') +
       '</div>'
     );
+  }
+
+  function scrollSearchFocus() {
+    var dd = document.getElementById('cutupHelpSearchDropdown');
+    if (!dd) return;
+    var el = dd.querySelector('.is-focused');
+    if (el) el.scrollIntoView({ block: 'nearest' });
   }
 
   function updateSearchDropdown() {
     var dd = document.getElementById('cutupHelpSearchDropdown');
     if (!dd) return;
-    if (!state.searchOpen || !state.searchQuery) {
+    if (!state.searchOpen) {
       dd.hidden = true;
       return;
     }
     dd.hidden = false;
     dd.innerHTML = renderSearchDropdown();
     bindContactButtons(dd);
+    bindBrowseHelpButtons(dd);
+
     dd.querySelectorAll('[data-slug]').forEach(function (btn) {
       btn.addEventListener('click', function () {
+        pushRecent(state.searchQuery);
         state.searchOpen = false;
         navigateToHelp(btn.getAttribute('data-slug'));
+      });
+    });
+    dd.querySelectorAll('[data-recent]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var input = document.getElementById('cutupHelpSearch');
+        var q = btn.getAttribute('data-recent') || '';
+        if (input) input.value = q;
+        void runSearch(q);
       });
     });
   }
 
   async function runSearch(q) {
     state.searchQuery = q;
-    if (!q || q.length < 1) {
+    state.searchFocusIndex = -1;
+    if (!q) {
       state.searchResults = [];
-      state.searchOpen = false;
+      state.searchOpen = true;
       updateSearchDropdown();
       return;
     }
@@ -341,18 +513,69 @@
     });
   }
 
+  function bindBrowseHelpButtons(scope) {
+    (scope || document).querySelectorAll('[data-browse-help]').forEach(function (btn) {
+      if (btn.dataset.bound === '1') return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', browseHelpHome);
+    });
+  }
+
   function bindSearch(root) {
     var input = root.querySelector('#cutupHelpSearch');
     if (!input || input.dataset.bound === '1') return;
     input.dataset.bound = '1';
     var timer;
+
     input.addEventListener('input', function () {
       clearTimeout(timer);
-      timer = setTimeout(function () { void runSearch(input.value.trim()); }, 160);
+      timer = setTimeout(function () { void runSearch(input.value.trim()); }, 140);
     });
+
     input.addEventListener('focus', function () {
+      state.searchOpen = true;
       if (input.value.trim()) void runSearch(input.value.trim());
+      else updateSearchDropdown();
     });
+
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        state.searchOpen = false;
+        state.searchFocusIndex = -1;
+        updateSearchDropdown();
+        input.blur();
+        return;
+      }
+
+      var q = state.searchQuery.trim();
+      var recent = !q ? readRecent() : [];
+      var items = q ? state.searchResults : [];
+      var count = items.length || recent.length;
+      if (!count) return;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        state.searchFocusIndex = Math.min(state.searchFocusIndex + 1, count - 1);
+        updateSearchDropdown();
+        scrollSearchFocus();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        state.searchFocusIndex = Math.max(state.searchFocusIndex - 1, 0);
+        updateSearchDropdown();
+        scrollSearchFocus();
+      } else if (e.key === 'Enter' && state.searchFocusIndex >= 0) {
+        e.preventDefault();
+        if (q && items[state.searchFocusIndex]) {
+          pushRecent(state.searchQuery);
+          state.searchOpen = false;
+          navigateToHelp(items[state.searchFocusIndex].slug);
+        } else if (!q && recent[state.searchFocusIndex]) {
+          input.value = recent[state.searchFocusIndex];
+          void runSearch(recent[state.searchFocusIndex]);
+        }
+      }
+    });
+
     document.addEventListener('click', function (e) {
       if (!root.querySelector('.cutup-help-search-wrap')?.contains(e.target)) {
         state.searchOpen = false;
@@ -363,14 +586,13 @@
 
   function bindEvents(root) {
     bindContactButtons(root);
+    bindBrowseHelpButtons(root);
     bindSearch(root);
 
     root.querySelector('#cutupHelpBackCat')?.addEventListener('click', function () {
       if (state.current?.category_slug) openCategory(state.current.category_slug);
     });
-    root.querySelector('#cutupHelpBackHome')?.addEventListener('click', function () {
-      navigateToHelp(null);
-    });
+    root.querySelector('#cutupHelpBackHome')?.addEventListener('click', goHome);
 
     root.querySelectorAll('[data-slug]').forEach(function (btn) {
       btn.addEventListener('click', function () {
@@ -420,8 +642,8 @@
       if (!state.categories.length) await loadHomeData();
       var res = await apiGet('/api/help?action=article&slug=' + encodeURIComponent(slug));
       if (!res.ok) {
-        root.innerHTML = renderEmptyState('search') + '<button type="button" class="cutup-help-back" id="cutupHelpHome">← Help Center</button>';
-        root.querySelector('#cutupHelpHome')?.addEventListener('click', function () { navigateToHelp(null); });
+        root.innerHTML = renderEmptyState('search') + btnSecondary('← Help Center', 'id="cutupHelpHome" data-no-icon');
+        root.querySelector('#cutupHelpHome')?.addEventListener('click', goHome);
         bindContactButtons(root);
         return;
       }
@@ -445,6 +667,7 @@
   window.CutupDashboardHelp = {
     parseHelpHash: parseHelpHash,
     mount: mount,
+    goHome: goHome,
     navigateToHelp: navigateToHelp,
     contactSupport: contactSupport,
     searchArticles: async function (q, limit) {
@@ -457,6 +680,8 @@
     var route = parseHelpHash(window.location.hash);
     if (!route) return;
     var active = document.getElementById('help-section')?.classList.contains('active');
-    if (active) void mount(route.slug);
+    if (!active) return;
+    if (!route.slug) goHome();
+    else void mount(route.slug);
   });
 })();

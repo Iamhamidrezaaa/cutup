@@ -500,8 +500,7 @@ function setupNavigation() {
         window.CutupDashboardNotifications?.mountPage?.();
       }
       if (target === 'help') {
-        const helpRoute = window.CutupDashboardHelp?.parseHelpHash?.(window.location.hash);
-        window.CutupDashboardHelp?.mount?.(helpRoute?.slug || null);
+        window.CutupDashboardHelp?.goHome?.();
       }
       if (target === 'support') {
         const route = window.CutupDashboardSupport?.parseSupportHash?.(window.location.hash);

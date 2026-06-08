@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 400" role="img">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FAFAFF"/>
+      <stop offset="100%" stop-color="#F8FAFC"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#635BFF"/>
+      <stop offset="100%" stop-color="#818CF8"/>
+    </linearGradient>
+  </defs>
+  <rect width="720" height="400" rx="16" fill="url(#bg)"/>
+  <rect x="24" y="24" width="672" height="352" rx="14" fill="#fff" stroke="#E2E8F0"/>
+  <text x="48" y="58" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="#64748B">Using transcript preview</text>
+  
+      <rect x="80" y="80" width="560" height="260" rx="12" fill="#EEF2FF" stroke="#C7D2FE"/>
+      <text x="104" y="116" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#0F172A">Transcript editor</text>
+      <rect x="104" y="136" width="500" height="10" rx="4" fill="#E2E8F0"/>
+      <rect x="104" y="158" width="440" height="10" rx="4" fill="#C7D2FE"/>
+      <rect x="104" y="180" width="480" height="10" rx="4" fill="#E2E8F0"/>
+      <rect x="104" y="202" width="360" height="10" rx="4" fill="#E2E8F0"/>
+      <text x="104" y="248" font-family="monospace" font-size="10" fill="#64748B">00:00:12 — Using transcript preview</text>
+</svg>
