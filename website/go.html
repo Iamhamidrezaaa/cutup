@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Opening Cutup…</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f8fafc;
+      color: #64748b;
+    }
+    .box { text-align: center; padding: 24px; }
+    .box strong { display: block; color: #0f172a; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <strong>Opening Cutup…</strong>
+    <span>Please wait.</span>
+  </div>
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var dest = String(params.get('dest') || 'dashboard').trim().toLowerCase();
+      var ticket = String(params.get('ticket') || '').trim();
+      var slug = String(params.get('slug') || '').trim();
+      var hash = String(params.get('hash') || '').trim();
+
+      var targetHash = '';
+      if (dest === 'support' && ticket) targetHash = 'support/' + encodeURIComponent(ticket);
+      else if (dest === 'help' && slug) targetHash = 'help/' + encodeURIComponent(slug);
+      else if (dest === 'help') targetHash = 'help';
+      else if (dest === 'notifications') targetHash = 'notifications';
+      else if (dest === 'billing' || dest === 'financial') targetHash = 'billing';
+      else if (dest === 'subscription') targetHash = 'subscription';
+      else if (hash) targetHash = hash.replace(/^#/, '');
+      else if (dest !== 'dashboard') targetHash = dest;
+
+      var target = '/dashboard.html' + (targetHash ? '#' + targetHash : '');
+      var sid = null;
+      try { sid = localStorage.getItem('cutup_session'); } catch (_e) {}
+
+      if (sid) {
+        window.location.replace(target + '?session=' + encodeURIComponent(sid));
+        return;
+      }
+
+      try { sessionStorage.setItem('cutup_post_auth_url', target); } catch (_e2) {}
+      window.location.replace('/?signin=1');
+    })();
+  </script>
+</body>
+</html>

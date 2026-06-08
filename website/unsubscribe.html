@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unsubscribe — Cutup</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #0f172a;
+      padding: 24px;
+    }
+    .unsub-card {
+      width: 100%;
+      max-width: 440px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 16px;
+      padding: 28px 24px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+      text-align: center;
+    }
+    .unsub-card h1 {
+      margin: 0 0 10px;
+      font-size: 1.35rem;
+    }
+    .unsub-card p {
+      margin: 0 0 18px;
+      color: #64748b;
+      line-height: 1.55;
+      font-size: 0.95rem;
+    }
+    .unsub-email {
+      display: inline-block;
+      margin-bottom: 18px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      background: #f1f5f9;
+      color: #334155;
+      font-size: 0.9rem;
+    }
+    .unsub-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 180px;
+      padding: 11px 18px;
+      border: none;
+      border-radius: 10px;
+      background: #635bff;
+      color: #fff;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .unsub-btn:disabled { opacity: 0.6; cursor: wait; }
+    .unsub-status { margin-top: 14px; font-size: 0.9rem; color: #64748b; }
+    .unsub-status.is-error { color: #dc2626; }
+    .unsub-status.is-success { color: #047857; }
+    .unsub-back {
+      display: inline-block;
+      margin-top: 18px;
+      color: #635bff;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <main class="unsub-card">
+    <h1>Unsubscribe from emails</h1>
+    <p id="unsubIntro">Confirm below to stop receiving product and marketing emails from Cutup. Security and billing alerts may still be sent when required.</p>
+    <div class="unsub-email" id="unsubEmail" hidden></div>
+    <button type="button" class="unsub-btn" id="unsubConfirm" hidden>Confirm unsubscribe</button>
+    <p class="unsub-status" id="unsubStatus" hidden></p>
+    <a class="unsub-back" href="/">Back to Cutup</a>
+  </main>
+  <script>
+    (function () {
+      var API = window.location.origin;
+      var params = new URLSearchParams(window.location.search);
+      var token = String(params.get('token') || '').trim();
+      var emailEl = document.getElementById('unsubEmail');
+      var btn = document.getElementById('unsubConfirm');
+      var status = document.getElementById('unsubStatus');
+      var intro = document.getElementById('unsubIntro');
+
+      function showStatus(msg, kind) {
+        status.textContent = msg;
+        status.hidden = false;
+        status.className = 'unsub-status' + (kind ? ' is-' + kind : '');
+      }
+
+      if (!token) {
+        intro.textContent = 'This unsubscribe link is invalid or expired.';
+        showStatus('Missing token. Use the link from your email.', 'error');
+        return;
+      }
+
+      fetch(API + '/api/email/unsubscribe?token=' + encodeURIComponent(token))
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+        .then(function (res) {
+          if (!res.ok || !res.data.ok) {
+            intro.textContent = 'This unsubscribe link is invalid or expired.';
+            showStatus('Could not verify this link.', 'error');
+            return;
+          }
+          emailEl.textContent = res.data.emailMasked || 'your email';
+          emailEl.hidden = false;
+          btn.hidden = false;
+        })
+        .catch(function () {
+          showStatus('Could not load unsubscribe page. Try again later.', 'error');
+        });
+
+      btn.addEventListener('click', function () {
+        btn.disabled = true;
+        showStatus('Processing…', '');
+        fetch(API + '/api/email/unsubscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: token }),
+        })
+          .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+          .then(function (res) {
+            btn.hidden = true;
+            if (!res.ok || !res.data.ok) {
+              showStatus('Unsubscribe failed. Try again or contact support@cutup.shop.', 'error');
+              btn.disabled = false;
+              btn.hidden = false;
+              return;
+            }
+            intro.textContent = 'You have been unsubscribed.';
+            showStatus('You will no longer receive marketing and product update emails from Cutup.', 'success');
+          })
+          .catch(function () {
+            btn.disabled = false;
+            showStatus('Network error. Please try again.', 'error');
+          });
+      });
+    })();
+  </script>
+</body>
+</html>

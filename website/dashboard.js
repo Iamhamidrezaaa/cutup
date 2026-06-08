@@ -1878,7 +1878,13 @@ async function initDashboard() {
   currentSession = activeSession;
   if (!currentSession) {
     hideInitialLoader();
-    window.location.href = '/';
+    try {
+      const hash = String(window.location.hash || '').replace(/^#/, '').trim();
+      if (hash && /^(support|help|notifications|billing|subscription)/.test(hash)) {
+        sessionStorage.setItem('cutup_post_auth_url', `/dashboard.html#${hash}`);
+      }
+    } catch (_e) { /* noop */ }
+    window.location.href = '/?signin=1';
     return { ok: false };
   }
   localStorage.setItem('cutup_session', currentSession);

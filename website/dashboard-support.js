@@ -6,6 +6,8 @@
 
   var TURNSTILE_SITE_KEY = '0x4AAAAAADIgzmavc-RbN4iZ';
   var ACTIVITY_FEED_LIMIT = 5;
+  var ATTACH_MAX_BYTES = 3 * 1024 * 1024;
+  var ATTACH_EXT_RE = /\.(pdf|jpe?g|png|heif|heic)$/i;
 
   var DEPARTMENTS = [
     { value: 'TECHNICAL_SUPPORT', label: 'Technical Support' },
@@ -596,7 +598,7 @@
             '<textarea id="cutupSupportReply" placeholder="Write a reply…" rows="3"></textarea>' +
             '<div class="cutup-support-reply__actions">' +
               '<label class="cutup-support-attach-btn" title="Attach file">' +
-                '<input type="file" id="cutupSupportFile" accept=".png,.jpg,.jpeg,.webp,.pdf,.txt,.zip" hidden>' +
+                '<input type="file" id="cutupSupportFile" accept=".pdf,.jpg,.jpeg,.png,.heif,.heic,image/png,image/jpeg,image/heic,image/heif,application/pdf" hidden>' +
                 ICON_CLIP +
               '</label>' +
               btnPrimary('Send', 'id="cutupSupportSendReply" data-no-icon') +
@@ -790,6 +792,23 @@
     });
   }
 
+  function attachValidationError(file) {
+    if (!file) return 'No file selected.';
+    if (file.size > ATTACH_MAX_BYTES) return 'File must be 3 MB or smaller.';
+    if (!ATTACH_EXT_RE.test(String(file.name || ''))) {
+      return 'Only PDF, JPG, JPEG, PNG, and HEIF files are allowed.';
+    }
+    return null;
+  }
+
+  function attachUploadErrorMessage(data) {
+    if (!data) return 'Upload failed. Try again.';
+    if (data.error === 'file_too_large') return 'File must be 3 MB or smaller.';
+    if (data.error === 'invalid_file_type') return 'Only PDF, JPG, JPEG, PNG, and HEIF files are allowed.';
+    if (data.error === 'no_session' || data.error === 'invalid_session') return 'Session expired. Refresh the page and try again.';
+    return 'Upload failed. Try again.';
+  }
+
   async function uploadAttachment(file) {
     var fd = new FormData();
     fd.append('file', file);
@@ -850,15 +869,18 @@
     fileInput?.addEventListener('change', async function () {
       var file = fileInput.files?.[0];
       if (!file) return;
-      if (file.size > 20 * 1024 * 1024) {
-        if (typeof showDashboardBanner === 'function') showDashboardBanner('File must be under 20 MB.', 'error');
+      var validationErr = attachValidationError(file);
+      if (validationErr) {
+        if (typeof showDashboardBanner === 'function') showDashboardBanner(validationErr, 'error');
         fileInput.value = '';
         return;
       }
       var up = await uploadAttachment(file);
       fileInput.value = '';
       if (!up.ok) {
-        if (typeof showDashboardBanner === 'function') showDashboardBanner('Upload failed. Try again.', 'error');
+        if (typeof showDashboardBanner === 'function') {
+          showDashboardBanner(attachUploadErrorMessage(up.data), 'error');
+        }
         return;
       }
       state.pendingAttachments = [up.data.attachment];

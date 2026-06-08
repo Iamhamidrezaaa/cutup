@@ -29,7 +29,7 @@ export function UsageWarning80({
   planName = 'Starter',
   upgradeUrl,
 }: UsageWarningData) {
-  const upgrade = upgradeUrl || `${SITE.dashboardUrl}#subscription`;
+  const upgrade = upgradeUrl || SITE.subscriptionUrl;
 
   return (
     <CutupLayout preview="You're approaching your monthly limit">

@@ -3,6 +3,8 @@ import * as React from 'react';
 import type { EmailTemplateId, RenderedEmail } from './types';
 import { EMAIL_TEMPLATES } from './types';
 import { getRegistryEntry } from './emailRegistry';
+import { EmailExtrasProvider } from '../../emails/EmailExtras';
+import { buildUnsubscribeUrl } from './unsubscribe';
 import {
   WelcomeEmail,
   ExportCompleted,
@@ -49,12 +51,19 @@ function stripHtml(html: string): string {
 export async function renderEmailTemplate(
   template: EmailTemplateId,
   data: Record<string, unknown> = {},
+  options: { recipient?: string } = {},
 ): Promise<RenderedEmail> {
   const entry = getRegistryEntry(template);
   const Component = TEMPLATE_COMPONENTS[template];
   if (!Component) throw new Error(`No React component for template: ${template}`);
 
-  const element = React.createElement(Component, data);
+  const recipient = String(options.recipient || data.email || '').trim();
+  const unsubscribeUrl = recipient ? buildUnsubscribeUrl(recipient) : undefined;
+  const element = React.createElement(
+    EmailExtrasProvider,
+    { value: { unsubscribeUrl } },
+    React.createElement(Component, data),
+  );
   const html = await render(element, { pretty: false });
   if (!html || html.length < 500 || html.includes('data-msg="Switched to client rendering')) {
     throw new Error(`Email render produced invalid html (${html?.length ?? 0} bytes) for ${template}`);

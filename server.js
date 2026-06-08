@@ -828,6 +828,16 @@ app.post('/api/support/attachments', async (req, res) => {
   }
 });
 
+app.all('/api/email/unsubscribe', async (req, res) => {
+  try {
+    const mod = await import('./api/email-unsubscribe.js');
+    return mod.default(req, res);
+  } catch (e) {
+    console.error('[email-unsubscribe]', e);
+    return res.status(503).json({ ok: false, error: 'handler_unavailable' });
+  }
+});
+
 app.get('/api/help', async (req, res) => {
   try {
     const mod = await import('./api/help-center.js');

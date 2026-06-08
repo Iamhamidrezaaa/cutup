@@ -2296,7 +2296,17 @@ if (authSuccess === 'success' && sessionId) {
     console.log('[checkout-after-oauth]', { url: checkoutAfterAuth });
     window.location.replace(checkoutAfterAuth);
   } else if (!hasResumeIntent) {
-    window.location.replace(`${window.location.origin}/dashboard.html`);
+    let postAuthUrl = null;
+    try {
+      postAuthUrl = sessionStorage.getItem('cutup_post_auth_url');
+      if (postAuthUrl) sessionStorage.removeItem('cutup_post_auth_url');
+    } catch (_e) { /* noop */ }
+    if (postAuthUrl) {
+      const join = postAuthUrl.includes('?') ? '&' : '?';
+      window.location.replace(`${window.location.origin}${postAuthUrl}${join}session=${encodeURIComponent(sessionId)}`);
+    } else {
+      window.location.replace(`${window.location.origin}/dashboard.html?session=${encodeURIComponent(sessionId)}`);
+    }
   } else {
     window.history.replaceState(
       {},
@@ -2352,6 +2362,14 @@ window.addEventListener('DOMContentLoaded', () => {
   if (!savedSession) {
     if (loginBtn) loginBtn.style.display = '';
     if (googleWrap) googleWrap.style.display = '';
+    const signinFlag = new URLSearchParams(window.location.search).get('signin');
+    if (signinFlag === '1' && !window.__cutupAuthCallbackHandled) {
+      setTimeout(() => {
+        if (!cutupSessionIsVerified()) {
+          cutupTriggerGoogleLogin().catch(() => {});
+        }
+      }, 450);
+    }
   }
 
   if (savedSession) {

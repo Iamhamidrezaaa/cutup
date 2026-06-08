@@ -9,6 +9,7 @@ import {
   StatusBadge,
   SuccessIndicator,
 } from '../components';
+import { SITE } from '../brand';
 import type { SupportTicketData } from './SupportTicketCreated';
 
 export function SupportTicketResolved({
@@ -17,7 +18,7 @@ export function SupportTicketResolved({
   subject = 'Support request',
   ticketUrl,
 }: SupportTicketData) {
-  const url = ticketUrl || 'https://cutup.shop/dashboard.html#support';
+  const url = ticketUrl || SITE.supportTicketUrl(ticketNumber);
 
   return (
     <CutupLayout preview={`Ticket #${ticketNumber} resolved`}>

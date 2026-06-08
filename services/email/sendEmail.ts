@@ -31,7 +31,7 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
   }
 
   const entry = getRegistryEntry(template);
-  const rendered = await renderEmailTemplate(template, data);
+  const rendered = await renderEmailTemplate(template, data, { recipient: to });
   const from = resolveSender(senderRole || entry.senderRole);
 
   const providerInput = {

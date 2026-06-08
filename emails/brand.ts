@@ -25,11 +25,11 @@ export const BRAND = {
   shadowButton: '0 4px 14px rgba(99, 91, 255, 0.28)',
   fontFamily:
     '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-  maxWidth: '620px',
-  padX: '32px',
-  padXMobile: '16px',
-  padBody: '40px 32px',
-  padBodyMobile: '24px 16px',
+  maxWidth: '600px',
+  padX: '36px',
+  padXMobile: '20px',
+  padBody: '44px 36px',
+  padBodyMobile: '28px 20px',
   heroTitleSize: '48px',
   heroTitleSizeMobile: '32px',
   bodySize: '16px',
@@ -51,14 +51,25 @@ export const PLAN_COLORS: Record<string, { bg: string; text: string }> = {
   enterprise: { bg: '#ECFEFF', text: '#0E7490' },
 };
 
+const SITE_ORIGIN = (process.env.FRONTEND_URL || 'https://cutup.shop').replace(/\/$/, '');
+
+function goLink(params: Record<string, string>) {
+  const q = new URLSearchParams(params);
+  return `${SITE_ORIGIN}/go.html?${q.toString()}`;
+}
+
 export const SITE = {
   name: 'Cutup',
   tagline: 'AI-Powered Video Workspace',
-  url: (process.env.FRONTEND_URL || 'https://cutup.shop').replace(/\/$/, ''),
+  url: SITE_ORIGIN,
   supportEmail: 'support@cutup.shop',
-  privacyUrl: 'https://cutup.shop/privacy',
-  termsUrl: 'https://cutup.shop/terms',
-  notificationsUrl: 'https://cutup.shop/dashboard.html#notifications',
-  dashboardUrl: 'https://cutup.shop/dashboard.html',
-  logoUrl: 'https://cutup.shop/logo.svg',
+  privacyUrl: `${SITE_ORIGIN}/privacy`,
+  termsUrl: `${SITE_ORIGIN}/terms`,
+  notificationsUrl: goLink({ dest: 'notifications' }),
+  dashboardUrl: goLink({ dest: 'dashboard' }),
+  logoUrl: `${SITE_ORIGIN}/logo.svg`,
+  supportTicketUrl: (ticketNumber: string) =>
+    goLink({ dest: 'support', ticket: String(ticketNumber || '').trim() }),
+  billingUrl: goLink({ dest: 'billing' }),
+  subscriptionUrl: goLink({ dest: 'subscription' }),
 } as const;

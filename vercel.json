@@ -224,6 +224,10 @@
       "dest": "/api/support-attachments.js"
     },
     {
+      "src": "/api/email/unsubscribe",
+      "dest": "/api/email-unsubscribe.js"
+    },
+    {
       "src": "/api/help",
       "dest": "/api/help-center.js"
     },

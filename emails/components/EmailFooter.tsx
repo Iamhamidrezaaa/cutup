@@ -1,5 +1,6 @@
 import { Link, Section, Text } from '@react-email/components';
 import { BRAND, SITE } from '../brand';
+import { useEmailExtras } from '../EmailExtras';
 import { EmailDivider } from './EmailDivider';
 
 const linkStyle = {
@@ -10,8 +11,11 @@ const linkStyle = {
 } as const;
 
 export function EmailFooter() {
+  const { unsubscribeUrl } = useEmailExtras();
+  const unsub = unsubscribeUrl || `${SITE.url}/unsubscribe.html`;
+
   return (
-    <Section className="email-pad-x" style={{ padding: `12px ${BRAND.padX} 40px` }}>
+    <Section className="email-pad-x" style={{ padding: `16px ${BRAND.padX} 44px` }}>
       <EmailDivider />
       <Text
         style={{
@@ -31,6 +35,10 @@ export function EmailFooter() {
         <br />
         <Link href={SITE.url} style={{ color: BRAND.textMuted, textDecoration: 'none' }}>
           cutup.shop
+        </Link>
+        {' · '}
+        <Link href={unsub} style={{ color: BRAND.textMuted, textDecoration: 'underline', fontSize: BRAND.metaSize }}>
+          Unsubscribe
         </Link>
       </Text>
       <Text

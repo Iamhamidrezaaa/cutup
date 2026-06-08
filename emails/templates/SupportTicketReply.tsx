@@ -21,7 +21,7 @@ export function SupportTicketReply({
   replyText = '',
   ticketUrl,
 }: SupportTicketReplyData) {
-  const url = ticketUrl || SITE.dashboardUrl;
+  const url = ticketUrl || SITE.supportTicketUrl(ticketNumber);
 
   return (
     <CutupLayout preview={`Update on Ticket #${ticketNumber}`}>

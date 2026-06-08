@@ -37,7 +37,7 @@ export function SupportTicketCreated({
   ticketUrl,
 }: SupportTicketData) {
   const dateLabel = formatEmailDate(createdAt);
-  const url = ticketUrl || SITE.dashboardUrl;
+  const url = ticketUrl || SITE.supportTicketUrl(ticketNumber);
 
   return (
     <CutupLayout preview={`Ticket #${ticketNumber} received`}>

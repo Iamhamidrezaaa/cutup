@@ -1,7 +1,9 @@
+import { supportTicketDeepLink } from './email-deep-links.js';
+
 const SITE = (process.env.FRONTEND_URL || 'https://cutup.shop').replace(/\/$/, '');
 
 export function supportTicketUrl(ticketNumber) {
-  return `${SITE}/dashboard.html#support/${encodeURIComponent(ticketNumber)}`;
+  return supportTicketDeepLink(ticketNumber);
 }
 
 function adminSupportUrl(ticketNumber) {

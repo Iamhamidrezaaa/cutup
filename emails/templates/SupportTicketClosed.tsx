@@ -25,8 +25,8 @@ export function SupportTicketClosed({
   resolutionSummary,
   ticketUrl,
 }: SupportTicketClosedData) {
-  const rate = ratingUrl || SITE.dashboardUrl;
-  const reopen = ticketUrl || SITE.dashboardUrl;
+  const rate = ratingUrl || SITE.supportTicketUrl(ticketNumber);
+  const reopen = ticketUrl || SITE.supportTicketUrl(ticketNumber);
 
   return (
     <CutupLayout preview={`Ticket #${ticketNumber} resolved`}>

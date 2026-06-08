@@ -120,6 +120,16 @@
           window.location.replace(window.location.origin + '/?resume=1');
           return;
         }
+        var storedPostAuth = null;
+        try {
+          storedPostAuth = sessionStorage.getItem('cutup_post_auth_url');
+          if (storedPostAuth) sessionStorage.removeItem('cutup_post_auth_url');
+        } catch (_e5) { /* ignore */ }
+        if (storedPostAuth) {
+          var joiner = storedPostAuth.indexOf('?') >= 0 ? '&' : '?';
+          window.location.replace(window.location.origin + storedPostAuth + joiner + 'session=' + encodeURIComponent(session));
+          return;
+        }
         window.location.replace(window.location.origin + '/dashboard.html?auth=success&session=' + encodeURIComponent(session));
       } catch (_err) { /* allow fallback in script.js */ }
     })();

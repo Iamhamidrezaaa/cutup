@@ -14,13 +14,15 @@ export function EmailHeadStyles() {
     .email-meta-text { font-size: ${BRAND.metaSize} !important; line-height: 1.5 !important; }
     .email-word-break { word-break: break-word; overflow-wrap: anywhere; }
     .email-detail-row { width: 100% !important; table-layout: fixed !important; }
-    .email-detail-label { font-size: ${BRAND.metaSize}; color: ${BRAND.textMuted}; vertical-align: top; width: 40%; padding-bottom: 4px; }
-    .email-detail-value { font-size: 15px; font-weight: 600; color: ${BRAND.text}; text-align: right; vertical-align: top; word-break: break-word; overflow-wrap: anywhere; }
+    .email-detail-label { font-size: ${BRAND.metaSize}; color: ${BRAND.textMuted}; vertical-align: top; width: 40%; padding-bottom: 6px; }
+    .email-detail-value { font-size: 15px; font-weight: 600; color: ${BRAND.text}; text-align: right; vertical-align: top; word-break: break-word; overflow-wrap: anywhere; padding-bottom: 2px; }
+    .email-card-outer { margin-left: ${BRAND.padX} !important; margin-right: ${BRAND.padX} !important; }
     @media only screen and (max-width: 600px) {
       .email-body-wrap { padding: ${BRAND.padBodyMobile} !important; }
       .email-pad-x { padding-left: ${BRAND.padXMobile} !important; padding-right: ${BRAND.padXMobile} !important; }
       .email-card-outer { margin-left: ${BRAND.padXMobile} !important; margin-right: ${BRAND.padXMobile} !important; }
       .email-card-inner { padding: ${BRAND.cardPadMobile} !important; }
+      .email-hero-section { padding-left: ${BRAND.padXMobile} !important; padding-right: ${BRAND.padXMobile} !important; }
       .email-hero-title { font-size: ${BRAND.heroTitleSizeMobile} !important; line-height: 1.2 !important; }
       .email-hero-section { padding-top: 28px !important; padding-bottom: 24px !important; }
       .email-detail-row tr { display: block !important; width: 100% !important; }

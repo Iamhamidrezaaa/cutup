@@ -21,7 +21,7 @@ export function UsageWarning100({
   planName = 'Starter',
   upgradeUrl,
 }: UsageWarningData) {
-  const upgrade = upgradeUrl || `${SITE.dashboardUrl}#subscription`;
+  const upgrade = upgradeUrl || SITE.subscriptionUrl;
 
   return (
     <CutupLayout preview="Monthly credits exhausted">
