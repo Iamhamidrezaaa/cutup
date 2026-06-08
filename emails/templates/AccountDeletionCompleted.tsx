@@ -26,15 +26,15 @@ export function AccountDeletionCompleted({
         subtitle={`Hi ${firstName}, your Cutup account and associated data have been permanently removed.`}
       />
       <EmailCard>
-        <Text style={{ margin: '0 0 12px', fontSize: '15px', lineHeight: '1.6', color: BRAND.text }}>
+        <Text className="email-card-body-text" style={{ margin: '0 0 10px' }}>
           • Your account is no longer available.
         </Text>
-        <Text style={{ margin: 0, fontSize: '15px', lineHeight: '1.6', color: BRAND.text }}>
+        <Text className="email-card-body-text" style={{ margin: 0 }}>
           • The same email address is locked for <strong>{cooldownDays} days</strong> and cannot be
           used to register a new account during this period.
         </Text>
       </EmailCard>
-      <EmailButton href={`mailto:${SITE.supportEmail}`} variant="secondary">
+      <EmailButton href={SITE.supportHomeUrl} variant="secondary">
         Contact Support
       </EmailButton>
       <EmailText inset muted small>

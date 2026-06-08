@@ -45,7 +45,7 @@ export function PaymentReceipt({
       </EmailCard>
       {invoiceUrl ? <EmailButton href={invoiceUrl}>View Invoice</EmailButton> : null}
       <EmailText inset muted small>
-        Billing: {SITE.supportEmail}
+        Billing questions? {SITE.billingEmail}
       </EmailText>
     </CutupLayout>
   );

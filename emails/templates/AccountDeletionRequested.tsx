@@ -22,7 +22,7 @@ export function AccountDeletionRequested({
   confirmDeletionUrl,
   cooldownDays = 30,
 }: AccountDeletionRequestedData) {
-  const cancel = cancelUrl || SITE.dashboardUrl;
+  const cancel = cancelUrl || SITE.profileUrl;
 
   return (
     <CutupLayout preview="Account deletion scheduled">
@@ -32,16 +32,16 @@ export function AccountDeletionRequested({
         subtitle={`Hi ${firstName}, we received your request. Your account is scheduled for permanent deletion.`}
       />
       <EmailCard>
-        <Text style={{ margin: '0 0 12px', fontSize: '15px', lineHeight: '1.6', color: BRAND.text }}>
+        <Text className="email-card-body-text" style={{ margin: '0 0 14px' }}>
           <strong>Countdown:</strong> {cooldownDays}-day email lockout after deletion is confirmed.
         </Text>
-        <Text style={{ margin: '0 0 12px', fontSize: '15px', lineHeight: '1.6', color: BRAND.text }}>
+        <Text className="email-card-body-text" style={{ margin: '0 0 10px' }}>
           • Your account and data will be permanently removed once confirmed.
         </Text>
-        <Text style={{ margin: '0 0 12px', fontSize: '15px', lineHeight: '1.6', color: BRAND.text }}>
+        <Text className="email-card-body-text" style={{ margin: '0 0 10px' }}>
           • The same email cannot register a new account for <strong>{cooldownDays} days</strong>.
         </Text>
-        <Text style={{ margin: 0, fontSize: '15px', lineHeight: '1.6', color: BRAND.text }}>
+        <Text className="email-card-body-text" style={{ margin: 0 }}>
           • Changed your mind? Cancel below before deletion completes.
         </Text>
       </EmailCard>
@@ -53,7 +53,7 @@ export function AccountDeletionRequested({
           Confirm Deletion
         </EmailButton>
       ) : null}
-      <EmailButton href={`mailto:${SITE.supportEmail}`} variant="secondary">
+      <EmailButton href={SITE.supportHomeUrl} variant="secondary">
         Contact Support
       </EmailButton>
       <EmailText inset muted small style={{ color: BRAND.danger }}>

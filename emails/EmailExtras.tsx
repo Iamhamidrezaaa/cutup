@@ -2,6 +2,8 @@ import * as React from 'react';
 
 export type EmailExtrasValue = {
   unsubscribeUrl?: string;
+  /** Footer contact line — matches template sender when set */
+  contactEmail?: string;
 };
 
 const EmailExtrasContext = React.createContext<EmailExtrasValue>({});

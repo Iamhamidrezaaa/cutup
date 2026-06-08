@@ -20,12 +20,17 @@ export const TEMPLATE_DISPLAY_NAMES = {
   SYSTEM_NOTIFICATION: 'System Notification',
 };
 
+function goLink(params) {
+  const q = new URLSearchParams(params);
+  return `${SITE_URL}/go.html?${q.toString()}`;
+}
+
 const sample = {
   firstName: 'Alex',
   projectName: 'Product Demo Reel',
   exportType: 'MP4',
   exportDate: 'Jun 2, 2026',
-  downloadUrl: `${SITE_URL}/dashboard.html`,
+  downloadUrl: goLink({ dest: 'dashboard' }),
   amount: '€19.00',
   planName: 'Pro',
   paymentDate: 'Jun 2, 2026',
@@ -38,7 +43,8 @@ const sample = {
   createdAt: 'Jun 2, 2026',
   agentName: 'Sara',
   replyText: 'Thanks for reaching out — we fixed the issue on your account.',
-  cancelUrl: `${SITE_URL}/dashboard.html`,
+  ticketUrl: goLink({ dest: 'support', ticket: '1042' }),
+  cancelUrl: goLink({ dest: 'profile' }),
   cooldownDays: 30,
   title: 'New sign-in detected',
   message: 'A new sign-in was detected on your Cutup account.',
@@ -49,7 +55,7 @@ const EMAIL_REGISTRY_META = {
     template: 'WELCOME_EMAIL',
     subject: () => 'Welcome to Cutup',
     preview: () => 'Welcome to Cutup — your AI video workspace',
-    senderRole: 'default',
+    senderRole: 'hello',
     sampleData: { firstName: sample.firstName },
     event: 'user_registered',
   },
@@ -137,6 +143,7 @@ const EMAIL_REGISTRY_META = {
       ticketNumber: sample.ticketNumber,
       subject: sample.subject,
       createdAt: sample.createdAt,
+      ticketUrl: sample.ticketUrl,
     },
     event: 'ticket_created',
   },
@@ -150,6 +157,7 @@ const EMAIL_REGISTRY_META = {
       ticketNumber: sample.ticketNumber,
       agentName: sample.agentName,
       replyText: sample.replyText,
+      ticketUrl: sample.ticketUrl,
     },
     event: 'ticket_replied',
   },
@@ -162,6 +170,7 @@ const EMAIL_REGISTRY_META = {
       firstName: sample.firstName,
       ticketNumber: sample.ticketNumber,
       subject: sample.subject,
+      ticketUrl: sample.ticketUrl,
     },
     event: 'ticket_resolved',
   },
@@ -174,6 +183,7 @@ const EMAIL_REGISTRY_META = {
       firstName: sample.firstName,
       ticketNumber: sample.ticketNumber,
       subject: sample.subject,
+      ticketUrl: sample.ticketUrl,
     },
     event: 'ticket_closed',
   },
@@ -188,7 +198,7 @@ const EMAIL_REGISTRY_META = {
     template: 'SYSTEM_NOTIFICATION',
     subject: (d) => String(d.title || 'Cutup update'),
     preview: (d) => String(d.title || 'Cutup update'),
-    senderRole: 'default',
+    senderRole: 'info',
     sampleData: {
       firstName: sample.firstName,
       title: 'Scheduled maintenance',

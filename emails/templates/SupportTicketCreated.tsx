@@ -47,7 +47,7 @@ export function SupportTicketCreated({
         subtitle={`Hi ${firstName}, our support team has your ticket and will respond shortly.`}
       />
       <EmailCard>
-        <StatusBadge variant="info">#{ticketNumber}</StatusBadge>
+        <StatusBadge variant="info" inline>#{ticketNumber}</StatusBadge>
         <DetailTable>
           <DetailRow label="Subject" value={subject} />
           <DetailRow label="Created" value={dateLabel} />

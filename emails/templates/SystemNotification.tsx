@@ -29,7 +29,7 @@ export function SystemNotification({
       <StatusBadge variant="info">System update</StatusBadge>
       <HeroSection title={title} subtitle={`Hi ${firstName}, here's an important update from Cutup.`} />
       <EmailCard>
-        <Text style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: '15px', lineHeight: '1.65', color: BRAND.text }}>
+        <Text className="email-card-body-text email-word-break" style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
           {message || '—'}
         </Text>
       </EmailCard>

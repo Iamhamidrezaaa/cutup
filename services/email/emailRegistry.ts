@@ -1,12 +1,17 @@
 import { EMAIL_CONFIG } from './config';
 import { EMAIL_EVENTS, EMAIL_TEMPLATES, type EmailRegistryEntry, type EmailTemplateId } from './types';
 
+function goLink(params: Record<string, string>) {
+  const q = new URLSearchParams(params);
+  return `${EMAIL_CONFIG.siteUrl}/go.html?${q.toString()}`;
+}
+
 const sample = {
   firstName: 'Alex',
   projectName: 'Product Demo Reel',
   exportType: 'MP4',
   exportDate: 'Jun 2, 2026',
-  downloadUrl: `${EMAIL_CONFIG.dashboardUrl}`,
+  downloadUrl: goLink({ dest: 'dashboard' }),
   amount: '€19.00',
   planName: 'Pro',
   paymentDate: 'Jun 2, 2026',
@@ -19,7 +24,8 @@ const sample = {
   createdAt: 'Jun 2, 2026',
   agentName: 'Sara',
   replyText: 'Thanks for reaching out — we fixed the issue on your account.',
-  cancelUrl: `${EMAIL_CONFIG.dashboardUrl}`,
+  ticketUrl: goLink({ dest: 'support', ticket: '1042' }),
+  cancelUrl: goLink({ dest: 'profile' }),
   cooldownDays: 30,
   title: 'New sign-in detected',
   message: 'A new sign-in was detected on your Cutup account.',
@@ -31,7 +37,7 @@ export const EMAIL_REGISTRY: Record<EmailTemplateId, EmailRegistryEntry> = {
     template: EMAIL_TEMPLATES.WELCOME_EMAIL,
     subject: () => 'Welcome to Cutup',
     preview: () => 'Welcome to Cutup — your AI video workspace',
-    senderRole: 'default',
+    senderRole: 'hello',
     sampleData: { firstName: sample.firstName },
     event: EMAIL_EVENTS.USER_REGISTERED,
   },
@@ -132,6 +138,7 @@ export const EMAIL_REGISTRY: Record<EmailTemplateId, EmailRegistryEntry> = {
       ticketNumber: sample.ticketNumber,
       subject: sample.subject,
       createdAt: sample.createdAt,
+      ticketUrl: sample.ticketUrl,
     },
     event: EMAIL_EVENTS.TICKET_CREATED,
   },
@@ -145,6 +152,7 @@ export const EMAIL_REGISTRY: Record<EmailTemplateId, EmailRegistryEntry> = {
       ticketNumber: sample.ticketNumber,
       agentName: sample.agentName,
       replyText: sample.replyText,
+      ticketUrl: sample.ticketUrl,
     },
     event: EMAIL_EVENTS.TICKET_REPLIED,
   },
@@ -157,6 +165,7 @@ export const EMAIL_REGISTRY: Record<EmailTemplateId, EmailRegistryEntry> = {
       firstName: sample.firstName,
       ticketNumber: sample.ticketNumber,
       subject: sample.subject,
+      ticketUrl: sample.ticketUrl,
     },
     event: EMAIL_EVENTS.TICKET_RESOLVED,
   },
@@ -169,6 +178,7 @@ export const EMAIL_REGISTRY: Record<EmailTemplateId, EmailRegistryEntry> = {
       firstName: sample.firstName,
       ticketNumber: sample.ticketNumber,
       subject: sample.subject,
+      ticketUrl: sample.ticketUrl,
     },
     event: EMAIL_EVENTS.TICKET_CLOSED,
   },
@@ -187,7 +197,7 @@ export const EMAIL_REGISTRY: Record<EmailTemplateId, EmailRegistryEntry> = {
     template: EMAIL_TEMPLATES.SYSTEM_NOTIFICATION,
     subject: (d) => String(d.title || 'Cutup update'),
     preview: (d) => String(d.title || 'Cutup update'),
-    senderRole: 'default',
+    senderRole: 'info',
     sampleData: {
       firstName: sample.firstName,
       title: 'Scheduled maintenance',

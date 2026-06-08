@@ -44,8 +44,8 @@ export function SupportTicketReply({
           {agentName}
         </Text>
         <Text
-          className="email-body-text email-word-break"
-          style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: BRAND.bodySize, lineHeight: '1.6', color: BRAND.text }}
+          className="email-card-body-text email-word-break"
+          style={{ margin: 0, whiteSpace: 'pre-wrap' }}
         >
           {replyText || '—'}
         </Text>

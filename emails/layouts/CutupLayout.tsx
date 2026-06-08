@@ -61,7 +61,9 @@ export function CutupLayout({ preview, children }: Props) {
               }}
             >
               <EmailHeader />
-              {children}
+              <Section className="email-section-gap" style={{ paddingBottom: '12px' }}>
+                {children}
+              </Section>
             </Section>
             <EmailFooter />
           </Container>

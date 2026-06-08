@@ -14,9 +14,11 @@ export function EmailHeadStyles() {
     .email-meta-text { font-size: ${BRAND.metaSize} !important; line-height: 1.5 !important; }
     .email-word-break { word-break: break-word; overflow-wrap: anywhere; }
     .email-detail-row { width: 100% !important; table-layout: fixed !important; }
-    .email-detail-label { font-size: ${BRAND.metaSize}; color: ${BRAND.textMuted}; vertical-align: top; width: 40%; padding-bottom: 6px; }
-    .email-detail-value { font-size: 15px; font-weight: 600; color: ${BRAND.text}; text-align: right; vertical-align: top; word-break: break-word; overflow-wrap: anywhere; padding-bottom: 2px; }
+    .email-detail-label { font-size: ${BRAND.metaSize}; color: ${BRAND.textMuted}; vertical-align: top; width: 40%; padding: 10px 0 6px; }
+    .email-detail-value { font-size: 15px; font-weight: 600; color: ${BRAND.text}; text-align: right; vertical-align: top; word-break: break-word; overflow-wrap: anywhere; padding: 10px 0 6px; }
     .email-card-outer { margin-left: ${BRAND.padX} !important; margin-right: ${BRAND.padX} !important; }
+    .email-card-body-text { margin: 0; font-size: ${BRAND.bodySize}; line-height: 1.65; color: ${BRAND.text}; }
+    .email-section-gap { padding-bottom: 8px !important; }
     @media only screen and (max-width: 600px) {
       .email-body-wrap { padding: ${BRAND.padBodyMobile} !important; }
       .email-pad-x { padding-left: ${BRAND.padXMobile} !important; padding-right: ${BRAND.padXMobile} !important; }
@@ -34,7 +36,8 @@ export function EmailHeadStyles() {
         padding-bottom: 0 !important;
       }
       .email-detail-value { padding-top: 4px !important; padding-bottom: 12px !important; }
-      .email-detail-wrap { padding: 12px !important; }
+      .email-detail-wrap { padding: 0 !important; margin-top: 12px !important; }
+      .email-detail-label, .email-detail-value { padding: 8px 0 4px !important; }
       .email-footer-links { font-size: 13px !important; }
     }
   `;

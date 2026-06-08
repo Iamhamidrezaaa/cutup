@@ -2,6 +2,7 @@ import { render } from '@react-email/render';
 import * as React from 'react';
 import type { EmailTemplateId, RenderedEmail } from './types';
 import { EMAIL_TEMPLATES } from './types';
+import { resolveContactEmail } from './config';
 import { getRegistryEntry } from './emailRegistry';
 import { EmailExtrasProvider } from '../../emails/EmailExtras';
 import { buildUnsubscribeUrl } from './unsubscribe';
@@ -59,9 +60,10 @@ export async function renderEmailTemplate(
 
   const recipient = String(options.recipient || data.email || '').trim();
   const unsubscribeUrl = recipient ? buildUnsubscribeUrl(recipient) : undefined;
+  const contactEmail = resolveContactEmail(entry.senderRole);
   const element = React.createElement(
     EmailExtrasProvider,
-    { value: { unsubscribeUrl } },
+    { value: { unsubscribeUrl, contactEmail } },
     React.createElement(Component, data),
   );
   const html = await render(element, { pretty: false });

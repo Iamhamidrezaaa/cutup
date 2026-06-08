@@ -51,7 +51,7 @@ export const EMAIL_EVENTS = {
 
 export type EmailEventName = (typeof EMAIL_EVENTS)[keyof typeof EMAIL_EVENTS];
 
-export type EmailSenderRole = 'default' | 'billing' | 'security' | 'support';
+export type EmailSenderRole = 'default' | 'billing' | 'security' | 'support' | 'hello' | 'info';
 
 export type SendEmailInput<T extends EmailTemplateId = EmailTemplateId> = {
   template: T;

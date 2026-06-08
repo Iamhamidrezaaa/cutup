@@ -11,11 +11,12 @@ const linkStyle = {
 } as const;
 
 export function EmailFooter() {
-  const { unsubscribeUrl } = useEmailExtras();
+  const { unsubscribeUrl, contactEmail } = useEmailExtras();
   const unsub = unsubscribeUrl || `${SITE.url}/unsubscribe.html`;
+  const contact = contactEmail || SITE.supportEmail;
 
   return (
-    <Section className="email-pad-x" style={{ padding: `16px ${BRAND.padX} 44px` }}>
+    <Section className="email-pad-x" style={{ padding: `20px ${BRAND.padX} 44px` }}>
       <EmailDivider />
       <Text
         style={{
@@ -27,10 +28,10 @@ export function EmailFooter() {
         }}
       >
         <Link
-          href={`mailto:${SITE.supportEmail}`}
+          href={`mailto:${contact}`}
           style={{ color: BRAND.primary, textDecoration: 'none', fontWeight: 500 }}
         >
-          {SITE.supportEmail}
+          {contact}
         </Link>
         <br />
         <Link href={SITE.url} style={{ color: BRAND.textMuted, textDecoration: 'none' }}>
@@ -59,8 +60,8 @@ export function EmailFooter() {
           Terms of Service
         </Link>
         {' · '}
-        <Link href={SITE.notificationsUrl} style={linkStyle}>
-          Manage Notifications
+        <Link href={SITE.faqUrl} style={linkStyle}>
+          FAQ
         </Link>
       </Text>
       <Text

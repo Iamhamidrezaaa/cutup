@@ -28,7 +28,7 @@ export function SupportTicketResolved({
         subtitle={`Hi ${firstName}, your support request has been marked as resolved.`}
       />
       <EmailCard>
-        <StatusBadge variant="success">Resolved</StatusBadge>
+        <StatusBadge variant="success" inline>Resolved</StatusBadge>
         <DetailTable>
           <DetailRow label="Ticket" value={`#${ticketNumber}`} />
           <DetailRow label="Subject" value={subject} last />

@@ -141,12 +141,25 @@ var EMAIL_CONFIG = {
     default: "Cutup <noreply@cutup.shop>",
     billing: "Cutup Billing <billing@cutup.shop>",
     security: "Cutup Security <security@cutup.shop>",
-    support: "Cutup Support <support@cutup.shop>"
+    support: "Cutup Support <support@cutup.shop>",
+    hello: "Cutup <hello@cutup.shop>",
+    info: "Cutup <info@cutup.shop>"
+  },
+  contactEmails: {
+    default: "noreply@cutup.shop",
+    billing: "billing@cutup.shop",
+    security: "security@cutup.shop",
+    support: "support@cutup.shop",
+    hello: "hello@cutup.shop",
+    info: "info@cutup.shop"
   },
   replyTo: "support@cutup.shop"
 };
 function resolveSender(role = "default") {
   return EMAIL_CONFIG.senders[role] || EMAIL_CONFIG.senders.default;
+}
+function resolveContactEmail(role = "default") {
+  return EMAIL_CONFIG.contactEmails[role] || EMAIL_CONFIG.contactEmails.default;
 }
 function isResendConfigured() {
   const key = process.env.RESEND_API_KEY;
@@ -196,12 +209,16 @@ var EMAIL_EVENTS = {
 };
 
 // services/email/emailRegistry.ts
+function goLink(params) {
+  const q3 = new URLSearchParams(params);
+  return `${EMAIL_CONFIG.siteUrl}/go.html?${q3.toString()}`;
+}
 var sample = {
   firstName: "Alex",
   projectName: "Product Demo Reel",
   exportType: "MP4",
   exportDate: "Jun 2, 2026",
-  downloadUrl: `${EMAIL_CONFIG.dashboardUrl}`,
+  downloadUrl: goLink({ dest: "dashboard" }),
   amount: "\u20AC19.00",
   planName: "Pro",
   paymentDate: "Jun 2, 2026",
@@ -214,7 +231,8 @@ var sample = {
   createdAt: "Jun 2, 2026",
   agentName: "Sara",
   replyText: "Thanks for reaching out \u2014 we fixed the issue on your account.",
-  cancelUrl: `${EMAIL_CONFIG.dashboardUrl}`,
+  ticketUrl: goLink({ dest: "support", ticket: "1042" }),
+  cancelUrl: goLink({ dest: "profile" }),
   cooldownDays: 30,
   title: "New sign-in detected",
   message: "A new sign-in was detected on your Cutup account."
@@ -224,7 +242,7 @@ var EMAIL_REGISTRY = {
     template: EMAIL_TEMPLATES.WELCOME_EMAIL,
     subject: () => "Welcome to Cutup",
     preview: () => "Welcome to Cutup \u2014 your AI video workspace",
-    senderRole: "default",
+    senderRole: "hello",
     sampleData: { firstName: sample.firstName },
     event: EMAIL_EVENTS.USER_REGISTERED
   },
@@ -324,7 +342,8 @@ var EMAIL_REGISTRY = {
       firstName: sample.firstName,
       ticketNumber: sample.ticketNumber,
       subject: sample.subject,
-      createdAt: sample.createdAt
+      createdAt: sample.createdAt,
+      ticketUrl: sample.ticketUrl
     },
     event: EMAIL_EVENTS.TICKET_CREATED
   },
@@ -337,7 +356,8 @@ var EMAIL_REGISTRY = {
       firstName: sample.firstName,
       ticketNumber: sample.ticketNumber,
       agentName: sample.agentName,
-      replyText: sample.replyText
+      replyText: sample.replyText,
+      ticketUrl: sample.ticketUrl
     },
     event: EMAIL_EVENTS.TICKET_REPLIED
   },
@@ -349,7 +369,8 @@ var EMAIL_REGISTRY = {
     sampleData: {
       firstName: sample.firstName,
       ticketNumber: sample.ticketNumber,
-      subject: sample.subject
+      subject: sample.subject,
+      ticketUrl: sample.ticketUrl
     },
     event: EMAIL_EVENTS.TICKET_RESOLVED
   },
@@ -361,7 +382,8 @@ var EMAIL_REGISTRY = {
     sampleData: {
       firstName: sample.firstName,
       ticketNumber: sample.ticketNumber,
-      subject: sample.subject
+      subject: sample.subject,
+      ticketUrl: sample.ticketUrl
     },
     event: EMAIL_EVENTS.TICKET_CLOSED
   },
@@ -380,7 +402,7 @@ var EMAIL_REGISTRY = {
     template: EMAIL_TEMPLATES.SYSTEM_NOTIFICATION,
     subject: (d) => String(d.title || "Cutup update"),
     preview: (d) => String(d.title || "Cutup update"),
-    senderRole: "default",
+    senderRole: "info",
     sampleData: {
       firstName: sample.firstName,
       title: "Scheduled maintenance",
@@ -31498,21 +31520,21 @@ var BRAND = {
   shadowButton: "0 4px 14px rgba(99, 91, 255, 0.28)",
   fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
   maxWidth: "600px",
-  padX: "36px",
+  padX: "32px",
   padXMobile: "20px",
-  padBody: "44px 36px",
-  padBodyMobile: "28px 20px",
-  heroTitleSize: "48px",
-  heroTitleSizeMobile: "32px",
+  padBody: "40px 24px",
+  padBodyMobile: "24px 16px",
+  heroTitleSize: "32px",
+  heroTitleSizeMobile: "26px",
   bodySize: "16px",
   metaSize: "14px",
   buttonMaxWidth: "320px",
-  cardPad: "24px",
-  cardPadMobile: "18px",
-  cardMarginBottom: "24px",
-  heroPadTop: "40px",
-  heroPadBottom: "32px",
-  detailWrapPad: "16px"
+  cardPad: "28px",
+  cardPadMobile: "20px",
+  cardMarginBottom: "20px",
+  heroPadTop: "24px",
+  heroPadBottom: "20px",
+  detailWrapPad: "0"
 };
 var PLAN_COLORS = {
   starter: { bg: "#F1F5F9", text: "#475569" },
@@ -31522,7 +31544,7 @@ var PLAN_COLORS = {
   enterprise: { bg: "#ECFEFF", text: "#0E7490" }
 };
 var SITE_ORIGIN = (process.env.FRONTEND_URL || "https://cutup.shop").replace(/\/$/, "");
-function goLink(params) {
+function goLink2(params) {
   const q3 = new URLSearchParams(params);
   return `${SITE_ORIGIN}/go.html?${q3.toString()}`;
 }
@@ -31531,14 +31553,21 @@ var SITE = {
   tagline: "AI-Powered Video Workspace",
   url: SITE_ORIGIN,
   supportEmail: "support@cutup.shop",
-  privacyUrl: `${SITE_ORIGIN}/privacy`,
-  termsUrl: `${SITE_ORIGIN}/terms`,
-  notificationsUrl: goLink({ dest: "notifications" }),
-  dashboardUrl: goLink({ dest: "dashboard" }),
+  billingEmail: "billing@cutup.shop",
+  noreplyEmail: "noreply@cutup.shop",
+  securityEmail: "security@cutup.shop",
+  helloEmail: "hello@cutup.shop",
+  infoEmail: "info@cutup.shop",
+  privacyUrl: `${SITE_ORIGIN}/privacy.html`,
+  termsUrl: `${SITE_ORIGIN}/terms.html`,
+  faqUrl: `${SITE_ORIGIN}/faq.html`,
+  dashboardUrl: goLink2({ dest: "dashboard" }),
+  profileUrl: goLink2({ dest: "profile" }),
+  supportHomeUrl: goLink2({ dest: "support" }),
   logoUrl: `${SITE_ORIGIN}/logo.svg`,
-  supportTicketUrl: (ticketNumber) => goLink({ dest: "support", ticket: String(ticketNumber || "").trim() }),
-  billingUrl: goLink({ dest: "billing" }),
-  subscriptionUrl: goLink({ dest: "subscription" })
+  supportTicketUrl: (ticketNumber) => goLink2({ dest: "support", ticket: String(ticketNumber || "").trim() }),
+  billingUrl: goLink2({ dest: "billing" }),
+  subscriptionUrl: goLink2({ dest: "subscription" })
 };
 
 // emails/components/EmailDivider.tsx
@@ -31565,9 +31594,10 @@ var linkStyle = {
   lineHeight: "1.5"
 };
 function EmailFooter() {
-  const { unsubscribeUrl } = useEmailExtras();
+  const { unsubscribeUrl, contactEmail } = useEmailExtras();
   const unsub = unsubscribeUrl || `${SITE.url}/unsubscribe.html`;
-  return /* @__PURE__ */ jsxs3(Section, { className: "email-pad-x", style: { padding: `16px ${BRAND.padX} 44px` }, children: [
+  const contact = contactEmail || SITE.supportEmail;
+  return /* @__PURE__ */ jsxs3(Section, { className: "email-pad-x", style: { padding: `20px ${BRAND.padX} 44px` }, children: [
     /* @__PURE__ */ jsx15(EmailDivider, {}),
     /* @__PURE__ */ jsxs3(
       Text3,
@@ -31583,9 +31613,9 @@ function EmailFooter() {
           /* @__PURE__ */ jsx15(
             Link,
             {
-              href: `mailto:${SITE.supportEmail}`,
+              href: `mailto:${contact}`,
               style: { color: BRAND.primary, textDecoration: "none", fontWeight: 500 },
-              children: SITE.supportEmail
+              children: contact
             }
           ),
           /* @__PURE__ */ jsx15("br", {}),
@@ -31611,7 +31641,7 @@ function EmailFooter() {
           " \xB7 ",
           /* @__PURE__ */ jsx15(Link, { href: SITE.termsUrl, style: linkStyle, children: "Terms of Service" }),
           " \xB7 ",
-          /* @__PURE__ */ jsx15(Link, { href: SITE.notificationsUrl, style: linkStyle, children: "Manage Notifications" })
+          /* @__PURE__ */ jsx15(Link, { href: SITE.faqUrl, style: linkStyle, children: "FAQ" })
         ]
       }
     ),
@@ -31645,9 +31675,11 @@ function EmailHeadStyles() {
     .email-meta-text { font-size: ${BRAND.metaSize} !important; line-height: 1.5 !important; }
     .email-word-break { word-break: break-word; overflow-wrap: anywhere; }
     .email-detail-row { width: 100% !important; table-layout: fixed !important; }
-    .email-detail-label { font-size: ${BRAND.metaSize}; color: ${BRAND.textMuted}; vertical-align: top; width: 40%; padding-bottom: 6px; }
-    .email-detail-value { font-size: 15px; font-weight: 600; color: ${BRAND.text}; text-align: right; vertical-align: top; word-break: break-word; overflow-wrap: anywhere; padding-bottom: 2px; }
+    .email-detail-label { font-size: ${BRAND.metaSize}; color: ${BRAND.textMuted}; vertical-align: top; width: 40%; padding: 10px 0 6px; }
+    .email-detail-value { font-size: 15px; font-weight: 600; color: ${BRAND.text}; text-align: right; vertical-align: top; word-break: break-word; overflow-wrap: anywhere; padding: 10px 0 6px; }
     .email-card-outer { margin-left: ${BRAND.padX} !important; margin-right: ${BRAND.padX} !important; }
+    .email-card-body-text { margin: 0; font-size: ${BRAND.bodySize}; line-height: 1.65; color: ${BRAND.text}; }
+    .email-section-gap { padding-bottom: 8px !important; }
     @media only screen and (max-width: 600px) {
       .email-body-wrap { padding: ${BRAND.padBodyMobile} !important; }
       .email-pad-x { padding-left: ${BRAND.padXMobile} !important; padding-right: ${BRAND.padXMobile} !important; }
@@ -31665,7 +31697,8 @@ function EmailHeadStyles() {
         padding-bottom: 0 !important;
       }
       .email-detail-value { padding-top: 4px !important; padding-bottom: 12px !important; }
-      .email-detail-wrap { padding: 12px !important; }
+      .email-detail-wrap { padding: 0 !important; margin-top: 12px !important; }
+      .email-detail-label, .email-detail-value { padding: 8px 0 4px !important; }
       .email-footer-links { font-size: 13px !important; }
     }
   `;
@@ -31775,7 +31808,7 @@ function CutupLayout({ preview, children }) {
                   },
                   children: [
                     /* @__PURE__ */ jsx18(EmailHeader, {}),
-                    children
+                    /* @__PURE__ */ jsx18(Section, { className: "email-section-gap", style: { paddingBottom: "12px" }, children })
                   ]
                 }
               ),
@@ -31834,7 +31867,7 @@ function DetailTable({ children }) {
 import { jsx as jsx21 } from "react/jsx-runtime";
 function EmailButton({ href, children, variant = "primary" }) {
   const isPrimary = variant === "primary";
-  return /* @__PURE__ */ jsx21(Section, { className: "email-pad-x", style: { padding: `0 ${BRAND.padX} 20px`, textAlign: "center" }, children: /* @__PURE__ */ jsx21(
+  return /* @__PURE__ */ jsx21(Section, { className: "email-pad-x", style: { padding: `4px ${BRAND.padX} 24px`, textAlign: "center" }, children: /* @__PURE__ */ jsx21(
     "table",
     {
       cellPadding: 0,
@@ -31974,14 +32007,14 @@ function HeroSection({ title, subtitle, children }) {
           Heading,
           {
             as: "h1",
-            className: "email-hero-title",
+            className: "email-hero-title email-word-break",
             style: {
-              margin: "0 0 12px",
+              margin: "0 0 14px",
               fontSize: BRAND.heroTitleSize,
-              lineHeight: "1.15",
+              lineHeight: "1.2",
               fontWeight: 700,
               color: BRAND.text,
-              letterSpacing: "-0.035em"
+              letterSpacing: "-0.02em"
             },
             children: title
           }
@@ -32037,19 +32070,19 @@ var DEFAULT_ACTIONS = [
     icon: "\u{1F399}",
     title: "Create Transcript",
     description: "AI transcripts instantly",
-    href: `${SITE.dashboardUrl}?tool=transcript`
+    href: SITE.dashboardUrl
   },
   {
     icon: "\u{1F30D}",
     title: "Translate Video",
     description: "Multi-language translation",
-    href: `${SITE.dashboardUrl}?tool=translate`
+    href: SITE.dashboardUrl
   },
   {
     icon: "\u{1F3AC}",
     title: "Export MP4",
     description: "Shareable video exports",
-    href: `${SITE.dashboardUrl}?tool=export`
+    href: SITE.dashboardUrl
   }
 ];
 function QuickActions({ dashboardUrl }) {
@@ -32143,14 +32176,14 @@ var VARIANT_STYLES = {
   info: { bg: BRAND.infoBg, text: "#1D4ED8" },
   neutral: { bg: BRAND.surface, text: BRAND.textMuted }
 };
-function StatusBadge({ children, variant = "neutral" }) {
+function StatusBadge({ children, variant = "neutral", inline = false }) {
   const colors = VARIANT_STYLES[variant];
-  return /* @__PURE__ */ jsx29(Section, { className: "email-pad-x", style: { padding: `8px ${BRAND.padX} 0` }, children: /* @__PURE__ */ jsx29(
+  const badge = /* @__PURE__ */ jsx29(
     Text3,
     {
       style: {
         display: "inline-block",
-        margin: "0 0 8px",
+        margin: inline ? "0 0 14px" : "0 0 10px",
         padding: "6px 12px",
         borderRadius: "999px",
         fontSize: "12px",
@@ -32163,7 +32196,9 @@ function StatusBadge({ children, variant = "neutral" }) {
       },
       children
     }
-  ) });
+  );
+  if (inline) return badge;
+  return /* @__PURE__ */ jsx29(Section, { className: "email-pad-x", style: { padding: `12px ${BRAND.padX} 0` }, children: badge });
 }
 
 // emails/components/SuccessIndicator.tsx
@@ -32359,8 +32394,8 @@ function PaymentReceipt({
     ] }),
     invoiceUrl ? /* @__PURE__ */ jsx34(EmailButton, { href: invoiceUrl, children: "View Invoice" }) : null,
     /* @__PURE__ */ jsxs14(EmailText, { inset: true, muted: true, small: true, children: [
-      "Billing: ",
-      SITE.supportEmail
+      "Billing questions? ",
+      SITE.billingEmail
     ] })
   ] });
 }
@@ -32472,7 +32507,7 @@ function AccountDeletionRequested({
   confirmDeletionUrl,
   cooldownDays = 30
 }) {
-  const cancel = cancelUrl || SITE.dashboardUrl;
+  const cancel = cancelUrl || SITE.profileUrl;
   return /* @__PURE__ */ jsxs18(CutupLayout, { preview: "Account deletion scheduled", children: [
     /* @__PURE__ */ jsx38(StatusBadge, { variant: "danger", children: "Deletion scheduled" }),
     /* @__PURE__ */ jsx38(
@@ -32483,14 +32518,14 @@ function AccountDeletionRequested({
       }
     ),
     /* @__PURE__ */ jsxs18(EmailCard, { children: [
-      /* @__PURE__ */ jsxs18(Text3, { style: { margin: "0 0 12px", fontSize: "15px", lineHeight: "1.6", color: BRAND.text }, children: [
+      /* @__PURE__ */ jsxs18(Text3, { className: "email-card-body-text", style: { margin: "0 0 14px" }, children: [
         /* @__PURE__ */ jsx38("strong", { children: "Countdown:" }),
         " ",
         cooldownDays,
         "-day email lockout after deletion is confirmed."
       ] }),
-      /* @__PURE__ */ jsx38(Text3, { style: { margin: "0 0 12px", fontSize: "15px", lineHeight: "1.6", color: BRAND.text }, children: "\u2022 Your account and data will be permanently removed once confirmed." }),
-      /* @__PURE__ */ jsxs18(Text3, { style: { margin: "0 0 12px", fontSize: "15px", lineHeight: "1.6", color: BRAND.text }, children: [
+      /* @__PURE__ */ jsx38(Text3, { className: "email-card-body-text", style: { margin: "0 0 10px" }, children: "\u2022 Your account and data will be permanently removed once confirmed." }),
+      /* @__PURE__ */ jsxs18(Text3, { className: "email-card-body-text", style: { margin: "0 0 10px" }, children: [
         "\u2022 The same email cannot register a new account for ",
         /* @__PURE__ */ jsxs18("strong", { children: [
           cooldownDays,
@@ -32498,11 +32533,11 @@ function AccountDeletionRequested({
         ] }),
         "."
       ] }),
-      /* @__PURE__ */ jsx38(Text3, { style: { margin: 0, fontSize: "15px", lineHeight: "1.6", color: BRAND.text }, children: "\u2022 Changed your mind? Cancel below before deletion completes." })
+      /* @__PURE__ */ jsx38(Text3, { className: "email-card-body-text", style: { margin: 0 }, children: "\u2022 Changed your mind? Cancel below before deletion completes." })
     ] }),
     /* @__PURE__ */ jsx38(EmailButton, { href: cancel, fullWidth: true, children: "Cancel Deletion" }),
     confirmDeletionUrl ? /* @__PURE__ */ jsx38(EmailButton, { href: confirmDeletionUrl, variant: "secondary", children: "Confirm Deletion" }) : null,
-    /* @__PURE__ */ jsx38(EmailButton, { href: `mailto:${SITE.supportEmail}`, variant: "secondary", children: "Contact Support" }),
+    /* @__PURE__ */ jsx38(EmailButton, { href: SITE.supportHomeUrl, variant: "secondary", children: "Contact Support" }),
     /* @__PURE__ */ jsxs18(EmailText, { inset: true, muted: true, small: true, style: { color: BRAND.danger }, children: [
       "Didn't request this? Email ",
       SITE.supportEmail,
@@ -32527,8 +32562,8 @@ function AccountDeletionCompleted({
       }
     ),
     /* @__PURE__ */ jsxs19(EmailCard, { children: [
-      /* @__PURE__ */ jsx39(Text3, { style: { margin: "0 0 12px", fontSize: "15px", lineHeight: "1.6", color: BRAND.text }, children: "\u2022 Your account is no longer available." }),
-      /* @__PURE__ */ jsxs19(Text3, { style: { margin: 0, fontSize: "15px", lineHeight: "1.6", color: BRAND.text }, children: [
+      /* @__PURE__ */ jsx39(Text3, { className: "email-card-body-text", style: { margin: "0 0 10px" }, children: "\u2022 Your account is no longer available." }),
+      /* @__PURE__ */ jsxs19(Text3, { className: "email-card-body-text", style: { margin: 0 }, children: [
         "\u2022 The same email address is locked for ",
         /* @__PURE__ */ jsxs19("strong", { children: [
           cooldownDays,
@@ -32537,7 +32572,7 @@ function AccountDeletionCompleted({
         " and cannot be used to register a new account during this period."
       ] })
     ] }),
-    /* @__PURE__ */ jsx39(EmailButton, { href: `mailto:${SITE.supportEmail}`, variant: "secondary", children: "Contact Support" }),
+    /* @__PURE__ */ jsx39(EmailButton, { href: SITE.supportHomeUrl, variant: "secondary", children: "Contact Support" }),
     /* @__PURE__ */ jsxs19(EmailText, { inset: true, muted: true, small: true, children: [
       "If you believe this was a mistake, contact ",
       SITE.supportEmail,
@@ -32577,7 +32612,7 @@ function SupportTicketCreated({
       }
     ),
     /* @__PURE__ */ jsxs20(EmailCard, { children: [
-      /* @__PURE__ */ jsxs20(StatusBadge, { variant: "info", children: [
+      /* @__PURE__ */ jsxs20(StatusBadge, { variant: "info", inline: true, children: [
         "#",
         ticketNumber
       ] }),
@@ -32629,8 +32664,8 @@ function SupportTicketReply({
       /* @__PURE__ */ jsx41(
         Text3,
         {
-          className: "email-body-text email-word-break",
-          style: { margin: 0, whiteSpace: "pre-wrap", fontSize: BRAND.bodySize, lineHeight: "1.6", color: BRAND.text },
+          className: "email-card-body-text email-word-break",
+          style: { margin: 0, whiteSpace: "pre-wrap" },
           children: replyText || "\u2014"
         }
       )
@@ -32661,7 +32696,7 @@ function SupportTicketClosed({
       }
     ),
     /* @__PURE__ */ jsxs22(EmailCard, { children: [
-      /* @__PURE__ */ jsx42(StatusBadge, { variant: "success", children: "Resolution summary" }),
+      /* @__PURE__ */ jsx42(StatusBadge, { variant: "success", inline: true, children: "Resolution summary" }),
       /* @__PURE__ */ jsxs22(DetailTable, { children: [
         /* @__PURE__ */ jsx42(DetailRow, { label: "Ticket", value: `#${ticketNumber}` }),
         /* @__PURE__ */ jsx42(DetailRow, { label: "Subject", value: subject }),
@@ -32700,7 +32735,7 @@ function SupportTicketResolved({
       }
     ),
     /* @__PURE__ */ jsxs23(EmailCard, { children: [
-      /* @__PURE__ */ jsx43(StatusBadge, { variant: "success", children: "Resolved" }),
+      /* @__PURE__ */ jsx43(StatusBadge, { variant: "success", inline: true, children: "Resolved" }),
       /* @__PURE__ */ jsxs23(DetailTable, { children: [
         /* @__PURE__ */ jsx43(DetailRow, { label: "Ticket", value: `#${ticketNumber}` }),
         /* @__PURE__ */ jsx43(DetailRow, { label: "Subject", value: subject, last: true })
@@ -32720,11 +32755,12 @@ function SecurityNotification({
   actionUrl,
   actionLabel = "Review Account"
 }) {
+  const action = actionUrl || SITE.profileUrl;
   return /* @__PURE__ */ jsxs24(CutupLayout, { preview: title, children: [
     /* @__PURE__ */ jsx44(StatusBadge, { variant: "danger", children: "Security alert" }),
     /* @__PURE__ */ jsx44(HeroSection, { title, subtitle: `Hi ${firstName}, we detected activity on your account that needs your attention.` }),
-    /* @__PURE__ */ jsx44(EmailCard, { children: /* @__PURE__ */ jsx44(Text3, { style: { margin: 0, fontSize: "15px", lineHeight: "1.65", color: BRAND.text }, children: message }) }),
-    actionUrl ? /* @__PURE__ */ jsx44(EmailButton, { href: actionUrl, fullWidth: true, children: actionLabel }) : null,
+    /* @__PURE__ */ jsx44(EmailCard, { children: /* @__PURE__ */ jsx44(Text3, { className: "email-card-body-text email-word-break", style: { margin: 0 }, children: message }) }),
+    /* @__PURE__ */ jsx44(EmailButton, { href: action, fullWidth: true, children: actionLabel }),
     /* @__PURE__ */ jsxs24(EmailText, { inset: true, muted: true, small: true, style: { color: BRAND.danger }, children: [
       "If this wasn't you, contact ",
       SITE.supportEmail,
@@ -32745,7 +32781,7 @@ function SystemNotification({
   return /* @__PURE__ */ jsxs25(CutupLayout, { preview: title, children: [
     /* @__PURE__ */ jsx45(StatusBadge, { variant: "info", children: "System update" }),
     /* @__PURE__ */ jsx45(HeroSection, { title, subtitle: `Hi ${firstName}, here's an important update from Cutup.` }),
-    /* @__PURE__ */ jsx45(EmailCard, { children: /* @__PURE__ */ jsx45(Text3, { style: { margin: 0, whiteSpace: "pre-wrap", fontSize: "15px", lineHeight: "1.65", color: BRAND.text }, children: message || "\u2014" }) }),
+    /* @__PURE__ */ jsx45(EmailCard, { children: /* @__PURE__ */ jsx45(Text3, { className: "email-card-body-text email-word-break", style: { margin: 0, whiteSpace: "pre-wrap" }, children: message || "\u2014" }) }),
     /* @__PURE__ */ jsx45(EmailButton, { href: ctaUrl || SITE.dashboardUrl, fullWidth: true, children: ctaLabel })
   ] });
 }
@@ -32776,9 +32812,10 @@ async function renderEmailTemplate(template, data = {}, options = {}) {
   if (!Component) throw new Error(`No React component for template: ${template}`);
   const recipient = String(options.recipient || data.email || "").trim();
   const unsubscribeUrl = recipient ? buildUnsubscribeUrl(recipient) : void 0;
+  const contactEmail = resolveContactEmail(entry.senderRole);
   const element = React13.createElement(
     EmailExtrasProvider,
-    { value: { unsubscribeUrl } },
+    { value: { unsubscribeUrl, contactEmail } },
     React13.createElement(Component, data)
   );
   const html = await render2(element, { pretty: false });

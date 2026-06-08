@@ -15,7 +15,7 @@ type Props = {
 export function EmailButton({ href, children, variant = 'primary' }: Props) {
   const isPrimary = variant === 'primary';
   return (
-    <Section className="email-pad-x" style={{ padding: `0 ${BRAND.padX} 20px`, textAlign: 'center' }}>
+    <Section className="email-pad-x" style={{ padding: `4px ${BRAND.padX} 24px`, textAlign: 'center' }}>
       <table
         cellPadding={0}
         cellSpacing={0}

@@ -16,14 +16,14 @@ export function HeroSection({ title, subtitle, children }: Props) {
     >
       <Heading
         as="h1"
-        className="email-hero-title"
+        className="email-hero-title email-word-break"
         style={{
-          margin: '0 0 12px',
+          margin: '0 0 14px',
           fontSize: BRAND.heroTitleSize,
-          lineHeight: '1.15',
+          lineHeight: '1.2',
           fontWeight: 700,
           color: BRAND.text,
-          letterSpacing: '-0.035em',
+          letterSpacing: '-0.02em',
         }}
       >
         {title}

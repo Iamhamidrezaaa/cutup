@@ -13,19 +13,19 @@ const DEFAULT_ACTIONS: Action[] = [
     icon: '🎙',
     title: 'Create Transcript',
     description: 'AI transcripts instantly',
-    href: `${SITE.dashboardUrl}?tool=transcript`,
+    href: SITE.dashboardUrl,
   },
   {
     icon: '🌍',
     title: 'Translate Video',
     description: 'Multi-language translation',
-    href: `${SITE.dashboardUrl}?tool=translate`,
+    href: SITE.dashboardUrl,
   },
   {
     icon: '🎬',
     title: 'Export MP4',
     description: 'Shareable video exports',
-    href: `${SITE.dashboardUrl}?tool=export`,
+    href: SITE.dashboardUrl,
   },
 ];
 

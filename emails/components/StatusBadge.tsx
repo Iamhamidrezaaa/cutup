@@ -7,6 +7,8 @@ type Variant = 'success' | 'warning' | 'danger' | 'info' | 'neutral';
 type Props = {
   children: React.ReactNode;
   variant?: Variant;
+  /** Inside EmailCard — no extra horizontal section padding */
+  inline?: boolean;
 };
 
 const VARIANT_STYLES: Record<Variant, { bg: string; text: string }> = {
@@ -17,27 +19,31 @@ const VARIANT_STYLES: Record<Variant, { bg: string; text: string }> = {
   neutral: { bg: BRAND.surface, text: BRAND.textMuted },
 };
 
-export function StatusBadge({ children, variant = 'neutral' }: Props) {
+export function StatusBadge({ children, variant = 'neutral', inline = false }: Props) {
   const colors = VARIANT_STYLES[variant];
+  const badge = (
+    <Text
+      style={{
+        display: 'inline-block',
+        margin: inline ? '0 0 14px' : '0 0 10px',
+        padding: '6px 12px',
+        borderRadius: '999px',
+        fontSize: '12px',
+        fontWeight: 600,
+        letterSpacing: '0.04em',
+        textTransform: 'uppercase',
+        backgroundColor: colors.bg,
+        color: colors.text,
+        lineHeight: '1',
+      }}
+    >
+      {children}
+    </Text>
+  );
+  if (inline) return badge;
   return (
-    <Section className="email-pad-x" style={{ padding: `8px ${BRAND.padX} 0` }}>
-      <Text
-        style={{
-          display: 'inline-block',
-          margin: '0 0 8px',
-          padding: '6px 12px',
-          borderRadius: '999px',
-          fontSize: '12px',
-          fontWeight: 600,
-          letterSpacing: '0.04em',
-          textTransform: 'uppercase',
-          backgroundColor: colors.bg,
-          color: colors.text,
-          lineHeight: '1',
-        }}
-      >
-        {children}
-      </Text>
+    <Section className="email-pad-x" style={{ padding: `12px ${BRAND.padX} 0` }}>
+      {badge}
     </Section>
   );
 }

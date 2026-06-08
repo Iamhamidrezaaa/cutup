@@ -24,18 +24,20 @@ export function SecurityNotification({
   actionUrl,
   actionLabel = 'Review Account',
 }: SecurityNotificationData) {
+  const action = actionUrl || SITE.profileUrl;
+
   return (
     <CutupLayout preview={title}>
       <StatusBadge variant="danger">Security alert</StatusBadge>
       <HeroSection title={title} subtitle={`Hi ${firstName}, we detected activity on your account that needs your attention.`} />
       <EmailCard>
-        <Text style={{ margin: 0, fontSize: '15px', lineHeight: '1.65', color: BRAND.text }}>{message}</Text>
+        <Text className="email-card-body-text email-word-break" style={{ margin: 0 }}>
+          {message}
+        </Text>
       </EmailCard>
-      {actionUrl ? (
-        <EmailButton href={actionUrl} fullWidth>
-          {actionLabel}
-        </EmailButton>
-      ) : null}
+      <EmailButton href={action} fullWidth>
+        {actionLabel}
+      </EmailButton>
       <EmailText inset muted small style={{ color: BRAND.danger }}>
         If this wasn&apos;t you, contact {SITE.supportEmail} immediately.
       </EmailText>

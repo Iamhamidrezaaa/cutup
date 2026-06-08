@@ -39,6 +39,7 @@
       else if (dest === 'notifications') targetHash = 'notifications';
       else if (dest === 'billing' || dest === 'financial') targetHash = 'billing';
       else if (dest === 'subscription') targetHash = 'subscription';
+      else if (dest === 'profile') targetHash = 'profile';
       else if (hash) targetHash = hash.replace(/^#/, '');
       else if (dest !== 'dashboard') targetHash = dest;
 

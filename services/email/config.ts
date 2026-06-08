@@ -11,12 +11,26 @@ export const EMAIL_CONFIG = {
     billing: 'Cutup Billing <billing@cutup.shop>',
     security: 'Cutup Security <security@cutup.shop>',
     support: 'Cutup Support <support@cutup.shop>',
+    hello: 'Cutup <hello@cutup.shop>',
+    info: 'Cutup <info@cutup.shop>',
+  } satisfies Record<EmailSenderRole, string>,
+  contactEmails: {
+    default: 'noreply@cutup.shop',
+    billing: 'billing@cutup.shop',
+    security: 'security@cutup.shop',
+    support: 'support@cutup.shop',
+    hello: 'hello@cutup.shop',
+    info: 'info@cutup.shop',
   } satisfies Record<EmailSenderRole, string>,
   replyTo: 'support@cutup.shop',
 } as const;
 
 export function resolveSender(role: EmailSenderRole = 'default'): string {
   return EMAIL_CONFIG.senders[role] || EMAIL_CONFIG.senders.default;
+}
+
+export function resolveContactEmail(role: EmailSenderRole = 'default'): string {
+  return EMAIL_CONFIG.contactEmails[role] || EMAIL_CONFIG.contactEmails.default;
 }
 
 export function isResendConfigured(): boolean {
