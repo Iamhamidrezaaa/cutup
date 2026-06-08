@@ -169,33 +169,11 @@
       preview: res.data.preview,
       html: res.data.html,
       text: res.data.text,
-      _debug: res.data._debug,
     };
     if (meta) {
-      var dbg = res.data._debug || state.preview?._debug;
-      var debugHtml = '';
-      if (dbg) {
-        debugHtml =
-          '<div class="admin-email-debug" style="margin-top:12px;padding:12px;border:1px dashed #f59e0b;border-radius:8px;background:#fffbeb;font-size:12px;line-height:1.5;">' +
-            '<p style="margin:0 0 6px;font-weight:700;color:#b45309;">Preview pipeline debug</p>' +
-            '<p style="margin:0;"><strong>Template Version:</strong> ' + esc(dbg.templateVersion) + '</p>' +
-            '<p style="margin:0;"><strong>Rendered At:</strong> ' + esc(dbg.renderedAt) + '</p>' +
-            '<p style="margin:0;"><strong>Source:</strong> ' + esc(dbg.source) + '</p>' +
-            '<p style="margin:0;"><strong>Renderer:</strong> ' + esc(dbg.renderer) + '</p>' +
-            '<p style="margin:0;"><strong>Bundle mtime:</strong> ' + esc(dbg.bundle?.bundleMtime) + ' · size ' + esc(String(dbg.bundle?.bundleSize || '')) + '</p>' +
-            '<p style="margin:0;"><strong>Build stamp:</strong> ' + esc(dbg.buildStamp?.builtAt || 'missing') + '</p>' +
-            '<p style="margin:0;"><strong>Hero size (bundle/html):</strong> ' + esc(dbg.bundle?.heroTitleSizeInBundle) + ' / ' + esc(dbg.rendered?.heroCssSizeInHtml) + '</p>' +
-            '<p style="margin:0;"><strong>FAQ (bundle/html):</strong> ' + esc(String(dbg.bundle?.hasFaqInBundle)) + ' / ' + esc(String(dbg.rendered?.hasFaqInHtml)) + '</p>' +
-            '<p style="margin:0;"><strong>TD padding (40px):</strong> ' + esc(String(dbg.rendered?.tdInlinePadding40px)) + ' · EmailBlock: ' + esc(String(dbg.rendered?.usesEmailBlockTdPadding)) + '</p>' +
-            (dbg.cache?.suspectedStaleModuleCache
-              ? '<p style="margin:6px 0 0;color:#dc2626;font-weight:600;">⚠ Stale Node module cache — restart server after build:emails</p>'
-              : '') +
-          '</div>';
-      }
       meta.innerHTML =
         '<p><strong>Subject:</strong> ' + esc(state.preview?.subject) + '</p>' +
-        '<p><strong>Preview text:</strong> ' + esc(state.preview?.preview) + '</p>' +
-        debugHtml;
+        '<p><strong>Preview text:</strong> ' + esc(state.preview?.preview) + '</p>';
     }
     if (frame && state.preview?.html) {
       frame.srcdoc = state.preview.html;

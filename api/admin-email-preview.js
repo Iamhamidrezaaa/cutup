@@ -21,11 +21,6 @@ import {
   getRegistryMetaEntry,
   listRegistryMeta,
 } from './email-registry-meta.js';
-import {
-  buildPreviewDiagnostics,
-  injectPreviewDiagnostics,
-} from './email-preview-diagnostics.js';
-
 function parseJsonBody(req) {
   let body = req.body;
   if (typeof body === 'string' && body.length > 0) {
@@ -45,16 +40,6 @@ async function resolveTemplateCatalog() {
     entries = listRegistryMeta();
   }
   return entries;
-}
-
-function attachPreviewDiagnostics(templateId, rendered) {
-  if (!rendered?.html) return rendered;
-  const diagnostics = buildPreviewDiagnostics(templateId, rendered.html);
-  return {
-    ...rendered,
-    html: injectPreviewDiagnostics(rendered.html, diagnostics),
-    _debug: diagnostics,
-  };
 }
 
 function resolveSampleData(templateId, entries, override) {
@@ -100,7 +85,7 @@ export default async function handler(req, res) {
       } else {
         data = resolveSampleData(template, entries);
       }
-      const rendered = attachPreviewDiagnostics(template, await previewEmailTemplate(template, data));
+      const rendered = await previewEmailTemplate(template, data);
       if (!rendered) {
         const lastRenderError = getLastRenderError();
         return res.status(503).json({
@@ -144,10 +129,7 @@ export default async function handler(req, res) {
           return res.status(400).json({ ok: false, error: 'invalid_data_json' });
         }
       }
-      const rendered = attachPreviewDiagnostics(
-        templateParam,
-        await previewEmailTemplate(templateParam, data),
-      );
+      const rendered = await previewEmailTemplate(templateParam, data);
       if (!rendered) {
         const lastRenderError = getLastRenderError();
         return res.status(503).json({
@@ -166,7 +148,6 @@ export default async function handler(req, res) {
         html: rendered.html,
         text: rendered.text,
         data,
-        _debug: rendered._debug,
       });
     }
 
