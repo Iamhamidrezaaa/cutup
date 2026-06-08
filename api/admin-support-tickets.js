@@ -7,7 +7,6 @@
 import { setCORSHeaders } from './cors.js';
 import { resolveAdminAuth } from './admin-panel-auth.js';
 import { isBillingDbConfigured } from './db/pool.js';
-import { getPool } from './db/pool.js';
 import { adminHasPermission } from './rbac-repository.js';
 import {
   listAdminTickets,
@@ -19,6 +18,7 @@ import {
   getSupportAnalytics,
   getUserProfileByUserId,
 } from './support-tickets-repository.js';
+import { listAdminsWithProfiles, resolveAgentIdentity } from './admin-profiles-repository.js';
 import {
   notifyTicketReplied,
   notifyTicketAssigned,
@@ -71,11 +71,7 @@ async function requireSupportAdmin(req, res) {
 }
 
 async function listAdminsForAssign() {
-  const pool = getPool();
-  const { rows } = await pool.query(
-    `SELECT id, email, role FROM admins WHERE status = 'active' ORDER BY email ASC`,
-  );
-  return rows;
+  return listAdminsWithProfiles();
 }
 
 export default async function handler(req, res) {
@@ -93,7 +89,7 @@ export default async function handler(req, res) {
 
       if (action === 'admins') {
         const admins = await listAdminsForAssign();
-        return res.json({ ok: true, admins });
+        return res.json({ ok: true, admins, currentAdminId: admin.adminId });
       }
 
       const ticketNumber = String(req.query?.ticket || '').trim();
@@ -106,6 +102,8 @@ export default async function handler(req, res) {
           messages: detail.messages,
           notes: detail.notes,
           events: detail.events,
+          customer: detail.customer,
+          attachments: detail.attachments,
         });
       }
 
@@ -118,8 +116,9 @@ export default async function handler(req, res) {
         assignedAdminId: req.query?.assigned,
         queue: req.query?.queue,
         q: req.query?.q,
+        currentAdminId: admin.adminId,
       });
-      return res.json({ ok: true, ...list });
+      return res.json({ ok: true, currentAdminId: admin.adminId, ...list });
     }
 
     if (req.method === 'POST') {
@@ -133,14 +132,16 @@ export default async function handler(req, res) {
           adminId: admin.adminId,
           adminEmail: admin.email,
           message: body?.message,
+          attachments: body?.attachments,
         });
         if (!result.ok) return res.status(400).json({ ok: false, error: result.reason });
         const profile = await getUserProfileByUserId(result.userId);
+        const agent = await resolveAgentIdentity(admin.adminId, admin.email);
         await notifyTicketReplied({
           ticket: result.ticket,
           userEmail: result.userEmail,
           firstName: profile?.first_name || 'there',
-          agentName: admin.email,
+          agentName: result.agentName || agent.display_name,
           replyText: body?.message,
         });
         return res.json({ ok: true, message: result.message, ticket: result.ticket });
@@ -155,11 +156,12 @@ export default async function handler(req, res) {
         });
         if (!result.ok) return res.status(400).json({ ok: false, error: result.reason });
         const profile = await getUserProfileByUserId(result.userId);
+        const agent = await resolveAgentIdentity(admin.adminId, admin.email);
         await notifyTicketAssigned({
           ticket: result.ticket,
           userEmail: result.userEmail,
           firstName: profile?.first_name || 'there',
-          agentName: admin.email,
+          agentName: agent.display_name,
         });
         return res.json({ ok: true, ticket: result.ticket });
       }

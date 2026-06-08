@@ -240,6 +240,10 @@
       "dest": "/api/admin-support-tickets.js"
     },
     {
+      "src": "/api/admin/support/attachments",
+      "dest": "/api/admin-support-attachments.js"
+    },
+    {
       "src": "/api/admin/login",
       "dest": "/api/admin-login.js"
     },

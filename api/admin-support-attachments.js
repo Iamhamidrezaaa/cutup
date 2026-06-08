@@ -1,5 +1,5 @@
 /**
- * POST /api/support/attachments — multipart upload for ticket messages
+ * POST /api/admin/support/attachments — multipart upload for admin ticket replies
  */
 import { createWriteStream, existsSync, mkdirSync, unlinkSync } from 'fs';
 import { join, extname } from 'path';
@@ -8,22 +8,21 @@ import { dirname } from 'path';
 import Busboy from 'busboy';
 import { randomBytes } from 'crypto';
 import { setCORSHeaders } from './cors.js';
-import { sessions } from './auth.js';
-import { getUserIdByEmail, isBillingDbConfigured } from './billing-repository.js';
+import { resolveAdminAuth } from './admin-panel-auth.js';
+import { isBillingDbConfigured } from './db/pool.js';
+import { adminHasPermission } from './rbac-repository.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ATTACH_DIR = join(__dirname, '..', 'website', 'support-attachments');
-const MAX_BYTES = 3 * 1024 * 1024;
+const MAX_BYTES = 5 * 1024 * 1024;
 
-const ALLOWED_EXT = new Set(['.pdf', '.jpg', '.jpeg', '.png', '.webp', '.txt', '.zip', '.heif', '.heic']);
+const ALLOWED_EXT = new Set(['.pdf', '.jpg', '.jpeg', '.png', '.webp', '.txt', '.zip']);
 
 const ALLOWED_MIME = new Set([
   'image/png',
   'image/jpeg',
   'image/jpg',
   'image/webp',
-  'image/heic',
-  'image/heif',
   'application/pdf',
   'text/plain',
   'application/zip',
@@ -36,43 +35,36 @@ const MIME_EXT = {
   'image/jpeg': '.jpg',
   'image/jpg': '.jpg',
   'image/webp': '.webp',
-  'image/heic': '.heic',
-  'image/heif': '.heif',
   'application/pdf': '.pdf',
   'text/plain': '.txt',
   'application/zip': '.zip',
   'application/x-zip-compressed': '.zip',
 };
 
-async function resolveUser(req, res) {
+async function requireSupportAdmin(req, res) {
   setCORSHeaders(res);
   if (!isBillingDbConfigured()) {
     res.status(503).json({ ok: false, error: 'db_not_configured' });
     return null;
   }
-  const sessionId = req.headers['x-session-id'];
-  if (!sessionId) {
-    res.status(401).json({ ok: false, error: 'no_session' });
+  const auth = await resolveAdminAuth(req);
+  if (!auth) {
+    res.status(401).json({ ok: false, error: 'unauthorized' });
     return null;
   }
-  const session = sessions.get(sessionId);
-  if (!session?.user?.email) {
-    res.status(401).json({ ok: false, error: 'invalid_session' });
+  const role = String(auth.role || '').trim().toLowerCase().replace(/\s+/g, '_');
+  const legacyOk = ['admin', 'super_admin'].includes(role);
+  const hasSupport = legacyOk || (await adminHasPermission(auth.adminId, 'support.view'));
+  if (!hasSupport) {
+    res.status(403).json({ ok: false, error: 'forbidden' });
     return null;
   }
-  const userId = await getUserIdByEmail(session.user.email);
-  if (!userId) {
-    res.status(404).json({ ok: false, error: 'user_not_found' });
-    return null;
-  }
-  return { userId: String(userId) };
+  return auth;
 }
 
 function safeExt(name, mime) {
   const ext = extname(String(name || '')).toLowerCase();
-  if (ALLOWED_EXT.has(ext)) {
-    return ext === '.jpeg' ? '.jpg' : ext;
-  }
+  if (ALLOWED_EXT.has(ext)) return ext === '.jpeg' ? '.jpg' : ext;
   return MIME_EXT[mime] || '';
 }
 
@@ -80,7 +72,7 @@ function isAllowedUpload(filename, mime) {
   const ext = safeExt(filename, mime);
   if (!ext || !ALLOWED_EXT.has(ext === '.jpg' ? '.jpg' : ext)) return false;
   if (mime && mime !== 'application/octet-stream' && !ALLOWED_MIME.has(mime)) {
-    return ext === '.heic' || ext === '.heif' || ext === '.jpg' || ext === '.png' || ext === '.pdf';
+    return ['.jpg', '.png', '.webp', '.pdf', '.txt', '.zip'].includes(ext);
   }
   return true;
 }
@@ -92,8 +84,8 @@ export default async function handler(req, res) {
   }
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'method_not_allowed' });
 
-  const user = await resolveUser(req, res);
-  if (!user) return;
+  const admin = await requireSupportAdmin(req, res);
+  if (!admin) return;
 
   if (!existsSync(ATTACH_DIR)) mkdirSync(ATTACH_DIR, { recursive: true });
 
@@ -125,20 +117,17 @@ export default async function handler(req, res) {
       const ws = createWriteStream(dest);
 
       writeDone = new Promise((resolveWrite, rejectWrite) => {
-        file.on('data', (chunk) => {
-          size += chunk.length;
-        });
-        file.on('limit', () => {
-          fileTooLarge = true;
-          ws.destroy();
-        });
+        file.on('data', (chunk) => { size += chunk.length; });
+        file.on('limit', () => { fileTooLarge = true; ws.destroy(); });
         ws.on('error', rejectWrite);
         ws.on('finish', () => {
           if (!fileTooLarge) {
             uploaded = {
               filename: String(filename || stored),
               size,
-              mime: mime === 'application/octet-stream' ? (ext === '.pdf' ? 'application/pdf' : `image/${ext.replace('.', '')}`) : mime,
+              mime: mime === 'application/octet-stream'
+                ? (ext === '.pdf' ? 'application/pdf' : ext === '.txt' ? 'text/plain' : ext === '.zip' ? 'application/zip' : `image/${ext.replace('.', '')}`)
+                : mime,
               url: `/support-attachments/${stored}`,
               uploaded_at: new Date().toISOString(),
             };
@@ -151,7 +140,7 @@ export default async function handler(req, res) {
     });
 
     busboy.on('error', (err) => {
-      console.error('[support-attachments]', err);
+      console.error('[admin-support-attachments]', err);
       if (partialPath && existsSync(partialPath)) {
         try { unlinkSync(partialPath); } catch (_e) { /* noop */ }
       }
@@ -163,7 +152,7 @@ export default async function handler(req, res) {
       try {
         await writeDone;
       } catch (err) {
-        console.error('[support-attachments] write failed', err);
+        console.error('[admin-support-attachments] write failed', err);
         res.status(400).json({ ok: false, error: 'upload_failed' });
         resolve();
         return;
@@ -181,7 +170,7 @@ export default async function handler(req, res) {
         if (partialPath && existsSync(partialPath)) {
           try { unlinkSync(partialPath); } catch (_e) { /* noop */ }
         }
-        res.status(400).json({ ok: false, error: 'invalid_file_type', allowed: ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'txt', 'zip', 'heif', 'heic'] });
+        res.status(400).json({ ok: false, error: 'invalid_file_type', allowed: ['png', 'jpg', 'webp', 'pdf', 'txt', 'zip'] });
         resolve();
         return;
       }

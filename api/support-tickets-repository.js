@@ -1,6 +1,11 @@
 import { getPool, isBillingDbConfigured } from './db/pool.js';
 import { ensureSupportTicketsSchema } from './support-tickets-bootstrap.js';
 import { ensureOperationsV3Schema } from './operations-bootstrap.js';
+import { ensureAdminProfilesSchema } from './admin-profiles-bootstrap.js';
+import {
+  avatarFallbackUrl,
+  resolveAgentIdentity,
+} from './admin-profiles-repository.js';
 import { isValidDepartment, isValidPriority, isValidStatus } from './support-constants.js';
 import { computeSlaDueAt, computeSlaStatus, enrichTicketWithSla } from './support-sla.js';
 
@@ -38,6 +43,10 @@ function withSla(row) {
 }
 
 function mapMessage(row) {
+  const attach = row.attachments;
+  let attachments = null;
+  if (Array.isArray(attach)) attachments = attach;
+  else if (attach && typeof attach === 'object') attachments = attach;
   return {
     id: Number(row.id),
     ticket_id: Number(row.ticket_id),
@@ -46,8 +55,10 @@ function mapMessage(row) {
     sender_admin_id: row.sender_admin_id != null ? Number(row.sender_admin_id) : null,
     sender_name: row.sender_name || null,
     sender_email: row.sender_email || null,
+    sender_avatar_url: row.sender_avatar_url || null,
+    sender_job_title: row.sender_job_title || null,
     message: row.message,
-    attachments: row.attachments || null,
+    attachments,
     created_at: row.created_at,
   };
 }
@@ -324,14 +335,24 @@ function buildAdminWhere(filters, params) {
   }
   if (filters.queue === 'breached') {
     where.push(`t.sla_status = 'breached' AND t.status NOT IN ('RESOLVED','CLOSED')`);
-  } else if (filters.queue === 'open') {
-    where.push(`t.status = 'OPEN'`);
-  } else if (filters.queue === 'assigned') {
-    where.push(`t.assigned_admin_id IS NOT NULL AND t.status NOT IN ('RESOLVED','CLOSED')`);
+  } else if (filters.queue === 'urgent') {
+    where.push(`t.priority = 'URGENT' AND t.status NOT IN ('RESOLVED','CLOSED')`);
   } else if (filters.queue === 'waiting') {
     where.push(`t.status = 'WAITING_FOR_USER'`);
   } else if (filters.queue === 'resolved') {
     where.push(`t.status IN ('RESOLVED','CLOSED')`);
+  } else if (filters.queue === 'assigned_me' || filters.queue === 'assigned') {
+    if (filters.currentAdminId) {
+      where.push(`t.assigned_admin_id = $${n} AND t.status NOT IN ('RESOLVED','CLOSED')`);
+      params.push(Number(filters.currentAdminId));
+      n += 1;
+    } else {
+      where.push(`t.assigned_admin_id IS NOT NULL AND t.status NOT IN ('RESOLVED','CLOSED')`);
+    }
+  } else if (filters.queue === 'open') {
+    where.push(`t.status = 'OPEN'`);
+  } else if (filters.queue === 'all_open' || filters.queue === '') {
+    where.push(`t.status NOT IN ('RESOLVED','CLOSED')`);
   }
   if (filters.assignedAdminId === 'unassigned') {
     where.push('t.assigned_admin_id IS NULL');
@@ -356,6 +377,7 @@ function buildAdminWhere(filters, params) {
 export async function listAdminTickets(filters = {}) {
   if (!isBillingDbConfigured()) return { ok: false, reason: 'db_not_configured', tickets: [] };
   await ensureSupportTicketsSchema();
+  await ensureAdminProfilesSchema();
 
   const page = Math.max(1, Number(filters.page) || 1);
   const limit = Math.min(100, Math.max(1, Number(filters.limit) || 30));
@@ -375,11 +397,23 @@ export async function listAdminTickets(filters = {}) {
 
   const listParams = [...params, limit, offset];
   const { rows } = await pool.query(
-    `SELECT t.*, u.email AS user_email, a.email AS assigned_admin_email,
-      (SELECT MAX(m.created_at) FROM support_ticket_messages m WHERE m.ticket_id = t.id) AS last_activity_at
+    `SELECT t.*, u.email AS user_email,
+      COALESCE(NULLIF(TRIM(up.first_name), ''), SPLIT_PART(u.email, '@', 1)) AS customer_name,
+      a.email AS assigned_admin_email,
+      ap.display_name AS assigned_agent_name,
+      ap.avatar_url AS assigned_agent_avatar,
+      ap.job_title AS assigned_agent_title,
+      (SELECT MAX(m.created_at) FROM support_ticket_messages m WHERE m.ticket_id = t.id) AS last_activity_at,
+      (SELECT COALESCE(SUM(
+        CASE WHEN m.attachments IS NULL THEN 0
+             WHEN jsonb_typeof(m.attachments) = 'array' THEN jsonb_array_length(m.attachments)
+             ELSE 0 END
+      ), 0)::int FROM support_ticket_messages m WHERE m.ticket_id = t.id) AS attachment_count
      FROM support_tickets t
      JOIN users u ON u.id = t.user_id
+     LEFT JOIN user_profiles up ON up.user_id = u.id
      LEFT JOIN admins a ON a.id = t.assigned_admin_id
+     LEFT JOIN admin_profiles ap ON ap.admin_user_id = t.assigned_admin_id
      ${whereSql}
      ORDER BY COALESCE((SELECT MAX(m.created_at) FROM support_ticket_messages m WHERE m.ticket_id = t.id), t.updated_at) DESC
      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
@@ -388,7 +422,19 @@ export async function listAdminTickets(filters = {}) {
 
   return {
     ok: true,
-    tickets: rows.map(withSla),
+    tickets: rows.map((row) => {
+      const ticket = withSla(row);
+      ticket.customer_name = row.customer_name || null;
+      ticket.attachment_count = Number(row.attachment_count) || 0;
+      ticket.assigned_agent = row.assigned_admin_id
+        ? {
+            display_name: row.assigned_agent_name || row.assigned_admin_email,
+            avatar_url: row.assigned_agent_avatar || avatarFallbackUrl(row.assigned_agent_name || 'Agent'),
+            job_title: row.assigned_agent_title || null,
+          }
+        : null;
+      return ticket;
+    }),
     page,
     limit,
     total,
@@ -396,48 +442,151 @@ export async function listAdminTickets(filters = {}) {
   };
 }
 
-export async function getTicketForAdmin(ticketNumber) {
-  if (!isBillingDbConfigured()) return { ok: false, reason: 'db_not_configured' };
+export async function getCustomerContextForSupport(userId) {
+  if (!isBillingDbConfigured()) return null;
   await ensureSupportTicketsSchema();
   const pool = getPool();
   const { rows } = await pool.query(
-    `SELECT t.*, u.email AS user_email, a.email AS assigned_admin_email
+    `SELECT
+      u.id,
+      u.email,
+      u.created_at AS join_date,
+      up.first_name,
+      up.last_name,
+      s.plan,
+      (SELECT COUNT(*)::int FROM support_tickets st
+        WHERE st.user_id = u.id AND st.status NOT IN ('RESOLVED','CLOSED')) AS open_tickets,
+      (SELECT COUNT(*)::int FROM support_tickets st
+        WHERE st.user_id = u.id AND st.status IN ('RESOLVED','CLOSED')) AS resolved_tickets,
+      (SELECT MAX(GREATEST(
+        st.updated_at,
+        COALESCE((SELECT MAX(m.created_at) FROM support_ticket_messages m WHERE m.ticket_id = st.id), st.updated_at)
+      )) FROM support_tickets st WHERE st.user_id = u.id) AS last_activity,
+      (SELECT ROUND(AVG(st.satisfaction_rating)::numeric, 1)
+        FROM support_tickets st WHERE st.user_id = u.id AND st.satisfaction_rating IS NOT NULL) AS support_score
+     FROM users u
+     LEFT JOIN user_profiles up ON up.user_id = u.id
+     LEFT JOIN subscriptions s ON s.user_id = u.id
+     WHERE u.id = $1::uuid
+     LIMIT 1`,
+    [String(userId)],
+  );
+  const row = rows[0];
+  if (!row) return null;
+  const name = [row.first_name, row.last_name].filter(Boolean).join(' ').trim()
+    || String(row.email || '').split('@')[0]
+    || 'Customer';
+  return {
+    user_id: String(row.id),
+    name,
+    email: row.email,
+    plan: row.plan || 'free',
+    join_date: row.join_date,
+    open_tickets: Number(row.open_tickets) || 0,
+    resolved_tickets: Number(row.resolved_tickets) || 0,
+    last_activity: row.last_activity,
+    support_score: row.support_score != null ? Number(row.support_score) : null,
+    avatar_url: avatarFallbackUrl(name),
+  };
+}
+
+export async function getTicketForAdmin(ticketNumber) {
+  if (!isBillingDbConfigured()) return { ok: false, reason: 'db_not_configured' };
+  await ensureSupportTicketsSchema();
+  await ensureAdminProfilesSchema();
+  const pool = getPool();
+  const { rows } = await pool.query(
+    `SELECT t.*, u.email AS user_email,
+      COALESCE(NULLIF(TRIM(up.first_name), ''), SPLIT_PART(u.email, '@', 1)) AS customer_name,
+      a.email AS assigned_admin_email,
+      ap.display_name AS assigned_agent_name,
+      ap.avatar_url AS assigned_agent_avatar,
+      ap.job_title AS assigned_agent_title
      FROM support_tickets t
      JOIN users u ON u.id = t.user_id
+     LEFT JOIN user_profiles up ON up.user_id = u.id
      LEFT JOIN admins a ON a.id = t.assigned_admin_id
+     LEFT JOIN admin_profiles ap ON ap.admin_user_id = t.assigned_admin_id
      WHERE t.ticket_number = $1 LIMIT 1`,
     [String(ticketNumber).trim()],
   );
   if (!rows[0]) return { ok: false, reason: 'not_found' };
 
-  const [messages, notes, events] = await Promise.all([
+  const [messages, notes, events, customer] = await Promise.all([
     pool.query(
       `SELECT m.*,
         CASE WHEN m.sender_type = 'admin' THEN a.email ELSE u.email END AS sender_email,
-        CASE WHEN m.sender_type = 'admin' THEN a.email ELSE COALESCE(up.first_name, u.email) END AS sender_name
+        CASE WHEN m.sender_type = 'admin' THEN COALESCE(ap.display_name, a.email)
+             ELSE COALESCE(NULLIF(TRIM(up.first_name), ''), SPLIT_PART(u.email, '@', 1), u.email) END AS sender_name,
+        CASE WHEN m.sender_type = 'admin' THEN COALESCE(ap.avatar_url, '')
+             ELSE '' END AS sender_avatar_url,
+        CASE WHEN m.sender_type = 'admin' THEN ap.job_title ELSE NULL END AS sender_job_title
        FROM support_ticket_messages m
        LEFT JOIN users u ON u.id = m.sender_user_id
        LEFT JOIN user_profiles up ON up.user_id = u.id
        LEFT JOIN admins a ON a.id = m.sender_admin_id
+       LEFT JOIN admin_profiles ap ON ap.admin_user_id = m.sender_admin_id
        WHERE m.ticket_id = $1 ORDER BY m.created_at ASC`,
       [rows[0].id],
     ),
     pool.query(
-      `SELECT n.* FROM support_ticket_notes n WHERE n.ticket_id = $1 ORDER BY n.created_at DESC`,
+      `SELECT n.*, ap.display_name AS admin_display_name, ap.avatar_url AS admin_avatar_url, ap.job_title AS admin_job_title
+       FROM support_ticket_notes n
+       LEFT JOIN admin_profiles ap ON ap.admin_user_id = n.admin_id
+       WHERE n.ticket_id = $1 ORDER BY n.created_at DESC`,
       [rows[0].id],
     ),
     pool.query(
       `SELECT e.* FROM support_ticket_events e WHERE e.ticket_id = $1 ORDER BY e.created_at ASC`,
       [rows[0].id],
     ),
+    getCustomerContextForSupport(rows[0].user_id),
   ]);
+
+  const ticket = withSla(rows[0]);
+  ticket.customer_name = rows[0].customer_name || null;
+  ticket.assigned_agent = rows[0].assigned_admin_id
+    ? {
+        display_name: rows[0].assigned_agent_name || rows[0].assigned_admin_email,
+        avatar_url: rows[0].assigned_agent_avatar || avatarFallbackUrl(rows[0].assigned_agent_name || 'Agent'),
+        job_title: rows[0].assigned_agent_title || null,
+      }
+    : null;
+
+  const mappedMessages = messages.rows.map((row) => {
+    const msg = mapMessage(row);
+    if (msg.sender_type === 'admin') {
+      msg.sender_avatar_url = row.sender_avatar_url || avatarFallbackUrl(msg.sender_name);
+    } else {
+      msg.sender_avatar_url = avatarFallbackUrl(msg.sender_name || 'Customer');
+    }
+    return msg;
+  });
+
+  const mappedNotes = notes.rows.map((n) => ({
+    ...n,
+    admin_display_name: n.admin_display_name || n.admin_email,
+    admin_avatar_url: n.admin_avatar_url || avatarFallbackUrl(n.admin_display_name || n.admin_email),
+    admin_job_title: n.admin_job_title || null,
+  }));
+
+  const allAttachments = [];
+  mappedMessages.forEach((m) => {
+    if (Array.isArray(m.attachments)) {
+      m.attachments.forEach((a) => {
+        if (a && typeof a === 'object') allAttachments.push({ ...a, message_id: m.id, sender_type: m.sender_type });
+      });
+    }
+  });
 
   return {
     ok: true,
-    ticket: withSla(rows[0]),
-    messages: messages.rows.map(mapMessage),
-    notes: notes.rows,
+    ticket,
+    messages: mappedMessages,
+    notes: mappedNotes,
     events: events.rows.map(mapEvent),
+    customer,
+    attachments: allAttachments,
   };
 }
 
@@ -449,6 +598,7 @@ export async function addAdminReply({ ticketNumber, adminId, adminEmail, message
   const detail = await getTicketForAdmin(ticketNumber);
   if (!detail.ok) return detail;
 
+  const agent = await resolveAgentIdentity(adminId, adminEmail);
   const pool = getPool();
   const client = await pool.connect();
   try {
@@ -464,16 +614,25 @@ export async function addAdminReply({ ticketNumber, adminId, adminEmail, message
       updates.push(`first_response_at = NOW()`, `sla_status = 'healthy'`);
     }
     await client.query(`UPDATE support_tickets SET ${updates.join(', ')} WHERE id = $1`, [detail.ticket.id]);
-    await logTicketEvent(client, detail.ticket.id, 'admin_reply', 'admin', String(adminId), { adminEmail });
+    await logTicketEvent(client, detail.ticket.id, 'admin_reply', 'admin', String(adminId), {
+      agentName: agent.display_name,
+    });
     await client.query('COMMIT');
 
-    const msg = mapMessage({ ...rows[0], sender_email: adminEmail, sender_name: adminEmail });
+    const msg = mapMessage({
+      ...rows[0],
+      sender_email: adminEmail,
+      sender_name: agent.display_name,
+      sender_avatar_url: agent.avatar_url,
+      sender_job_title: agent.job_title,
+    });
     return {
       ok: true,
       message: msg,
       ticket: { ...detail.ticket, status: 'WAITING_FOR_USER', first_response_at: detail.ticket.first_response_at || new Date().toISOString() },
       userId: detail.ticket.user_id,
       userEmail: detail.ticket.user_email,
+      agentName: agent.display_name,
     };
   } catch (err) {
     await client.query('ROLLBACK');

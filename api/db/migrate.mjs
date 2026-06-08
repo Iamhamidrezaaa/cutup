@@ -53,6 +53,9 @@ async function main() {
   const opsV3Sql = readFileSync(join(__dirname, 'schema-operations-v3.sql'), 'utf8');
   await getPool().query(opsV3Sql);
   console.log('Migration applied: schema-operations-v3.sql');
+  const adminProfilesSql = readFileSync(join(__dirname, 'schema-admin-profiles.sql'), 'utf8');
+  await getPool().query(adminProfilesSql);
+  console.log('Migration applied: schema-admin-profiles.sql');
   await closePool();
 }
 

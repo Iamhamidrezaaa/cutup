@@ -858,6 +858,16 @@ app.get('/api/notifications/stream', async (req, res) => {
   }
 });
 
+app.post('/api/admin/support/attachments', async (req, res) => {
+  try {
+    const mod = await import('./api/admin-support-attachments.js');
+    return mod.default(req, res);
+  } catch (e) {
+    console.error('[admin-support-attachments]', e);
+    return res.status(503).json({ ok: false, error: 'handler_unavailable' });
+  }
+});
+
 app.all('/api/admin/support', async (req, res) => {
   try {
     const mod = await import('./api/admin-support-tickets.js');

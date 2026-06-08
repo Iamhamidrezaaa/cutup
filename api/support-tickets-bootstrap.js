@@ -2,6 +2,7 @@ import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { getPool, isBillingDbConfigured } from './db/pool.js';
+import { ensureAdminProfilesSchema } from './admin-profiles-bootstrap.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 let ensured = false;
@@ -16,6 +17,7 @@ export async function ensureSupportTicketsSchema() {
     ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS satisfaction_rating SMALLINT NULL;
     ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS closed_by VARCHAR(20) NULL;
   `);
+  await ensureAdminProfilesSchema();
   ensured = true;
   return { ok: true };
 }

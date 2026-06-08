@@ -7,7 +7,7 @@
   var TURNSTILE_SITE_KEY = '0x4AAAAAADIgzmavc-RbN4iZ';
   var ACTIVITY_FEED_LIMIT = 5;
   var ATTACH_MAX_BYTES = 3 * 1024 * 1024;
-  var ATTACH_EXT_RE = /\.(pdf|jpe?g|png|heif|heic)$/i;
+  var ATTACH_EXT_RE = /\.(pdf|jpe?g|png|webp|txt|zip|heif|heic)$/i;
 
   var DEPARTMENTS = [
     { value: 'TECHNICAL_SUPPORT', label: 'Technical Support' },
