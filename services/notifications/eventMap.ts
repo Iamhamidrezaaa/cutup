@@ -117,7 +117,7 @@ export function buildNotificationFromEvent(
           event,
           ticketNumber: payload.ticketNumber,
           subject: payload.subject,
-          ticketUrl: payload.ticketUrl,
+          ticketUrl: payload.ticketNumber ? `#support/${payload.ticketNumber}` : payload.ticketUrl,
         },
       };
     case 'ticket_replied':
@@ -129,7 +129,7 @@ export function buildNotificationFromEvent(
           event,
           ticketNumber: payload.ticketNumber,
           agentName: payload.agentName,
-          ticketUrl: payload.ticketUrl,
+          ticketUrl: payload.ticketNumber ? `#support/${payload.ticketNumber}` : payload.ticketUrl,
         },
       };
     case 'ticket_assigned':
@@ -141,7 +141,7 @@ export function buildNotificationFromEvent(
           event,
           ticketNumber: payload.ticketNumber,
           agentName: payload.agentName,
-          ticketUrl: payload.ticketUrl,
+          ticketUrl: payload.ticketNumber ? `#support/${payload.ticketNumber}` : payload.ticketUrl,
         },
       };
     case 'ticket_resolved':
@@ -155,7 +155,7 @@ export function buildNotificationFromEvent(
           event,
           ticketNumber: payload.ticketNumber,
           subject: payload.subject,
-          ticketUrl: payload.ticketUrl,
+          ticketUrl: payload.ticketNumber ? `#support/${payload.ticketNumber}` : payload.ticketUrl,
         },
       };
     case 'ticket_closed':
@@ -169,7 +169,7 @@ export function buildNotificationFromEvent(
           event,
           ticketNumber: payload.ticketNumber,
           subject: payload.subject,
-          ticketUrl: payload.ticketUrl,
+          ticketUrl: payload.ticketNumber ? `#support/${payload.ticketNumber}` : payload.ticketUrl,
         },
       };
     case 'security_notification':

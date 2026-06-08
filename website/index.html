@@ -126,8 +126,13 @@
           if (storedPostAuth) sessionStorage.removeItem('cutup_post_auth_url');
         } catch (_e5) { /* ignore */ }
         if (storedPostAuth) {
-          var joiner = storedPostAuth.indexOf('?') >= 0 ? '&' : '?';
-          window.location.replace(window.location.origin + storedPostAuth + joiner + 'session=' + encodeURIComponent(session));
+          var hashIdx = storedPostAuth.indexOf('#');
+          var pathPart = hashIdx >= 0 ? storedPostAuth.slice(0, hashIdx) : storedPostAuth;
+          var hashPart = hashIdx >= 0 ? storedPostAuth.slice(hashIdx) : '';
+          var joiner = pathPart.indexOf('?') >= 0 ? '&' : '?';
+          window.location.replace(
+            window.location.origin + pathPart + joiner + 'session=' + encodeURIComponent(session) + hashPart
+          );
           return;
         }
         window.location.replace(window.location.origin + '/dashboard.html?auth=success&session=' + encodeURIComponent(session));

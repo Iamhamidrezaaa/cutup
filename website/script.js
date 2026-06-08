@@ -2302,8 +2302,14 @@ if (authSuccess === 'success' && sessionId) {
       if (postAuthUrl) sessionStorage.removeItem('cutup_post_auth_url');
     } catch (_e) { /* noop */ }
     if (postAuthUrl) {
-      const join = postAuthUrl.includes('?') ? '&' : '?';
-      window.location.replace(`${window.location.origin}${postAuthUrl}${join}session=${encodeURIComponent(sessionId)}`);
+      const raw = String(postAuthUrl);
+      const hashIdx = raw.indexOf('#');
+      const pathPart = hashIdx >= 0 ? raw.slice(0, hashIdx) : raw;
+      const hashPart = hashIdx >= 0 ? raw.slice(hashIdx) : '';
+      const join = pathPart.includes('?') ? '&' : '?';
+      window.location.replace(
+        `${window.location.origin}${pathPart}${join}session=${encodeURIComponent(sessionId)}${hashPart}`,
+      );
     } else {
       window.location.replace(`${window.location.origin}/dashboard.html?session=${encodeURIComponent(sessionId)}`);
     }

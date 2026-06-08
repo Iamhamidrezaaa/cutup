@@ -42,16 +42,20 @@
       else if (hash) targetHash = hash.replace(/^#/, '');
       else if (dest !== 'dashboard') targetHash = dest;
 
-      var target = '/dashboard.html' + (targetHash ? '#' + targetHash : '');
       var sid = null;
       try { sid = localStorage.getItem('cutup_session'); } catch (_e) {}
 
+      var path = '/dashboard.html';
+      var query = sid ? '?session=' + encodeURIComponent(sid) : '';
+      var fragment = targetHash ? '#' + targetHash : '';
+      var target = path + query + fragment;
+
       if (sid) {
-        window.location.replace(target + '?session=' + encodeURIComponent(sid));
+        window.location.replace(target);
         return;
       }
 
-      try { sessionStorage.setItem('cutup_post_auth_url', target); } catch (_e2) {}
+      try { sessionStorage.setItem('cutup_post_auth_url', path + fragment); } catch (_e2) {}
       window.location.replace('/?signin=1');
     })();
   </script>

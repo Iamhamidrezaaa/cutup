@@ -183,7 +183,7 @@ function buildNotificationFromEvent(event, payload) {
           event,
           ticketNumber: payload.ticketNumber,
           subject: payload.subject,
-          ticketUrl: payload.ticketUrl
+          ticketUrl: payload.ticketNumber ? "#support/" + payload.ticketNumber : payload.ticketUrl
         }
       };
     case "ticket_replied":
@@ -195,7 +195,7 @@ function buildNotificationFromEvent(event, payload) {
           event,
           ticketNumber: payload.ticketNumber,
           agentName: payload.agentName,
-          ticketUrl: payload.ticketUrl
+          ticketUrl: payload.ticketNumber ? "#support/" + payload.ticketNumber : payload.ticketUrl
         }
       };
     case "ticket_assigned":
@@ -207,7 +207,7 @@ function buildNotificationFromEvent(event, payload) {
           event,
           ticketNumber: payload.ticketNumber,
           agentName: payload.agentName,
-          ticketUrl: payload.ticketUrl
+          ticketUrl: payload.ticketNumber ? "#support/" + payload.ticketNumber : payload.ticketUrl
         }
       };
     case "ticket_resolved":
@@ -219,7 +219,7 @@ function buildNotificationFromEvent(event, payload) {
           event,
           ticketNumber: payload.ticketNumber,
           subject: payload.subject,
-          ticketUrl: payload.ticketUrl
+          ticketUrl: payload.ticketNumber ? "#support/" + payload.ticketNumber : payload.ticketUrl
         }
       };
     case "ticket_closed":
@@ -231,7 +231,7 @@ function buildNotificationFromEvent(event, payload) {
           event,
           ticketNumber: payload.ticketNumber,
           subject: payload.subject,
-          ticketUrl: payload.ticketUrl
+          ticketUrl: payload.ticketNumber ? "#support/" + payload.ticketNumber : payload.ticketUrl
         }
       };
     case "security_notification":

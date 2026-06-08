@@ -693,20 +693,32 @@ function writeProfilePrefs(prefs) {
 }
 
 function navigateDashboardSection(sectionId) {
-  const base = String(sectionId || '').split('/')[0];
+  const raw = String(sectionId || '').trim();
+  const base = raw.split('/')[0];
   const item = document.querySelector(`.nav-item[data-section="${base}"]`);
   if (item) {
-    if (base === 'support' && String(sectionId).includes('/')) {
-      window.location.hash = sectionId.startsWith('support') ? sectionId : `support/${sectionId.split('/').slice(1).join('/')}`;
-    } else if (base === 'help' && String(sectionId).includes('/')) {
-      window.location.hash = sectionId.startsWith('help') ? sectionId : `help/${sectionId.split('/').slice(1).join('/')}`;
-    } else if (base !== sectionId && (sectionId.startsWith('support/') || sectionId.startsWith('help/'))) {
-      window.location.hash = sectionId;
+    if (base === 'support' && raw.includes('/')) {
+      window.location.hash = raw.startsWith('support') ? raw : `support/${raw.split('/').slice(1).join('/')}`;
+    } else if (base === 'help' && raw.includes('/')) {
+      window.location.hash = raw.startsWith('help') ? raw : `help/${raw.split('/').slice(1).join('/')}`;
+    } else if (base !== raw && (raw.startsWith('support/') || raw.startsWith('help/'))) {
+      window.location.hash = raw;
     }
     item.click();
     return;
   }
-  window.location.hash = sectionId;
+  cutupActivateDashboardSection(raw);
+  if (base === 'notifications') {
+    window.CutupDashboardNotifications?.mountPage?.();
+  }
+  if (base === 'support') {
+    const route = window.CutupDashboardSupport?.parseSupportHash?.(window.location.hash);
+    window.CutupDashboardSupport?.mount?.(route?.ticket || null);
+  }
+  if (base === 'help') {
+    const route = window.CutupDashboardHelp?.parseHelpHash?.(window.location.hash);
+    window.CutupDashboardHelp?.mount?.(route?.slug || null);
+  }
 }
 
 async function refreshDashboardProfileUi({ profile: profileIn } = {}) {
@@ -1513,7 +1525,43 @@ if (typeof window !== 'undefined') {
   };
 }
 
+function cutupRepairSessionInHash() {
+  const hash = window.location.hash || '';
+  const match = hash.match(/^#([^?]+)\?session=([^&#]+)/);
+  if (!match) return;
+  const params = new URLSearchParams(window.location.search);
+  if (!params.get('session')) params.set('session', match[2]);
+  const qs = params.toString();
+  window.history.replaceState(
+    {},
+    document.title,
+    `${window.location.pathname}${qs ? `?${qs}` : ''}#${match[1]}`,
+  );
+}
+
+function cutupBuildDashboardUrl({ session, hash } = {}) {
+  const path = '/dashboard.html';
+  const query = session ? `?session=${encodeURIComponent(session)}` : '';
+  const fragment = hash ? `#${String(hash).replace(/^#/, '')}` : '';
+  return `${path}${query}${fragment}`;
+}
+
+function cutupActivateDashboardSection(sectionId) {
+  const raw = String(sectionId || '').trim();
+  const base = raw.split('/')[0];
+  document.querySelectorAll('.nav-item').forEach((n) => n.classList.remove('active'));
+  document.querySelectorAll('.dashboard-section').forEach((s) => s.classList.remove('active'));
+  document.querySelector(`.nav-item[data-section="${base}"]`)?.classList.add('active');
+  document.getElementById(`${base}-section`)?.classList.add('active');
+  if (raw.includes('/')) {
+    window.location.hash = raw.startsWith(`${base}/`) ? raw : `${base}/${raw.split('/').slice(1).join('/')}`;
+  } else if (raw) {
+    window.location.hash = raw;
+  }
+}
+
 function getSessionFromLocation() {
+  cutupRepairSessionInHash();
   const params = new URLSearchParams(window.location.search);
   const authSuccess = params.get('auth');
   const sessionId = params.get('session');
@@ -1554,10 +1602,14 @@ function getSessionFromLocation() {
     const ru = params.get('returnUrl');
     if (ru) qp.set('returnUrl', ru);
     const qs = qp.toString();
-    window.history.replaceState({}, document.title, `${window.location.pathname}${qs ? `?${qs}` : ''}`);
+    const hash = window.location.hash || '';
+    window.history.replaceState({}, document.title, `${window.location.pathname}${qs ? `?${qs}` : ''}${hash}`);
   }
   return { activeSession, paymentReturn };
 }
+
+window.cutupActivateDashboardSection = cutupActivateDashboardSection;
+window.cutupBuildDashboardUrl = cutupBuildDashboardUrl;
 
 async function loadUserProfile() {
   const { response, data } = await apiGet(`${API_BASE_URL}/api/auth?action=me&session=${currentSession}`);

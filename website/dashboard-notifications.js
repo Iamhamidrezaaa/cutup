@@ -65,7 +65,56 @@
     var href = item?.metadata?.href || item?.metadata?.downloadUrl || item?.metadata?.ticketUrl;
     if (href) return href;
     if (item?.metadata?.href) return item.metadata.href;
-    return '#notifications';
+    return '';
+  }
+
+  function parseTicketFromHref(href) {
+    var raw = String(href || '').trim();
+    if (!raw) return null;
+    try {
+      var base = raw.indexOf('http') === 0 ? undefined : window.location.origin;
+      var u = new URL(raw, base);
+      var hash = (u.hash || '').replace(/^#/, '');
+      var hm = hash.match(/^support\/(.+)$/);
+      if (hm) return decodeURIComponent(hm[1]);
+      var ticket = u.searchParams.get('ticket');
+      if (ticket && (u.pathname.indexOf('go.html') >= 0 || u.pathname.indexOf('dashboard.html') >= 0)) {
+        return String(ticket).trim();
+      }
+    } catch (_e) { /* noop */ }
+    var local = raw.replace(/^#/, '');
+    var lm = local.match(/^support\/(.+)$/);
+    if (lm) return decodeURIComponent(lm[1]);
+    return null;
+  }
+
+  function openSupportTicket(ticketNumber) {
+    var num = String(ticketNumber || '').trim();
+    if (!num) return;
+    if (typeof window.cutupActivateDashboardSection === 'function') {
+      window.cutupActivateDashboardSection('support/' + encodeURIComponent(num));
+    } else if (typeof navigateDashboardSection === 'function') {
+      navigateDashboardSection('support/' + encodeURIComponent(num));
+    } else {
+      window.location.hash = 'support/' + encodeURIComponent(num);
+    }
+    if (window.CutupDashboardSupport?.mount) {
+      void window.CutupDashboardSupport.mount(num);
+    } else if (window.CutupDashboardSupport?.navigateToTicket) {
+      window.CutupDashboardSupport.navigateToTicket(num);
+    }
+  }
+
+  function openNotificationsPage() {
+    closeDropdown();
+    if (typeof window.cutupActivateDashboardSection === 'function') {
+      window.cutupActivateDashboardSection('notifications');
+    } else if (typeof navigateDashboardSection === 'function') {
+      navigateDashboardSection('notifications');
+    } else {
+      window.location.hash = 'notifications';
+    }
+    mountPageSection();
   }
 
   function dayGroup(iso) {
@@ -157,21 +206,43 @@
   }
 
   async function handleNotificationClick(id, item) {
-    var ticketNumber = item?.metadata?.ticketNumber || null;
+    var href = notificationHref(item);
+    var ticketNumber = item?.metadata?.ticketNumber || parseTicketFromHref(href) || null;
     if (ticketNumber) {
       await markTicketNotificationsRead(ticketNumber);
     } else if (id && !item?.is_read) {
       await apiPost('/api/notifications/' + id + '/read', { id: id });
     }
     closeDropdown();
-    var href = notificationHref(item);
+
+    if (ticketNumber) {
+      openSupportTicket(ticketNumber);
+      await refreshUnreadCount();
+      return;
+    }
+
     if (href.startsWith('#')) {
-      if (typeof navigateDashboardSection === 'function') navigateDashboardSection(href.replace('#', ''));
-      else window.location.hash = href;
+      var section = href.replace(/^#/, '');
+      if (section === 'notifications') {
+        openNotificationsPage();
+      } else if (typeof navigateDashboardSection === 'function') {
+        navigateDashboardSection(section);
+      } else {
+        window.location.hash = href;
+      }
+    } else if (href && href.indexOf('/go.html') >= 0) {
+      var goTicket = parseTicketFromHref(href);
+      if (goTicket) {
+        openSupportTicket(goTicket);
+      } else {
+        window.location.assign(href);
+      }
+    } else if (href && (href.indexOf('#support/') >= 0 || href.indexOf('dashboard.html') >= 0)) {
+      var fromDash = parseTicketFromHref(href);
+      if (fromDash) openSupportTicket(fromDash);
+      else window.location.assign(href);
     } else if (href) {
-      window.location.href = href;
-    } else if (typeof navigateDashboardSection === 'function') {
-      navigateDashboardSection('notifications');
+      window.location.assign(href);
     }
     await refreshUnreadCount();
   }
@@ -212,7 +283,7 @@
       '</button>' +
       '<span class="cutup-notif-badge" id="cutupNotifBadge" hidden>0</span>' +
       '<div class="cutup-notif-dropdown" id="cutupNotifDropdown" hidden role="menu">' +
-        '<div class="cutup-notif-dropdown__head"><strong>Notifications</strong><a href="#notifications" id="cutupNotifViewAll" class="cutup-notif-dropdown__link">View all</a></div>' +
+        '<div class="cutup-notif-dropdown__head"><strong>Notifications</strong><button type="button" id="cutupNotifViewAll" class="cutup-notif-dropdown__link">View all</button></div>' +
         '<div class="cutup-notif-dropdown__list" id="cutupNotifDropdownList"></div>' +
       '</div>';
 
@@ -224,8 +295,9 @@
       e.stopPropagation();
       toggleDropdown();
     });
-    document.getElementById('cutupNotifViewAll')?.addEventListener('click', function () {
-      closeDropdown();
+    document.getElementById('cutupNotifViewAll')?.addEventListener('click', function (e) {
+      e.preventDefault();
+      openNotificationsPage();
     });
     document.addEventListener('click', function (e) {
       if (!wrap.contains(e.target)) closeDropdown();
@@ -417,5 +489,7 @@
       connectSse();
     },
     mountPage: mountPageSection,
+    openPage: openNotificationsPage,
+    openSupportTicket: openSupportTicket,
   };
 })();
