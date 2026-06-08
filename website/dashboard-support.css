@@ -638,7 +638,8 @@
 .cutup-support-conversation {
   display: flex;
   flex-direction: column;
-  min-height: 320px;
+  min-height: 480px;
+  height: min(78vh, 720px);
   border: 1px solid var(--border-color, #e5e7eb);
   border-radius: 14px;
   background: #f8fafc;
@@ -650,10 +651,10 @@
   flex-direction: column;
   gap: 18px;
   padding: 20px 16px;
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 300px;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  max-height: min(58vh, 520px);
 }
 
 .cutup-support-msg {
@@ -929,23 +930,27 @@
 }
 
 .cutup-support-close-card {
-  margin-top: 8px;
-  padding: 18px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-top: 0;
+  padding: 16px 16px 18px;
   border-top: 1px solid #f1f5f9;
   background: #fafafa;
+  flex-shrink: 0;
 }
 
-.cutup-support-close-card h3 {
-  margin: 0 0 6px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #0f172a;
-}
-
-.cutup-support-close-card p {
+.cutup-support-close-card__prompt {
   margin: 0 0 12px;
   font-size: 13px;
   color: #64748b;
+  max-width: 28rem;
+}
+
+.cutup-support-close-card .cutup-support-form-error {
+  margin-top: 10px;
+  text-align: center;
 }
 
 .cutup-support-close-card--done {
@@ -955,24 +960,55 @@
 }
 
 .cutup-support-close-card__actions {
-  margin-top: 12px;
+  margin-top: 14px;
+  display: flex;
+  justify-content: center;
+}
+
+.cutup-support-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  line-height: 1.2;
+  color: #dc2626;
+  background: #fff;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.cutup-support-close-btn:hover {
+  background: #fef2f2;
+  border-color: #f87171;
+  color: #b91c1c;
+}
+
+.cutup-support-close-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .cutup-support-rating {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
+  justify-content: center;
 }
 
 .cutup-support-rating__opt {
-  display: flex;
-  flex-direction: column;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
-  min-width: 56px;
-  padding: 10px 8px;
-  border: 2px solid #e5e7eb;
-  border-radius: 12px;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
   background: #fff;
   cursor: pointer;
   font-family: inherit;
@@ -987,22 +1023,12 @@
 .cutup-support-rating__opt.is-selected {
   border-color: #635bff;
   background: #eef2ff;
-  box-shadow: 0 0 0 3px rgba(99, 91, 255, 0.12);
+  box-shadow: 0 0 0 2px rgba(99, 91, 255, 0.14);
 }
 
 .cutup-support-rating__emoji {
-  font-size: 28px;
+  font-size: 20px;
   line-height: 1;
-}
-
-.cutup-support-rating__score {
-  font-size: 10px;
-  font-weight: 600;
-  color: #94a3b8;
-}
-
-.cutup-support-rating__opt.is-selected .cutup-support-rating__score {
-  color: #4338ca;
 }
 
 .cutup-support-detail .cutup-help-btn--secondary {
@@ -1078,15 +1104,6 @@
 }
 
 @media (min-width: 769px) {
-  .cutup-support-conversation {
-    max-height: min(72vh, 640px);
-  }
-
-  .cutup-support-thread {
-    max-height: none;
-    flex: 1 1 auto;
-  }
-
   .cutup-support-reply {
     position: sticky;
     bottom: 0;
@@ -1148,9 +1165,14 @@
     font-size: 14px;
   }
 
+  .cutup-support-conversation {
+    min-height: 420px;
+    height: min(72vh, 640px);
+  }
+
   .cutup-support-thread {
     padding: 14px 12px;
-    max-height: 50vh;
+    min-height: 220px;
   }
 
   .cutup-support-msg {

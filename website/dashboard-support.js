@@ -555,7 +555,6 @@
           return (
             '<button type="button" class="cutup-support-rating__opt' + active + '" data-rating="' + opt.score + '" title="' + esc(opt.label) + '" aria-label="' + esc(opt.label) + '">' +
               '<span class="cutup-support-rating__emoji" aria-hidden="true">' + opt.emoji + '</span>' +
-              '<span class="cutup-support-rating__score">' + opt.score + '</span>' +
             '</button>'
           );
         }).join('') +
@@ -576,11 +575,10 @@
     }
     return (
       '<section class="cutup-support-close-card">' +
-        '<h3>Close this ticket</h3>' +
-        '<p>How satisfied are you with the support you received?</p>' +
+        '<p class="cutup-support-close-card__prompt">How satisfied are you with the support you received?</p>' +
         renderRatingPicker(state.selectedRating) +
         '<div class="cutup-support-close-card__actions">' +
-          btnPrimary('Close Ticket', 'id="cutupSupportCloseTicket" data-no-icon') +
+          '<button type="button" class="cutup-support-close-btn" id="cutupSupportCloseTicket">Close Ticket</button>' +
         '</div>' +
         '<p id="cutupSupportCloseError" class="cutup-support-form-error" hidden role="alert"></p>' +
       '</section>'
