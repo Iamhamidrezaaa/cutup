@@ -161,10 +161,10 @@ export async function getUserTicketOverview(userId) {
   };
 }
 
-export async function getUserSupportActivity(userId, { limit = 12 } = {}) {
+export async function getUserSupportActivity(userId, { limit = 5 } = {}) {
   if (!isBillingDbConfigured()) return { ok: false, reason: 'db_not_configured', activity: [] };
   await ensureSupportTicketsSchema();
-  const safeLimit = Math.min(30, Math.max(1, Number(limit) || 12));
+  const safeLimit = Math.min(30, Math.max(1, Number(limit) || 5));
   const pool = getPool();
   const { rows } = await pool.query(
     `SELECT e.event_type, e.payload, e.created_at, t.ticket_number, t.subject

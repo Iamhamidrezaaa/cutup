@@ -42,18 +42,21 @@
   flex-shrink: 0;
 }
 
-/* KPI row V3 */
+/* KPI row V3 — 5 equal columns, full width */
 .cutup-support-kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+  width: 100%;
 }
 
 .cutup-support-kpi {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: flex-start;
-  padding: 12px 14px;
+  padding: 14px 16px;
+  min-height: 84px;
+  box-sizing: border-box;
   border: 1px solid var(--border-color, #e5e7eb);
   border-radius: 14px;
   background: #fff;
@@ -144,7 +147,8 @@
 .cutup-support-activity {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
+  width: 100%;
 }
 
 .cutup-support-activity__item {
@@ -176,6 +180,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex: 1;
   min-width: 0;
 }
 
@@ -1090,6 +1095,13 @@
   }
 }
 
+@media (max-width: 1100px) {
+  .cutup-support-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+}
+
 @media (max-width: 900px) {
   .cutup-support-home-grid {
     grid-template-columns: 1fr;
@@ -1119,7 +1131,13 @@
   }
 
   .cutup-support-kpis {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .cutup-support-kpi {
+    min-height: 0;
+    padding: 12px 14px;
   }
 
   .cutup-support-issue {

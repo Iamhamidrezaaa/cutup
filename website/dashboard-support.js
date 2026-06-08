@@ -5,6 +5,7 @@
   'use strict';
 
   var TURNSTILE_SITE_KEY = '0x4AAAAAADIgzmavc-RbN4iZ';
+  var ACTIVITY_FEED_LIMIT = 5;
 
   var DEPARTMENTS = [
     { value: 'TECHNICAL_SUPPORT', label: 'Technical Support' },
@@ -282,7 +283,7 @@
     }
     return (
       '<div class="cutup-support-activity" role="feed">' +
-        state.activity.slice(0, 8).map(function (a) {
+        state.activity.slice(0, ACTIVITY_FEED_LIMIT).map(function (a) {
           return (
             '<button type="button" class="cutup-support-activity__item" data-ticket="' + esc(a.ticket_number) + '">' +
               '<span class="cutup-support-activity__icon" aria-hidden="true">' + activityIcon(a.event_type) + '</span>' +
@@ -912,7 +913,7 @@
   }
 
   async function loadActivity() {
-    var res = await apiGet('/api/support/tickets?action=activity&limit=12');
+    var res = await apiGet('/api/support/tickets?action=activity&limit=' + ACTIVITY_FEED_LIMIT);
     if (res.ok) state.activity = res.data.activity || [];
   }
 
