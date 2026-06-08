@@ -3,7 +3,7 @@
  * Output: api/email-platform/index.js
  */
 import * as esbuild from 'esbuild';
-import { mkdirSync } from 'fs';
+import { mkdirSync, writeFileSync, statSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -34,4 +34,23 @@ await esbuild.build({
   logLevel: 'info',
 });
 
+const stampPath = join(dirname(outfile), 'BUILD_STAMP.json');
+const st = statSync(outfile);
+writeFileSync(
+  stampPath,
+  JSON.stringify(
+    {
+      builtAt: new Date().toISOString(),
+      templateVersion: 'V3',
+      bundleMtime: st.mtime.toISOString(),
+      bundleSize: st.size,
+      entry: 'services/email/runtime-entry.ts',
+      outfile: 'api/email-platform/index.js',
+    },
+    null,
+    2,
+  ),
+);
+
 console.log('[build-email-platform] wrote', outfile);
+console.log('[build-email-platform] wrote', stampPath);

@@ -1,0 +1,8 @@
+{
+  "builtAt": "2026-06-08T17:07:04.478Z",
+  "templateVersion": "V3",
+  "bundleMtime": "2026-06-08T17:07:04.477Z",
+  "bundleSize": 1296358,
+  "entry": "services/email/runtime-entry.ts",
+  "outfile": "api/email-platform/index.js"
+}
