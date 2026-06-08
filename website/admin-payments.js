@@ -3,6 +3,17 @@
  */
 window.CutupAdminPayments = (function () {
   const SEARCH_DEBOUNCE_MS = 320;
+  const REFRESH_MS = 20000;
+  const STATUS_TICK_MS = 1000;
+
+  const PRESET_LABELS = {
+    all: 'All time',
+    today: 'Today',
+    '7d': '7 days',
+    '30d': '30 days',
+    '90d': '90 days',
+    custom: 'Custom'
+  };
 
   const state = {
     preset: '30d',
@@ -27,7 +38,12 @@ window.CutupAdminPayments = (function () {
     data: null,
     detailCache: new Map(),
     hasRendered: false,
-    searchTimer: null
+    searchTimer: null,
+    lastUpdatedAt: null,
+    lastRefreshError: null,
+    refreshTimer: null,
+    statusTickTimer: null,
+    refreshInFlight: false
   };
 
   const PROVIDER_META = {
@@ -86,10 +102,35 @@ window.CutupAdminPayments = (function () {
       .join('')}</div>`;
   }
 
+  function persistableState() {
+    return {
+      preset: state.preset,
+      startDate: state.startDate,
+      endDate: state.endDate,
+      provider: state.provider,
+      status: state.status,
+      callbackStatus: state.callbackStatus,
+      plan: state.plan,
+      country: state.country,
+      search: state.search,
+      page: state.page,
+      pageSize: state.pageSize,
+      failedOnly: state.failedOnly,
+      retriesOnly: state.retriesOnly,
+      highValueOnly: state.highValueOnly,
+      sandboxOnly: state.sandboxOnly,
+      liveOnly: state.liveOnly,
+      minAmount: state.minAmount,
+      maxAmount: state.maxAmount
+    };
+  }
+
   function readUrlState() {
     const saved = window.CutupAdminFilterState?.loadAdminFilterState?.('payments');
     if (saved) {
-      Object.assign(state, saved);
+      Object.assign(state, persistableState(), saved);
+      state.selected = new Set();
+      state.detailCache = new Map();
       return;
     }
     const p = new URLSearchParams(window.location.search);
@@ -114,7 +155,31 @@ window.CutupAdminPayments = (function () {
   }
 
   function writeUrlState() {
-    window.CutupAdminFilterState?.saveAdminFilterState?.('payments', { ...state });
+    window.CutupAdminFilterState?.saveAdminFilterState?.('payments', persistableState());
+  }
+
+  function formatUpdatedAgo(ts) {
+    if (!ts) return '—';
+    const sec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+    if (sec < 8) return 'just now';
+    if (sec < 60) return `${sec}s ago`;
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}m ago`;
+    return `${Math.floor(min / 60)}h ago`;
+  }
+
+  function updateLiveStatus(phase = 'ok') {
+    const el = document.getElementById('paymentsLiveStatus');
+    const updatedEl = document.getElementById('paymentsLiveUpdated');
+    if (!el) return;
+    el.classList.remove('pay-live-status--syncing', 'pay-live-status--error');
+    if (phase === 'syncing') el.classList.add('pay-live-status--syncing');
+    if (phase === 'error') el.classList.add('pay-live-status--error');
+    if (updatedEl) {
+      if (phase === 'syncing') updatedEl.textContent = 'Syncing…';
+      else if (phase === 'error') updatedEl.textContent = 'Update failed';
+      else updatedEl.textContent = state.lastUpdatedAt ? `Updated ${formatUpdatedAgo(state.lastUpdatedAt)}` : 'Loading…';
+    }
   }
 
   function activeChips() {
@@ -145,7 +210,13 @@ window.CutupAdminPayments = (function () {
   function statusPill(status) {
     const s = String(status || 'unknown').toLowerCase();
     const cls =
-      s === 'success' ? 'pay-status--success' : s === 'pending' ? 'pay-status--pending' : 'pay-status--failed';
+      s === 'success'
+        ? 'pay-status--success'
+        : s === 'pending'
+          ? 'pay-status--pending'
+          : s === 'canceled'
+            ? 'pay-status--canceled'
+            : 'pay-status--failed';
     return `<span class="pay-status-pill ${cls}">${esc(s)}</span>`;
   }
 
@@ -228,6 +299,8 @@ window.CutupAdminPayments = (function () {
       ['Net revenue', f.eur(kpis.netRevenueEur), null, ''],
       ['Successful', f.num(kpis.successfulPayments), kpis.trends?.successfulPayments, ''],
       ['Failed', f.num(kpis.failedPayments), null, ''],
+      ['Canceled', f.num(kpis.canceledPayments), null, ''],
+      ['Pending', f.num(kpis.pendingPayments), null, ''],
       ['Conversion', `${f.num(kpis.conversionRate, 1)}%`, kpis.trends?.conversionRate, ''],
       ['Avg order', f.eur(kpis.avgOrderValue), null, ''],
       ['MRR (est.)', f.eur(kpis.mrr), null, ''],
@@ -261,70 +334,120 @@ window.CutupAdminPayments = (function () {
 
   function renderFilters() {
     const chips = activeChips();
+    const customVisible = state.preset === 'custom';
     return `
       <div class="pay-filters-sticky">
-        <div class="pay-filter-bar">
-          <input type="search" id="paySearchInput" class="pay-search" placeholder="Email, authority, ref ID, payment ID…" value="${esc(state.search)}" autocomplete="off" />
-          <div class="pay-segment" role="group" aria-label="Date preset">
-            ${['all', 'today', '7d', '30d', '90d', 'custom']
-              .map((p) => {
-                const label =
-                  p === 'all'
-                    ? 'All'
-                    : p === 'today'
-                      ? 'Today'
-                      : p === '7d'
-                        ? '7d'
-                        : p === '30d'
-                          ? '30d'
-                          : p === '90d'
-                            ? '90d'
-                            : 'Custom';
-                return `<button type="button" data-pay-preset="${p}" class="${state.preset === p ? 'active' : ''}">${label}</button>`;
-              })
-              .join('')}
+        <div class="pay-filters-card">
+          <div class="pay-filters-period">
+            <div class="pay-filters-period-main">
+              <span class="pay-filters-label">Time range</span>
+              <div class="pay-segment" role="group" aria-label="Date preset">
+                ${['all', 'today', '7d', '30d', '90d', 'custom']
+                  .map((p) => {
+                    const label = PRESET_LABELS[p] || p;
+                    return `<button type="button" data-pay-preset="${p}" class="${state.preset === p ? 'active' : ''}">${label}</button>`;
+                  })
+                  .join('')}
+              </div>
+            </div>
+            <div id="payCustomDates" class="pay-filters-custom${customVisible ? ' is-visible' : ''}">
+              <label class="pay-filter-field pay-filter-field--date">
+                <span>From</span>
+                <input type="date" id="payStartInput" class="pay-filter-input" value="${esc(state.startDate)}" />
+              </label>
+              <label class="pay-filter-field pay-filter-field--date">
+                <span>To</span>
+                <input type="date" id="payEndInput" class="pay-filter-input" value="${esc(state.endDate)}" />
+              </label>
+            </div>
           </div>
-          <select id="payProviderSelect" class="pay-select" aria-label="Provider">
-            <option value="all">All gateways</option>
-            <option value="yekpay"${state.provider === 'yekpay' ? ' selected' : ''}>YekPay</option>
-            <option value="stripe"${state.provider === 'stripe' ? ' selected' : ''}>Stripe</option>
-          </select>
-          <select id="payStatusSelect" class="pay-select" aria-label="Status">
-            <option value="all">All statuses</option>
-            <option value="success"${state.status === 'success' ? ' selected' : ''}>Success</option>
-            <option value="failed"${state.status === 'failed' ? ' selected' : ''}>Failed</option>
-            <option value="pending"${state.status === 'pending' ? ' selected' : ''}>Pending</option>
-            <option value="canceled"${state.status === 'canceled' ? ' selected' : ''}>Canceled</option>
-          </select>
-          <select id="payCallbackSelect" class="pay-select" aria-label="Callback">
-            <option value="all">All callbacks</option>
-            <option value="success"${state.callbackStatus === 'success' ? ' selected' : ''}>Verified</option>
-            <option value="pending"${state.callbackStatus === 'pending' ? ' selected' : ''}>Pending</option>
-            <option value="failed"${state.callbackStatus === 'failed' ? ' selected' : ''}>Failed</option>
-          </select>
-          <select id="payPlanSelect" class="pay-select" aria-label="Plan">
-            <option value="all">All plans</option>
-            <option value="free"${state.plan === 'free' ? ' selected' : ''}>Free</option>
-            <option value="starter"${state.plan === 'starter' ? ' selected' : ''}>Starter</option>
-            <option value="pro"${state.plan === 'pro' ? ' selected' : ''}>Pro</option>
-            <option value="business"${state.plan === 'business' ? ' selected' : ''}>Business</option>
-          </select>
-          <input type="text" id="payCountryInput" class="pay-select" placeholder="Country (ISO)" value="${state.country !== 'all' ? esc(state.country) : ''}" maxlength="2" />
-          <input type="number" id="payMinInput" class="pay-select" placeholder="Min €" value="${esc(state.minAmount)}" min="0" step="0.01" style="width:90px" />
-          <input type="number" id="payMaxInput" class="pay-select" placeholder="Max €" value="${esc(state.maxAmount)}" min="0" step="0.01" style="width:90px" />
-          <label class="pay-check"><input type="checkbox" id="payFailedOnly"${state.failedOnly ? ' checked' : ''} /> Failed</label>
-          <label class="pay-check"><input type="checkbox" id="payRetriesOnly"${state.retriesOnly ? ' checked' : ''} /> Retries</label>
-          <label class="pay-check"><input type="checkbox" id="payHighOnly"${state.highValueOnly ? ' checked' : ''} /> High value</label>
-          <label class="pay-check"><input type="checkbox" id="paySandboxOnly"${state.sandboxOnly ? ' checked' : ''} /> Sandbox</label>
-          <label class="pay-check"><input type="checkbox" id="payLiveOnly"${state.liveOnly ? ' checked' : ''} /> Live</label>
-          <span id="payCustomDates" style="${state.preset === 'custom' ? '' : 'display:none'}">
-            <input type="date" id="payStartInput" value="${esc(state.startDate)}" />
-            <input type="date" id="payEndInput" value="${esc(state.endDate)}" />
-          </span>
-          <button type="button" class="btn" id="payApplyBtn">Apply</button>
-          <button type="button" class="btn ghost" id="payResetBtn">Reset</button>
+          <div class="pay-filters-quick">
+            <span class="pay-filters-label">Quick view</span>
+            <div class="pay-segment pay-segment--compact" role="group" aria-label="Payment status quick filter">
+              ${[
+                ['all', 'All'],
+                ['success', 'Successful'],
+                ['failed', 'Failed'],
+                ['canceled', 'Canceled'],
+                ['pending', 'Pending']
+              ]
+                .map(
+                  ([value, label]) =>
+                    `<button type="button" data-pay-quick-status="${value}" class="${state.status === value ? 'active' : ''}">${label}</button>`
+                )
+                .join('')}
+            </div>
+          </div>
+          <div class="pay-filters-grid">
+            <label class="pay-filter-field pay-filter-field--search">
+              <span>Search</span>
+              <input type="search" id="paySearchInput" class="pay-filter-input" placeholder="Email, authority, ref ID, payment ID…" value="${esc(state.search)}" autocomplete="off" />
+            </label>
+            <label class="pay-filter-field">
+              <span>Gateway</span>
+              <select id="payProviderSelect" class="pay-filter-input" aria-label="Provider">
+                <option value="all">All gateways</option>
+                <option value="yekpay"${state.provider === 'yekpay' ? ' selected' : ''}>YekPay</option>
+                <option value="stripe"${state.provider === 'stripe' ? ' selected' : ''}>Stripe</option>
+              </select>
+            </label>
+            <label class="pay-filter-field">
+              <span>Status</span>
+              <select id="payStatusSelect" class="pay-filter-input" aria-label="Status">
+                <option value="all">All statuses</option>
+                <option value="success"${state.status === 'success' ? ' selected' : ''}>Success</option>
+                <option value="failed"${state.status === 'failed' ? ' selected' : ''}>Failed</option>
+                <option value="pending"${state.status === 'pending' ? ' selected' : ''}>Pending</option>
+                <option value="canceled"${state.status === 'canceled' ? ' selected' : ''}>Canceled</option>
+              </select>
+            </label>
+            <label class="pay-filter-field">
+              <span>Callback</span>
+              <select id="payCallbackSelect" class="pay-filter-input" aria-label="Callback">
+                <option value="all">All callbacks</option>
+                <option value="success"${state.callbackStatus === 'success' ? ' selected' : ''}>Verified</option>
+                <option value="pending"${state.callbackStatus === 'pending' ? ' selected' : ''}>Pending</option>
+                <option value="failed"${state.callbackStatus === 'failed' ? ' selected' : ''}>Failed</option>
+              </select>
+            </label>
+            <label class="pay-filter-field">
+              <span>Plan</span>
+              <select id="payPlanSelect" class="pay-filter-input" aria-label="Plan">
+                <option value="all">All plans</option>
+                <option value="free"${state.plan === 'free' ? ' selected' : ''}>Free</option>
+                <option value="starter"${state.plan === 'starter' ? ' selected' : ''}>Starter</option>
+                <option value="pro"${state.plan === 'pro' ? ' selected' : ''}>Pro</option>
+                <option value="business"${state.plan === 'business' ? ' selected' : ''}>Business</option>
+              </select>
+            </label>
+            <label class="pay-filter-field">
+              <span>Country</span>
+              <input type="text" id="payCountryInput" class="pay-filter-input" placeholder="ISO code" value="${state.country !== 'all' ? esc(state.country) : ''}" maxlength="2" />
+            </label>
+            <label class="pay-filter-field">
+              <span>Min amount</span>
+              <input type="number" id="payMinInput" class="pay-filter-input" placeholder="€" value="${esc(state.minAmount)}" min="0" step="0.01" />
+            </label>
+            <label class="pay-filter-field">
+              <span>Max amount</span>
+              <input type="number" id="payMaxInput" class="pay-filter-input" placeholder="€" value="${esc(state.maxAmount)}" min="0" step="0.01" />
+            </label>
+          </div>
+          <div class="pay-filters-toggles">
+            <label class="pay-check"><input type="checkbox" id="payFailedOnly"${state.failedOnly ? ' checked' : ''} /> Failed &amp; canceled</label>
+            <label class="pay-check"><input type="checkbox" id="payRetriesOnly"${state.retriesOnly ? ' checked' : ''} /> Retries only</label>
+            <label class="pay-check"><input type="checkbox" id="payHighOnly"${state.highValueOnly ? ' checked' : ''} /> High value (€50+)</label>
+            <label class="pay-check"><input type="checkbox" id="paySandboxOnly"${state.sandboxOnly ? ' checked' : ''} /> Sandbox</label>
+            <label class="pay-check"><input type="checkbox" id="payLiveOnly"${state.liveOnly ? ' checked' : ''} /> Live only</label>
+          </div>
+          <div class="pay-filters-footer">
+            ${chips.length ? `<div class="pay-chips">${chips.map((c) => `<span class="pay-chip">${esc(c)}</span>`).join('')}</div>` : '<span class="pay-filters-hint">Filter by gateway, status, callback verification, plan, and amount range.</span>'}
+            <div class="pay-filters-actions">
+              <button type="button" class="btn ghost" id="payResetBtn">Reset</button>
+              <button type="button" class="btn" id="payApplyBtn">Apply filters</button>
+            </div>
+          </div>
         </div>
-        ${chips.length ? `<div class="pay-chips">${chips.map((c) => `<span class="pay-chip">${esc(c)}</span>`).join('')}</div>` : ''}
       </div>`;
   }
 
@@ -359,32 +482,66 @@ window.CutupAdminPayments = (function () {
       </article>`;
   }
 
+  function hasActiveFilters() {
+    return (
+      state.preset !== '30d' ||
+      state.provider !== 'all' ||
+      state.status !== 'all' ||
+      state.callbackStatus !== 'all' ||
+      state.plan !== 'all' ||
+      state.country !== 'all' ||
+      state.search ||
+      state.failedOnly ||
+      state.retriesOnly ||
+      state.highValueOnly ||
+      state.sandboxOnly ||
+      state.liveOnly ||
+      state.minAmount ||
+      state.maxAmount
+    );
+  }
+
   function renderList(payments, total, page, totalPages) {
     const q = state.search;
-    if (!payments.length) {
-      return `
-        <div class="pay-empty">
-          <div style="font-size:40px;margin-bottom:12px" aria-hidden="true">💳</div>
-          <h3>No transactions in this view</h3>
-          <p>Successful checkouts, pending authorizations, and failed attempts appear here with gateway and callback context.</p>
-          ${q ? '<p class="muted">Try clearing search or widening the date range.</p>' : '<p class="muted">Revenue charts and YekPay health update as volume grows.</p>'}
-        </div>`;
-    }
+    const emptyBody = !payments.length
+      ? `<div class="pay-empty pay-empty--inline">
+          <div class="pay-empty-icon" aria-hidden="true">💳</div>
+          <h3>${hasActiveFilters() || q ? 'No transactions match your filters' : 'No payments recorded yet'}</h3>
+          <p>${
+            hasActiveFilters() || q
+              ? 'Try clearing search, widening the date range, or switching the status quick view.'
+              : 'When customers complete checkout via YekPay, successful payments, pending authorizations, failures, and cancellations will appear here with full gateway context.'
+          }</p>
+        </div>`
+      : `<div class="pay-tx-list">${payments.map(renderTxCard).join('')}</div>`;
+
     return `
-      <div id="payBulkBar" class="pay-filter-bar" style="margin-bottom:8px${state.selected.size ? '' : ';display:none'}">
-        ${state.selected.size ? `<span><strong>${state.selected.size}</strong> selected</span>
-        <button type="button" class="btn ghost" data-bulk="export">Export CSV</button>
-        <button type="button" class="btn ghost" data-bulk="lookup">User lookup</button>
-        <button type="button" class="btn ghost" data-bulk="clear">Clear</button>` : ''}
-      </div>
-      <div class="pay-filter-bar" style="margin-bottom:8px">
-        <label class="pay-check"><input type="checkbox" id="paySelectAll" /> Select page</label>
-        <span class="muted">${fmt().num(total)} payments · page ${page} / ${totalPages}</span>
-      </div>
-      <div class="pay-tx-list">${payments.map(renderTxCard).join('')}</div>
-      <div class="pay-pagination">
-        <button type="button" class="btn ghost" id="payPrevPage" ${page <= 1 ? 'disabled' : ''}>Previous</button>
-        <button type="button" class="btn ghost" id="payNextPage" ${page >= totalPages ? 'disabled' : ''}>Next</button>
+      <div class="pay-table-card">
+        <div id="payBulkBar" class="pay-bulk-bar"${state.selected.size ? '' : ' hidden'}>
+          <span><strong>${state.selected.size}</strong> selected</span>
+          <button type="button" class="btn ghost" data-bulk="export">Export CSV</button>
+          <button type="button" class="btn ghost" data-bulk="lookup">User lookup</button>
+          <button type="button" class="btn ghost" data-bulk="clear">Clear selection</button>
+        </div>
+        <div class="pay-table-toolbar">
+          <div class="pay-table-toolbar-main">
+            <h3 class="pay-table-title">Transactions</h3>
+            <span class="pay-table-count">${fmt().num(total)} payments</span>
+          </div>
+          <label class="pay-check pay-table-select-all">
+            <input type="checkbox" id="paySelectAll" /> Select page
+          </label>
+        </div>
+        ${emptyBody}
+        <div class="pay-pagination">
+          <span class="pay-pagination-meta">
+            Page <strong>${page}</strong> of <strong>${totalPages}</strong>
+          </span>
+          <div class="pay-pagination-actions">
+            <button type="button" class="btn ghost" id="payPrevPage" ${page <= 1 ? 'disabled' : ''}>← Previous</button>
+            <button type="button" class="btn ghost" id="payNextPage" ${page >= totalPages ? 'disabled' : ''}>Next →</button>
+          </div>
+        </div>
       </div>`;
   }
 
@@ -614,9 +771,23 @@ window.CutupAdminPayments = (function () {
         state.preset = btn.getAttribute('data-pay-preset') || '30d';
         state.page = 1;
         const custom = document.getElementById('payCustomDates');
-        if (custom) custom.style.display = state.preset === 'custom' ? '' : 'none';
+        if (custom) custom.classList.toggle('is-visible', state.preset === 'custom');
         document.querySelectorAll('[data-pay-preset]').forEach((b) => b.classList.toggle('active', b === btn));
         if (state.preset !== 'custom') load();
+      });
+    });
+
+    document.querySelectorAll('[data-pay-quick-status]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.status = btn.getAttribute('data-pay-quick-status') || 'all';
+        state.page = 1;
+        state.failedOnly = false;
+        document.querySelectorAll('[data-pay-quick-status]').forEach((b) =>
+          b.classList.toggle('active', b === btn)
+        );
+        const statusSelect = document.getElementById('payStatusSelect');
+        if (statusSelect) statusSelect.value = state.status;
+        load({ fullRender: false });
       });
     });
 
@@ -639,7 +810,7 @@ window.CutupAdminPayments = (function () {
     });
 
     document.getElementById('payResetBtn')?.addEventListener('click', () => {
-      Object.assign(state, {
+      Object.assign(state, persistableState(), {
         preset: '30d',
         startDate: '',
         endDate: '',
@@ -734,25 +905,43 @@ window.CutupAdminPayments = (function () {
     const root = document.getElementById('paymentsWorkspace');
     if (!root) return;
 
+    if (silent && !state.hasRendered) {
+      return load({ fullRender: true, silent: false });
+    }
+    if (state.refreshInFlight && silent) return;
+
     if (fullRender && !silent) {
       root.classList.add('pay-skeleton');
       root.innerHTML = '<div class="pay-kpi-grid"></div>';
+      updateLiveStatus('syncing');
+    } else if (silent) {
+      updateLiveStatus('syncing');
     }
 
     writeUrlState();
+    state.refreshInFlight = true;
 
     try {
       const data = await fetchData();
       state.data = data;
       const payments = data.payments || [];
       state.hasRendered = true;
+      state.lastUpdatedAt = Date.now();
+      state.lastRefreshError = null;
       paintWorkspace(root, data, payments, data.total || 0, data.page || 1, data.totalPages || 1);
+      updateLiveStatus('ok');
     } catch (e) {
+      state.lastRefreshError = e;
       if (silent && state.hasRendered) {
         console.warn('[Cutup Payments] refresh failed', e);
+        updateLiveStatus('error');
         return;
       }
       root.classList.remove('pay-skeleton');
+      if (state.hasRendered && state.data) {
+        updateLiveStatus('error');
+        return;
+      }
       try {
         const legacy = await apiGet('payments', {
           legacy: '1',
@@ -775,12 +964,47 @@ window.CutupAdminPayments = (function () {
           createdAt: p.created_at
         }));
         state.data = { payments, total: payments.length, page: 1, totalPages: 1, insights: [], analytics: null };
+        state.hasRendered = true;
+        state.lastUpdatedAt = Date.now();
         root.classList.add('pay-root');
         root.innerHTML = `${renderFilters()}<p class="pay-partial-note">Dashboard API unavailable — showing simplified legacy list.</p>${renderList(payments, payments.length, 1, 1)}`;
         bindWorkspaceEvents();
+        updateLiveStatus('error');
       } catch (e2) {
-        root.innerHTML = `<p class="pay-empty">Failed to load payments: ${esc(e.message || e2.message)}</p>`;
+        root.innerHTML = `<div class="pay-empty"><h3>Failed to load payments</h3><p>${esc(e.message || e2.message)}</p></div>`;
+        updateLiveStatus('error');
       }
+    } finally {
+      state.refreshInFlight = false;
+    }
+  }
+
+  function isPaymentsSectionActive() {
+    return document.getElementById('section-payments')?.classList.contains('active');
+  }
+
+  function startAutoRefresh() {
+    stopAutoRefresh();
+    state.refreshTimer = setInterval(() => {
+      if (!isPaymentsSectionActive()) return;
+      load({ fullRender: false, silent: true });
+    }, REFRESH_MS);
+    if (!state.statusTickTimer) {
+      state.statusTickTimer = setInterval(() => {
+        if (!isPaymentsSectionActive() || !state.lastUpdatedAt) return;
+        updateLiveStatus(state.refreshInFlight ? 'syncing' : state.lastRefreshError ? 'error' : 'ok');
+      }, STATUS_TICK_MS);
+    }
+  }
+
+  function stopAutoRefresh() {
+    if (state.refreshTimer) {
+      clearInterval(state.refreshTimer);
+      state.refreshTimer = null;
+    }
+    if (state.statusTickTimer) {
+      clearInterval(state.statusTickTimer);
+      state.statusTickTimer = null;
     }
   }
 
@@ -792,9 +1016,10 @@ window.CutupAdminPayments = (function () {
         : (state.data?.payments || []).map((r) => String(r.id));
       exportCsv(ids);
     });
+    if (isPaymentsSectionActive()) startAutoRefresh();
   }
 
   initGlobal();
 
-  return { load, readUrlState, getState: () => ({ ...state }) };
+  return { load, readUrlState, startAutoRefresh, stopAutoRefresh, getState: () => ({ ...state }) };
 })();

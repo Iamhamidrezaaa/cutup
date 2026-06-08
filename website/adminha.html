@@ -316,6 +316,11 @@
               <p class="pay-subtitle">Financial operations — YekPay-first, provider-agnostic revenue intelligence.</p>
             </div>
             <div class="pay-header-actions">
+              <p id="paymentsLiveStatus" class="pay-live-status" role="status" aria-live="polite">
+                <span class="pay-live-dot" aria-hidden="true"></span>
+                <span class="pay-live-label">Live updates enabled</span>
+                <span class="pay-live-updated" id="paymentsLiveUpdated">Loading…</span>
+              </p>
               <button type="button" class="btn ghost" id="paymentsExportCsvBtn">Export CSV</button>
             </div>
           </div>

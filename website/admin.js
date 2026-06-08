@@ -363,6 +363,7 @@ function activateAdminSection(section) {
   stopAuditLiveWs();
   if (section !== 'usage') window.CutupAdminUsage?.stopAutoRefresh?.();
   if (section !== 'outputs') window.CutupAdminOutputs?.stopAutoRefresh?.();
+  if (section !== 'payments') window.CutupAdminPayments?.stopAutoRefresh?.();
   if (section !== 'users') stopUsersAutoRefresh();
   document.querySelectorAll('.nav-btn[data-section]').forEach((n) => {
     if (!n.closest('#navContentHub') && !n.closest('#navUsersHub')) n.classList.remove('active');
@@ -1869,6 +1870,7 @@ function renderPaymentsUnavailable(message = 'Payments analytics temporarily una
 async function loadPayments() {
   if (window.CutupAdminPayments?.load) {
     window.CutupAdminPayments.readUrlState?.();
+    window.CutupAdminPayments.startAutoRefresh?.();
     return window.CutupAdminPayments.load({ fullRender: true });
   }
   const pay = await apiGet('payments', { legacy: '1' });

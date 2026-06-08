@@ -272,7 +272,10 @@ async function queryKpis(pool, range, prevRange, opts) {
          COALESCE(SUM(CASE WHEN p.status = 'success' THEN COALESCE(p.final_amount_eur, p.amount_eur, p.amount, 0) ELSE 0 END), 0)::numeric AS gross,
          COALESCE(SUM(CASE WHEN p.status = 'success' THEN COALESCE(p.discount_amount_eur, 0) ELSE 0 END), 0)::numeric AS discounts,
          COUNT(*) FILTER (WHERE p.status = 'success')::int AS successful,
-         COUNT(*) FILTER (WHERE p.status IN ('failed','canceled'))::int AS failed,
+         COUNT(*) FILTER (WHERE p.status = 'failed')::int AS failed,
+         COUNT(*) FILTER (WHERE p.status = 'canceled')::int AS canceled,
+         COUNT(*) FILTER (WHERE p.status = 'pending')::int AS pending,
+         COUNT(*) FILTER (WHERE p.status IN ('failed','canceled'))::int AS failed_total,
          COUNT(*)::int AS attempts,
          COALESCE(AVG(CASE WHEN p.status = 'success' THEN COALESCE(p.final_amount_eur, p.amount_eur, p.amount, 0) END), 0)::numeric AS avg_order
        ${PAYMENTS_FROM}
@@ -290,6 +293,8 @@ async function queryKpis(pool, range, prevRange, opts) {
   const successful = Number(cur.successful || 0);
   const attempts = Number(cur.attempts || 0);
   const failed = Number(cur.failed || 0);
+  const canceled = Number(cur.canceled || 0);
+  const pending = Number(cur.pending || 0);
 
   const mrrRes = await pool.query(`
     SELECT COALESCE(sub.plan, 'free') AS plan, COUNT(*)::int AS c
@@ -340,6 +345,8 @@ async function queryKpis(pool, range, prevRange, opts) {
     netRevenueEur: Math.round((gross - Number(cur.discounts || 0)) * 100) / 100,
     successfulPayments: successful,
     failedPayments: failed,
+    canceledPayments: canceled,
+    pendingPayments: pending,
     conversionRate: attempts > 0 ? Math.round((successful / attempts) * 1000) / 10 : 0,
     avgOrderValue: Math.round(Number(cur.avg_order || 0) * 100) / 100,
     mrr: Math.round(mrr * 100) / 100,
@@ -561,7 +568,18 @@ function buildInsights({ kpis, breakdowns, funnel, infrastructure }) {
     });
   }
 
-  if (!insights.length) {
+  const totalAttempts =
+    Number(kpis?.successfulPayments || 0) +
+    Number(kpis?.failedPayments || 0) +
+    Number(kpis?.canceledPayments || 0) +
+    Number(kpis?.pendingPayments || 0);
+
+  if (totalAttempts === 0) {
+    insights.unshift({
+      tone: 'neutral',
+      text: 'No payments recorded yet. YekPay infrastructure is ready — transactions will appear here after the first checkout.'
+    });
+  } else if (!insights.length) {
     insights.push({
       tone: 'neutral',
       text: 'Payment analytics will become richer as transaction volume grows.'
