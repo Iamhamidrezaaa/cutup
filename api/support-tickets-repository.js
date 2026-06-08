@@ -22,6 +22,8 @@ function mapTicket(row) {
     created_at: row.created_at,
     updated_at: row.updated_at,
     closed_at: row.closed_at || null,
+    closed_by: row.closed_by || null,
+    satisfaction_rating: row.satisfaction_rating != null ? Number(row.satisfaction_rating) : null,
     first_response_at: row.first_response_at || null,
     resolved_at: row.resolved_at || null,
     last_activity_at: row.last_activity_at || row.updated_at,
@@ -526,6 +528,7 @@ export async function updateSupportTicketStatus({ ticketNumber, status, adminId,
   }
   if (next === 'CLOSED') {
     sets.push('closed_at = COALESCE(closed_at, NOW())');
+    sets.push("closed_by = COALESCE(closed_by, 'admin')");
   }
 
   await pool.query(`UPDATE support_tickets SET ${sets.join(', ')} WHERE id = $1`, params);
@@ -534,12 +537,59 @@ export async function updateSupportTicketStatus({ ticketNumber, status, adminId,
     adminEmail,
   });
 
+  const { rows: fresh } = await pool.query(
+    `SELECT t.*, u.email AS user_email, a.email AS assigned_admin_email
+     FROM support_tickets t
+     JOIN users u ON u.id = t.user_id
+     LEFT JOIN admins a ON a.id = t.assigned_admin_id
+     WHERE t.id = $1 LIMIT 1`,
+    [detail.ticket.id],
+  );
+
   return {
     ok: true,
-    ticket: { ...detail.ticket, status: next },
+    ticket: withSla(fresh[0] || { ...detail.ticket, status: next }),
     userId: detail.ticket.user_id,
     userEmail: detail.ticket.user_email,
   };
+}
+
+export async function closeTicketByUser(userId, ticketNumber, satisfactionRating) {
+  const rating = Number(satisfactionRating);
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    return { ok: false, reason: 'invalid_rating' };
+  }
+
+  const ticketRes = await getTicketForUser(userId, ticketNumber);
+  if (!ticketRes.ok) return ticketRes;
+  if (ticketRes.ticket.status === 'CLOSED') {
+    return { ok: false, reason: 'already_closed' };
+  }
+
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE support_tickets
+       SET status = 'CLOSED', closed_at = NOW(), closed_by = 'user',
+           satisfaction_rating = $2, updated_at = NOW()
+       WHERE id = $1`,
+      [ticketRes.ticket.id, rating],
+    );
+    await logTicketEvent(client, ticketRes.ticket.id, 'status_change', 'user', userId, {
+      status: 'CLOSED',
+      satisfaction_rating: rating,
+    });
+    await client.query('COMMIT');
+    const fresh = await getTicketForUser(userId, ticketNumber);
+    return { ok: true, ticket: fresh.ticket };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export async function addInternalNote({ ticketNumber, adminId, adminEmail, note }) {

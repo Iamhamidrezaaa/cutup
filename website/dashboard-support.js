@@ -29,9 +29,45 @@
     tickets: [],
     activity: [],
     loading: false,
-    modalOpen: false,
+    createFormOpen: false,
     pendingAttachments: [],
+    selectedRating: 0,
   };
+
+  var ICON_MSG =
+    '<svg class="cutup-help-btn__icon" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+    '<path d="M21 15a4 4 0 01-4 4H7l-4 4V7a4 4 0 014-4h10a4 4 0 014 4v8z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>' +
+    '</svg>';
+
+  var ICON_CLIP =
+    '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+    '<path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+    '</svg>';
+
+  var RATING_OPTIONS = [
+    { score: 1, emoji: '😡', label: 'Very dissatisfied' },
+    { score: 2, emoji: '😢', label: 'Dissatisfied' },
+    { score: 3, emoji: '😐', label: 'Neutral' },
+    { score: 4, emoji: '😍', label: 'Satisfied' },
+    { score: 5, emoji: '🥰', label: 'Very satisfied' },
+  ];
+
+  function btnPrimary(label, attrs) {
+    attrs = attrs || '';
+    var icon = /data-no-icon/.test(attrs) ? '' : ICON_MSG;
+    var type = /type="submit"/.test(attrs) ? 'submit' : 'button';
+    return '<button type="' + type + '" class="cutup-help-btn cutup-help-btn--primary" ' + attrs + '>' + icon + '<span>' + esc(label) + '</span></button>';
+  }
+
+  function btnSecondary(label, attrs) {
+    attrs = attrs || '';
+    return '<button type="button" class="cutup-help-btn cutup-help-btn--secondary" ' + attrs + '><span>' + esc(label) + '</span></button>';
+  }
+
+  function ratingEmoji(score) {
+    var opt = RATING_OPTIONS.find(function (o) { return o.score === score; });
+    return opt ? opt.emoji : '⭐';
+  }
 
   function apiBase() {
     return typeof API_BASE_URL !== 'undefined' ? String(API_BASE_URL).replace(/\/$/, '') : window.location.origin;
@@ -127,6 +163,7 @@
     window.location.hash = 'support/' + encodeURIComponent(num);
     state.view = 'detail';
     state.ticketNumber = num;
+    void window.CutupDashboardNotifications?.markTicketRead?.(num);
     void mount(num);
   }
 
@@ -193,8 +230,8 @@
         '<p>Our support team typically responds within 24 hours — urgent billing issues within 12 hours.</p>' +
         '<p class="cutup-support-zero__sla">Expected response: under 24h · Billing: under 12h</p>' +
         '<div class="cutup-support-zero__actions">' +
-          '<button type="button" class="btn-primary cutup-support-cta" id="cutupSupportCreateBtnEmpty">Create Ticket</button>' +
-          '<a href="#help" class="btn-secondary">Browse Help Center</a>' +
+          btnPrimary('Create Ticket', 'id="cutupSupportCreateBtnEmpty"') +
+          '<a href="#help" class="cutup-help-btn cutup-help-btn--secondary">Browse Help Center</a>' +
         '</div>' +
       '</div>'
     );
@@ -278,6 +315,37 @@
     );
   }
 
+  function renderCreatePanel() {
+    return (
+      '<section class="cutup-support-create-panel" id="cutupSupportCreatePanel"' + (state.createFormOpen ? '' : ' hidden') + '>' +
+        '<div class="cutup-support-create-panel__head">' +
+          '<div><h2>Create support ticket</h2><p>Tell us how we can help. We typically respond within 24 hours.</p></div>' +
+          '<button type="button" class="cutup-support-create-panel__close" id="cutupSupportCreateClose" aria-label="Close form">×</button>' +
+        '</div>' +
+        '<form class="cutup-support-form" id="cutupSupportForm" novalidate>' +
+          '<input type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" class="cutup-support-honeypot">' +
+          '<div class="cutup-support-form__grid">' +
+            '<label>Department<select name="department" required>' +
+              DEPARTMENTS.map(function (d) { return '<option value="' + esc(d.value) + '">' + esc(d.label) + '</option>'; }).join('') +
+            '</select></label>' +
+            '<label>Priority<select name="priority" required>' +
+              PRIORITIES.map(function (p) { return '<option value="' + esc(p.value) + '"' + (p.value === 'NORMAL' ? ' selected' : '') + '>' + esc(p.label) + '</option>'; }).join('') +
+            '</select></label>' +
+          '</div>' +
+          '<label>Subject<input name="subject" id="cutupSupportSubject" type="text" required minlength="3" maxlength="200" placeholder="Brief summary"></label>' +
+          '<div id="cutupSupportDeflect" class="cutup-support-deflect" hidden></div>' +
+          '<label>Message<textarea name="message" required minlength="10" maxlength="8000" placeholder="Describe your issue in detail…" rows="4"></textarea></label>' +
+          '<div id="cutupSupportTurnstile" class="cf-turnstile" data-sitekey="' + esc(TURNSTILE_SITE_KEY) + '"></div>' +
+          '<p id="cutupSupportFormError" class="cutup-support-form-error" hidden role="alert"></p>' +
+          '<div class="cutup-support-form__actions">' +
+            btnSecondary('Cancel', 'type="button" id="cutupSupportFormCancel" data-no-icon') +
+            btnPrimary('Submit Ticket', 'type="submit" id="cutupSupportFormSubmit" data-no-icon') +
+          '</div>' +
+        '</form>' +
+      '</section>'
+    );
+  }
+
   function renderListView() {
     return (
       '<div class="cutup-support-root">' +
@@ -286,9 +354,10 @@
             '<h1 class="section-title">Support Center</h1>' +
             '<p class="dashboard-section-lead">Get help from the Cutup team.</p>' +
           '</div>' +
-          '<button type="button" class="btn-primary cutup-support-cta" id="cutupSupportCreateBtn">Create Ticket</button>' +
+          btnPrimary('Create Ticket', 'id="cutupSupportCreateBtn"') +
         '</div>' +
         renderMetrics() +
+        renderCreatePanel() +
         renderHomeGrid() +
       '</div>'
     );
@@ -457,27 +526,87 @@
     );
   }
 
+  function closedBanner(ticket) {
+    if (!['CLOSED', 'RESOLVED'].includes(ticket.status)) return '';
+    var msg;
+    if (ticket.status === 'CLOSED') {
+      if (ticket.closed_by === 'admin') {
+        msg = 'This ticket was closed by Cutup support' + (ticket.closed_at ? ' on ' + fmtDate(ticket.closed_at) : '') + '. Open a new ticket if you need more help.';
+      } else {
+        msg = 'You closed this ticket' + (ticket.closed_at ? ' on ' + fmtDate(ticket.closed_at) : '') + '.';
+      }
+    } else {
+      msg = 'This ticket is resolved. You can still reply or close it below.';
+    }
+    return (
+      '<div class="cutup-support-status-banner cutup-support-status-banner--' + esc(String(ticket.status).toLowerCase()) + '" role="status">' +
+        '<strong>' + esc(formatStatusLabel(ticket.status)) + '</strong>' +
+        '<p>' + esc(msg) + '</p>' +
+      '</div>'
+    );
+  }
+
+  function renderRatingPicker(selected) {
+    return (
+      '<div class="cutup-support-rating" role="radiogroup" aria-label="Rate support experience">' +
+        RATING_OPTIONS.map(function (opt) {
+          var active = selected === opt.score ? ' is-selected' : '';
+          return (
+            '<button type="button" class="cutup-support-rating__opt' + active + '" data-rating="' + opt.score + '" title="' + esc(opt.label) + '" aria-label="' + esc(opt.label) + '">' +
+              '<span class="cutup-support-rating__emoji" aria-hidden="true">' + opt.emoji + '</span>' +
+              '<span class="cutup-support-rating__score">' + opt.score + '</span>' +
+            '</button>'
+          );
+        }).join('') +
+      '</div>'
+    );
+  }
+
+  function renderCloseSection(ticket) {
+    if (ticket.status === 'CLOSED') {
+      if (ticket.satisfaction_rating) {
+        return (
+          '<div class="cutup-support-close-card cutup-support-close-card--done">' +
+            '<p>Thanks for your feedback <span class="cutup-support-rating__emoji" aria-hidden="true">' + ratingEmoji(ticket.satisfaction_rating) + '</span></p>' +
+          '</div>'
+        );
+      }
+      return '';
+    }
+    return (
+      '<section class="cutup-support-close-card">' +
+        '<h3>Close this ticket</h3>' +
+        '<p>How satisfied are you with the support you received?</p>' +
+        renderRatingPicker(state.selectedRating) +
+        '<div class="cutup-support-close-card__actions">' +
+          btnPrimary('Close Ticket', 'id="cutupSupportCloseTicket" data-no-icon') +
+        '</div>' +
+        '<p id="cutupSupportCloseError" class="cutup-support-form-error" hidden role="alert"></p>' +
+      '</section>'
+    );
+  }
+
   function renderDetailView(ticket, messages, events) {
-    var closed = ['CLOSED', 'RESOLVED'].includes(ticket.status);
+    var closed = ticket.status === 'CLOSED';
     var composer = closed
-      ? '<p class="cutup-support-closed-note">This ticket is ' + esc(formatStatusLabel(ticket.status)) + '. Create a new ticket if you need more help.</p>'
+      ? ''
       : '<div class="cutup-support-reply">' +
           '<label for="cutupSupportReply">Reply</label>' +
           '<div id="cutupSupportAttachPreview" class="cutup-support-attach-preview" hidden></div>' +
           '<div class="cutup-support-reply__row">' +
-            '<textarea id="cutupSupportReply" placeholder="Write a reply…" rows="2"></textarea>' +
+            '<textarea id="cutupSupportReply" placeholder="Write a reply…" rows="3"></textarea>' +
             '<div class="cutup-support-reply__actions">' +
               '<label class="cutup-support-attach-btn" title="Attach file">' +
                 '<input type="file" id="cutupSupportFile" accept=".png,.jpg,.jpeg,.webp,.pdf,.txt,.zip" hidden>' +
-                '📎' +
+                ICON_CLIP +
               '</label>' +
-              '<button type="button" class="btn-primary" id="cutupSupportSendReply">Send</button>' +
+              btnPrimary('Send', 'id="cutupSupportSendReply" data-no-icon') +
             '</div>' +
           '</div>' +
         '</div>';
     return (
       '<div class="cutup-support-detail">' +
-        '<button type="button" class="cutup-support-detail__back" id="cutupSupportBack">← All tickets</button>' +
+        btnSecondary('← All tickets', 'id="cutupSupportBack" data-no-icon') +
         '<div class="cutup-support-detail__layout">' +
           '<div class="cutup-support-detail__main">' +
             '<header class="cutup-support-detail__header">' +
@@ -492,12 +621,14 @@
                 (ticket.assigned_admin_email ? '<span>' + esc(ticket.assigned_admin_email) + '</span>' : '') +
               '</div>' +
             '</header>' +
+            closedBanner(ticket) +
             '<div class="cutup-support-timeline-mobile">' +
               '<h3>Timeline</h3>' + renderTimeline(events) +
             '</div>' +
             '<div class="cutup-support-conversation">' +
               '<div class="cutup-support-thread" id="cutupSupportThread">' + renderConversation(messages, events) + '</div>' +
               composer +
+              renderCloseSection(ticket) +
             '</div>' +
           '</div>' +
           '<aside class="cutup-support-detail__sidebar">' +
@@ -508,41 +639,6 @@
         '</div>' +
       '</div>'
     );
-  }
-
-  function renderCreateModal() {
-    return (
-      '<div class="cutup-support-modal" id="cutupSupportModal" hidden role="dialog" aria-modal="true" aria-labelledby="cutupSupportModalTitle">' +
-        '<div class="cutup-support-modal__card">' +
-          '<h2 id="cutupSupportModalTitle">Create support ticket</h2>' +
-          '<p class="dashboard-muted" style="margin:0 0 16px">Tell us how we can help. We typically respond within 24 hours.</p>' +
-          '<form class="cutup-support-form" id="cutupSupportForm" novalidate>' +
-            '<input type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px">' +
-            '<label>Department<select name="department" required>' +
-              DEPARTMENTS.map(function (d) { return '<option value="' + esc(d.value) + '">' + esc(d.label) + '</option>'; }).join('') +
-            '</select></label>' +
-            '<label>Priority<select name="priority" required>' +
-              PRIORITIES.map(function (p) { return '<option value="' + esc(p.value) + '"' + (p.value === 'NORMAL' ? ' selected' : '') + '>' + esc(p.label) + '</option>'; }).join('') +
-            '</select></label>' +
-            '<label>Subject<input name="subject" id="cutupSupportSubject" type="text" required minlength="3" maxlength="200" placeholder="Brief summary"></label>' +
-            '<div id="cutupSupportDeflect" class="cutup-support-deflect" hidden></div>' +
-            '<label>Message<textarea name="message" required minlength="10" maxlength="8000" placeholder="Describe your issue in detail…"></textarea></label>' +
-            '<div id="cutupSupportTurnstile" class="cf-turnstile" data-sitekey="' + esc(TURNSTILE_SITE_KEY) + '"></div>' +
-            '<p id="cutupSupportFormError" class="dashboard-empty-note" hidden role="alert"></p>' +
-            '<div class="cutup-support-form__actions">' +
-              '<button type="button" class="btn-secondary" id="cutupSupportModalCancel">Cancel</button>' +
-              '<button type="submit" class="btn-primary" id="cutupSupportModalSubmit">Submit Ticket</button>' +
-            '</div>' +
-          '</form>' +
-        '</div>' +
-      '</div>'
-    );
-  }
-
-  function ensureModal() {
-    if (document.getElementById('cutupSupportModal')) return;
-    document.body.insertAdjacentHTML('beforeend', renderCreateModal());
-    bindModalEvents();
   }
 
   function loadTurnstileScript() {
@@ -565,14 +661,19 @@
     });
   }
 
-  function openModal() {
-    ensureModal();
-    var modal = document.getElementById('cutupSupportModal');
-    if (!modal) return;
-    modal.hidden = false;
-    state.modalOpen = true;
+  function toggleCreateForm(open) {
+    state.createFormOpen = open !== false;
+    var panel = document.getElementById('cutupSupportCreatePanel');
+    if (panel) panel.hidden = !state.createFormOpen;
+    if (!state.createFormOpen) {
+      if (window.turnstile) {
+        try { window.turnstile.reset(); } catch (_e) { /* noop */ }
+      }
+      return;
+    }
     var err = document.getElementById('cutupSupportFormError');
     if (err) err.hidden = true;
+    panel?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     void loadTurnstileScript().then(function () {
       if (window.turnstile) {
         var el = document.getElementById('cutupSupportTurnstile');
@@ -584,32 +685,26 @@
     });
   }
 
-  function closeModal() {
-    var modal = document.getElementById('cutupSupportModal');
-    if (modal) modal.hidden = true;
-    state.modalOpen = false;
-    if (window.turnstile) {
-      try { window.turnstile.reset(); } catch (_e) { /* noop */ }
-    }
-  }
-
-  function bindModalEvents() {
-    var modal = document.getElementById('cutupSupportModal');
-    if (!modal || modal.dataset.bound === '1') return;
-    modal.dataset.bound = '1';
-
-    document.getElementById('cutupSupportModalCancel')?.addEventListener('click', closeModal);
-    modal.addEventListener('click', function (e) {
-      if (e.target === modal) closeModal();
+  function bindCreateForm(root) {
+    bindDeflection();
+    root.querySelector('#cutupSupportCreateBtn')?.addEventListener('click', function () {
+      toggleCreateForm(!state.createFormOpen);
+    });
+    root.querySelector('#cutupSupportCreateBtnEmpty')?.addEventListener('click', function () {
+      toggleCreateForm(true);
+    });
+    root.querySelector('#cutupSupportCreateClose')?.addEventListener('click', function () {
+      toggleCreateForm(false);
+    });
+    root.querySelector('#cutupSupportFormCancel')?.addEventListener('click', function () {
+      toggleCreateForm(false);
     });
 
-    bindDeflection();
-
-    document.getElementById('cutupSupportForm')?.addEventListener('submit', async function (e) {
+    root.querySelector('#cutupSupportForm')?.addEventListener('submit', async function (e) {
       e.preventDefault();
       var form = e.target;
       var errEl = document.getElementById('cutupSupportFormError');
-      var submitBtn = document.getElementById('cutupSupportModalSubmit');
+      var submitBtn = document.getElementById('cutupSupportFormSubmit');
       var token = form.querySelector('[name="cf-turnstile-response"]')?.value;
       if (!token) {
         if (errEl) {
@@ -637,9 +732,9 @@
         if (window.turnstile) window.turnstile.reset();
         return;
       }
-      closeModal();
+      toggleCreateForm(false);
       form.reset();
-      window.CutupDashboardNotifications?.refresh?.();
+      window.CutupDashboardNotifications?.refreshUnreadCount?.();
       if (res.data?.ticket?.ticket_number) {
         navigateToTicket(res.data.ticket.ticket_number);
       } else {
@@ -649,8 +744,7 @@
   }
 
   function bindListEvents(root) {
-    root.querySelector('#cutupSupportCreateBtn')?.addEventListener('click', openModal);
-    root.querySelector('#cutupSupportCreateBtnEmpty')?.addEventListener('click', openModal);
+    bindCreateForm(root);
     root.querySelectorAll('[data-ticket]').forEach(function (row) {
       row.addEventListener('click', function () {
         navigateToTicket(row.getAttribute('data-ticket'));
@@ -712,7 +806,46 @@
 
   function bindDetailEvents(root, ticketNumber) {
     state.pendingAttachments = [];
+    state.selectedRating = 0;
     root.querySelector('#cutupSupportBack')?.addEventListener('click', navigateToList);
+
+    root.querySelectorAll('[data-rating]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        state.selectedRating = Number(btn.getAttribute('data-rating')) || 0;
+        root.querySelectorAll('[data-rating]').forEach(function (b) {
+          b.classList.toggle('is-selected', b === btn);
+        });
+        var err = document.getElementById('cutupSupportCloseError');
+        if (err) err.hidden = true;
+      });
+    });
+
+    root.querySelector('#cutupSupportCloseTicket')?.addEventListener('click', async function () {
+      var err = document.getElementById('cutupSupportCloseError');
+      if (!state.selectedRating) {
+        if (err) {
+          err.textContent = 'Please select a satisfaction rating before closing.';
+          err.hidden = false;
+        }
+        return;
+      }
+      var btn = document.getElementById('cutupSupportCloseTicket');
+      if (btn) btn.disabled = true;
+      var res = await apiPost('/api/support/tickets', {
+        action: 'close',
+        ticketNumber: ticketNumber,
+        satisfactionRating: state.selectedRating,
+      });
+      if (btn) btn.disabled = false;
+      if (!res.ok) {
+        if (err) {
+          err.textContent = res.data?.error === 'already_closed' ? 'This ticket is already closed.' : 'Could not close ticket. Try again.';
+          err.hidden = false;
+        }
+        return;
+      }
+      void mount(ticketNumber);
+    });
     var fileInput = document.getElementById('cutupSupportFile');
     var preview = document.getElementById('cutupSupportAttachPreview');
     fileInput?.addEventListener('change', async function () {
@@ -802,6 +935,8 @@
       }
       root.innerHTML = renderDetailView(detail.data.ticket, detail.data.messages, detail.data.events);
       bindDetailEvents(root, ticketNumber);
+      void window.CutupDashboardNotifications?.markTicketRead?.(ticketNumber);
+      void window.CutupDashboardNotifications?.refreshUnreadCount?.();
       return;
     }
 
@@ -818,7 +953,7 @@
     try {
       if (sessionStorage.getItem('cutup_open_support_modal') === '1') {
         sessionStorage.removeItem('cutup_open_support_modal');
-        openModal();
+        toggleCreateForm(true);
       }
     } catch (_e) { /* noop */ }
   }
@@ -828,7 +963,7 @@
     mount: mount,
     navigateToList: navigateToList,
     navigateToTicket: navigateToTicket,
-    openCreateTicket: openModal,
+    openCreateTicket: function () { toggleCreateForm(true); },
   };
 
   window.addEventListener('hashchange', function () {

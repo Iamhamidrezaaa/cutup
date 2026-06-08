@@ -151,8 +151,16 @@
     });
   }
 
+  async function markTicketNotificationsRead(ticketNumber) {
+    if (!ticketNumber) return;
+    await apiPost('/api/notifications/read-all', { ticketNumber: ticketNumber });
+  }
+
   async function handleNotificationClick(id, item) {
-    if (id && !item?.is_read) {
+    var ticketNumber = item?.metadata?.ticketNumber || null;
+    if (ticketNumber) {
+      await markTicketNotificationsRead(ticketNumber);
+    } else if (id && !item?.is_read) {
       await apiPost('/api/notifications/' + id + '/read', { id: id });
     }
     closeDropdown();
@@ -398,13 +406,15 @@
   }
 
   window.CutupDashboardNotifications = {
+    markTicketRead: markTicketNotificationsRead,
+    refresh: function () {
+      void refreshUnreadCount();
+    },
+    refreshUnreadCount: refreshUnreadCount,
     init: function () {
       mountBell();
       void refreshUnreadCount();
       connectSse();
-    },
-    refresh: function () {
-      void refreshUnreadCount();
     },
     mountPage: mountPageSection,
   };

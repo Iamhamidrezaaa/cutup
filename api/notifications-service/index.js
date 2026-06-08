@@ -316,6 +316,12 @@ async function markAllAsRead(userId) {
   const mod = await import("../../api/notifications-repository.js");
   return mod.markAllNotificationsReadDb(userId);
 }
+
+async function markReadByTicket(userId, ticketNumber) {
+  const mod = await import("../../api/notifications-repository.js");
+  return mod.markNotificationsReadByTicketDb(userId, ticketNumber);
+}
+
 export {
   NOTIFICATION_TYPES,
   NotificationProvider,
@@ -326,5 +332,6 @@ export {
   getUnreadCount,
   markAllAsRead,
   markAsRead,
+  markReadByTicket,
   notificationIcon
 };

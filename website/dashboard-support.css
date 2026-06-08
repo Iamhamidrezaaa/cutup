@@ -527,8 +527,9 @@
 
 .cutup-support-reply__actions {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 10px;
   flex-shrink: 0;
 }
 
@@ -536,13 +537,24 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   border: 1px solid #e5e7eb;
-  border-radius: 10px;
+  border-radius: 12px;
   background: #fff;
   cursor: pointer;
-  font-size: 16px;
+  color: #475569;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.cutup-support-attach-btn:hover {
+  border-color: #c7d2fe;
+  background: #fafaff;
+  color: #4338ca;
+}
+
+.cutup-support-attach-btn svg {
+  display: block;
 }
 
 .cutup-support-deflect {
@@ -794,9 +806,9 @@
   border-color: #635bff;
 }
 
-.cutup-support-reply .btn-primary {
+.cutup-support-reply .cutup-help-btn--primary {
   flex-shrink: 0;
-  align-self: flex-end;
+  min-width: 100px;
 }
 
 .cutup-support-closed-note {
@@ -815,7 +827,184 @@
   font-size: 14px;
 }
 
-/* Create modal */
+/* Inline create ticket panel */
+.cutup-support-create-panel {
+  border: 1px solid #e0e7ff;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #fafaff 0%, #fff 100%);
+  padding: 20px 22px;
+  box-shadow: 0 4px 20px rgba(99, 91, 255, 0.08);
+}
+
+.cutup-support-create-panel[hidden] {
+  display: none;
+}
+
+.cutup-support-create-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.cutup-support-create-panel__head h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+
+.cutup-support-create-panel__head p {
+  margin: 0;
+  font-size: 14px;
+  color: #64748b;
+}
+
+.cutup-support-create-panel__close {
+  border: none;
+  background: #f1f5f9;
+  color: #64748b;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cutup-support-form__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.cutup-support-honeypot {
+  position: absolute;
+  left: -9999px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cutup-support-form-error {
+  margin: 0;
+  font-size: 13px;
+  color: #dc2626;
+}
+
+.cutup-support-status-banner {
+  margin: 0 0 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+}
+
+.cutup-support-status-banner--closed {
+  border-color: #e2e8f0;
+  background: #f1f5f9;
+}
+
+.cutup-support-status-banner--resolved {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.cutup-support-status-banner strong {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 4px;
+  color: #0f172a;
+}
+
+.cutup-support-status-banner p {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.cutup-support-close-card {
+  margin-top: 8px;
+  padding: 18px 16px;
+  border-top: 1px solid #f1f5f9;
+  background: #fafafa;
+}
+
+.cutup-support-close-card h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.cutup-support-close-card p {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.cutup-support-close-card--done {
+  text-align: center;
+  background: #f0fdf4;
+  border-top-color: #bbf7d0;
+}
+
+.cutup-support-close-card__actions {
+  margin-top: 12px;
+}
+
+.cutup-support-rating {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cutup-support-rating__opt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 56px;
+  padding: 10px 8px;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s, background 0.15s, transform 0.12s;
+}
+
+.cutup-support-rating__opt:hover {
+  border-color: #c7d2fe;
+  background: #fafaff;
+}
+
+.cutup-support-rating__opt.is-selected {
+  border-color: #635bff;
+  background: #eef2ff;
+  box-shadow: 0 0 0 3px rgba(99, 91, 255, 0.12);
+}
+
+.cutup-support-rating__emoji {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.cutup-support-rating__score {
+  font-size: 10px;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.cutup-support-rating__opt.is-selected .cutup-support-rating__score {
+  color: #4338ca;
+}
+
+.cutup-support-detail .cutup-help-btn--secondary {
+  align-self: flex-start;
+}
+
+/* Legacy modal (unused) */
 .cutup-support-modal {
   position: fixed;
   inset: 0;

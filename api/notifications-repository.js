@@ -92,6 +92,22 @@ export async function markNotificationReadDb(userId, notificationId) {
   return { ok: true, notification: mapRow(rows[0]) };
 }
 
+export async function markNotificationsReadByTicketDb(userId, ticketNumber) {
+  if (!isBillingDbConfigured()) return { ok: false, reason: 'db_not_configured' };
+  await ensureNotificationsSchema();
+  const num = String(ticketNumber || '').trim();
+  if (!num) return { ok: false, reason: 'invalid_ticket' };
+  const pool = getPool();
+  const { rowCount } = await pool.query(
+    `UPDATE notifications
+     SET is_read = TRUE, read_at = COALESCE(read_at, NOW())
+     WHERE user_id = $1::uuid AND is_read = FALSE
+       AND metadata->>'ticketNumber' = $2`,
+    [userId, num],
+  );
+  return { ok: true, updated: rowCount ?? 0 };
+}
+
 export async function markAllNotificationsReadDb(userId) {
   if (!isBillingDbConfigured()) return { ok: false, reason: 'db_not_configured' };
   await ensureNotificationsSchema();

@@ -14,6 +14,7 @@ import {
   listUserTickets,
   getTicketForUser,
   addUserReply,
+  closeTicketByUser,
 } from './support-tickets-repository.js';
 import { verifyTurnstileToken } from './support-turnstile.js';
 import { notifyTicketCreated } from './support-notify.js';
@@ -135,6 +136,16 @@ export default async function handler(req, res) {
           return res.status(code).json({ ok: false, error: result.reason });
         }
         return res.json({ ok: true, message: result.message, ticket: result.ticket });
+      }
+
+      if (action === 'close') {
+        const ticketNumber = String(body?.ticketNumber || body?.ticket || '').trim();
+        const result = await closeTicketByUser(user.userId, ticketNumber, body?.satisfactionRating ?? body?.rating);
+        if (!result.ok) {
+          const code = result.reason === 'not_found' ? 404 : 400;
+          return res.status(code).json({ ok: false, error: result.reason });
+        }
+        return res.json({ ok: true, ticket: result.ticket });
       }
 
       return res.status(400).json({ ok: false, error: 'invalid_action' });

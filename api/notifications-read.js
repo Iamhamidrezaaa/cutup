@@ -47,6 +47,16 @@ export default async function handler(req, res) {
   }
 
   try {
+    const body = parseJsonBody(req);
+    const ticketNumber = String(body?.ticketNumber || req.query?.ticketNumber || '').trim();
+    if (ticketNumber && service.markReadByTicket) {
+      const result = await service.markReadByTicket(auth.userId, ticketNumber);
+      if (!result.ok) {
+        return res.status(503).json({ ok: false, error: result.reason || 'read_ticket_failed' });
+      }
+      return res.json({ ok: true, updated: result.updated });
+    }
+
     if (isReadAllRequest(req)) {
       const result = await service.markAllAsRead(auth.userId);
       if (!result.ok) {

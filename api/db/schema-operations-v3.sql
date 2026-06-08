@@ -3,6 +3,8 @@
 -- SLA tracking on support tickets
 ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS sla_due_at TIMESTAMPTZ NULL;
 ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS sla_status VARCHAR(20) NULL DEFAULT 'healthy';
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS satisfaction_rating SMALLINT NULL;
+ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS closed_by VARCHAR(20) NULL;
 
 CREATE INDEX IF NOT EXISTS idx_support_tickets_sla_status ON support_tickets (sla_status);
 CREATE INDEX IF NOT EXISTS idx_support_tickets_sla_due ON support_tickets (sla_due_at);
