@@ -20,6 +20,11 @@ import {
 } from './billing-repository.js';
 import { syncBlogPostHtml, removeBlogPostHtml } from './blog-publish.js';
 import { listAdminsDb, insertAdminDb, updateAdminDb, ensureAdminsSchema } from './admins-repository.js';
+import {
+  getAdminProfilesMap,
+  upsertAdminProfile,
+  ensureAdminProfileSeed
+} from './admin-profiles-repository.js';
 import { ensurePaymentAttemptsSchema } from './payment-attempts-bootstrap.js';
 import { getAdminOverviewDashboardDb } from './admin-overview-repository.js';
 import { getAdminUsageDashboardDb, normalizeUsageActivityRow } from './admin-usage-repository.js';
@@ -595,7 +600,12 @@ export default async function handler(req, res) {
     if (req.method === 'GET' && action === 'admins') {
       if (!requireSuperAdmin(auth, res)) return;
       const rows = await listAdminsDb();
-      return res.json({ admins: rows, total: rows.length });
+      const profiles = await getAdminProfilesMap(rows.map((r) => r.id));
+      const admins = rows.map((r) => ({
+        ...r,
+        profile: profiles[Number(r.id)] || null
+      }));
+      return res.json({ admins, total: admins.length });
     }
 
     if (req.method === 'POST' && action === 'createAdmin') {
@@ -604,6 +614,7 @@ export default async function handler(req, res) {
       const email = String(raw.email || '').trim().toLowerCase();
       const password = String(raw.password || '');
       const role = String(raw.role || 'admin').trim();
+      const nickname = String(raw.nickname || raw.displayName || '').trim();
       if (!email || !password) {
         return res.status(400).json({ error: 'email and password required' });
       }
@@ -612,7 +623,14 @@ export default async function handler(req, res) {
       }
       try {
         const row = await insertAdminDb(email, password, role);
-        return res.json({ success: true, admin: row });
+        let profile = null;
+        if (nickname.length >= 2) {
+          const saved = await upsertAdminProfile(row.id, { displayName: nickname });
+          profile = saved.ok ? saved.profile : null;
+        } else {
+          profile = await ensureAdminProfileSeed(row.id, email);
+        }
+        return res.json({ success: true, admin: { ...row, profile } });
       } catch (e) {
         if (e.code === '23505') {
           return res.status(409).json({ error: 'Email already exists' });

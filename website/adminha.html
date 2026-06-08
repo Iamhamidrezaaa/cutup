@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="admin-overview.css?v=20260609-overview-v1">
   <link rel="stylesheet" href="admin-usage.css">
   <link rel="stylesheet" href="admin-outputs.css">
+  <link rel="stylesheet" href="admin-users.css">
   <link rel="stylesheet" href="admin-payments.css">
   <link rel="stylesheet" href="admin-email-center.css?v=20260602-email-v1">
   <link rel="stylesheet" href="admin-support-center.css?v=20260609-agent-v1">
@@ -206,20 +207,41 @@
         </section>
 
         <section id="section-users" class="panel">
-          <h2>Customers</h2>
-          <p id="usersTableHint" class="sr-only">Customers table with account, plan, and usage information.</p>
-          <div class="toolbar">
-            <input id="usersSearch" type="search" placeholder="Search by email/name">
-            <select id="usersPlanFilter">
-              <option value="all">All plans</option>
-              <option value="free">Free</option>
-              <option value="starter">Starter</option>
-              <option value="pro">Pro</option>
-              <option value="business">Business</option>
-            </select>
-            <button id="usersReloadBtn" class="btn">Refresh</button>
+          <div class="usr-header">
+            <div>
+              <h2>Customers</h2>
+              <p class="usr-subtitle">Account directory — plans, activity, and usage across your customer base.</p>
+            </div>
+            <div class="usr-header-actions">
+              <p id="usersLiveStatus" class="usr-live-status" role="status" aria-live="polite">
+                <span class="usr-live-dot" aria-hidden="true"></span>
+                <span class="usr-live-label">Live updates enabled</span>
+                <span class="usr-live-updated" id="usersLiveUpdated">Loading…</span>
+              </p>
+            </div>
           </div>
-          <div class="table-wrap"><table id="usersTable" aria-label="Customers table" aria-describedby="usersTableHint"></table></div>
+          <div class="usr-filters-card">
+            <div class="usr-filters-grid">
+              <label class="usr-filter-field usr-filter-field--search">
+                <span>Search</span>
+                <input id="usersSearch" type="search" class="usr-filter-input" placeholder="Email or name…" autocomplete="off" />
+              </label>
+              <label class="usr-filter-field">
+                <span>Plan</span>
+                <select id="usersPlanFilter" class="usr-filter-input" aria-label="Plan filter">
+                  <option value="all">All plans</option>
+                  <option value="free">Free</option>
+                  <option value="starter">Starter</option>
+                  <option value="pro">Pro</option>
+                  <option value="business">Business</option>
+                </select>
+              </label>
+              <button id="usersReloadBtn" type="button" class="btn">Apply</button>
+            </div>
+          </div>
+          <p id="usersTableHint" class="sr-only">Customers list with account, plan, and usage information.</p>
+          <div id="usersWorkspace" class="usr-root" aria-live="polite" aria-describedby="usersTableHint"></div>
+          <div class="table-wrap" hidden><table id="usersTable"></table></div>
         </section>
 
         <section id="section-usage" class="panel">
@@ -494,15 +516,37 @@
         </section>
 
         <section id="section-administrators" class="panel">
-          <h2>Administrators</h2>
-          <div id="administratorsToolbar" class="toolbar administrators-toolbar">
-            <input id="newAdminEmail" type="email" placeholder="Email" autocomplete="off" aria-label="New administrator email">
-            <input id="newAdminPassword" type="password" placeholder="Password" autocomplete="new-password" aria-label="New administrator password">
-            <select id="newAdminRole" aria-label="New administrator role"></select>
-            <button type="button" id="createAdminBtn" class="btn">Add administrator</button>
+          <div class="usr-header">
+            <div>
+              <h2>Administrators</h2>
+              <p class="usr-subtitle">Team access — roles and support nicknames for your admin panel.</p>
+            </div>
+          </div>
+          <div id="administratorsToolbar" class="usr-form-card administrators-toolbar">
+            <div class="usr-form-grid">
+              <label class="usr-filter-field">
+                <span>Email</span>
+                <input id="newAdminEmail" type="email" class="usr-filter-input" placeholder="admin@company.com" autocomplete="off" />
+              </label>
+              <label class="usr-filter-field">
+                <span>Password</span>
+                <input id="newAdminPassword" type="password" class="usr-filter-input" placeholder="••••••••" autocomplete="new-password" />
+              </label>
+              <label class="usr-filter-field">
+                <span>Nickname</span>
+                <input id="newAdminNickname" type="text" class="usr-filter-input" placeholder="e.g. Sarah" maxlength="80" autocomplete="off" />
+              </label>
+              <label class="usr-filter-field">
+                <span>Role</span>
+                <select id="newAdminRole" class="usr-filter-input" aria-label="New administrator role"></select>
+              </label>
+              <button type="button" id="createAdminBtn" class="btn">Add administrator</button>
+            </div>
+            <p class="usr-form-hint">Support agents can update their nickname later in Support Center.</p>
           </div>
           <p id="adminsTableHint" class="sr-only">Administrator accounts with role and creation date.</p>
-          <div class="table-wrap"><table id="adminsTable" aria-label="Administrators table" aria-describedby="adminsTableHint"></table></div>
+          <div id="adminsWorkspace" class="usr-root" aria-live="polite" aria-describedby="adminsTableHint"></div>
+          <div class="table-wrap" hidden><table id="adminsTable"></table></div>
         </section>
 
         <section id="section-audit" class="panel panel--audit">

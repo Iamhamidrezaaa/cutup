@@ -242,10 +242,77 @@ function goToAdminLoginPage() {
 }
 
 function displayAdminNameFromRow(adminRow) {
+  const nick = String(adminRow?.profile?.display_name || '').trim();
+  if (nick) return nick;
   const email = String(adminRow?.email || '').trim();
   if (!email) return '—';
   const local = email.split('@')[0];
   return local || '—';
+}
+
+function customerDisplayInitials(name, email) {
+  const n = String(name || '').trim();
+  if (n && n !== '—') return n.charAt(0).toUpperCase();
+  return String(email || '?').charAt(0).toUpperCase();
+}
+
+let usersLastUpdatedAt = null;
+let usersLastRefreshError = null;
+let usersRefreshTimer = null;
+let usersStatusTickTimer = null;
+let usersRefreshInFlight = false;
+
+function formatUsersUpdatedAgo(ts) {
+  if (!ts) return '—';
+  const sec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (sec < 8) return 'just now';
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  return `${Math.floor(min / 60)}h ago`;
+}
+
+function updateUsersLiveStatus(phase = 'ok') {
+  const el = document.getElementById('usersLiveStatus');
+  const updatedEl = document.getElementById('usersLiveUpdated');
+  if (!el) return;
+  el.classList.remove('usr-live-status--syncing', 'usr-live-status--error');
+  if (phase === 'syncing') el.classList.add('usr-live-status--syncing');
+  if (phase === 'error') el.classList.add('usr-live-status--error');
+  const label = el.querySelector('.usr-live-label');
+  if (label) {
+    label.textContent = phase === 'error' ? 'Update paused — showing last data' : 'Live updates enabled';
+  }
+  if (updatedEl) {
+    updatedEl.textContent = usersLastUpdatedAt
+      ? `Updated ${formatUsersUpdatedAgo(usersLastUpdatedAt)}`
+      : 'Loading…';
+  }
+}
+
+function startUsersAutoRefresh() {
+  stopUsersAutoRefresh();
+  usersRefreshTimer = setInterval(() => {
+    if (!document.getElementById('section-users')?.classList.contains('active')) return;
+    loadUsers({ silent: true }).catch(() => {});
+  }, 20000);
+  if (!usersStatusTickTimer) {
+    usersStatusTickTimer = setInterval(() => {
+      if (!document.getElementById('section-users')?.classList.contains('active') || !usersLastUpdatedAt) return;
+      updateUsersLiveStatus(usersRefreshInFlight ? 'syncing' : usersLastRefreshError ? 'error' : 'ok');
+    }, 1000);
+  }
+}
+
+function stopUsersAutoRefresh() {
+  if (usersRefreshTimer) {
+    clearInterval(usersRefreshTimer);
+    usersRefreshTimer = null;
+  }
+  if (usersStatusTickTimer) {
+    clearInterval(usersStatusTickTimer);
+    usersStatusTickTimer = null;
+  }
 }
 
 function adminRoleSelectOptions(selectedUiKey) {
@@ -263,7 +330,7 @@ function fillNewAdminRoleSelect() {
 
 function updateAdministratorsToolbarState() {
   const can = canManageAdminUsersInUI() && canMutateAdminDirectory();
-  ['newAdminEmail', 'newAdminPassword', 'newAdminRole', 'createAdminBtn'].forEach((id) => {
+  ['newAdminEmail', 'newAdminPassword', 'newAdminNickname', 'newAdminRole', 'createAdminBtn'].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.disabled = !can;
   });
@@ -296,6 +363,7 @@ function activateAdminSection(section) {
   stopAuditLiveWs();
   if (section !== 'usage') window.CutupAdminUsage?.stopAutoRefresh?.();
   if (section !== 'outputs') window.CutupAdminOutputs?.stopAutoRefresh?.();
+  if (section !== 'users') stopUsersAutoRefresh();
   document.querySelectorAll('.nav-btn[data-section]').forEach((n) => {
     if (!n.closest('#navContentHub') && !n.closest('#navUsersHub')) n.classList.remove('active');
   });
@@ -1177,47 +1245,38 @@ function buildCustomerSubscriptionReadonlyHtml(u) {
 }
 
 function renderUsersTable(rows) {
-  const el = document.getElementById('usersTable');
-  if (!el) return;
-  const colCount = 9;
-  const body = (rows.length ? rows : [])
+  const root = document.getElementById('usersWorkspace');
+  if (!root) return;
+  if (!rows.length) {
+    root.innerHTML = `
+      <div class="usr-empty">
+        <div class="usr-empty-icon" aria-hidden="true">👥</div>
+        <h3>No customers match</h3>
+        <p>Try clearing search or switching to <strong>All plans</strong>.</p>
+      </div>`;
+    return;
+  }
+
+  const cards = rows
     .map((u) => {
       const uid = String(u.id || '');
-      const emailAttr = escapeHtml(String(u.email || ''));
       const isEditing = customersEditingId && String(customersEditingId) === uid;
       const planLabel =
         u.planLabel ||
         (u.plan ? u.plan.charAt(0).toUpperCase() + u.plan.slice(1) : '—');
       const deactivated = isCustomerAccountDeactivated(u);
       const accountBadge = customerAccountBadgeHtml(u);
-      const rowClass = deactivated ? ' class="customer-row-deactivated"' : '';
+      const cardCls = deactivated ? ' usr-card--inactive' : '';
       const actions = isEditing
-        ? `<div class="actions-wrapper">
-          <button type="button" class="btn-edit customer-save-btn" data-customer-id="${escapeHtml(uid)}"${customerSaveInFlight ? ' disabled' : ''}>Save</button>
-          <button type="button" class="btn-edit customer-cancel-btn" data-customer-id="${escapeHtml(uid)}"${customerSaveInFlight ? ' disabled' : ''}>Cancel</button>
-        </div>`
-        : `<div class="actions-wrapper">
-          <button type="button" class="btn-edit customer-edit-btn" data-customer-id="${escapeHtml(uid)}">Edit</button>
-          <button type="button" class="btn-delete customer-delete-btn" data-customer-id="${escapeHtml(uid)}" title="Delete user" aria-label="Delete"><img src="${TRASH_ICON_SRC}" alt="delete" width="18" height="18" decoding="async"></button>
-        </div>`;
-      const mainRow = `<tr data-customer-main="${escapeHtml(uid)}"${rowClass}>
-        <td>${escapeHtml(u.name || '—')}</td>
-        <td>${escapeHtml(u.email)}</td>
-        <td>${statusBadge(planLabel)}</td>
-        <td>${accountBadge}</td>
-        <td>${fmtDate(u.createdAt)}</td>
-        <td>${fmtDate(u.lastActivityAt)}</td>
-        <td>${escapeHtml(u.usageMinutesThisMonth)}</td>
-        <td>${escapeHtml(u.savedOutputsCount)}</td>
-        <td class="actions">${actions}</td>
-      </tr>`;
-      if (!isEditing || !customerInlineDraft || String(customerInlineDraft.id) !== uid) {
-        return mainRow;
-      }
-      const d = customerInlineDraft;
-      const panel = `
-      <tr class="customer-expand-row" data-customer-panel-wrap="${escapeHtml(uid)}">
-        <td colspan="${colCount}" class="customer-inline-panel">
+        ? `<button type="button" class="btn customer-save-btn" data-customer-id="${escapeHtml(uid)}"${customerSaveInFlight ? ' disabled' : ''}>Save</button>
+          <button type="button" class="btn ghost customer-cancel-btn" data-customer-id="${escapeHtml(uid)}"${customerSaveInFlight ? ' disabled' : ''}>Cancel</button>`
+        : `<button type="button" class="btn ghost customer-edit-btn" data-customer-id="${escapeHtml(uid)}">Edit</button>
+          <button type="button" class="btn-delete customer-delete-btn" data-customer-id="${escapeHtml(uid)}" title="Delete user" aria-label="Delete"><img src="${TRASH_ICON_SRC}" alt="delete" width="18" height="18" decoding="async"></button>`;
+      let expand = '';
+      if (isEditing && customerInlineDraft && String(customerInlineDraft.id) === uid) {
+        const d = customerInlineDraft;
+        expand = `
+        <div class="usr-card-expand customer-inline-panel" data-customer-panel-wrap="${escapeHtml(uid)}">
           <div class="customer-inline-panel-inner">
             <div class="customer-inline-fields">
               <label for="customer-draft-first-${escapeHtml(uid)}">First name</label>
@@ -1244,15 +1303,40 @@ function renderUsersTable(rows) {
             </div>
             ${buildCustomerSubscriptionReadonlyHtml(u)}
           </div>
-        </td>
-      </tr>`;
-      return mainRow + panel;
+        </div>`;
+      }
+      return `
+      <article class="usr-card${cardCls}" data-customer-main="${escapeHtml(uid)}">
+        <div class="usr-card-body">
+          <div class="usr-card-avatar">${escapeHtml(customerDisplayInitials(u.name, u.email))}</div>
+          <div class="usr-card-main">
+            <div class="usr-card-top">
+              <strong class="usr-card-name">${escapeHtml(u.name || '—')}</strong>
+              <div class="usr-card-badges">${statusBadge(planLabel)}${accountBadge}</div>
+            </div>
+            <span class="usr-card-email">${escapeHtml(u.email)}</span>
+            <div class="usr-card-stats">
+              <span>Created ${escapeHtml(fmtDate(u.createdAt))}</span>
+              <span>Last active ${escapeHtml(fmtDate(u.lastActivityAt))}</span>
+              <span>${escapeHtml(u.usageMinutesThisMonth)} min usage</span>
+              <span>${escapeHtml(u.savedOutputsCount)} saved</span>
+            </div>
+          </div>
+          <div class="usr-card-actions">${actions}</div>
+        </div>
+        ${expand}
+      </article>`;
     })
     .join('');
 
-  el.innerHTML = `
-    <thead><tr><th>Name</th><th>Email</th><th>Plan</th><th>Account</th><th>Created</th><th>Last activity</th><th>Usage</th><th>Saved</th><th>Actions</th></tr></thead>
-    <tbody>${body || emptyRow(colCount, 'No users found for this filter.')}</tbody>`;
+  root.innerHTML = `
+    <div class="usr-list-head">
+      <h3 class="usr-list-title">Customer directory</h3>
+      <span class="usr-list-count">${escapeHtml(String(rows.length))} accounts</span>
+    </div>
+    ${cards}`;
+
+  const el = root;
 
   const bindDraft = (sel, key) => {
     el.querySelectorAll(sel).forEach((inp) => {
@@ -1349,10 +1433,10 @@ function renderUsersTable(rows) {
         customerSaveInFlight = false;
         renderUsersTable(customersCache);
         if (savedOk) {
-          const mainRow = document.querySelector(`tr[data-customer-main="${id}"]`);
+          const mainRow = document.querySelector(`[data-customer-main="${id}"]`);
           if (mainRow) {
-            mainRow.classList.add('row-updated');
-            setTimeout(() => mainRow.classList.remove('row-updated'), 1000);
+            mainRow.classList.add('usr-card--flash');
+            setTimeout(() => mainRow.classList.remove('usr-card--flash'), 1000);
           }
         }
       }
@@ -1699,9 +1783,14 @@ async function loadOverview() {
   }
   renderOverview(await apiGet('overview'));
 }
-async function loadUsers() {
+async function loadUsers(opts = {}) {
+  const { silent = false } = typeof opts === 'object' ? opts : {};
+  if (usersRefreshInFlight && silent) return;
+  if (!silent) updateUsersLiveStatus('syncing');
+  usersRefreshInFlight = true;
   const search = document.getElementById('usersSearch')?.value || '';
   const plan = document.getElementById('usersPlanFilter')?.value || 'all';
+  try {
   const data = await apiGet('users', { search, plan });
   customersCache = data.users || [];
   const stillThere =
@@ -1728,6 +1817,19 @@ async function loadUsers() {
     }
   }
   renderUsersTable(customersCache);
+  usersLastUpdatedAt = Date.now();
+  usersLastRefreshError = null;
+  updateUsersLiveStatus('ok');
+  } catch (e) {
+    usersLastRefreshError = e;
+    if (silent && customersCache.length) {
+      updateUsersLiveStatus('error');
+    } else {
+      throw e;
+    }
+  } finally {
+    usersRefreshInFlight = false;
+  }
 }
 async function loadUsage() {
   if (window.CutupAdminUsage?.load) {
@@ -2250,33 +2352,43 @@ async function loadBlogPosts() {
 }
 
 function renderAdminsTable(rows, options = {}) {
-  const el = document.getElementById('adminsTable');
-  if (!el) return;
+  const root = document.getElementById('adminsWorkspace');
+  if (!root) return;
   const lockedReason = options.lockedReason || '';
   const roleSelectDisabled = !canMutateAdminDirectory() || !canManageAdminUsersInUI();
   const canAct = canMutateAdminDirectory() && canManageAdminUsersInUI();
 
   if (lockedReason) {
-    el.innerHTML = `
-      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Created at</th><th>Actions</th></tr></thead>
-      <tbody>${emptyRow(5, lockedReason)}</tbody>`;
+    root.innerHTML = `<div class="usr-empty"><p>${escapeHtml(lockedReason)}</p></div>`;
     updateAdministratorsToolbarState();
     return;
   }
 
-  const body = (rows.length ? rows : []).map((a) => {
+  if (!rows.length) {
+    root.innerHTML = `
+      <div class="usr-empty">
+        <div class="usr-empty-icon" aria-hidden="true">🛡️</div>
+        <h3>No administrators yet</h3>
+        <p>Add your first team member using the form above.</p>
+      </div>`;
+    updateAdministratorsToolbarState();
+    return;
+  }
+
+  const cards = rows.map((a) => {
     const isSelf = panelAdminId != null && Number(a.id) === panelAdminId;
     const uiRole = mapApiRoleToUiRole(a.role);
     const name = displayAdminNameFromRow(a);
+    const initial = name.charAt(0).toUpperCase();
     const statusNote = (a.status || '').toLowerCase() !== 'active'
-      ? `<div class="metric-subtle" style="margin-top:4px;">${statusBadge('Access revoked', 'warn')}</div>`
+      ? `<div class="usr-admin-status">${statusBadge('Access revoked', 'warn')}</div>`
       : '';
     const roleSelect = `
-      <select class="admin-role-select" data-admin-id="${escapeHtml(String(a.id))}"
+      <select class="admin-role-select usr-filter-input" data-admin-id="${escapeHtml(String(a.id))}"
         aria-label="Role for ${escapeHtml(a.email)}"${roleSelectDisabled ? ' disabled' : ''}>
         ${adminRoleSelectOptions(uiRole)}
       </select>`;
-    const editBtn = `<button type="button" class="btn-edit admin-edit-btn" data-admin-id="${escapeHtml(String(a.id))}"${!canAct ? ' disabled' : ''}>Edit</button>`;
+    const editBtn = `<button type="button" class="btn ghost admin-edit-btn" data-admin-id="${escapeHtml(String(a.id))}"${!canAct ? ' disabled' : ''}>Edit role</button>`;
     const isActive = (a.status || '').toLowerCase() === 'active';
     const trashDisabled = isSelf || !isActive || !canAct;
     const trashTitle = isSelf
@@ -2287,21 +2399,28 @@ function renderAdminsTable(rows, options = {}) {
     if (!isActive) {
       actionParts.push(`<button type="button" class="btn ghost admin-enable-btn" data-admin-id="${escapeHtml(String(a.id))}" data-next-status="active"${!canAct ? ' disabled' : ''}>Enable</button>`);
     }
-    return `<tr>
-      <td><strong>${escapeHtml(name)}</strong>${statusNote}</td>
-      <td>${escapeHtml(a.email)}</td>
-      <td>${roleSelect}</td>
-      <td>${fmtDate(a.created_at)}</td>
-      <td class="actions"><div class="actions-wrapper">${actionParts.join('')}</div></td>
-    </tr>`;
+    return `
+    <article class="usr-admin-card" data-admin-id="${escapeHtml(String(a.id))}">
+      <div class="usr-admin-avatar">${escapeHtml(initial)}</div>
+      <div class="usr-admin-main">
+        <strong class="usr-admin-nickname">${escapeHtml(name)}</strong>
+        <span class="usr-admin-email">${escapeHtml(a.email)}</span>
+        <span class="usr-admin-meta">Joined ${escapeHtml(fmtDate(a.created_at))}</span>
+        ${statusNote}
+      </div>
+      <div class="usr-admin-role">${roleSelect}</div>
+      <div class="usr-admin-actions">${actionParts.join('')}</div>
+    </article>`;
   }).join('');
 
-  el.innerHTML = `
-    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Created at</th><th>Actions</th></tr></thead>
-    <tbody>
-      ${body || emptyRow(5, 'No administrator accounts yet.')}
-    </tbody>`;
+  root.innerHTML = `
+    <div class="usr-list-head">
+      <h3 class="usr-list-title">Team members</h3>
+      <span class="usr-list-count">${escapeHtml(String(rows.length))} admins</span>
+    </div>
+    ${cards}`;
 
+  const el = root;
   el.querySelectorAll('.admin-role-select').forEach((sel) => {
     sel.addEventListener('change', async () => {
       if (sel.disabled) return;
@@ -2393,7 +2512,10 @@ async function loadAdminSupport() {
 
 async function refreshSection(section) {
   if (section === 'overview') return loadOverview();
-  if (section === 'users') return loadUsers();
+  if (section === 'users') {
+    startUsersAutoRefresh();
+    return loadUsers();
+  }
   if (section === 'usage') return loadUsage();
   if (section === 'outputs') return loadOutputs();
   if (section === 'payments') return loadPayments();
@@ -2534,6 +2656,7 @@ function setupActions() {
   document.getElementById('createAdminBtn')?.addEventListener('click', async () => {
     const email = document.getElementById('newAdminEmail')?.value?.trim() || '';
     const password = document.getElementById('newAdminPassword')?.value || '';
+    const nickname = document.getElementById('newAdminNickname')?.value?.trim() || '';
     const uiRole = document.getElementById('newAdminRole')?.value || 'MANAGER';
     const role = mapUiRoleToApiRole(uiRole);
     if (!email || !password) {
@@ -2541,16 +2664,21 @@ function setupActions() {
       return;
     }
     try {
-      await apiPost('createAdmin', { email, password, role });
+      await apiPost('createAdmin', { email, password, role, nickname });
       showBanner('Admin created.');
       document.getElementById('newAdminEmail').value = '';
       document.getElementById('newAdminPassword').value = '';
+      document.getElementById('newAdminNickname').value = '';
       await loadAdmins();
     } catch (err) {
       showBanner(err.message || 'Could not create admin.');
     }
   });
   document.getElementById('usersReloadBtn')?.addEventListener('click', () => loadUsers().catch((e) => showBanner(e.message)));
+  document.getElementById('usersSearch')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') loadUsers().catch((err) => showBanner(err.message));
+  });
+  document.getElementById('usersPlanFilter')?.addEventListener('change', () => loadUsers().catch((e) => showBanner(e.message)));
   document.getElementById('usageReloadBtn')?.addEventListener('click', () => loadUsage().catch((e) => showBanner(e.message)));
   document.getElementById('paymentsApplyFiltersBtn')?.addEventListener('click', () => loadPayments().catch((e) => showBanner(e.message)));
   const campaignSelect = document.getElementById('offerCampaignSelect');
