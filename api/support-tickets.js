@@ -120,11 +120,15 @@ export default async function handler(req, res) {
           message: body.message,
         });
         if (!result.ok) return res.status(400).json({ ok: false, error: result.reason });
-        await notifyTicketCreated({
-          ticket: result.ticket,
-          userEmail: user.email,
-          firstName: user.firstName,
-        });
+        try {
+          await notifyTicketCreated({
+            ticket: result.ticket,
+            userEmail: user.email,
+            firstName: user.firstName,
+          });
+        } catch (notifyErr) {
+          console.error('[support-tickets] notifyTicketCreated failed', notifyErr);
+        }
         return res.json({ ok: true, ticket: result.ticket });
       }
 

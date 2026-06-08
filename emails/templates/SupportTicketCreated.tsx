@@ -14,9 +14,20 @@ export type SupportTicketData = {
   firstName?: string;
   ticketNumber?: string;
   subject?: string;
-  createdAt?: string;
+  createdAt?: string | Date;
   ticketUrl?: string;
 };
+
+function formatEmailDate(value?: string | Date | null) {
+  if (!value) {
+    return new Date().toLocaleDateString('en-US', { dateStyle: 'medium' });
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+  return date.toLocaleDateString('en-US', { dateStyle: 'medium' });
+}
 
 export function SupportTicketCreated({
   firstName = 'there',
@@ -25,7 +36,7 @@ export function SupportTicketCreated({
   createdAt,
   ticketUrl,
 }: SupportTicketData) {
-  const dateLabel = createdAt || new Date().toLocaleDateString('en-US', { dateStyle: 'medium' });
+  const dateLabel = formatEmailDate(createdAt);
   const url = ticketUrl || SITE.dashboardUrl;
 
   return (

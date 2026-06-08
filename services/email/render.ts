@@ -56,6 +56,9 @@ export async function renderEmailTemplate(
 
   const element = React.createElement(Component, data);
   const html = await render(element, { pretty: false });
+  if (!html || html.length < 500 || html.includes('data-msg="Switched to client rendering')) {
+    throw new Error(`Email render produced invalid html (${html?.length ?? 0} bytes) for ${template}`);
+  }
   const subject = entry.subject(data);
   const preview = entry.preview(data);
 

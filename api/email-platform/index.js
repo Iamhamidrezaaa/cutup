@@ -32506,6 +32506,16 @@ function AccountDeletionCompleted({
 
 // emails/templates/SupportTicketCreated.tsx
 import { jsx as jsx39, jsxs as jsxs20 } from "react/jsx-runtime";
+function formatEmailDate(value) {
+  if (!value) {
+    return (/* @__PURE__ */ new Date()).toLocaleDateString("en-US", { dateStyle: "medium" });
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+  return date.toLocaleDateString("en-US", { dateStyle: "medium" });
+}
 function SupportTicketCreated({
   firstName = "there",
   ticketNumber = "0000",
@@ -32513,7 +32523,7 @@ function SupportTicketCreated({
   createdAt,
   ticketUrl
 }) {
-  const dateLabel = createdAt || (/* @__PURE__ */ new Date()).toLocaleDateString("en-US", { dateStyle: "medium" });
+  const dateLabel = formatEmailDate(createdAt);
   const url = ticketUrl || SITE.dashboardUrl;
   return /* @__PURE__ */ jsxs20(CutupLayout, { preview: `Ticket #${ticketNumber} received`, children: [
     /* @__PURE__ */ jsx39(StatusBadge, { variant: "info", children: "Ticket received" }),
@@ -32724,6 +32734,9 @@ async function renderEmailTemplate(template, data = {}) {
   if (!Component) throw new Error(`No React component for template: ${template}`);
   const element = React12.createElement(Component, data);
   const html = await render2(element, { pretty: false });
+  if (!html || html.length < 500 || html.includes('data-msg="Switched to client rendering')) {
+    throw new Error(`Email render produced invalid html (${html?.length ?? 0} bytes) for ${template}`);
+  }
   const subject = entry.subject(data);
   const preview = entry.preview(data);
   return {
