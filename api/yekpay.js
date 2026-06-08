@@ -84,6 +84,10 @@ export function getYekpayStartupState() {
     eurToIrrConfigured: rateInfo.ok,
     eurToIrrRate: rateInfo.ok ? rateInfo.rate : null,
     eurToIrrSource: rateInfo.source,
+    eurToIrrUpdatedAt: rateInfo.updatedAt || null,
+    eurToIrrNavasanItem: rateInfo.navasanItem || null,
+    eurToIrrRaw: rateInfo.rateRaw || null,
+    eurToIrrChange24h: rateInfo.change24h ?? null,
     yekpayMaxIrrRial: YEKPAY_MAX_IRR_RIAL,
     requestContentType: 'application/json'
   };
@@ -117,6 +121,8 @@ export function getYekpayConfig() {
     eurToIrrRate: rateInfo.ok ? rateInfo.rate : null,
     eurToIrrSource: rateInfo.source,
     eurToIrrConfigured: rateInfo.ok,
+    eurToIrrUpdatedAt: rateInfo.updatedAt || null,
+    eurToIrrNavasanItem: rateInfo.navasanItem || null,
     yekpayMaxIrrRial: YEKPAY_MAX_IRR_RIAL,
     isConfigured: Boolean(merchantId) && Boolean(base) && !error
   };

@@ -26,9 +26,11 @@ module.exports = {
   RESEND_API_KEY: '',
   // Protect GET/POST /api/cron/conversion-emails (Vercel Cron sends Authorization: Bearer <secret>)
   CRON_SECRET: '',
-  // --- YekPay (production): set these in the Node server `.env` or host env (never in the browser / never commit secrets) ---
-  // YEKPAY_MERCHANT=your_live_merchant_code
-  // Optional legacy name: YEKPAY_MERCHANT_ID (same value)
+  // Navasan EUR→IRR (daily cron 12:00 Iran). Set NAVASAN_API_KEY in server .env / Vercel env.
+  // NAVASAN_API_KEY=your_key
+  // NAVASAN_EUR_ITEM=eur
+  // NAVASAN_VALUE_UNIT=toman
+  // Manual emergency override (skips Navasan):
   // EUR_TO_IRR=550000
   // Optional legacy: YEKPAY_EUR_TO_IRR (same as EUR_TO_IRR)
   // YEKPAY_CALLBACK_URL=https://cutup.shop/api/payment/callback

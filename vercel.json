@@ -152,6 +152,10 @@
       "dest": "/api/cron-conversion-emails.js"
     },
     {
+      "src": "/api/cron/eur-irr-rate",
+      "dest": "/api/cron-eur-irr-rate.js"
+    },
+    {
       "src": "/api/user/profile",
       "dest": "/api/user-profile.js"
     },
@@ -289,6 +293,10 @@
     {
       "path": "/api/cron/conversion-emails",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/eur-irr-rate",
+      "schedule": "30 8 * * *"
     }
   ]
 }

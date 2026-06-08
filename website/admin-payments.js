@@ -231,6 +231,24 @@ window.CutupAdminPayments = (function () {
     return `<span class="pay-status-pill ${cls}" title="Callback">${esc(s)}</span>`;
   }
 
+  function fxSourceLabel(source) {
+    const s = String(source || '').toLowerCase();
+    if (s === 'navasan') return 'Navasan (live)';
+    if (s === 'eur_to_irr' || s === 'yekpay_eur_to_irr') return 'Manual (.env)';
+    if (s === 'default_550000') return 'Default fallback';
+    return source || '—';
+  }
+
+  function renderFxCell(yek) {
+    if (!yek?.eurToIrrConfigured) return '<span class="pay-fx-missing">Rate missing</span>';
+    const rate = fmt().num?.(yek.eurToIrrRate) ?? yek.eurToIrrRate;
+    const src = fxSourceLabel(yek.eurToIrrSource);
+    const updated = yek.eurToIrrUpdatedAt ? fmt().date?.(yek.eurToIrrUpdatedAt) || yek.eurToIrrUpdatedAt : null;
+    const raw = yek.eurToIrrRaw ? ` · raw ${esc(String(yek.eurToIrrRaw))}` : '';
+    const item = yek.eurToIrrNavasanItem ? ` (${esc(yek.eurToIrrNavasanItem)})` : '';
+    return `<span title="${esc(src)}${updated ? ` · ${esc(updated)}` : ''}">${esc(String(rate))} IRR${raw}${item}</span>`;
+  }
+
   function healthBadge(health) {
     const h = String(health || 'attention').toLowerCase();
     const cls = h === 'healthy' || h === 'ok' ? 'pay-health--ok' : h === 'degraded' ? 'pay-health--warn' : 'pay-health--warn';
@@ -269,7 +287,8 @@ window.CutupAdminPayments = (function () {
         <div class="pay-infra-grid">
           <div class="pay-infra-item"><span class="lbl">Environment</span><span>${esc(yek.environment || (yek.sandboxMode ? 'sandbox' : 'production'))}</span></div>
           <div class="pay-infra-item"><span class="lbl">Merchant</span><span>${yek.merchantConfigured ? 'Configured' : 'Missing'}</span></div>
-          <div class="pay-infra-item"><span class="lbl">FX (EUR→IRR)</span><span>${yek.eurToIrrConfigured ? esc(String(yek.eurToIrrRate || 'configured')) : 'Rate missing'}</span></div>
+          <div class="pay-infra-item"><span class="lbl">FX (EUR→IRR)</span><span>${renderFxCell(yek)}</span></div>
+          <div class="pay-infra-item"><span class="lbl">FX source</span><span>${esc(fxSourceLabel(yek.eurToIrrSource))}${yek.eurToIrrUpdatedAt ? ` · ${esc(fmt().date?.(yek.eurToIrrUpdatedAt) || yek.eurToIrrUpdatedAt)}` : ''}</span></div>
           <div class="pay-infra-item"><span class="lbl">24h success</span><span>${fmt().num(yek.success24h)}</span></div>
           <div class="pay-infra-item"><span class="lbl">24h failed</span><span>${fmt().num(yek.failed24h)}</span></div>
           <div class="pay-infra-item"><span class="lbl">Pending now</span><span>${fmt().num(yek.pendingNow)}</span></div>

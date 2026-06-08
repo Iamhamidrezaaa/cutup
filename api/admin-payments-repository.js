@@ -2,6 +2,7 @@
  * Admin Payments workspace — YekPay-first, provider-agnostic financial analytics.
  */
 import { getPool, isBillingDbConfigured } from './db/pool.js';
+import { ensureEurIrrRateLoaded } from './eur-irr-rate.js';
 import { getYekpayStartupState } from './yekpay.js';
 import { getPlanDef, resolvePlanKey } from './plans-config.js';
 import { getAdminPricingAbMetricsDb } from './billing-repository.js';
@@ -161,6 +162,7 @@ function mapPaymentRow(row) {
 }
 
 export async function getPaymentInfrastructureDb() {
+  await ensureEurIrrRateLoaded();
   const yek = getYekpayStartupState();
   const pool = isBillingDbConfigured() ? getPool() : null;
   let recent = {
@@ -207,6 +209,11 @@ export async function getPaymentInfrastructureDb() {
       configError: yek.configError,
       eurToIrrConfigured: yek.eurToIrrConfigured,
       eurToIrrRate: yek.eurToIrrRate,
+      eurToIrrSource: yek.eurToIrrSource,
+      eurToIrrUpdatedAt: yek.eurToIrrUpdatedAt,
+      eurToIrrNavasanItem: yek.eurToIrrNavasanItem,
+      eurToIrrRaw: yek.eurToIrrRaw,
+      eurToIrrChange24h: yek.eurToIrrChange24h,
       currency: 'EUR',
       fxStatus: yek.eurToIrrConfigured ? 'configured' : 'missing_rate',
       callbackHealth: callbackHealthy ? 'healthy' : recent.pendingNow > 5 ? 'degraded' : 'attention',
