@@ -767,9 +767,10 @@ function normalizeTranscriptionResult(result) {
       whisperLanguage: langDet.whisperLanguage
     });
   }
+  const rawSegments = Array.isArray(result.segments) ? result.segments : [];
   const normalized = {
     text: String(text || '').trim(),
-    segments: Array.isArray(result.segments) ? result.segments : [],
+    segments: rawSegments.length ? normalizeSegmentsForDisplay(rawSegments) : [],
     language: result.language ?? langDet?.detectedLanguage ?? null,
     languageDetection: langDet
   };
@@ -4910,6 +4911,7 @@ async function extractYouTubeAudio(url, sessionId = null) {
             language: result.language || null,
             subtitles: result.subtitles || null,
             subtitleLanguage: result.subtitleLanguage || result.subtitle_language || null,
+            subtitlesSource: result.subtitlesSource || result.subtitles_source || null,
             availableLanguages: result.availableLanguages || result.available_languages || [],
             title: result.title || null,
             duration: result.duration ?? null
@@ -5176,13 +5178,26 @@ async function summarizeText(text, language = null, sessionId = null, contextMet
   }
 }
 
+function normalizeSegmentsForDisplay(segments) {
+  if (!Array.isArray(segments) || !segments.length) return segments || [];
+  if (window.CutupSubtitleClean?.normalizeTimelineSegments) {
+    return window.CutupSubtitleClean.normalizeTimelineSegments(segments);
+  }
+  return segments;
+}
+
+/** Only trust creator-uploaded YouTube captions; auto-generated rolling tracks go to Whisper. */
+function shouldUseYoutubeSubtitles(youtubeResult) {
+  return Boolean(youtubeResult?.subtitles && youtubeResult.subtitlesSource === 'manual');
+}
+
 // Parse YouTube VTT subtitles to segments (like extension)
 async function parseYouTubeSubtitles(vttContent, language) {
   // Convert VTT to SRT format
   const srtContent = vttToSRT(vttContent);
   
-  // Parse SRT to segments
-  const segments = parseSRTToSegments(srtContent);
+  // Parse SRT to segments + collapse rolling/blink duplicates
+  const segments = normalizeSegmentsForDisplay(parseSRTToSegments(srtContent));
   
   // Extract full text
   const fullText = segments.map(s => s.text).join(' ');
@@ -5271,29 +5286,7 @@ function parseSRTToSegments(srtContent) {
     }
   }
   
-  // Second pass: remove incremental duplicates (YouTube VTT format)
-  const segments = [];
-  let previousText = '';
-  
-  for (let i = 0; i < rawSegments.length; i++) {
-    const current = rawSegments[i];
-    const currentText = current.text.trim();
-    
-    if (currentText.length > previousText.length && currentText.startsWith(previousText)) {
-      // Extract only new text
-      const newText = currentText.substring(previousText.length).trim();
-      if (newText) {
-        segments.push({ start: current.start, end: current.end, text: newText });
-      }
-    } else if (currentText !== previousText) {
-      // Completely different text
-      segments.push({ start: current.start, end: current.end, text: currentText });
-    }
-    
-    previousText = currentText;
-  }
-  
-  return segments;
+  return normalizeSegmentsForDisplay(rawSegments);
 }
 
 // Parse SRT time to seconds
@@ -5357,15 +5350,18 @@ async function processSummarize(url, sessionId, platform = 'youtube') {
     
     // Check if YouTube subtitles are available (like extension)
     let transcription = null;
-    if (youtubeResult.subtitles) {
-      console.log('YOUTUBE: Using YouTube subtitles');
+    if (shouldUseYoutubeSubtitles(youtubeResult)) {
+      console.log('YOUTUBE: Using manual YouTube subtitles');
       updateProgressBar(0, 0, 28, CUTUP_PIPELINE.CHECK_SUBTITLES);
       startProgressTracking(26, 70, 5, CUTUP_PIPELINE.READ_CAPTIONS, CUTUP_PIPELINE.READ_CAPTIONS);
       transcription = await parseYouTubeSubtitles(youtubeResult.subtitles, youtubeResult.subtitleLanguage);
       stopProgressTracking(70, 'Subtitles parsed');
     } else {
+      if (youtubeResult.subtitles && youtubeResult.subtitlesSource === 'auto') {
+        console.log('YOUTUBE: Skipping auto-generated captions — transcribing audio for accuracy');
+      }
       // Fallback to audio transcription
-      console.log(`${platform.toUpperCase()}: No subtitles available, transcribing audio`);
+      console.log(`${platform.toUpperCase()}: Transcribing audio`);
       // Transcription takes longer: estimate based on video duration
       const estimatedTranscriptionTime = estimateTranscriptionDuration(null, durationSeconds);
       startProgressTracking(
@@ -5413,7 +5409,7 @@ async function processSummarize(url, sessionId, platform = 'youtube') {
     
     // Display results in result section — summary tab active
     displayResults(summary, transcription.text, transcription.segments || [], {
-      isYouTubeSubtitle: !!youtubeResult.subtitles,
+      isYouTubeSubtitle: shouldUseYoutubeSubtitles(youtubeResult),
       availableLanguages: youtubeResult.availableLanguages || [],
       originalLanguage: transcription.language,
       activeTab: 'summary',
@@ -5507,13 +5503,13 @@ async function processFullText(url, sessionId, platform = 'youtube', activeTab =
     
     // Check if YouTube subtitles are available (like extension)
     let transcription = null;
-    if (youtubeResult.subtitles) {
+    if (shouldUseYoutubeSubtitles(youtubeResult)) {
       console.log('[frontend-before-transcribe]', {
         flow: 'processFullText',
         path: 'youtube_subtitles',
         subtitleLanguage: youtubeResult.subtitleLanguage
       });
-      console.log('YOUTUBE: Using YouTube subtitles');
+      console.log('YOUTUBE: Using manual YouTube subtitles');
       updateProgressBar(0, 0, 28, CUTUP_PIPELINE.CHECK_SUBTITLES);
       startProgressTracking(26, 99, 5, CUTUP_PIPELINE.READ_CAPTIONS, CUTUP_PIPELINE.READ_CAPTIONS);
       transcription = await parseYouTubeSubtitles(youtubeResult.subtitles, youtubeResult.subtitleLanguage);
@@ -5525,6 +5521,9 @@ async function processFullText(url, sessionId, platform = 'youtube', activeTab =
         segmentCount: transcription?.segments?.length ?? 0
       });
     } else {
+      if (youtubeResult.subtitles && youtubeResult.subtitlesSource === 'auto') {
+        console.log('YOUTUBE: Skipping auto-generated captions — transcribing audio for accuracy');
+      }
       console.log('[frontend-before-transcribe]', {
         flow: 'processFullText',
         path: 'api_transcribe',
@@ -5579,7 +5578,7 @@ async function processFullText(url, sessionId, platform = 'youtube', activeTab =
     
     // Display results and keep all useful tabs available
     displayResults(summary, transcription.text, transcription.segments || [], {
-      isYouTubeSubtitle: !!youtubeResult.subtitles,
+      isYouTubeSubtitle: shouldUseYoutubeSubtitles(youtubeResult),
       availableLanguages: youtubeResult.availableLanguages || [],
       originalLanguage: transcription.language,
       activeTab,
@@ -5718,6 +5717,7 @@ function mountCutupCinematicPreview(fullText, segments, options = {}) {
 // Display Results (like extension) - replaces modal approach
 function displayResults(summary, fullText, segments = null, options = {}) {
   if (Array.isArray(segments) && segments.length) {
+    segments = normalizeSegmentsForDisplay(segments);
     window.CutupWhisperTimingTrace?.recordWhisperTimingStage?.('after_display_results', segments, {
       previewMode: !!options.previewMode
     });
@@ -6551,10 +6551,11 @@ async function translateSrtContent(sessionId, originalLanguage) {
     }, stableSid);
     console.log('[translate-api-response]', { kind: 'srt', segmentCount: data.segmentCount });
     const translatedSrt = stripSrtForTranslation(data.srtContent);
-    const translatedSegments =
+    const translatedSegments = normalizeSegmentsForDisplay(
       Array.isArray(data.segments) && data.segments.length
         ? data.segments
-        : parseSRTToSegments(translatedSrt);
+        : parseSRTToSegments(translatedSrt)
+    );
 
     if (data.segmentTimingLineage) {
       window.cutupSegmentTimingLineage = data.segmentTimingLineage;

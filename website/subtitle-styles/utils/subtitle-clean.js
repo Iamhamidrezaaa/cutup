@@ -59,6 +59,111 @@
     return false;
   }
 
+  const ROLLING_CHAIN_GAP_SEC = 0.18;
+  const BLINK_MAX_DUR_SEC = 0.15;
+
+  function normalizeCueText(text) {
+    return String(text || '').replace(/\r?\n+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  /** Merge YouTube rolling captions (growing text + blink duplicates). Mirrors api/video-render/subtitle-pipeline.js */
+  function mergeRollingCaptionChains(segments) {
+    const sorted = (segments || [])
+      .filter(function (s) {
+        return s && typeof s.start === 'number' && typeof s.end === 'number' && s.end > s.start;
+      })
+      .sort(function (a, b) {
+        return a.start - b.start;
+      });
+
+    const chains = [];
+    let chain = null;
+
+    function flush() {
+      if (!chain) return;
+      const text = normalizeCueText(chain.text);
+      if (!text) {
+        chain = null;
+        return;
+      }
+      chains.push({ start: chain.start, end: chain.end, text: text });
+      chain = null;
+    }
+
+    for (var i = 0; i < sorted.length; i++) {
+      var seg = sorted[i];
+      var text = normalizeCueText(seg.text);
+      if (!text) continue;
+      var start = Number(seg.start);
+      var end = Number(seg.end);
+
+      if (!chain) {
+        chain = { start: start, end: end, text: text };
+        continue;
+      }
+
+      var gap = start - chain.end;
+      var prev = chain.text;
+      var growing = text.indexOf(prev) === 0 && text.length > prev.length;
+      var same = text === prev;
+
+      if (gap <= ROLLING_CHAIN_GAP_SEC && (growing || same)) {
+        chain.end = Math.max(chain.end, end);
+        if (text.length > prev.length) chain.text = text;
+        continue;
+      }
+
+      if (chain && gap > ROLLING_CHAIN_GAP_SEC && gap < 1.2) {
+        chain.end = Math.max(chain.end, start - 0.03);
+      }
+      flush();
+      chain = { start: start, end: end, text: text };
+    }
+    flush();
+    return chains;
+  }
+
+  function dropBlinkDuplicateCues(segments) {
+    const sorted = (segments || []).slice().sort(function (a, b) {
+      return a.start - b.start;
+    });
+    const out = [];
+    for (var i = 0; i < sorted.length; i++) {
+      var seg = sorted[i];
+      var text = normalizeCueText(seg.text);
+      if (!text) continue;
+      var prev = out[out.length - 1];
+      var dur = Number(seg.end) - Number(seg.start);
+      if (prev) {
+        var prevText = normalizeCueText(prev.text);
+        var gap = Number(seg.start) - Number(prev.end);
+        if (text === prevText && (dur < BLINK_MAX_DUR_SEC || gap < 0.05)) continue;
+      }
+      out.push({ start: Number(seg.start), end: Number(seg.end), text: text });
+    }
+    return out;
+  }
+
+  function normalizeTimelineSegments(segments) {
+    var list = (segments || [])
+      .filter(function (s) {
+        return s && Number(s.end) > Number(s.start);
+      })
+      .map(function (s) {
+        return {
+          start: Number(s.start),
+          end: Number(s.end),
+          text: normalizeCueText(s.text)
+        };
+      })
+      .filter(function (s) {
+        return s.text;
+      });
+    list = mergeRollingCaptionChains(list);
+    list = dropBlinkDuplicateCues(list);
+    return list;
+  }
+
   function prepareAccurate(segments) {
     const out = [];
     for (const s of segments || []) {
@@ -67,37 +172,29 @@
       if (!text || isGarbage(text)) continue;
       out.push({ start: s.start, end: s.end, text });
     }
-    return out;
+    return normalizeTimelineSegments(out);
   }
 
   function prepareClean(segments) {
     const out = [];
-    let prev = '';
     for (const s of segments || []) {
       if (!s || s.end <= s.start) continue;
       let text = clean(s.text);
       if (!text || isGarbage(text, true)) continue;
-      const key = text.toLowerCase();
-      if (key === prev) continue;
-      prev = key;
       out.push({ start: s.start, end: s.end, text });
     }
-    return out;
+    return normalizeTimelineSegments(out);
   }
 
   function prepareViral(segments) {
     const out = [];
-    let prev = '';
     for (const s of segments || []) {
       if (!s || s.end <= s.start) continue;
       const text = clean(s.text, { stripTranslationLeakage: true });
       if (!text || isGarbage(text, true)) continue;
-      const key = text.toLowerCase();
-      if (key === prev) continue;
-      prev = key;
       out.push({ start: s.start, end: s.end, text });
     }
-    return out;
+    return normalizeTimelineSegments(out);
   }
 
   function prepareSegmentsForMode(segments, mode) {
@@ -141,6 +238,8 @@
     prepareSegments,
     prepareSegmentsForMode,
     prepareAccurate,
-    decodeSubtitleTextEntities
+    decodeSubtitleTextEntities,
+    normalizeTimelineSegments,
+    mergeRollingCaptionChains
   };
 })(typeof window !== 'undefined' ? window : globalThis);
