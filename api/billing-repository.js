@@ -168,6 +168,7 @@ export function resolveSubscriptionPeriodEnd(subRow, creditsSnapshot = null) {
  * Uses the latest successful payment + 30 days when DB period end is absent.
  */
 export async function backfillSubscriptionPeriodEndIfMissing(email) {
+  await ensureSubscriptionsSchema();
   const em = String(email || '').trim().toLowerCase();
   if (!em) return null;
   const subRow = await getSubscriptionRowByEmail(em);
@@ -1021,6 +1022,30 @@ export function formatProfileFullName(firstName, lastName) {
 }
 
 let _userProfilesTableEnsured = false;
+let _subscriptionsSchemaEnsured = false;
+
+/** Ensure subscription period columns exist on older production DBs. */
+export async function ensureSubscriptionsSchema() {
+  if (!isBillingDbConfigured()) return;
+  if (_subscriptionsSchemaEnsured) return;
+  const pool = getPool();
+  try {
+    await pool.query(`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS current_period_start TIMESTAMPTZ`);
+    await pool.query(`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ`);
+    await pool.query(`ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ`);
+    await pool.query(
+      `ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS auto_renew BOOLEAN NOT NULL DEFAULT FALSE`
+    );
+    await pool.query(
+      `ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS last_payment_id UUID REFERENCES payments(id) ON DELETE SET NULL`
+    );
+    _subscriptionsSchemaEnsured = true;
+  } catch (e) {
+    console.error('[billing] ensureSubscriptionsSchema failed', e);
+    _subscriptionsSchemaEnsured = false;
+    throw e;
+  }
+}
 
 /**
  * Production safety: create user_profiles if migration was never applied.
@@ -1402,6 +1427,7 @@ function isExcludedCustomerRole(roleVal) {
 
 export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200, forUserId = null } = {}) {
   await ensureUserProfilesTable();
+  await ensureSubscriptionsSchema();
   if (isBillingDbConfigured()) {
     const { ensureAccountSecuritySchema } = await import('./account-security-repository.js');
     await ensureAccountSecuritySchema();
@@ -1686,6 +1712,7 @@ export async function getAdminCustomerSnapshotById(userId) {
  * Extend a customer's subscription period by days and/or months (admin manual grant).
  */
 export async function adminExtendCustomerSubscription(userId, { days = 0, months = 0, planKey = null } = {}) {
+  await ensureSubscriptionsSchema();
   const uid = String(userId || '').trim();
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uid)) {
     return { ok: false, error: 'invalid_id' };
@@ -1838,6 +1865,7 @@ function nzAdminPatch(v, max) {
 export async function adminPatchCustomerUser(userId, patch = {}) {
   try {
     await ensureUserProfilesTable();
+    await ensureSubscriptionsSchema();
   } catch (e) {
     console.error('[billing] adminPatchCustomerUser ensureUserProfilesTable', e);
     return { ok: false, error: 'profile_error' };
@@ -2882,6 +2910,7 @@ export async function finalizePendingPaymentSuccess(
   stripeSubscriptionId,
   currentPeriodEnd
 ) {
+  await ensureSubscriptionsSchema();
   const pool = getPool();
   const client = await pool.connect();
   try {
@@ -2995,6 +3024,7 @@ export async function markPaymentFailed(paymentId, errorMessage = null) {
 }
 
 export async function upsertSubscriptionFromPayment({ userId, planKey, paymentId, autoRenew = false, durationDays = 30 }) {
+  await ensureSubscriptionsSchema();
   const pool = getPool();
   const client = await pool.connect();
   try {
