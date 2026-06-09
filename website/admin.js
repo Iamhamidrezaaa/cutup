@@ -2721,14 +2721,8 @@ function setupActions() {
     const last_name = document.getElementById('newCustomerLastName')?.value?.trim() || '';
     const phone = document.getElementById('newCustomerPhone')?.value?.trim() || '';
     const plan = document.getElementById('newCustomerPlan')?.value || 'free';
-    const extend_days = Math.max(0, parseInt(document.getElementById('newCustomerExtendDays')?.value, 10) || 0);
-    const extend_months = Math.max(0, parseInt(document.getElementById('newCustomerExtendMonths')?.value, 10) || 0);
     if (!email) {
       showBanner('Email is required.');
-      return;
-    }
-    if (plan !== 'free' && extend_days === 0 && extend_months === 0) {
-      showBanner('For a paid plan, add at least 1 day or 1 month of access.');
       return;
     }
     try {
@@ -2737,9 +2731,7 @@ function setupActions() {
         first_name,
         last_name,
         phone,
-        plan,
-        extend_days,
-        extend_months
+        plan
       });
       showBanner('Customer created.');
       document.getElementById('newCustomerEmail').value = '';
@@ -2747,8 +2739,6 @@ function setupActions() {
       document.getElementById('newCustomerLastName').value = '';
       document.getElementById('newCustomerPhone').value = '';
       document.getElementById('newCustomerPlan').value = 'free';
-      document.getElementById('newCustomerExtendDays').value = '0';
-      document.getElementById('newCustomerExtendMonths').value = '0';
       if (data?.user) {
         customersCache = [data.user, ...customersCache.filter((u) => String(u.id) !== String(data.user.id))];
         renderUsersTable(customersCache);
