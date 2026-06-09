@@ -245,22 +245,64 @@
     return url;
   }
 
-  function canExport() {
+  function getCurrentPlanKey() {
+    const plan = global.userSubscription?.plan || 'free';
+    return global.CutupPlanPermissions?.resolvePlanKey
+      ? global.CutupPlanPermissions.resolvePlanKey(plan)
+      : String(plan || 'free').toLowerCase();
+  }
+
+  function isPlanLockedForMp4() {
     const sub = global.userSubscription || {};
     const perms = sub.permissions || {};
-    const canMp4 = perms.canExportMp4 === true || sub.features?.mp4Export === true;
-    if (!canMp4) {
+    return !(perms.canExportMp4 === true || sub.features?.mp4Export === true);
+  }
+
+  function openMp4UpgradeFlow() {
+    const planKey = getCurrentPlanKey();
+    const foot = document.getElementById('cutupExportUpgradeFoot');
+    const loggedIn = Boolean(getSessionId());
+    if (!loggedIn) {
+      if (typeof global.showMessage === 'function') {
+        global.showMessage('Sign in to upgrade and export viral MP4.', 'info');
+      }
+      const loginUrl =
+        global.CutupPlanCheckout?.buildLoginUrl?.('pro') || '/login.html?redirect=plans&plan=pro';
+      global.location.href = loginUrl;
+      return;
+    }
+    if (foot) {
+      foot.textContent =
+        planKey === 'starter'
+          ? 'You’re on Starter — viral MP4 unlocks on Pro.'
+          : planKey === 'business'
+            ? ''
+            : 'One-click MP4 with burned-in captions — built for creators who publish daily.';
+    }
+    if (global.CutupPlanCheckout?.handlePlanSelection) {
+      void global.CutupPlanCheckout.handlePlanSelection('pro', { source: 'mp4-export' });
+      return;
+    }
+    global.location.href = '/dashboard.html?highlightPlan=pro#subscription';
+  }
+
+  function canExport() {
+    if (isPlanLockedForMp4()) {
       const msg = global.CutupPlanPermissions?.getUpgradeMessage
         ? global.CutupPlanPermissions.getUpgradeMessage('canExportMp4')
         : 'MP4 export is available on Pro and Business plans.';
-      return { ok: false, reason: msg };
+      return { ok: false, lock: 'plan', reason: msg };
     }
     const payload = getExportPayload();
-    if (!payload) return { ok: false, reason: 'Transcribe a video first.' };
+    if (!payload) return { ok: false, lock: 'transcript', reason: 'Transcribe a video first.' };
     const hasUrl = !!resolveSourceUrl();
     const hasFile = global.cutupLastSourceVideoFile instanceof File;
     if (!hasUrl && !hasFile) {
-      return { ok: false, reason: 'Paste a social link or upload a video file to enable MP4 export.' };
+      return {
+        ok: false,
+        lock: 'source',
+        reason: 'Paste a social link or upload a video file to enable MP4 export.'
+      };
     }
     return { ok: true, payload, hasUrl, hasFile };
   }
@@ -291,7 +333,10 @@
       <section class="cutup-viral-export" aria-label="Viral video export">
         <div class="cutup-viral-export__head">
           <div>
-            <h4 class="cutup-viral-export__title">Export viral MP4</h4>
+            <h4 class="cutup-viral-export__title">
+              Export viral MP4
+              <span class="cutup-viral-export__pro-badge" id="cutupExportProBadge" hidden>Pro</span>
+            </h4>
             <p class="cutup-viral-export__sub">Burned cinematic captions · styled typography · social-ready.</p>
           </div>
           <div class="cutup-viral-export__actions">
@@ -310,6 +355,21 @@
             </select>
             <button type="button" class="cutup-viral-export__btn" id="cutupExportMp4Btn">Export MP4</button>
           </div>
+        </div>
+        <div class="cutup-viral-export__upgrade" id="cutupExportUpgradeBanner" hidden>
+          <p class="cutup-viral-export__upgrade-lead">
+            <span class="cutup-viral-export__upgrade-lock" aria-hidden="true">🔒</span>
+            Viral MP4 export is included on <strong>Pro</strong> and <strong>Business</strong>.
+          </p>
+          <ul class="cutup-viral-export__upgrade-list">
+            <li>Burned-in Hormozi / MrBeast-style captions</li>
+            <li>Post-ready MP4 — skip Premiere &amp; CapCut</li>
+            <li>Priority export queue on Pro+</li>
+          </ul>
+          <button type="button" class="cutup-viral-export__btn cutup-viral-export__btn--upgrade" id="cutupExportUpgradeBtn">
+            Upgrade to Pro
+          </button>
+          <p class="cutup-viral-export__upgrade-foot" id="cutupExportUpgradeFoot"></p>
         </div>
         <div class="cutup-export-queue-panel" id="cutupExportQueuePanel" hidden aria-live="polite">
           <p class="cutup-export-queue-panel__headline" id="cutupExportQueueHeadline"></p>
@@ -356,6 +416,7 @@
 
     const btn = container.querySelector('#cutupExportMp4Btn');
     btn?.addEventListener('click', () => startExport(container));
+    container.querySelector('#cutupExportUpgradeBtn')?.addEventListener('click', () => openMp4UpgradeFlow());
     const styleSelect = container.querySelector('#cutupExportStyleSelect');
     if (styleSelect && !styleSelect.dataset.bound) {
       styleSelect.dataset.bound = '1';
@@ -666,8 +727,43 @@
 
   function refreshExportButton() {
     const btn = document.getElementById('cutupExportMp4Btn');
+    const banner = document.getElementById('cutupExportUpgradeBanner');
+    const proBadge = document.getElementById('cutupExportProBadge');
+    const upgradeBtn = document.getElementById('cutupExportUpgradeBtn');
+    const foot = document.getElementById('cutupExportUpgradeFoot');
+    const viralCard = document.querySelector('.cutup-export-options__card--viral');
     if (!btn) return;
+
+    const planLocked = isPlanLockedForMp4();
     const check = canExport();
+    const proPrice =
+      global.CutupPlanPermissions?.PLAN_PRICES?.pro?.display || '€19.99/mo';
+    const planKey = getCurrentPlanKey();
+
+    viralCard?.classList.toggle('cutup-export-options__card--viral-locked', planLocked);
+    proBadge?.toggleAttribute('hidden', !planLocked);
+
+    if (planLocked) {
+      banner?.removeAttribute('hidden');
+      if (foot) {
+        foot.textContent =
+          planKey === 'starter'
+            ? 'You’re on Starter — upgrade to Pro to export MP4.'
+            : getSessionId()
+              ? 'Unlock creator styles + burned-in captions with Pro.'
+              : 'Sign in, then upgrade to Pro to export.';
+      }
+      if (upgradeBtn) upgradeBtn.textContent = `Upgrade to Pro — ${proPrice}`;
+      btn.disabled = false;
+      btn.classList.add('cutup-viral-export__btn--upgrade');
+      btn.textContent = getSessionId() ? 'Unlock with Pro' : 'Sign in & upgrade';
+      btn.title = check.reason || 'MP4 export requires Pro or Business';
+      return;
+    }
+
+    banner?.setAttribute('hidden', '');
+    btn.classList.remove('cutup-viral-export__btn--upgrade');
+    btn.textContent = btn.textContent === 'Export again' ? 'Export again' : 'Export MP4';
     btn.disabled = !check.ok;
     btn.title = check.ok ? 'Render MP4 with burned-in subtitles' : check.reason;
   }
@@ -992,6 +1088,10 @@
     const selectedVersion = getSelectedVersionKey();
     const check = canExport();
     if (!check.ok) {
+      if (check.lock === 'plan') {
+        openMp4UpgradeFlow();
+        return;
+      }
       showError(container, check.reason);
       return;
     }

@@ -88,6 +88,11 @@
   box-sizing: border-box;
 }
 
+.cutup-export-options__card--viral-locked {
+  border-color: #c4b5fd;
+  background: linear-gradient(180deg, #f5f3ff 0%, #fafafa 100%);
+}
+
 .cutup-export-options__title {
   margin: 0 0 0.35rem;
   font-size: 1rem;
@@ -160,6 +165,72 @@
   font-weight: 700;
   letter-spacing: -0.02em;
   color: #0f172a;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.cutup-viral-export__pro-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.45rem;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #4c1d95;
+  background: linear-gradient(135deg, #ede9fe, #ddd6fe);
+  border: 1px solid #c4b5fd;
+  border-radius: 999px;
+}
+
+.cutup-viral-export__upgrade {
+  margin: 0 0 0.75rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 12px;
+  border: 1px dashed #c4b5fd;
+  background: linear-gradient(135deg, #faf5ff 0%, #f8fafc 100%);
+}
+
+.cutup-viral-export__upgrade-lead {
+  margin: 0 0 0.5rem;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: #312e81;
+}
+
+.cutup-viral-export__upgrade-lock {
+  margin-right: 0.2rem;
+}
+
+.cutup-viral-export__upgrade-list {
+  margin: 0 0 0.65rem;
+  padding-left: 1.15rem;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: #475569;
+}
+
+.cutup-viral-export__upgrade-list li {
+  margin: 0.15rem 0;
+}
+
+.cutup-viral-export__upgrade-foot {
+  margin: 0.5rem 0 0;
+  font-size: 0.72rem;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.cutup-viral-export__btn--upgrade {
+  background: linear-gradient(135deg, #7c3aed, #5b21b6);
+  box-shadow: 0 4px 14px rgba(91, 33, 182, 0.35);
+  width: 100%;
+}
+
+.cutup-viral-export__btn--upgrade:hover:not(:disabled) {
+  box-shadow: 0 6px 18px rgba(91, 33, 182, 0.42);
 }
 
 .cutup-viral-export__sub {
