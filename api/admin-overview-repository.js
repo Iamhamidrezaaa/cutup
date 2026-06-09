@@ -4,12 +4,19 @@
  */
 import { getPool, isBillingDbConfigured } from './db/pool.js';
 import { getPlanDef, resolvePlanKey } from './plans-config.js';
-import { getAdminOverviewDb } from './billing-repository.js';
+import { getAdminOverviewDb, ensureSubscriptionsSchema } from './billing-repository.js';
 import { ensureAuditEventsTable } from './audit-repository.js';
 
 const CACHE_TTL_MS = 60_000;
 const OPENAI_EUR_PER_MINUTE = 0.0055;
 const overviewCache = new Map();
+
+const PAYMENT_DATE_EXPR = 'COALESCE(p.paid_at, p.created_at)';
+const PAYMENT_AMOUNT_EXPR =
+  'COALESCE(p.final_amount_eur, p.amount_eur, p.amount, 0)';
+const PLAN_RANK_EXPR = `CASE lower(COALESCE(NULLIF(TRIM(p.plan_key), ''), NULLIF(TRIM(p.plan), ''), 'free'))
+  WHEN 'starter' THEN 1 WHEN 'pro' THEN 2 WHEN 'business' THEN 3 ELSE 0 END`;
+const SUB_PERIOD_END_EXPR = 'COALESCE(s.current_period_end, s.expires_at)';
 
 function startOfUtcDay(d) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
@@ -18,7 +25,7 @@ function startOfUtcDay(d) {
 function pctChange(current, previous) {
   const c = Number(current) || 0;
   const p = Number(previous) || 0;
-  if (p === 0) return c > 0 ? 100 : null;
+  if (p === 0) return c > 0 ? 100 : 0;
   return Math.round(((c - p) / p) * 1000) / 10;
 }
 
@@ -76,13 +83,13 @@ function dateWhere(col, from, to, params) {
 
 async function queryRevenueMetrics(pool, from, to) {
   const params = [];
-  const w = dateWhere('p.created_at', from, to, params);
+  const w = dateWhere(PAYMENT_DATE_EXPR, from, to, params);
   const r = await pool.query(
     `SELECT
-       COALESCE(SUM(CASE WHEN p.status = 'success' THEN COALESCE(p.amount_eur, p.amount, 0) ELSE 0 END), 0)::numeric AS revenue,
-       COUNT(*) FILTER (WHERE p.status = 'success')::int AS payments
+       COALESCE(SUM(${PAYMENT_AMOUNT_EXPR}), 0)::numeric AS revenue,
+       COUNT(*)::int AS payments
      FROM payments p
-     WHERE ${w}`,
+     WHERE p.status = 'success' AND ${w}`,
     params
   );
   return {
@@ -93,13 +100,13 @@ async function queryRevenueMetrics(pool, from, to) {
 
 async function queryRevenueByPlan(pool, from, to) {
   const params = [];
-  const w = dateWhere('p.created_at', from, to, params);
+  const w = dateWhere(PAYMENT_DATE_EXPR, from, to, params);
   const r = await pool.query(
-    `SELECT COALESCE(NULLIF(TRIM(p.plan), ''), p.plan_key, 'free') AS plan,
-            COALESCE(SUM(CASE WHEN p.status = 'success' THEN COALESCE(p.amount_eur, p.amount, 0) ELSE 0 END), 0)::numeric AS revenue,
-            COUNT(*) FILTER (WHERE p.status = 'success')::int AS count
+    `SELECT COALESCE(NULLIF(TRIM(p.plan_key), ''), NULLIF(TRIM(p.plan), ''), 'free') AS plan,
+            COALESCE(SUM(${PAYMENT_AMOUNT_EXPR}), 0)::numeric AS revenue,
+            COUNT(*)::int AS count
      FROM payments p
-     WHERE ${w}
+     WHERE p.status = 'success' AND ${w}
      GROUP BY 1
      ORDER BY revenue DESC`,
     params
@@ -113,12 +120,12 @@ async function queryRevenueByPlan(pool, from, to) {
 
 async function queryRevenueTimeline(pool, from, to) {
   const params = [];
-  const w = dateWhere('p.created_at', from, to, params);
+  const w = dateWhere(PAYMENT_DATE_EXPR, from, to, params);
   const r = await pool.query(
-    `SELECT to_char(date_trunc('day', p.created_at), 'YYYY-MM-DD') AS day,
-            COALESCE(SUM(CASE WHEN p.status = 'success' THEN COALESCE(p.amount_eur, p.amount, 0) ELSE 0 END), 0)::numeric AS revenue
+    `SELECT to_char(date_trunc('day', ${PAYMENT_DATE_EXPR}), 'YYYY-MM-DD') AS day,
+            COALESCE(SUM(${PAYMENT_AMOUNT_EXPR}), 0)::numeric AS revenue
      FROM payments p
-     WHERE ${w}
+     WHERE p.status = 'success' AND ${w}
      GROUP BY 1
      ORDER BY 1 ASC`,
     params
@@ -128,10 +135,13 @@ async function queryRevenueTimeline(pool, from, to) {
 
 function computeMrrFromSubscriptions(rows) {
   let mrr = 0;
+  const now = Date.now();
   for (const row of rows) {
     const pk = resolvePlanKey(row.plan);
     if (!pk || pk === 'free') continue;
     if (String(row.status || '').toLowerCase() !== 'active') continue;
+    const periodEnd = row.current_period_end || row.expires_at;
+    if (periodEnd && new Date(periodEnd).getTime() <= now) continue;
     const def = getPlanDef(pk);
     mrr += Number(def?.priceEur?.monthly || 0);
   }
@@ -139,42 +149,69 @@ function computeMrrFromSubscriptions(rows) {
 }
 
 async function querySubscriptions(pool) {
-  const r = await pool.query(
-    `SELECT plan, status, COUNT(*)::int AS count
-     FROM subscriptions
-     GROUP BY plan, status`
+  const snapRes = await pool.query(
+    `SELECT
+       COUNT(*) FILTER (
+         WHERE COALESCE(s.plan, 'free') <> 'free'
+           AND lower(COALESCE(s.status, '')) = 'active'
+           AND (${SUB_PERIOD_END_EXPR} IS NULL OR ${SUB_PERIOD_END_EXPR} > NOW())
+       )::int AS active,
+       COUNT(*) FILTER (WHERE lower(COALESCE(s.status, '')) = 'trialing')::int AS trial,
+       COUNT(*) FILTER (
+         WHERE COALESCE(s.plan, 'free') <> 'free'
+           AND (
+             lower(COALESCE(s.status, '')) IN ('canceled', 'cancelled', 'expired', 'past_due', 'unpaid')
+             OR (${SUB_PERIOD_END_EXPR} IS NOT NULL AND ${SUB_PERIOD_END_EXPR} <= NOW())
+           )
+       )::int AS expired
+     FROM subscriptions s`
   );
-  const rows = r.rows || [];
-  let active = 0;
-  let trial = 0;
-  let expired = 0;
-  for (const row of rows) {
-    const plan = resolvePlanKey(row.plan);
-    const status = String(row.status || '').toLowerCase();
-    const n = Number(row.count || 0);
-    if (plan !== 'free' && status === 'active') active += n;
-    if (status === 'trialing') trial += n;
-    if (['canceled', 'cancelled', 'expired', 'past_due'].includes(status) && plan !== 'free') expired += n;
-  }
+  const snap = snapRes.rows[0] || {};
+  const active = Number(snap.active || 0);
+  const trial = Number(snap.trial || 0);
+  const expired = Number(snap.expired || 0);
+
   const activeRows = await pool.query(
-    `SELECT plan, status FROM subscriptions WHERE COALESCE(plan, 'free') <> 'free'`
+    `SELECT s.plan, s.status, s.current_period_end, s.expires_at
+     FROM subscriptions s
+     WHERE COALESCE(s.plan, 'free') <> 'free'
+       AND lower(COALESCE(s.status, '')) = 'active'
+       AND (${SUB_PERIOD_END_EXPR} IS NULL OR ${SUB_PERIOD_END_EXPR} > NOW())`
   );
   const mrr = computeMrrFromSubscriptions(activeRows.rows);
+
   const churnRes = await pool.query(
-    `SELECT COUNT(*)::int AS c FROM subscriptions
-     WHERE COALESCE(plan, 'free') <> 'free'
+    `SELECT COUNT(*)::int AS c FROM subscriptions s
+     WHERE COALESCE(s.plan, 'free') <> 'free'
        AND (
-         lower(status) IN ('canceled', 'cancelled', 'expired')
-         OR (expires_at IS NOT NULL AND expires_at < NOW())
-       )
-       AND updated_at >= NOW() - INTERVAL '30 days'`
+         (
+           lower(COALESCE(s.status, '')) IN ('canceled', 'cancelled', 'expired', 'past_due', 'unpaid')
+           AND s.updated_at >= NOW() - INTERVAL '30 days'
+         )
+         OR (
+           ${SUB_PERIOD_END_EXPR} IS NOT NULL
+           AND ${SUB_PERIOD_END_EXPR} <= NOW()
+           AND ${SUB_PERIOD_END_EXPR} >= NOW() - INTERVAL '30 days'
+         )
+       )`
   );
+
   const upgradeRes = await pool.query(
-    `SELECT
-       COUNT(*) FILTER (WHERE COALESCE(p.amount_eur, p.amount, 0) >= 15)::int AS upgrades,
-       COUNT(*) FILTER (WHERE COALESCE(p.amount_eur, p.amount, 0) > 0 AND COALESCE(p.amount_eur, p.amount, 0) < 15)::int AS downgrades
-     FROM payments p
-     WHERE p.status = 'success' AND p.created_at >= NOW() - INTERVAL '90 days'`
+    `WITH ordered AS (
+       SELECT
+         p.user_id,
+         ${PLAN_RANK_EXPR} AS rk,
+         LAG(${PLAN_RANK_EXPR}) OVER (
+           PARTITION BY p.user_id ORDER BY ${PAYMENT_DATE_EXPR}
+         ) AS prev_rk
+       FROM payments p
+       WHERE p.status = 'success'
+         AND ${PAYMENT_DATE_EXPR} >= NOW() - INTERVAL '90 days'
+     )
+     SELECT
+       COUNT(*) FILTER (WHERE prev_rk IS NOT NULL AND rk > prev_rk)::int AS upgrades,
+       COUNT(*) FILTER (WHERE prev_rk IS NOT NULL AND rk < prev_rk AND prev_rk > 0)::int AS downgrades
+     FROM ordered`
   );
   const up = Number(upgradeRes.rows[0]?.upgrades || 0);
   const down = Number(upgradeRes.rows[0]?.downgrades || 0);
@@ -183,8 +220,8 @@ async function querySubscriptions(pool) {
     trial,
     expired,
     mrr,
-    churnRate: safeRate(Number(churnRes.rows[0]?.c || 0), Math.max(active + expired, 1)),
-    upgradeDowngradeRatio: down > 0 ? Math.round((up / down) * 100) / 100 : up > 0 ? up : null
+    churnRate: safeRate(Number(churnRes.rows[0]?.c || 0), Math.max(active + Number(churnRes.rows[0]?.c || 0), 1)),
+    upgradeDowngradeRatio: down > 0 ? Math.round((up / down) * 100) / 100 : up
   };
 }
 
@@ -411,8 +448,13 @@ async function queryUserGrowthTimeline(pool, from, to) {
 
 async function queryPlansDistribution(pool) {
   const r = await pool.query(
-    `SELECT COALESCE(plan, 'free') AS plan, COUNT(*)::int AS count
-     FROM subscriptions
+    `SELECT COALESCE(s.plan, 'free') AS plan, COUNT(*)::int AS count
+     FROM subscriptions s
+     WHERE COALESCE(s.plan, 'free') = 'free'
+        OR (
+          lower(COALESCE(s.status, '')) IN ('active', 'trialing')
+          AND (${SUB_PERIOD_END_EXPR} IS NULL OR ${SUB_PERIOD_END_EXPR} > NOW())
+        )
      GROUP BY 1
      ORDER BY count DESC`
   );
@@ -421,11 +463,13 @@ async function queryPlansDistribution(pool) {
 
 async function queryCostVsRevenueTimeline(pool, from, to) {
   const params = [];
-  const w = dateWhere('p.created_at', from, to, params);
+  const w = dateWhere(PAYMENT_DATE_EXPR, from, to, params);
   const rev = await pool.query(
-    `SELECT to_char(date_trunc('day', p.created_at), 'YYYY-MM-DD') AS day,
-            COALESCE(SUM(CASE WHEN p.status = 'success' THEN COALESCE(p.amount_eur, p.amount, 0) ELSE 0 END), 0)::numeric AS revenue
-     FROM payments p WHERE ${w} GROUP BY 1 ORDER BY 1`,
+    `SELECT to_char(date_trunc('day', ${PAYMENT_DATE_EXPR}), 'YYYY-MM-DD') AS day,
+            COALESCE(SUM(${PAYMENT_AMOUNT_EXPR}), 0)::numeric AS revenue
+     FROM payments p
+     WHERE p.status = 'success' AND ${w}
+     GROUP BY 1 ORDER BY 1`,
     params
   );
   const params2 = [];
@@ -513,22 +557,28 @@ async function queryConversion(pool, from, to) {
 
 async function queryTopCustomers(pool, from, to) {
   const params = [];
-  const wPay = dateWhere('p.created_at', from, to, params);
   const wUsage = dateWhere('uh.created_at', from, to, params);
   const r = await pool.query(
     `SELECT u.email,
             COALESCE(s.plan, 'free') AS plan,
             COALESCE(up.country, '') AS country,
-            COALESCE(SUM(CASE WHEN p.status = 'success' THEN COALESCE(p.amount_eur, p.amount, 0) ELSE 0 END), 0)::numeric AS revenue,
+            COALESCE((
+              SELECT SUM(COALESCE(p2.final_amount_eur, p2.amount_eur, p2.amount, 0))
+              FROM payments p2
+              WHERE p2.user_id = u.id AND p2.status = 'success'
+            ), 0)::numeric AS revenue,
             COALESCE(SUM(CASE WHEN uh.minutes > 0 THEN uh.minutes ELSE 0 END), 0)::float AS usage_minutes,
             GREATEST(u.created_at, MAX(uh.created_at)) AS last_active
      FROM users u
      LEFT JOIN subscriptions s ON s.user_id = u.id
      LEFT JOIN user_profiles up ON up.user_id = u.id
-     LEFT JOIN payments p ON p.user_id = u.id AND p.status = 'success' AND ${wPay}
      LEFT JOIN usage_history uh ON uh.user_id = u.id AND ${wUsage}
      GROUP BY u.id, u.email, s.plan, up.country, u.created_at
-     HAVING COALESCE(SUM(CASE WHEN p.status = 'success' THEN COALESCE(p.amount_eur, p.amount, 0) ELSE 0 END), 0) > 0
+     HAVING COALESCE((
+              SELECT SUM(COALESCE(p2.final_amount_eur, p2.amount_eur, p2.amount, 0))
+              FROM payments p2
+              WHERE p2.user_id = u.id AND p2.status = 'success'
+            ), 0) > 0
          OR COALESCE(SUM(CASE WHEN uh.minutes > 0 THEN uh.minutes ELSE 0 END), 0) > 0
      ORDER BY revenue DESC, usage_minutes DESC
      LIMIT 12`,
@@ -561,12 +611,14 @@ async function queryActivityFeed(pool, from, to) {
     });
   }
   const payParams = [];
-  const wPay = dateWhere('p.created_at', from, to, payParams);
+  const wPay = dateWhere(PAYMENT_DATE_EXPR, from, to, payParams);
   const pays = await pool.query(
-    `SELECT u.email, p.status, p.plan, COALESCE(p.amount_eur, p.amount, 0) AS amount, p.created_at
+    `SELECT u.email, p.status, p.plan,
+            COALESCE(p.final_amount_eur, p.amount_eur, p.amount, 0) AS amount,
+            ${PAYMENT_DATE_EXPR} AS paid_at
      FROM payments p JOIN users u ON u.id = p.user_id
      WHERE ${wPay}
-     ORDER BY p.created_at DESC LIMIT 12`,
+     ORDER BY ${PAYMENT_DATE_EXPR} DESC LIMIT 12`,
     payParams
   );
   for (const row of pays.rows) {
@@ -574,7 +626,7 @@ async function queryActivityFeed(pool, from, to) {
       type: row.status === 'success' ? 'purchase' : row.status === 'failed' ? 'payment_failed' : 'payment',
       label: row.status === 'success' ? 'Purchase' : row.status === 'failed' ? 'Failed payment' : 'Payment',
       detail: `${row.email} · ${row.plan || '—'} · €${Number(row.amount || 0).toFixed(2)}`,
-      at: row.created_at?.toISOString?.() || row.created_at
+      at: row.paid_at?.toISOString?.() || row.paid_at
     });
   }
   const usageParams = [];
@@ -679,7 +731,7 @@ async function computeDashboard(periodKey) {
     period: period.key,
     range: { from: period.from?.toISOString() || null, to: period.to.toISOString() },
     revenue: { total: 0, mrr: 0, growthPct: null, byPlan: [], timeline: [] },
-    subscriptions: { active: 0, trial: 0, expired: 0, churnRate: 0, upgradeDowngradeRatio: null },
+    subscriptions: { active: 0, trial: 0, expired: 0, churnRate: 0, upgradeDowngradeRatio: 0 },
     users: { newUsers: 0, dau: 0, wau: 0, mau: 0, returningPct: null, countries: [], mostActive: [] },
     ai: {},
     storage: {},
@@ -693,6 +745,7 @@ async function computeDashboard(periodKey) {
 
   if (!isBillingDbConfigured()) return empty;
 
+  await ensureSubscriptionsSchema();
   const pool = getPool();
   const chartFrom = period.from || new Date(period.to.getTime() - 90 * 86400000);
 

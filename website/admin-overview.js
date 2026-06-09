@@ -129,7 +129,7 @@ window.CutupAdminOverview = (function () {
         kpiCard('Trial users', f.num(sub.trial), 'Current snapshot'),
         kpiCard('Expired / canceled', f.num(sub.expired), 'Current snapshot'),
         kpiCard('Churn rate', `${sub.churnRate ?? 0}%`, 'Rolling 30 days'),
-        kpiCard('Upgrade / downgrade ratio', sub.upgradeDowngradeRatio != null ? String(sub.upgradeDowngradeRatio) : '—', 'Rolling 90 days')
+        kpiCard('Upgrade / downgrade ratio', String(sub.upgradeDowngradeRatio ?? 0), 'Rolling 90 days · plan rank')
       ].join('')}</div></section>
       <section><h3 class="dash-section-title">Users</h3><div class="dash-kpi-grid">${[
         kpiCard('New users', f.num(users.newUsers), 'Registered in period'),
@@ -180,7 +180,7 @@ window.CutupAdminOverview = (function () {
           ${renderActivity(d.activity)}
         </section>
         <section style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;">
-          <h3 class="dash-section-title">Top customers <span class="dash-section-tag">period</span></h3>
+          <h3 class="dash-section-title">Top customers <span class="dash-section-tag">usage period · revenue lifetime</span></h3>
           ${renderTopCustomers(d.topCustomers)}
         </section>
       </div>
