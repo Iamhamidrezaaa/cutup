@@ -1,5 +1,6 @@
 /**
  * Site-supported spoken/translation languages (sync with website TRANSLATION_LANGUAGE_OPTIONS).
+ * Backend list is unchanged when ENABLE_RTL_LANGUAGES is off — only UI selectors hide RTL codes.
  */
 
 export const SUPPORTED_LANGUAGE_CODES = Object.freeze([

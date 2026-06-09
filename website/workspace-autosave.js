@@ -201,7 +201,9 @@
 
     const srtLang = document.getElementById('srtLanguage');
     if (srtLang && state.srtLanguage) {
-      srtLang.value = state.srtLanguage;
+      const restored =
+        global.CutupRtlLanguages?.filterLanguageCode?.(state.srtLanguage) || state.srtLanguage;
+      srtLang.value = restored || 'original';
     }
 
     const exportMount = document.getElementById('cutupViralExportMount');

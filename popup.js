@@ -89,7 +89,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 // Initialize
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  if (window.CutupRtlLanguages?.ensureReady) {
+    await window.CutupRtlLanguages.ensureReady();
+  }
+  window.CutupRtlLanguages?.stripRtlOptionsFromDocument?.();
+
   // Load saved state (YouTube URL)
   chrome.storage.local.get(['savedYoutubeUrl'], (result) => {
     if (result.savedYoutubeUrl) {
@@ -1400,6 +1405,10 @@ function displayResults(summary, fullText, segments = null, options = {}) {
     const existingValues = currentOptions.map(opt => opt.value);
     
     options.availableLanguages.forEach(lang => {
+      if (window.CutupRtlLanguages?.filterLanguageCode) {
+        const allowed = window.CutupRtlLanguages.filterLanguageCode(lang);
+        if (!allowed) return;
+      }
       if (!existingValues.includes(lang)) {
         const option = document.createElement('option');
         option.value = lang;

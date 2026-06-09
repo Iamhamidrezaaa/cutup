@@ -92,6 +92,10 @@
       "dest": "/api/summarize.js"
     },
     {
+      "src": "/api/public-config",
+      "dest": "/api/public-config.js"
+    },
+    {
       "src": "/api/tools-content",
       "dest": "/api/tools-content.js"
     },

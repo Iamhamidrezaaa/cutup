@@ -115,6 +115,15 @@ const rateLimit = extractionRateLimitMiddleware;
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+app.get('/api/public-config', async (req, res) => {
+  try {
+    const { default: handler } = await import('./api/public-config.js');
+    return handler(req, res);
+  } catch (e) {
+    console.error('[public-config]', e);
+    return res.status(500).json({ error: 'public_config_unavailable' });
+  }
+});
 app.get('/api/system-health', async (req, res) => {
   if (!systemHealthHandler) {
     return res.status(503).json({ ok: false, degraded: true, error: 'system_health_not_loaded' });

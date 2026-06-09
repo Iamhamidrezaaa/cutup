@@ -48,6 +48,13 @@
   color: #64748b;
 }
 
+.lp-feature__rtl-note {
+  margin: 0.45rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: #6366f1;
+}
+
 /* ── Pricing comparison table ── */
 .pricing-compare-wrap {
   overflow-x: auto;

@@ -2057,9 +2057,16 @@ function getTranslationOriginalLabel() {
   return detectedLabel && detectedLabel !== 'Original language' ? `${detectedLabel} (Original)` : 'Original language';
 }
 
+function getVisibleTranslationLanguageOptions() {
+  if (window.CutupRtlLanguages?.filterTranslationOptions) {
+    return window.CutupRtlLanguages.filterTranslationOptions(TRANSLATION_LANGUAGE_OPTIONS);
+  }
+  return TRANSLATION_LANGUAGE_OPTIONS;
+}
+
 function buildLanguageOptionsMarkup() {
   const originalLabel = getTranslationOriginalLabel();
-  const dynamicOptions = TRANSLATION_LANGUAGE_OPTIONS.map((lang) => (
+  const dynamicOptions = getVisibleTranslationLanguageOptions().map((lang) => (
     `<option value="${lang.code}">${lang.label}</option>`
   )).join('');
   return `<option value="original">${originalLabel}</option>${dynamicOptions}`;
@@ -2080,7 +2087,7 @@ function populateLanguageSelects() {
     if (!sel) return;
     const previousValue = sel.value;
     sel.innerHTML = optionsMarkup;
-    const hasPreviousValue = previousValue && (previousValue === 'original' || TRANSLATION_LANGUAGE_OPTIONS.some((lang) => lang.code === previousValue));
+    const hasPreviousValue = previousValue && (previousValue === 'original' || getVisibleTranslationLanguageOptions().some((lang) => lang.code === previousValue));
     sel.value = hasPreviousValue ? previousValue : 'original';
   });
 }
@@ -3291,8 +3298,13 @@ document.addEventListener('visibilitychange', () => {
 let youtubeUrlInput, audioFileInput, downloadVideoBtnMain, downloadAudioBtnMain;
 let downloadSubtitleBtnMain, summarizeBtnMain, fullTextBtnMain, downloadMessage;
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  if (window.CutupRtlLanguages?.ensureReady) {
+    await window.CutupRtlLanguages.ensureReady();
+  }
   populateLanguageSelects();
+  window.CutupRtlLanguages?.applyMarketingVisibility?.();
+  window.CutupRtlLanguages?.stripRtlOptionsFromDocument?.();
   youtubeUrlInput = document.getElementById('youtubeUrlInput');
   audioFileInput = document.getElementById('audioFileInput');
   downloadVideoBtnMain = document.getElementById('downloadVideoBtnMain');

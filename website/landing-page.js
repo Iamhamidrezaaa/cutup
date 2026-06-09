@@ -37,7 +37,11 @@
     });
   }
 
-  function init() {
+  async function init() {
+    if (window.CutupRtlLanguages?.ensureReady) {
+      await window.CutupRtlLanguages.ensureReady();
+    }
+    window.CutupRtlLanguages?.applyMarketingVisibility?.();
     if (!document.querySelector('#cutupPricingMatrixMount .pricing-compare') && window.CutupPricingMatrix) {
       window.CutupPricingMatrix.mount('#cutupPricingMatrixMount', { context: 'landing' });
     }

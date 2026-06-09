@@ -67,6 +67,13 @@
     );
   }
 
+  function presetShowcaseMockLines() {
+    if (global.CutupRtlLanguages?.getPresetShowcaseMockLines) {
+      return global.CutupRtlLanguages.getPresetShowcaseMockLines();
+    }
+    return { lineA: 'YOUR', lineB: 'HOOK' };
+  }
+
   function mount(container, { onChange } = {}) {
     if (!container || !global.CutupStylePresets) return;
     const presets = global.CutupStylePresets.listCarouselPresets
@@ -74,6 +81,7 @@
       : global.CutupStylePresets.listPresets().filter((p) => p.id !== 'clean-srt');
     let active = getActivePresetId();
     setActivePresetId(active, 'init');
+    const mock = presetShowcaseMockLines();
 
     container.innerHTML = `
       <div class="cutup-preset-bar" role="group" aria-label="Subtitle style presets">
@@ -90,8 +98,8 @@
               aria-pressed="${p.id === active}"
               style="--card-gradient:${p.cardGradient}">
               <span class="cutup-preset-card__mock" aria-hidden="true">
-                <span class="cutup-preset-card__line cutup-preset-card__line--a">YOUR</span>
-                <span class="cutup-preset-card__line cutup-preset-card__line--b">HOOK</span>
+                <span class="cutup-preset-card__line cutup-preset-card__line--a">${mock.lineA}</span>
+                <span class="cutup-preset-card__line cutup-preset-card__line--b">${mock.lineB}</span>
               </span>
               <span class="cutup-preset-card__name">${p.name}</span>
               <span class="cutup-preset-card__tag">${p.tagline}</span>

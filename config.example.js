@@ -3,6 +3,8 @@
 // سپس API Key خود را وارد کنید
 
 module.exports = {
+  // UI only — hide Persian/Arabic/Urdu/Hebrew from selectors when unset/false (backend RTL pipeline stays on)
+  // ENABLE_RTL_LANGUAGES: '1',
   OPENAI_API_KEY: 'YOUR_OPENAI_API_KEY_HERE',
   // PostgreSQL (required for subscription + usage persistence)
   DATABASE_URL: 'postgresql://user:pass@host:5432/cutup',
