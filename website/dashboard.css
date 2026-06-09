@@ -2861,9 +2861,13 @@
 .dashboard-sidebar-profile-avatar {
   width: 40px;
   height: 40px;
-  border-radius: 10px;
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 50%;
+  border: 2px solid rgba(99, 102, 241, 0.15);
   object-fit: cover;
+  object-position: center;
+  flex-shrink: 0;
+  display: block;
+  background: #f1f5f9;
 }
 
 .dashboard-sidebar-profile-meta {
