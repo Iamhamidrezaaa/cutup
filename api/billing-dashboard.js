@@ -5,6 +5,8 @@ import Stripe from 'stripe';
 import {
   ensureUserByEmail,
   getSubscriptionRowByEmail,
+  backfillSubscriptionPeriodEndIfMissing,
+  resolveSubscriptionPeriodEnd,
   getLegacyUsageShape,
   listInvoicesByEmail,
   isBillingDbConfigured,
@@ -231,6 +233,9 @@ export async function buildBillingDashboardPayload(email) {
   }
 
   await ensureUserByEmail(email);
+  if (email !== SPECIAL_EMAIL) {
+    await backfillSubscriptionPeriodEndIfMissing(email);
+  }
   const subRow = email === SPECIAL_EMAIL
     ? {
         plan: 'business',
@@ -258,7 +263,7 @@ export async function buildBillingDashboardPayload(email) {
   const lastFailure = await getLastPaymentFailure(email);
 
   const price = planPriceMeta(planKey);
-  const nextRenewal = subRow?.current_period_end || subRow?.expires_at || null;
+  const nextRenewal = resolveSubscriptionPeriodEnd(subRow, creditsSnapshot);
 
   const upcomingCharge =
     planKey !== 'free' && ['active', 'trialing'].includes(String(status).toLowerCase()) && price.amount > 0

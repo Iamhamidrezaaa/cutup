@@ -230,6 +230,18 @@ function formatRenewalCountdown(endDate) {
   return days === 1 ? 'Renews in 1 day' : `Renews in ${days} days`;
 }
 
+function renewalDaysLeft(endDate) {
+  if (!endDate) return null;
+  const end = new Date(endDate);
+  if (Number.isNaN(end.getTime())) return null;
+  return Math.ceil((end.getTime() - Date.now()) / 86400000);
+}
+
+function isRenewalUrgent(endDate) {
+  const days = renewalDaysLeft(endDate);
+  return days != null && days <= 3 && days >= 0;
+}
+
 function planUpgradeHint(planKey) {
   const k = String(planKey || 'free').toLowerCase();
   if (k === 'free') return 'Upgrade to Pro for MP4 exports';
@@ -2742,10 +2754,14 @@ function renderPlansSection() {
   const planName = window.CutupPlanPermissions?.displayPlanName
     ? window.CutupPlanPermissions.displayPlanName(planKey)
     : displayPlanTitle(subscriptionInfo.plan, subscriptionInfo.planName);
-  const renewalCountdown = formatRenewalCountdown(subscriptionInfo.subscription?.endDate);
-  const cycleEnd = subscriptionInfo.creditsSnapshot?.cycleEnd || subscriptionInfo.subscription?.endDate;
-  const renewalLabel = renewalCountdown
-    || (cycleEnd ? formatDateTime(cycleEnd) : '—');
+  const cycleEnd =
+    subscriptionInfo.subscription?.endDate ||
+    subscriptionInfo.creditsSnapshot?.cycleEnd ||
+    billingDashboardCache?.subscription?.nextRenewalDate ||
+    null;
+  const renewalCountdown = formatRenewalCountdown(cycleEnd);
+  const renewalLabel = renewalCountdown || (cycleEnd ? formatDateTime(cycleEnd) : '—');
+  const renewalUrgent = isRenewalUrgent(cycleEnd);
   const pct = credits.limit > 0 ? Math.min(100, Math.round((credits.used / credits.limit) * 100)) : 0;
   const libTotal = getLibraryStatsFromState().dbTotal ?? getLibraryStatsFromState().total ?? 0;
 
@@ -2766,7 +2782,7 @@ function renderPlansSection() {
         </article>
         <article class="dash-plans-kpi">
           <span class="dash-plans-kpi__label">Next renewal</span>
-          <strong class="dash-plans-kpi__value dash-plans-kpi__value--sm">${escapeHtml(renewalLabel)}</strong>
+          <strong class="dash-plans-kpi__value dash-plans-kpi__value--sm${renewalUrgent ? ' dash-plans-kpi__renewal-urgent' : ''}">${escapeHtml(renewalLabel)}</strong>
         </article>
       </div>
 

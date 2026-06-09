@@ -155,6 +155,63 @@ export async function getSubscriptionRowByEmail(email) {
   return r.rows[0] || null;
 }
 
+/** Best available subscription end date for dashboard display. */
+export function resolveSubscriptionPeriodEnd(subRow, creditsSnapshot = null) {
+  const end = subRow?.current_period_end || subRow?.expires_at;
+  if (end) return end;
+  if (creditsSnapshot?.cycleEnd) return creditsSnapshot.cycleEnd;
+  return null;
+}
+
+/**
+ * Repair missing period dates for paid users (legacy rows or partial payment activation).
+ * Uses the latest successful payment + 30 days when DB period end is absent.
+ */
+export async function backfillSubscriptionPeriodEndIfMissing(email) {
+  const em = String(email || '').trim().toLowerCase();
+  if (!em) return null;
+  const subRow = await getSubscriptionRowByEmail(em);
+  if (!subRow) return null;
+  const planKey = resolvePlanKey(subRow.plan || 'free');
+  if (planKey === 'free') return null;
+  if (subRow.current_period_end || subRow.expires_at) {
+    return subRow.current_period_end || subRow.expires_at;
+  }
+
+  const pool = getPool();
+  const pay = await pool.query(
+    `SELECT COALESCE(p.paid_at, p.created_at) AS paid_at
+     FROM payments p
+     JOIN users u ON u.id = p.user_id
+     WHERE lower(u.email) = lower($1) AND p.status = 'success'
+     ORDER BY COALESCE(p.paid_at, p.created_at) DESC
+     LIMIT 1`,
+    [em]
+  );
+  const paidAt = pay.rows[0]?.paid_at;
+  if (!paidAt) return null;
+
+  const periodStart = new Date(paidAt);
+  const periodEnd = new Date(periodStart);
+  periodEnd.setDate(periodEnd.getDate() + 30);
+
+  await pool.query(
+    `UPDATE subscriptions s
+     SET current_period_start = $2::timestamptz,
+         current_period_end = $3::timestamptz,
+         expires_at = $3::timestamptz,
+         started_at = COALESCE(s.started_at, $2::timestamptz),
+         updated_at = NOW()
+     FROM users u
+     WHERE s.user_id = u.id AND lower(u.email) = lower($1)
+       AND s.current_period_end IS NULL
+       AND s.expires_at IS NULL`,
+    [em, periodStart, periodEnd]
+  );
+  console.log('[billing] backfilled subscription period', em, periodEnd.toISOString());
+  return periodEnd;
+}
+
 export async function getLegacyUsageShape(email) {
   const pool = getPool();
   const r = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
@@ -2675,6 +2732,9 @@ export async function finalizePendingPaymentSuccess(
       return { ok: false, error: 'invalid_plan' };
     }
     const userId = row.user_id;
+    const periodEnd = currentPeriodEnd ? new Date(currentPeriodEnd) : null;
+    const periodStart = periodEnd ? new Date(periodEnd) : null;
+    if (periodStart) periodStart.setDate(periodStart.getDate() - 30);
     await client.query(
       `UPDATE subscriptions SET
         plan = $2,
@@ -2682,10 +2742,20 @@ export async function finalizePendingPaymentSuccess(
         billing_period = 'monthly',
         stripe_customer_id = COALESCE($3, stripe_customer_id),
         stripe_subscription_id = COALESCE($4, stripe_subscription_id),
-        current_period_end = $5,
+        current_period_start = COALESCE($6::timestamptz, current_period_start, NOW()),
+        current_period_end = $5::timestamptz,
+        expires_at = COALESCE($5::timestamptz, expires_at),
+        started_at = COALESCE(started_at, COALESCE($6::timestamptz, NOW())),
         updated_at = NOW()
        WHERE user_id = $1`,
-      [userId, pk, stripeCustomerId || null, stripeSubscriptionId || null, currentPeriodEnd]
+      [
+        userId,
+        pk,
+        stripeCustomerId || null,
+        stripeSubscriptionId || null,
+        periodEnd,
+        periodStart
+      ]
     );
     await client.query(
       `UPDATE payments SET status = 'success', updated_at = NOW() WHERE id = $1::uuid`,
@@ -2751,32 +2821,38 @@ export async function upsertSubscriptionFromPayment({ userId, planKey, paymentId
       [userId]
     );
     const now = new Date();
-    const base = existing.rows[0]?.expires_at && new Date(existing.rows[0].expires_at) > now
-      ? new Date(existing.rows[0].expires_at)
-      : now;
+    const stacking = Boolean(
+      existing.rows[0]?.expires_at && new Date(existing.rows[0].expires_at) > now
+    );
+    const base = stacking ? new Date(existing.rows[0].expires_at) : now;
+    const periodStart = stacking ? base : now;
     const nextExpiry = new Date(base);
     nextExpiry.setDate(nextExpiry.getDate() + Number(durationDays || 30));
     if (!existing.rows.length) {
       await client.query(
-        `INSERT INTO subscriptions (user_id, plan, status, billing_period, started_at, expires_at, auto_renew, last_payment_id, created_at, updated_at)
-         VALUES ($1::uuid, $2, 'active', 'monthly', NOW(), $3::timestamptz, $4::boolean, $5::uuid, NOW(), NOW())`,
-        [userId, planKey, nextExpiry, Boolean(autoRenew), paymentId]
+        `INSERT INTO subscriptions (
+           user_id, plan, status, billing_period, started_at, expires_at,
+           current_period_start, current_period_end, auto_renew, last_payment_id, created_at, updated_at
+         )
+         VALUES ($1::uuid, $2, 'active', 'monthly', $3::timestamptz, $4::timestamptz, $3::timestamptz, $4::timestamptz, $5::boolean, $6::uuid, NOW(), NOW())`,
+        [userId, planKey, periodStart, nextExpiry, Boolean(autoRenew), paymentId]
       );
       await client.query('COMMIT');
-      return { created: true, extended: false, expiresAt: nextExpiry };
+      return { created: true, extended: false, expiresAt: nextExpiry, periodStart };
     }
     await client.query(
       `UPDATE subscriptions
        SET plan = $2,
            status = 'active',
-           started_at = COALESCE(started_at, NOW()),
-           expires_at = $3::timestamptz,
-           current_period_end = $3::timestamptz,
-           auto_renew = $4::boolean,
-           last_payment_id = $5::uuid,
+           started_at = COALESCE(started_at, $3::timestamptz),
+           current_period_start = $3::timestamptz,
+           expires_at = $4::timestamptz,
+           current_period_end = $4::timestamptz,
+           auto_renew = $5::boolean,
+           last_payment_id = $6::uuid,
            updated_at = NOW()
        WHERE user_id = $1::uuid`,
-      [userId, planKey, nextExpiry, Boolean(autoRenew), paymentId]
+      [userId, planKey, periodStart, nextExpiry, Boolean(autoRenew), paymentId]
     );
     await client.query('COMMIT');
     return { created: false, extended: true, expiresAt: nextExpiry };

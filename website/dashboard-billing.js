@@ -129,11 +129,27 @@
     );
   }
 
+  function renewalKpiHtml(plan, planKey) {
+    var raw = plan.nextRenewalDate || plan.currentPeriodEnd || null;
+    var renewal = formatBillingDate(raw, true);
+    var days = daysUntil(raw);
+    var urgent = planKey !== 'free' && days != null && days <= 3 && days >= 0;
+    if (urgent) {
+      return '<span class="bd-kpi__renewal-urgent" title="Renews soon">' + esc(renewal) + '</span>';
+    }
+    return esc(renewal);
+  }
+
   function renderOverviewKpis(sub, usage, paymentFailure) {
     var plan = sub || {};
     var pay = paymentStatusKpi(plan, paymentFailure);
     var planKey = String(plan.plan || 'free').toLowerCase();
-    var renewal = formatBillingDate(plan.nextRenewalDate, true);
+    var renewalMeta = planKey === 'free' ? 'Upgrade for a paid plan' : '';
+    var raw = plan.nextRenewalDate || plan.currentPeriodEnd || null;
+    var days = daysUntil(raw);
+    if (planKey !== 'free' && days != null && days <= 3 && days >= 0) {
+      renewalMeta = days === 0 ? 'Expires today' : days === 1 ? 'Renews in 1 day' : 'Renews in ' + days + ' days';
+    }
 
     return (
       '<section class="bd-block">' +
@@ -141,7 +157,7 @@
         '<div class="bd-kpi-grid">' +
           kpiCard('Current plan', esc(plan.planName || plan.plan), '') +
           kpiCard('Monthly cost', esc(monthlyCostLabel(plan)), planKey === 'free' ? '' : 'per billing cycle') +
-          kpiCard('Next renewal', esc(renewal), planKey === 'free' ? 'Upgrade for a paid plan' : '') +
+          kpiCard('Next renewal', renewalKpiHtml(plan, planKey), renewalMeta) +
           kpiCard('Payment status', '<span class="' + pay.badgeClass + '">' + esc(pay.label) + '</span>', '') +
         '</div>' +
       '</section>'

@@ -15,6 +15,8 @@ import {
   isBillingDbConfigured,
   ensureUserByEmail,
   getSubscriptionRowByEmail,
+  backfillSubscriptionPeriodEndIfMissing,
+  resolveSubscriptionPeriodEnd,
   getLegacyUsageShape,
   canUseFeatureDb,
   getUsageHistoryDb,
@@ -184,12 +186,19 @@ export default async function handler(req, res) {
         subShape = specialSubscriptionPayload();
         subscriptionRow = { plan: 'business', current_period_end: subShape.endDate, billing_period: 'annual', created_at: subShape.startDate };
       } else {
+        await backfillSubscriptionPeriodEndIfMissing(userId);
         subscriptionRow = await getSubscriptionRowByEmail(userId);
         planKey = resolvePlanKey(subscriptionRow?.plan || 'free');
+        const creditsForEnd = await getCreditsSnapshot(userId);
+        const periodEnd = resolveSubscriptionPeriodEnd(subscriptionRow, creditsForEnd);
         subShape = {
           plan: planKey,
-          startDate: subscriptionRow?.created_at || new Date(),
-          endDate: subscriptionRow?.current_period_end || null,
+          startDate:
+            subscriptionRow?.current_period_start ||
+            subscriptionRow?.started_at ||
+            subscriptionRow?.created_at ||
+            new Date(),
+          endDate: periodEnd,
           billingPeriod: subscriptionRow?.billing_period || 'monthly'
         };
       }

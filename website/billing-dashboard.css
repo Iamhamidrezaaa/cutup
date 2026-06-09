@@ -100,6 +100,22 @@
   color: #94a3b8;
 }
 
+.bd-kpi__renewal-urgent {
+  color: #dc2626;
+  font-weight: 700;
+  animation: bd-renewal-blink 1.15s ease-in-out infinite;
+}
+
+@keyframes bd-renewal-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
 .bd-kpi__value {
   font-size: 1.125rem;
   font-weight: 800;
