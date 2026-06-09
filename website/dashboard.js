@@ -746,6 +746,12 @@ async function refreshDashboardProfileUi({ profile: profileIn } = {}) {
   return profile;
 }
 
+function resolveProfileAvatarSrc(profile, disp) {
+  const custom = String(profile?.avatar_url || currentUser?.avatar_url || '').trim();
+  if (custom) return custom;
+  return currentUser?.picture || generateAvatar(disp);
+}
+
 function applyProfileToDashboardUi(profile) {
   if (!profile) return;
   if (currentUser) {
@@ -755,12 +761,17 @@ function applyProfileToDashboardUi(profile) {
     currentUser.country = profile.country || currentUser.country;
     currentUser.address = profile.address || currentUser.address;
     currentUser.postal_code = profile.postal_code || currentUser.postal_code;
+    if (profile.avatar_url) {
+      currentUser.avatar_url = profile.avatar_url;
+      currentUser.picture = profile.avatar_url;
+    }
   }
   const disp = dashboardDisplayName({ ...currentUser, ...profile, email: profile.email || currentUser?.email });
   const greet = dashboardGreetingName({ ...currentUser, ...profile });
+  const avatarSrc = resolveProfileAvatarSrc(profile, disp);
   const avatar = document.getElementById('userAvatarHeader');
   if (avatar) {
-    avatar.src = currentUser?.picture || generateAvatar(disp);
+    avatar.src = avatarSrc;
   }
   const nameEl = document.getElementById('userNameHeader');
   const emailEl = document.getElementById('userEmailHeader');
@@ -790,7 +801,7 @@ function renderSidebarProfileCard(profile, displayName) {
   host.innerHTML = `
     <div class="dashboard-sidebar-profile-inner">
       <img class="dashboard-sidebar-profile-avatar" src="${escapeHtml(
-        currentUser?.picture || generateAvatar(displayName)
+        resolveProfileAvatarSrc(profile, displayName)
       )}" alt="" width="40" height="40" />
       <div class="dashboard-sidebar-profile-meta">
         <strong class="dashboard-sidebar-profile-name">${escapeHtml(displayName)}</strong>
@@ -877,6 +888,7 @@ function renderProfileSectionSafe(sectionName, renderFn) {
 
 function renderPersonalSectionHtml(ctx) {
   const { profile, disp, incomplete, avatarSrc } = ctx;
+  const hasCustomAvatar = Boolean(String(profile.avatar_url || '').trim());
   return `
         <section class="profile-settings-card profile-settings-card--span-full" data-profile-section="personal">
           <header class="profile-settings-card-head">
@@ -884,10 +896,23 @@ function renderPersonalSectionHtml(ctx) {
             <p class="profile-settings-card-desc">Your name and contact details for billing and support.</p>
           </header>
           <motion class="profile-settings-avatar-row">
-            <img class="profile-settings-avatar" src="${escapeHtml(avatarSrc)}" alt="" width="80" height="80" />
+            <div class="profile-settings-avatar-wrap" data-prof-avatar-root>
+              <img class="profile-settings-avatar" data-prof-avatar-img src="${escapeHtml(avatarSrc)}" alt="" width="80" height="80" />
+              <button type="button" class="profile-settings-avatar-edit" data-prof-avatar-pick aria-label="Change profile photo">
+                <svg class="profile-settings-avatar-edit-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M9 4h2l1.2 2.2H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2.8L9 4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                  <circle cx="12" cy="13" r="3.5" stroke="currentColor" stroke-width="1.8"/>
+                </svg>
+              </button>
+              <input type="file" data-prof-avatar-input accept="image/jpeg,image/png,image/webp" hidden />
+            </div>
             <div class="profile-settings-avatar-copy">
               <p class="profile-settings-avatar-name">${escapeHtml(disp)}</p>
-              <p class="profile-settings-avatar-hint">Profile photo from your sign-in provider</p>
+              <p class="profile-settings-avatar-hint" data-prof-avatar-hint>${
+                hasCustomAvatar
+                  ? 'Custom profile photo · JPG, PNG or WebP up to 5MB'
+                  : 'Add a profile photo or keep your sign-in provider picture'
+              }</p>
               ${incomplete ? '<span class="profile-settings-pill profile-settings-pill--warn">Incomplete</span>' : '<span class="profile-settings-pill profile-settings-pill--ok">Complete</span>'}
             </div>
           </motion>
@@ -1033,7 +1058,7 @@ async function renderProfileSection() {
       : '';
     const disp = dashboardDisplayName({ ...currentUser, ...profile });
     const incomplete = isUserProfileIncomplete(profile);
-    const avatarSrc = currentUser?.picture || generateAvatar(disp);
+    const avatarSrc = resolveProfileAvatarSrc(profile, disp);
 
     const ctx = { profile, prefs, countryOpts, disp, incomplete, avatarSrc };
     const sectionHtml = [
@@ -1091,6 +1116,7 @@ async function renderProfileSection() {
     });
 
     bindProfileSecurityActionsSafe(root);
+    bindProfileAvatarPicker(root);
 
     console.log('[profile-render-complete]', {
       sections: root.querySelectorAll('.profile-settings-card').length,
@@ -1103,6 +1129,37 @@ async function renderProfileSection() {
   } finally {
     root.removeAttribute('aria-busy');
   }
+}
+
+function bindProfileAvatarPicker(root) {
+  const section = root.querySelector('[data-prof-avatar-root]');
+  if (!section || !window.CutupProfileAvatar?.bindPicker) return;
+  window.CutupProfileAvatar.bindPicker(section, {
+    onUpdated: async (data) => {
+      const url = data?.avatar_url || data?.profile?.avatar_url;
+      if (url && currentUser) {
+        currentUser.avatar_url = url;
+        currentUser.picture = url;
+      }
+      if (data?.profile) {
+        dashboardProfileSnapshot = { ...dashboardProfileSnapshot, ...data.profile };
+        invalidateDashboardUserProfileCache();
+        applyProfileToDashboardUi(data.profile);
+      } else if (url) {
+        const img = section.querySelector('[data-prof-avatar-img]');
+        if (img) img.src = url;
+        document.querySelectorAll('.dashboard-sidebar-profile-avatar, #userAvatarHeader').forEach((el) => {
+          el.src = url;
+        });
+      }
+      const hint = section.closest('[data-profile-section="personal"]')?.querySelector('[data-prof-avatar-hint]');
+      if (hint) hint.textContent = 'Custom profile photo · JPG, PNG or WebP up to 5MB';
+      showDashboardBanner('Profile photo updated.', 'success');
+    },
+    onError: (msg) => {
+      showDashboardBanner(msg || 'Could not update profile photo', 'error');
+    }
+  });
 }
 
 function hideInitialLoader() {

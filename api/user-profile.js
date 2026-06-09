@@ -54,6 +54,7 @@ export default async function userProfileHandler(req, res) {
           country: profile.country,
           address: profile.address,
           postal_code: profile.postal_code,
+          avatar_url: profile.avatar_url || '',
           incomplete: profile.incomplete
         }
       });
@@ -94,6 +95,7 @@ export default async function userProfileHandler(req, res) {
               country: p.country,
               address: p.address,
               postal_code: p.postal_code,
+              avatar_url: p.avatar_url || '',
               incomplete: p.incomplete
             }
           : null

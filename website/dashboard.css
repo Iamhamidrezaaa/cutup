@@ -3022,6 +3022,14 @@
   border-bottom: 1px solid rgba(99, 102, 241, 0.1);
 }
 
+.profile-settings-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+  width: 80px;
+  height: 80px;
+  margin: 0 4px 4px 0;
+}
+
 .profile-settings-avatar {
   width: 80px;
   height: 80px;
@@ -3029,6 +3037,146 @@
   border-radius: 50%;
   border: 3px solid rgba(99, 102, 241, 0.22);
   box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+  display: block;
+}
+
+.profile-settings-avatar-edit {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: #6366f1;
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.profile-settings-avatar-edit:hover {
+  transform: scale(1.05);
+  background: #4f46e5;
+  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.45);
+}
+
+.profile-settings-avatar-edit-icon {
+  display: block;
+  flex-shrink: 0;
+}
+
+.prof-avatar-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.prof-avatar-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
+}
+
+.prof-avatar-modal__panel {
+  position: relative;
+  width: min(420px, 100%);
+  background: var(--card, #fff);
+  border-radius: 18px;
+  border: 1px solid var(--border, #e2e8f0);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.2);
+  padding: 18px 18px 16px;
+  animation: prof-avatar-in 0.22s ease-out;
+}
+
+@keyframes prof-avatar-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+.prof-avatar-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.prof-avatar-modal__head h3 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.prof-avatar-modal__close {
+  min-width: 36px;
+  padding: 4px 10px;
+}
+
+.prof-avatar-modal__hint {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--text-secondary, #64748b);
+}
+
+.prof-avatar-modal__stage {
+  position: relative;
+  width: 280px;
+  height: 280px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #f1f5f9;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.35);
+}
+
+.prof-avatar-modal__canvas {
+  display: block;
+  width: 280px;
+  height: 280px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.prof-avatar-modal__canvas:active {
+  cursor: grabbing;
+}
+
+.prof-avatar-modal__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 3px rgba(99, 102, 241, 0.55);
+  pointer-events: none;
+}
+
+.prof-avatar-modal__zoom {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary, #64748b);
+}
+
+.prof-avatar-modal__zoom-input {
+  flex: 1;
+  accent-color: #6366f1;
+}
+
+.prof-avatar-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .profile-settings-avatar-copy {

@@ -160,6 +160,10 @@
       "dest": "/api/user-profile.js"
     },
     {
+      "src": "/api/user/avatar",
+      "dest": "/api/user-avatar.js"
+    },
+    {
       "src": "/api/offers",
       "dest": "/api/offers.js"
     },

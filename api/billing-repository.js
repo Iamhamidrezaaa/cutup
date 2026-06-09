@@ -983,10 +983,12 @@ export async function ensureUserProfilesTable() {
         country VARCHAR(2),
         address TEXT,
         postal_code VARCHAR(32),
+        avatar_url TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    await pool.query(`ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT`);
     await pool.query(
       `CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id ON user_profiles (user_id)`
     );
@@ -1032,7 +1034,7 @@ export async function getUserProfileApiPayload(email) {
   await ensureUserProfilesTable();
   const pool = getPool();
   const r = await pool.query(
-    `SELECT u.id AS user_id, u.email, up.first_name, up.last_name, up.phone, up.country, up.address, up.postal_code
+    `SELECT u.id AS user_id, u.email, up.first_name, up.last_name, up.phone, up.country, up.address, up.postal_code, up.avatar_url
      FROM users u
      LEFT JOIN user_profiles up ON up.user_id = u.id
      WHERE lower(u.email) = lower($1)`,
@@ -1042,7 +1044,7 @@ export async function getUserProfileApiPayload(email) {
   if (!row) return null;
   await ensureUserProfileRow(pool, row.user_id);
   const r2 = await pool.query(
-    `SELECT u.email, up.first_name, up.last_name, up.phone, up.country, up.address, up.postal_code
+    `SELECT u.email, up.first_name, up.last_name, up.phone, up.country, up.address, up.postal_code, up.avatar_url
      FROM users u
      LEFT JOIN user_profiles up ON up.user_id = u.id
      WHERE u.id = $1::uuid`,
@@ -1057,8 +1059,34 @@ export async function getUserProfileApiPayload(email) {
     country: (o.country || '').toUpperCase().slice(0, 2),
     address: o.address || '',
     postal_code: o.postal_code || '',
+    avatar_url: o.avatar_url || '',
     incomplete: isUserProfileIncompleteForOnboarding(o)
   };
+}
+
+export async function updateUserAvatarUrl(email, avatarUrl) {
+  if (!email || !isBillingDbConfigured()) {
+    return { ok: false, error: 'invalid_request' };
+  }
+  const url = String(avatarUrl || '').trim();
+  if (!url) return { ok: false, error: 'avatar_url_required' };
+
+  try {
+    await ensureUserProfilesTable();
+    const pool = getPool();
+    const uRes = await pool.query('SELECT id FROM users WHERE lower(email) = lower($1)', [email]);
+    if (!uRes.rows[0]) return { ok: false, error: 'not_found' };
+    const userId = uRes.rows[0].id;
+    await ensureUserProfileRow(pool, userId);
+    await pool.query(
+      `UPDATE user_profiles SET avatar_url = $2, updated_at = NOW() WHERE user_id = $1::uuid`,
+      [userId, url.slice(0, 512)]
+    );
+    return { ok: true, profile: await getUserProfileApiPayload(email) };
+  } catch (e) {
+    console.error('[billing] updateUserAvatarUrl', e);
+    return { ok: false, error: 'profile_error' };
+  }
 }
 
 export async function upsertUserProfileFromApi(email, body) {
@@ -1128,13 +1156,15 @@ export async function mergeSessionUserWithProfile(sessionUser) {
     await ensureUserProfilesTable();
     const pool = getPool();
     const r = await pool.query(
-      `SELECT up.first_name, up.last_name, u.display_name
+      `SELECT up.first_name, up.last_name, up.avatar_url, u.display_name
        FROM users u
        LEFT JOIN user_profiles up ON up.user_id = u.id
        WHERE lower(u.email) = lower($1)`,
       [sessionUser.email]
     );
     const row = r.rows[0];
+    const customAvatar =
+      row?.avatar_url && String(row.avatar_url).trim() ? String(row.avatar_url).trim() : '';
     const full = formatProfileFullName(row?.first_name, row?.last_name);
     const firstOnly = row?.first_name != null ? String(row.first_name).trim() : '';
     let legacy = '';
@@ -1155,6 +1185,8 @@ export async function mergeSessionUserWithProfile(sessionUser) {
     return {
       ...sessionUser,
       name,
+      picture: customAvatar || sessionUser.picture,
+      avatar_url: customAvatar,
       first_name: row?.first_name || sessionUser.first_name,
       last_name: row?.last_name || sessionUser.last_name
     };
