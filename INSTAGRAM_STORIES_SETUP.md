@@ -1,10 +1,21 @@
-# راهنمای تنظیم Cookies برای دانلود استوری‌های اینستاگرام
+# راهنمای تنظیم Cookies برای دانلود اینستاگرام (ریلز / پست / استوری)
 
 ## مشکل
-استوری‌های اینستاگرام نیاز به authentication دارند و `yt-dlp` نمی‌تواند بدون cookies آن‌ها را دانلود کند.
+اینستاگرام درخواست‌های بدون لاگین را برای **ریلز، پست‌ها و استوری‌ها** مسدود می‌کند. `yt-dlp` بدون cookies معتبر معمولاً خطای extraction می‌دهد.
 
-## راه حل 1: استفاده از Cookies از مرورگر (اگر Chrome نصب باشد)
-کد به صورت خودکار از `--cookies-from-browser chrome` استفاده می‌کند. اگر Chrome در سرور نصب باشد، این روش کار می‌کند.
+## راه حل 1: فایل cookies (توصیه‌شده برای production)
+سرور به ترتیب این مسیرها را چک می‌کند:
+- متغیر env: `INSTAGRAM_COOKIES_PATH` یا `YTDLP_INSTAGRAM_COOKIES_PATH`
+- `cookies/instagram_cookies.txt`
+- `cookies/instagram.txt`
+
+## راه حل 2: Cookies از مرورگر (dev / سرور با Chrome)
+اگر Chrome روی سرور نصب باشد، env را تنظیم کنید:
+```bash
+INSTAGRAM_COOKIES_BROWSER=chrome
+# یا
+YTDLP_COOKIES_FROM_BROWSER=chrome
+```
 
 ### نصب Chrome در سرور (Ubuntu/Debian):
 ```bash

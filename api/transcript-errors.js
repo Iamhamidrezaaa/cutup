@@ -226,7 +226,7 @@ export function mapLegacyDownloadError(legacyCode, { message, platform } = {}) {
       errorCode: 'PLATFORM_ERROR',
       message:
         platform === 'instagram'
-          ? 'Instagram Stories are not publicly downloadable. Please use a Reel or Post URL.'
+          ? 'Instagram blocked this download. The server needs a valid Instagram session (cookies). Please try again later or contact support.'
           : userMessageForCode('PLATFORM_ERROR')
     };
   }

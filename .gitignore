@@ -15,6 +15,10 @@ parspack.txt
 # فایل‌های تصویری بزرگ
 *.gif
 *.GIF
+# Session cookies (never commit)
+cookies/*.txt
+cookies.txt
+
 # فایل‌های موقت
 # Adaptive translation training outputs (generated)
 translation-training-data/dataset.jsonl

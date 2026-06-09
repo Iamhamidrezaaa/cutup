@@ -647,7 +647,7 @@ function mapPipelineErrorToUserMessage(error, fallback = USER_ERROR_GENERIC) {
     return 'Server dependency error during extraction. Please retry and share the request ID.';
   }
   if (code.includes('INSTAGRAM') || code.includes('SOCIAL_DOWNLOAD')) {
-    return 'We couldn’t access this Instagram video. Please check the link and try again.';
+    return 'Instagram blocked this download. If the link is a public Reel, try again in a minute — otherwise the server may need updated Instagram session cookies.';
   }
   if (code.includes('TIKTOK')) {
     return 'We couldn’t access this TikTok video. Please check the link and try again.';

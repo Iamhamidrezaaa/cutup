@@ -29,8 +29,13 @@ import {
   resolveYtDlpPath,
   resolveCookiesPath,
   classifyYtDlpError,
-  applyYtdlpBurstDelay
+  applyYtdlpBurstDelay,
+  buildInstagramAuthVariants,
+  isInstagramAuthBlock
 } from './ytdlp-robust.js';
+
+const INSTAGRAM_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 import { runQueuedDownload } from './infrastructure/guards.js';
 import { extractionDebug } from './infrastructure/observability.js';
 
@@ -297,7 +302,13 @@ export default async function handler(req, res) {
     const outputTemplate = join(jobDir, 'out.%(ext)s');
     
     // Function to run yt-dlp once with a specific format selector
-    async function runYtdlpOnce(formatSelector, useMerge = true, ytExtractorArgs = null, forceCookies = false) {
+    async function runYtdlpOnce(
+      formatSelector,
+      useMerge = true,
+      ytExtractorArgs = null,
+      forceCookies = false,
+      authExtraArgs = []
+    ) {
       return new Promise((resolve, reject) => {
         const baseArgs = [
           '--no-playlist',
@@ -321,26 +332,11 @@ export default async function handler(req, res) {
           }
         }
         
-        // Add Instagram-specific options
         if (detectedPlatform === 'instagram') {
-          // Add user agent to help with Instagram requests
-          baseArgs.push('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-          
-          // For Instagram stories, we need cookies for authentication
-          if (finalUrl.includes('/stories/')) {
-            // Try multiple cookie sources in order of preference
-            const cookiesPath = join(process.cwd(), 'cookies', 'instagram_cookies.txt');
-            if (existsSync(cookiesPath)) {
-              // Use cookies file if it exists (best option)
-              baseArgs.push('--cookies', cookiesPath);
-              console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Using cookies file: ${cookiesPath}`);
-            } else {
-              // Try to use cookies from browser (if available on server)
-              // This requires browser to be installed on server
-              // Try Chrome first, then Firefox, then Edge
-              baseArgs.push('--cookies-from-browser', 'chrome');
-              console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Attempting to use cookies from Chrome browser`);
-            }
+          baseArgs.push('--user-agent', INSTAGRAM_USER_AGENT);
+          if (Array.isArray(authExtraArgs) && authExtraArgs.length) {
+            baseArgs.push(...authExtraArgs);
+            console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Auth args:`, authExtraArgs.slice(0, 2).join(' '));
           }
         }
 
@@ -499,15 +495,65 @@ export default async function handler(req, res) {
       });
     }
 
+    async function runInstagramWithAuthAndFormats(formatChains, useMerge = true) {
+      const authVariants = buildInstagramAuthVariants();
+      let lastErr = null;
+      for (const auth of authVariants) {
+        for (let i = 0; i < formatChains.length; i++) {
+          const formatSelector = formatChains[i];
+          try {
+            console.log(
+              `${detectedPlatform.toUpperCase()}_DOWNLOAD: Auth ${auth.label}, format ${i + 1}/${formatChains.length}: ${formatSelector}`
+            );
+            const result = await runYtdlpOnce(formatSelector, useMerge, null, false, auth.extraArgs);
+            console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Success (${auth.label}, ${formatSelector})`);
+            return result;
+          } catch (e) {
+            lastErr = e;
+            const stderr = String(e?.stderr ?? e?.message ?? '');
+            const isFormatNotAvailable =
+              stderr.includes('Requested format is not available') ||
+              stderr.includes('format is not available');
+            if (isFormatNotAvailable && i < formatChains.length - 1) continue;
+            if (isInstagramAuthBlock(stderr) && auth !== authVariants[authVariants.length - 1]) {
+              console.warn(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Auth blocked (${auth.label}), trying next…`);
+              break;
+            }
+            if (i === formatChains.length - 1 && auth === authVariants[authVariants.length - 1]) throw e;
+          }
+        }
+      }
+      throw lastErr || new Error('No available formats found for this URL');
+    }
+
     // Function to run yt-dlp with format fallback chain for Instagram/TikTok
     async function runYtdlpWithFallback() {
       if (type === 'audio') {
-        // For audio, no fallback needed
+        if (detectedPlatform === 'instagram') {
+          return await runInstagramWithAuthAndFormats(['bestaudio/best'], false);
+        }
         return await runYtdlpOnce('bestaudio/best', false);
       }
 
-      if (detectedPlatform === 'tiktok' || detectedPlatform === 'instagram') {
-        // Format fallback chain for Instagram/TikTok
+      if (detectedPlatform === 'instagram') {
+        const formatChains = [
+          'bv*+ba/b',
+          'bv*[height<=1080][ext=mp4]+ba[ext=m4a]/bv*[height<=1080]+ba/b[height<=1080]/b',
+          'b[ext=mp4]/b',
+          'b'
+        ];
+        if (quality !== 'best') {
+          const height = quality.replace('p', '');
+          formatChains.unshift(
+            `bv*[height<=${height}]+ba/b[height<=${height}]`,
+            `bv[height<=${height}]*+ba/b[height<=${height}]`
+          );
+        }
+        return await runInstagramWithAuthAndFormats(formatChains, true);
+      }
+
+      if (detectedPlatform === 'tiktok') {
+        // Format fallback chain for TikTok
         const formatChains = [
           // Stage A: Best quality with video+audio merge
           'bv*+ba/b',
@@ -556,7 +602,9 @@ export default async function handler(req, res) {
         }
         
         throw new Error('No available formats found for this URL');
-      } else {
+      }
+
+      {
         // For YouTube, use single format selector
         const videoFormats = {
           '2160p': 'bestvideo[height<=2160]+bestaudio/best[height<=2160]',
@@ -800,7 +848,12 @@ export default async function handler(req, res) {
       legacyCode = 'YTDLP_TIMEOUT';
     } else if (stderrText.includes('ffmpeg') && (stderrText.includes('not found') || stderrText.includes('not installed'))) {
       legacyCode = 'FFMPEG_MISSING';
-    } else if (stderrText.includes('cookies') || stderrText.includes('login required') || stderrText.includes('you need to log in')) {
+    } else if (
+      stderrText.includes('cookies') ||
+      stderrText.includes('login required') ||
+      stderrText.includes('you need to log in') ||
+      (detectedPlatform === 'instagram' && isInstagramAuthBlock(stderrText))
+    ) {
       legacyCode = 'SOCIAL_LOGIN_REQUIRED';
     } else if (stderrText.includes('private') || stderrText.includes('not available') || stderrText.includes('unable to extract')) {
       legacyCode = 'MEDIA_UNAVAILABLE';

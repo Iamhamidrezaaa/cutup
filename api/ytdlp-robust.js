@@ -54,6 +54,56 @@ export function resolveCookiesPath() {
   return null;
 }
 
+export function resolveInstagramCookiesPath() {
+  const envPath = String(
+    process.env.INSTAGRAM_COOKIES_PATH || process.env.YTDLP_INSTAGRAM_COOKIES_PATH || ''
+  ).trim();
+  const candidates = [
+    envPath,
+    join(process.cwd(), 'cookies', 'instagram_cookies.txt'),
+    join(process.cwd(), 'cookies', 'instagram.txt')
+  ].filter(Boolean);
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+  return null;
+}
+
+/** Ordered auth strategies for Instagram reels/posts (anonymous → cookies file → browser). */
+export function buildInstagramAuthVariants() {
+  const variants = [{ label: 'anonymous', extraArgs: [] }];
+  const igPath = resolveInstagramCookiesPath();
+  if (igPath) {
+    variants.push({ label: 'instagram_cookies', extraArgs: ['--cookies', igPath] });
+  }
+  const shared = resolveCookiesPath();
+  if (shared && shared !== igPath) {
+    variants.push({ label: 'shared_cookies', extraArgs: ['--cookies', shared] });
+  }
+  const browser = String(
+    process.env.INSTAGRAM_COOKIES_BROWSER || process.env.YTDLP_COOKIES_FROM_BROWSER || ''
+  ).trim();
+  if (browser) {
+    variants.push({ label: `browser_${browser}`, extraArgs: ['--cookies-from-browser', browser] });
+  }
+  return variants;
+}
+
+export function isInstagramAuthBlock(stderr = '') {
+  const text = String(stderr || '').toLowerCase();
+  return (
+    text.includes('login required') ||
+    text.includes('you need to log in') ||
+    text.includes('cookies') ||
+    text.includes('empty media response') ||
+    text.includes('empty json') ||
+    text.includes('rate-limit') ||
+    text.includes('http error 401') ||
+    text.includes('http error 403') ||
+    (text.includes('instagram') && text.includes('unable to extract'))
+  );
+}
+
 export function classifyYtDlpError(stderr = '') {
   const text = String(stderr || '').toLowerCase();
   if (
@@ -71,7 +121,8 @@ export function classifyYtDlpError(stderr = '') {
     text.includes('login required') ||
     text.includes('authentication') ||
     text.includes('private video') ||
-    text.includes('members-only')
+    text.includes('members-only') ||
+    isInstagramAuthBlock(text)
   ) {
     return { code: 'YTDLP_AUTH_REQUIRED', message: 'Authentication required', temporary: false };
   }
