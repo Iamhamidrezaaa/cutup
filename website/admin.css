@@ -419,6 +419,66 @@ td.actions {
 .customer-subscription-block dd {
   margin: 0;
 }
+
+.customer-sub-end-urgent {
+  color: #dc2626;
+  font-weight: 700;
+  animation: customer-sub-blink 1.15s ease-in-out infinite;
+}
+
+@keyframes customer-sub-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.customer-sub-renew-hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #dc2626;
+}
+
+.customer-extend-block {
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-top: 4px;
+}
+
+.customer-extend-block h4 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.customer-extend-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.customer-extend-grid {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr;
+  gap: 8px 12px;
+  align-items: center;
+  max-width: 420px;
+}
+
+.customer-extend-grid input[type="number"] {
+  width: 100%;
+  max-width: 120px;
+}
+
 tr.row-updated > td {
   background-color: #d1fae5 !important;
   transition: background-color 0.35s ease;

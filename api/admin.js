@@ -7,6 +7,7 @@ import {
 import {
   getAdminOverviewDb,
   getAdminUsersDb,
+  adminCreateCustomerUser,
   getAdminUsageDb,
   getAdminSavedOutputsDb,
   getAdminPaymentsSnapshotDb,
@@ -275,6 +276,38 @@ export default async function handler(req, res) {
         revenueNote: revTotal == null ? 'Revenue reporting requires database connection.' : '',
         dashboard
       });
+    }
+
+    if (req.method === 'POST' && action === 'createCustomer') {
+      if (!requireOpsAccess(auth, res)) return;
+      const raw = req.body && typeof req.body === 'object' ? req.body : {};
+      const email = String(raw.email || '').trim().toLowerCase();
+      if (!email) return res.status(400).json({ error: 'email required' });
+      try {
+        const result = await adminCreateCustomerUser({
+          email,
+          first_name: raw.first_name,
+          last_name: raw.last_name,
+          phone: raw.phone,
+          country: raw.country,
+          plan: raw.plan || 'free',
+          extend_days: raw.extend_days,
+          extend_months: raw.extend_months
+        });
+        if (!result.ok) {
+          const code =
+            result.error === 'email_taken' || result.error === 'email_is_admin'
+              ? 409
+              : result.error === 'invalid_email' || result.error === 'invalid_plan'
+                ? 400
+                : 400;
+          return res.status(code).json({ error: result.error || 'create_failed' });
+        }
+        return res.json({ success: true, user: result.user ?? null });
+      } catch (e) {
+        console.error('[admin] createCustomer', e);
+        return res.status(500).json({ error: 'create_failed', message: e?.message || 'unknown' });
+      }
     }
 
     if (req.method === 'GET' && action === 'users') {

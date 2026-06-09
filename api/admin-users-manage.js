@@ -56,7 +56,9 @@ export default async function adminUsersManageHandler(req, res) {
         phone: body.phone,
         country: body.country,
         address: body.address,
-        postal_code: body.postal_code
+        postal_code: body.postal_code,
+        extend_days: body.extend_days,
+        extend_months: body.extend_months
       });
       if (!result.ok) {
         const code =

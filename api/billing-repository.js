@@ -1465,6 +1465,9 @@ export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200, 
        s.status AS subscription_status,
        s.billing_period AS subscription_billing_period,
        s.current_period_end AS subscription_current_period_end,
+       s.expires_at AS subscription_expires_at,
+       s.current_period_start AS subscription_current_period_start,
+       s.started_at AS subscription_started_at,
        s.created_at AS subscription_created_at,
        lp.last_pay_at,
        lp.last_pay_amount,
@@ -1583,6 +1586,29 @@ export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200, 
       const needsSyntheticSub =
         !hasSubscriptionRow && String(row.email).toLowerCase() === UNLIMITED_EMAIL.toLowerCase();
 
+      let periodEndRaw = row.subscription_current_period_end || row.subscription_expires_at;
+      const planResolvedEarly = resolvePlanKeyForCustomer(
+        row.email,
+        row.subscription_plan != null && String(row.subscription_plan).trim() !== ''
+          ? row.subscription_plan
+          : row.last_pay_plan_key
+      );
+      if (!periodEndRaw && row.last_pay_at && planResolvedEarly !== 'free') {
+        const est = new Date(row.last_pay_at);
+        est.setDate(est.getDate() + 30);
+        periodEndRaw = est;
+      }
+      const periodEndIso = periodEndRaw?.toISOString
+        ? periodEndRaw.toISOString()
+        : periodEndRaw || null;
+      const periodStartRaw =
+        row.subscription_current_period_start ||
+        row.subscription_started_at ||
+        row.subscription_created_at;
+      const periodStartIso = periodStartRaw?.toISOString
+        ? periodStartRaw.toISOString()
+        : periodStartRaw || null;
+
       let subscriptionObj = null;
       if (hasSubscriptionRow) {
         subscriptionObj = {
@@ -1590,12 +1616,8 @@ export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200, 
           planLabel: planLabelForAdmin(subPlan),
           priceLabel: subscriptionPriceLabel(subPlan),
           billingPeriod: row.subscription_billing_period || 'monthly',
-          startedAt: row.subscription_created_at?.toISOString
-            ? row.subscription_created_at.toISOString()
-            : row.subscription_created_at,
-          currentPeriodEnd: row.subscription_current_period_end?.toISOString
-            ? row.subscription_current_period_end.toISOString()
-            : row.subscription_current_period_end || null,
+          startedAt: periodStartIso,
+          currentPeriodEnd: periodEndIso,
           rawStatus: row.subscription_status || 'active'
         };
       } else if (needsSyntheticSub) {
@@ -1649,8 +1671,158 @@ export async function getAdminUsersDb({ search = '', plan = 'all', limit = 200, 
 
 /** Single customer row for PATCH response (same shape as list items). */
 export async function getAdminCustomerSnapshotById(userId) {
-  const rows = await getAdminUsersDb({ forUserId: userId, limit: 1 });
+  const uid = String(userId || '').trim();
+  if (!uid) return null;
+  const pool = getPool();
+  const em = await pool.query('SELECT email FROM users WHERE id = $1::uuid', [uid]);
+  if (em.rows[0]?.email) {
+    await backfillSubscriptionPeriodEndIfMissing(em.rows[0].email);
+  }
+  const rows = await getAdminUsersDb({ forUserId: uid, limit: 1 });
   return rows[0] || null;
+}
+
+/**
+ * Extend a customer's subscription period by days and/or months (admin manual grant).
+ */
+export async function adminExtendCustomerSubscription(userId, { days = 0, months = 0, planKey = null } = {}) {
+  const uid = String(userId || '').trim();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uid)) {
+    return { ok: false, error: 'invalid_id' };
+  }
+  const d = Math.max(0, Math.min(3650, Math.floor(Number(days) || 0)));
+  const m = Math.max(0, Math.min(120, Math.floor(Number(months) || 0)));
+  if (d === 0 && m === 0) return { ok: true, skipped: true };
+
+  const pool = getPool();
+  const uRes = await pool.query('SELECT id, email FROM users WHERE id = $1::uuid', [uid]);
+  if (!uRes.rows[0]) return { ok: false, error: 'not_found' };
+  const adm = await pool.query('SELECT 1 FROM admins WHERE lower(email) = lower($1)', [uRes.rows[0].email]);
+  if (adm.rows.length) return { ok: false, error: 'cannot_edit_admin' };
+
+  const cur = await pool.query(
+    `SELECT plan, status, expires_at, current_period_end, current_period_start, started_at
+     FROM subscriptions WHERE user_id = $1::uuid FOR UPDATE`,
+    [uid]
+  );
+  const now = new Date();
+  const row = cur.rows[0];
+  const existingEnd = row?.current_period_end || row?.expires_at;
+  const anchor = existingEnd && new Date(existingEnd) > now ? new Date(existingEnd) : now;
+  const nextEnd = new Date(anchor);
+  if (m > 0) nextEnd.setMonth(nextEnd.getMonth() + m);
+  if (d > 0) nextEnd.setDate(nextEnd.getDate() + d);
+
+  const pk =
+    planKey != null && ADMIN_CUSTOMER_PLAN_KEYS.has(String(planKey).toLowerCase())
+      ? String(planKey).toLowerCase()
+      : row?.plan || 'free';
+  const stacking = Boolean(existingEnd && new Date(existingEnd) > now);
+  const periodStart = stacking
+    ? row?.current_period_start || row?.started_at || now
+    : now;
+
+  if (!row) {
+    await pool.query(
+      `INSERT INTO subscriptions (
+         user_id, plan, status, billing_period, started_at, expires_at,
+         current_period_start, current_period_end, created_at, updated_at
+       )
+       VALUES ($1::uuid, $2, 'active', 'monthly', $3::timestamptz, $4::timestamptz, $3::timestamptz, $4::timestamptz, NOW(), NOW())`,
+      [uid, pk, periodStart, nextEnd]
+    );
+  } else {
+    await pool.query(
+      `UPDATE subscriptions SET
+         plan = $2,
+         status = 'active',
+         started_at = COALESCE(started_at, $3::timestamptz),
+         current_period_start = COALESCE(current_period_start, $3::timestamptz),
+         expires_at = $4::timestamptz,
+         current_period_end = $4::timestamptz,
+         updated_at = NOW()
+       WHERE user_id = $1::uuid`,
+      [uid, pk, periodStart, nextEnd]
+    );
+  }
+
+  console.log('[admin] extended subscription', uid, { days: d, months: m, plan: pk, until: nextEnd.toISOString() });
+  return { ok: true, expiresAt: nextEnd.toISOString(), plan: pk };
+}
+
+/**
+ * Create a site customer (no admin role / password — signs in via Google OAuth).
+ */
+export async function adminCreateCustomerUser({
+  email,
+  first_name,
+  last_name,
+  phone,
+  country,
+  plan = 'free',
+  extend_days = 0,
+  extend_months = 0
+} = {}) {
+  const em = String(email || '').trim().toLowerCase();
+  if (!em || !em.includes('@')) return { ok: false, error: 'invalid_email' };
+
+  const pool = getPool();
+  const clash = await pool.query('SELECT id FROM users WHERE lower(email) = lower($1)', [em]);
+  if (clash.rows.length) return { ok: false, error: 'email_taken' };
+  const adm = await pool.query('SELECT 1 FROM admins WHERE lower(email) = lower($1)', [em]);
+  if (adm.rows.length) return { ok: false, error: 'email_is_admin' };
+
+  const planStr = String(plan || 'free').trim().toLowerCase();
+  if (!ADMIN_CUSTOMER_PLAN_KEYS.has(planStr)) return { ok: false, error: 'invalid_plan' };
+
+  const userId = await ensureUserByEmail(em);
+  const pFirst = nzAdminPatch(first_name, 255);
+  const pLast = nzAdminPatch(last_name, 255);
+  const pPhone = nzAdminPatch(phone, 64);
+  let pCountry = nzAdminPatch(country, 8);
+  if (pCountry) pCountry = String(pCountry).toUpperCase().slice(0, 2);
+
+  if (pFirst || pLast || pPhone || pCountry) {
+    await pool.query(
+      `INSERT INTO user_profiles (user_id, first_name, last_name, phone, country, updated_at)
+       VALUES ($1::uuid, $2, $3, $4, $5, NOW())
+       ON CONFLICT (user_id) DO UPDATE SET
+         first_name = COALESCE(EXCLUDED.first_name, user_profiles.first_name),
+         last_name = COALESCE(EXCLUDED.last_name, user_profiles.last_name),
+         phone = COALESCE(EXCLUDED.phone, user_profiles.phone),
+         country = COALESCE(EXCLUDED.country, user_profiles.country),
+         updated_at = NOW()`,
+      [userId, pFirst, pLast, pPhone, pCountry]
+    );
+    const hasDn = await usersTableHasDisplayNameColumn(pool);
+    if (hasDn) {
+      const full = formatProfileFullName(pFirst, pLast);
+      if (full) {
+        await pool.query('UPDATE users SET display_name = $2 WHERE id = $1::uuid', [userId, full.slice(0, 255)]);
+      }
+    }
+  }
+
+  if (planStr !== 'free') {
+    await pool.query(
+      `UPDATE subscriptions SET plan = $2, status = 'active', updated_at = NOW() WHERE user_id = $1::uuid`,
+      [userId, planStr]
+    );
+  }
+
+  const extDays = Math.max(0, Math.min(3650, Math.floor(Number(extend_days) || 0)));
+  const extMonths = Math.max(0, Math.min(120, Math.floor(Number(extend_months) || 0)));
+  if (extDays > 0 || extMonths > 0) {
+    const ext = await adminExtendCustomerSubscription(userId, {
+      days: extDays,
+      months: extMonths,
+      planKey: planStr
+    });
+    if (!ext.ok) return ext;
+  }
+
+  const user = await getAdminCustomerSnapshotById(userId);
+  return { ok: true, user };
 }
 
 function nzAdminPatch(v, max) {
@@ -1692,7 +1864,9 @@ export async function adminPatchCustomerUser(userId, patch = {}) {
     phone,
     country,
     address,
-    postal_code
+    postal_code,
+    extend_days,
+    extend_months
   } = patch;
 
   const nameStr = name !== undefined ? String(name).trim().slice(0, 255) : undefined;
@@ -1848,6 +2022,18 @@ export async function adminPatchCustomerUser(userId, patch = {}) {
     throw e;
   } finally {
     client.release();
+  }
+
+  const extDays = Math.max(0, Math.min(3650, Math.floor(Number(extend_days) || 0)));
+  const extMonths = Math.max(0, Math.min(120, Math.floor(Number(extend_months) || 0)));
+  if (extDays > 0 || extMonths > 0) {
+    const extPlan = planStr !== undefined ? planStr : undefined;
+    const ext = await adminExtendCustomerSubscription(uid, {
+      days: extDays,
+      months: extMonths,
+      planKey: extPlan
+    });
+    if (!ext.ok) return ext;
   }
 
   let user = null;

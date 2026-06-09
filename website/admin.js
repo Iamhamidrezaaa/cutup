@@ -1223,15 +1223,33 @@ function customerAccountBadgeHtml(u) {
   return statusBadge('ACTIVE', 'ok');
 }
 
+function customerDaysUntilEnd(endDate) {
+  if (!endDate) return null;
+  const end = new Date(endDate);
+  if (Number.isNaN(end.getTime())) return null;
+  return Math.ceil((end.getTime() - Date.now()) / 86400000);
+}
+
 function buildCustomerSubscriptionReadonlyHtml(u) {
   if (!u.subscription) {
     return '<p class="muted" style="margin:0;">No active subscription</p>';
   }
   const sub = u.subscription;
   const last = u.lastPayment;
+  const endRaw = sub.currentPeriodEnd || null;
+  const endLabel = endRaw ? fmtDate(endRaw) : '—';
+  const daysLeft = customerDaysUntilEnd(endRaw);
+  const endUrgent = daysLeft != null && daysLeft <= 3 && daysLeft >= 0;
+  const endDd = endUrgent
+    ? `<dd class="customer-sub-end-urgent" title="Expires soon">${escapeHtml(endLabel)}</dd>`
+    : `<dd>${escapeHtml(endLabel)}</dd>`;
   const lastLine = last
     ? `<div class="metric-subtle" style="margin-top:10px;"><strong>Last payment:</strong> ${escapeHtml(fmtDate(last.at))} · ${escapeHtml(fmtPaymentAmount(last))}</div>`
     : '<div class="metric-subtle" style="margin-top:10px;">Last payment: —</div>';
+  const renewHint =
+    daysLeft != null && daysLeft <= 3 && daysLeft >= 0
+      ? `<p class="customer-sub-renew-hint">Renews in ${daysLeft === 0 ? 'less than 1 day' : daysLeft + ' day' + (daysLeft === 1 ? '' : 's')}</p>`
+      : '';
   return `
     <div class="customer-subscription-block">
       <h4>Subscription</h4>
@@ -1239,9 +1257,27 @@ function buildCustomerSubscriptionReadonlyHtml(u) {
         <dt>Plan</dt><dd>${escapeHtml(sub.planLabel || sub.plan)}</dd>
         <dt>Price</dt><dd>${escapeHtml(sub.priceLabel || '—')}</dd>
         <dt>Start</dt><dd>${escapeHtml(fmtDate(sub.startedAt))}</dd>
-        <dt>End</dt><dd>${escapeHtml(sub.currentPeriodEnd ? fmtDate(sub.currentPeriodEnd) : '—')}</dd>
+        <dt>End</dt>${endDd}
       </dl>
+      ${renewHint}
       ${lastLine}
+    </div>`;
+}
+
+function buildCustomerExtendFieldsHtml(uid, draft) {
+  const d = draft || {};
+  const days = d.extend_days != null ? String(d.extend_days) : '0';
+  const months = d.extend_months != null ? String(d.extend_months) : '0';
+  return `
+    <div class="customer-extend-block">
+      <h4>Extend plan access</h4>
+      <p class="customer-extend-hint">Add time to the current billing period (stacks on existing end date if still active).</p>
+      <div class="customer-extend-grid">
+        <label for="customer-draft-ext-days-${escapeHtml(uid)}">Add days</label>
+        <input id="customer-draft-ext-days-${escapeHtml(uid)}" type="number" data-draft-extend-days min="0" max="3650" step="1" value="${escapeHtml(days)}">
+        <label for="customer-draft-ext-months-${escapeHtml(uid)}">Add months</label>
+        <input id="customer-draft-ext-months-${escapeHtml(uid)}" type="number" data-draft-extend-months min="0" max="120" step="1" value="${escapeHtml(months)}">
+      </div>
     </div>`;
 }
 
@@ -1265,6 +1301,12 @@ function renderUsersTable(rows) {
       const planLabel =
         u.planLabel ||
         (u.plan ? u.plan.charAt(0).toUpperCase() + u.plan.slice(1) : '—');
+      const subEnd = u.subscription?.currentPeriodEnd || null;
+      const subEndDays = customerDaysUntilEnd(subEnd);
+      const subEndUrgent = subEndDays != null && subEndDays <= 3 && subEndDays >= 0;
+      const subEndStat = subEnd
+        ? `<span class="${subEndUrgent ? 'customer-sub-end-urgent' : ''}">Ends ${escapeHtml(fmtDate(subEnd))}</span>`
+        : '<span>Ends —</span>';
       const deactivated = isCustomerAccountDeactivated(u);
       const accountBadge = customerAccountBadgeHtml(u);
       const cardCls = deactivated ? ' usr-card--inactive' : '';
@@ -1302,6 +1344,7 @@ function renderUsersTable(rows) {
                 <option value="inactive"${d.status === 'inactive' ? ' selected' : ''}>Inactive</option>
               </select>
             </div>
+            ${buildCustomerExtendFieldsHtml(uid, d)}
             ${buildCustomerSubscriptionReadonlyHtml(u)}
           </div>
         </div>`;
@@ -1321,6 +1364,7 @@ function renderUsersTable(rows) {
               <span>Last active ${escapeHtml(fmtDate(u.lastActivityAt))}</span>
               <span>${escapeHtml(u.usageMinutesThisMonth)} min usage</span>
               <span>${escapeHtml(u.savedOutputsCount)} saved</span>
+              ${subEndStat}
             </div>
           </div>
           <div class="usr-card-actions">${actions}</div>
@@ -1367,6 +1411,18 @@ function renderUsersTable(rows) {
       customerInlineDraft.status = sel.value;
     });
   });
+  el.querySelectorAll('[data-draft-extend-days]').forEach((inp) => {
+    inp.addEventListener('input', () => {
+      if (!customerInlineDraft) return;
+      customerInlineDraft.extend_days = Math.max(0, parseInt(inp.value, 10) || 0);
+    });
+  });
+  el.querySelectorAll('[data-draft-extend-months]').forEach((inp) => {
+    inp.addEventListener('input', () => {
+      if (!customerInlineDraft) return;
+      customerInlineDraft.extend_months = Math.max(0, parseInt(inp.value, 10) || 0);
+    });
+  });
 
   el.querySelectorAll('.customer-edit-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
@@ -1386,7 +1442,9 @@ function renderUsersTable(rows) {
         address: p.address || '',
         postal_code: p.postal_code || '',
         plan: String(row.plan || 'free').toLowerCase(),
-        status: (row.status || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active'
+        status: (row.status || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active',
+        extend_days: 0,
+        extend_months: 0
       };
       renderUsersTable(customersCache);
     });
@@ -1417,7 +1475,9 @@ function renderUsersTable(rows) {
           address: customerInlineDraft.address,
           postal_code: customerInlineDraft.postal_code,
           plan: customerInlineDraft.plan,
-          status: customerInlineDraft.status
+          status: customerInlineDraft.status,
+          extend_days: customerInlineDraft.extend_days || 0,
+          extend_months: customerInlineDraft.extend_months || 0
         });
         if (resData.user) {
           const idx = customersCache.findIndex((x) => String(x.id) === id);
@@ -2654,6 +2714,50 @@ function setupActions() {
     window.CutupAdminAuth?.stop?.();
     window.CutupAdminAuth?.clearSensitiveAdminState?.();
     goToAdminLoginPage();
+  });
+  document.getElementById('createCustomerBtn')?.addEventListener('click', async () => {
+    const email = document.getElementById('newCustomerEmail')?.value?.trim() || '';
+    const first_name = document.getElementById('newCustomerFirstName')?.value?.trim() || '';
+    const last_name = document.getElementById('newCustomerLastName')?.value?.trim() || '';
+    const phone = document.getElementById('newCustomerPhone')?.value?.trim() || '';
+    const plan = document.getElementById('newCustomerPlan')?.value || 'free';
+    const extend_days = Math.max(0, parseInt(document.getElementById('newCustomerExtendDays')?.value, 10) || 0);
+    const extend_months = Math.max(0, parseInt(document.getElementById('newCustomerExtendMonths')?.value, 10) || 0);
+    if (!email) {
+      showBanner('Email is required.');
+      return;
+    }
+    if (plan !== 'free' && extend_days === 0 && extend_months === 0) {
+      showBanner('For a paid plan, add at least 1 day or 1 month of access.');
+      return;
+    }
+    try {
+      const data = await apiPost('createCustomer', {
+        email,
+        first_name,
+        last_name,
+        phone,
+        plan,
+        extend_days,
+        extend_months
+      });
+      showBanner('Customer created.');
+      document.getElementById('newCustomerEmail').value = '';
+      document.getElementById('newCustomerFirstName').value = '';
+      document.getElementById('newCustomerLastName').value = '';
+      document.getElementById('newCustomerPhone').value = '';
+      document.getElementById('newCustomerPlan').value = 'free';
+      document.getElementById('newCustomerExtendDays').value = '0';
+      document.getElementById('newCustomerExtendMonths').value = '0';
+      if (data?.user) {
+        customersCache = [data.user, ...customersCache.filter((u) => String(u.id) !== String(data.user.id))];
+        renderUsersTable(customersCache);
+      } else {
+        await loadUsers();
+      }
+    } catch (err) {
+      showBanner(err.message || 'Could not create customer.');
+    }
   });
   document.getElementById('createAdminBtn')?.addEventListener('click', async () => {
     const email = document.getElementById('newAdminEmail')?.value?.trim() || '';

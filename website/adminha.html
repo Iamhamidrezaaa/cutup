@@ -220,6 +220,45 @@
               </p>
             </div>
           </div>
+          <div id="customersToolbar" class="usr-form-card customers-toolbar">
+            <div class="usr-form-grid">
+              <label class="usr-filter-field">
+                <span>Email</span>
+                <input id="newCustomerEmail" type="email" class="usr-filter-input" placeholder="customer@email.com" autocomplete="off" />
+              </label>
+              <label class="usr-filter-field">
+                <span>First name</span>
+                <input id="newCustomerFirstName" type="text" class="usr-filter-input" placeholder="First name" maxlength="255" autocomplete="off" />
+              </label>
+              <label class="usr-filter-field">
+                <span>Last name</span>
+                <input id="newCustomerLastName" type="text" class="usr-filter-input" placeholder="Last name" maxlength="255" autocomplete="off" />
+              </label>
+              <label class="usr-filter-field">
+                <span>Phone</span>
+                <input id="newCustomerPhone" type="tel" class="usr-filter-input" placeholder="+1…" maxlength="64" autocomplete="off" />
+              </label>
+              <label class="usr-filter-field">
+                <span>Plan</span>
+                <select id="newCustomerPlan" class="usr-filter-input" aria-label="Initial plan">
+                  <option value="free">Free</option>
+                  <option value="starter">Starter</option>
+                  <option value="pro">Pro</option>
+                  <option value="business">Business</option>
+                </select>
+              </label>
+              <label class="usr-filter-field">
+                <span>Add days</span>
+                <input id="newCustomerExtendDays" type="number" class="usr-filter-input" min="0" max="3650" step="1" placeholder="0" value="0" />
+              </label>
+              <label class="usr-filter-field">
+                <span>Add months</span>
+                <input id="newCustomerExtendMonths" type="number" class="usr-filter-input" min="0" max="120" step="1" placeholder="0" value="0" />
+              </label>
+              <button type="button" id="createCustomerBtn" class="btn">Add customer</button>
+            </div>
+            <p class="usr-form-hint">Site customers sign in with Google — no password or role needed. Use days/months to grant paid plan access.</p>
+          </div>
           <div class="usr-filters-card">
             <div class="usr-filters-grid">
               <label class="usr-filter-field usr-filter-field--search">
