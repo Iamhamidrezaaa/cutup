@@ -4971,18 +4971,81 @@ function rememberSourceVideoFile(file) {
   }
 }
 
+/** Convert extracted audio (data URL from YouTube/IG/TikTok) into a File for multipart upload. */
+async function dataUrlToTranscribeFile(dataUrl, contextMeta = {}) {
+  const resp = await fetch(dataUrl);
+  const blob = await resp.blob();
+  const mime = blob.type || 'audio/mpeg';
+  let ext = 'mp3';
+  if (mime.includes('wav')) ext = 'wav';
+  else if (mime.includes('mp4') || mime.includes('m4a')) ext = 'm4a';
+  else if (mime.includes('webm') || mime.includes('ogg')) ext = 'webm';
+  const platform = contextMeta.platform || 'media';
+  const name = contextMeta.filename || `extracted-${platform}.${ext}`;
+  return new File([blob], name, { type: mime });
+}
+
+/** Shared transcription path for YouTube, Instagram, TikTok after audio/subtitle extraction. */
+async function resolveTranscriptionFromExtract(extractResult, {
+  platform,
+  sessionId,
+  sourceUrl,
+  durationSeconds = 0,
+  progressStartPct = 26,
+  progressEndPct = 70,
+  subtitleProgressSec = 5,
+  transcribeProgressSec = null
+} = {}) {
+  if (shouldUseYoutubeSubtitles(extractResult)) {
+    console.log('YOUTUBE: Using manual YouTube subtitles');
+    updateProgressBar(0, 0, 28, CUTUP_PIPELINE.CHECK_SUBTITLES);
+    startProgressTracking(progressStartPct, progressEndPct, subtitleProgressSec, CUTUP_PIPELINE.READ_CAPTIONS, CUTUP_PIPELINE.READ_CAPTIONS);
+    const transcription = await parseYouTubeSubtitles(extractResult.subtitles, extractResult.subtitleLanguage);
+    stopProgressTracking(progressEndPct, 'Subtitles parsed');
+    return { transcription, usedManualSubtitles: true };
+  }
+
+  if (extractResult.subtitles && extractResult.subtitlesSource === 'auto') {
+    console.log('YOUTUBE: Skipping auto-generated captions — transcribing audio for accuracy');
+  }
+  console.log(`${platform.toUpperCase()}: Transcribing audio`);
+  const estimatedTranscriptionTime = transcribeProgressSec ?? estimateTranscriptionDuration(null, durationSeconds);
+  startProgressTracking(
+    progressStartPct,
+    progressEndPct,
+    estimatedTranscriptionTime,
+    CUTUP_PIPELINE.GENERATE_TRANSCRIPT,
+    CUTUP_PIPELINE.GENERATE_TRANSCRIPT
+  );
+  const langHint = extractResult.language || extractResult.subtitleLanguage || null;
+  if (langHint) setDetectedSourceLanguage(langHint);
+  const transcription = await transcribeAudio(extractResult.audioUrl, langHint, sessionId, {
+    platform,
+    title: extractResult.title || `${getPlatformName(platform)} video`,
+    sourceUrl
+  });
+  stopProgressTracking(progressEndPct, 'Transcription complete');
+  return { transcription, usedManualSubtitles: false };
+}
+
 async function transcribeAudio(audioUrlOrFile, languageHint = null, sessionId = null, contextMeta = {}) {
   window.CutupWhisperTimingTrace?.resetWhisperTimingTrace?.();
-  if (audioUrlOrFile instanceof File) {
-    rememberSourceVideoFile(audioUrlOrFile);
+  let transcribePayload = audioUrlOrFile;
+  if (typeof audioUrlOrFile === 'string' && audioUrlOrFile.startsWith('data:')) {
+    console.log('TRANSCRIBE: Converting data URL to file for upload endpoint');
+    transcribePayload = await dataUrlToTranscribeFile(audioUrlOrFile, contextMeta);
+  }
+  if (transcribePayload instanceof File) {
+    rememberSourceVideoFile(transcribePayload);
   }
   const requestId = makeRequestId();
   const traceId = makeTraceId();
+  const payloadKind = transcribePayload instanceof File ? 'file' : 'url';
   console.log('[transcript-trace]', traceId);
   console.log('[generate-start]', {
     traceId,
     requestId,
-    kind: audioUrlOrFile instanceof File ? 'file' : 'url',
+    kind: payloadKind,
     hasSession: Boolean(sessionId),
     platform: contextMeta?.platform || null
   });
@@ -4994,7 +5057,7 @@ async function transcribeAudio(audioUrlOrFile, languageHint = null, sessionId = 
   console.log('[frontend-before-transcribe]', {
     traceId,
     requestId,
-    kind: audioUrlOrFile instanceof File ? 'file' : 'url',
+    kind: payloadKind,
     hasSession: Boolean(sessionId),
     platform: contextMeta?.platform || null
   });
@@ -5007,15 +5070,15 @@ async function transcribeAudio(audioUrlOrFile, languageHint = null, sessionId = 
       ...(sessionId ? { 'X-Session-Id': sessionId } : {})
     };
     
-    // If it's a File object, send to upload endpoint
-    if (audioUrlOrFile instanceof File) {
+    // File / data-URL payloads use multipart upload (avoids JSON body size limits)
+    if (transcribePayload instanceof File) {
       const formData = new FormData();
-      formData.append('file', audioUrlOrFile);
+      formData.append('file', transcribePayload);
       if (sessionId) {
         formData.append('user_id', sessionId);
       }
       
-      console.log('TRANSCRIBE: Sending file to upload endpoint, size:', audioUrlOrFile.size, 'bytes');
+      console.log('TRANSCRIBE: Sending file to upload endpoint, size:', transcribePayload.size, 'bytes');
       
       response = await fetchWithRetry(`${API_BASE_URL}/api/upload`, {
         method: 'POST',
@@ -5026,7 +5089,7 @@ async function transcribeAudio(audioUrlOrFile, languageHint = null, sessionId = 
     } else {
       console.log('TRANSCRIBE: Sending request to', `${API_BASE_URL}/api/transcribe`);
       
-      const body = { audioUrl: audioUrlOrFile, languageHint, metadata: contextMeta };
+      const body = { audioUrl: transcribePayload, languageHint, metadata: contextMeta };
       
       response = await fetchWithRetry(`${API_BASE_URL}/api/transcribe`, {
       method: 'POST',
@@ -5348,39 +5411,14 @@ async function processSummarize(url, sessionId, platform = 'youtube') {
       updateProgressBar(0, 0, 26, 'Running free preview…');
     }
     
-    // Check if YouTube subtitles are available (like extension)
-    let transcription = null;
-    if (shouldUseYoutubeSubtitles(youtubeResult)) {
-      console.log('YOUTUBE: Using manual YouTube subtitles');
-      updateProgressBar(0, 0, 28, CUTUP_PIPELINE.CHECK_SUBTITLES);
-      startProgressTracking(26, 70, 5, CUTUP_PIPELINE.READ_CAPTIONS, CUTUP_PIPELINE.READ_CAPTIONS);
-      transcription = await parseYouTubeSubtitles(youtubeResult.subtitles, youtubeResult.subtitleLanguage);
-      stopProgressTracking(70, 'Subtitles parsed');
-    } else {
-      if (youtubeResult.subtitles && youtubeResult.subtitlesSource === 'auto') {
-        console.log('YOUTUBE: Skipping auto-generated captions — transcribing audio for accuracy');
-      }
-      // Fallback to audio transcription
-      console.log(`${platform.toUpperCase()}: Transcribing audio`);
-      // Transcription takes longer: estimate based on video duration
-      const estimatedTranscriptionTime = estimateTranscriptionDuration(null, durationSeconds);
-      startProgressTracking(
-        26,
-        70,
-        estimatedTranscriptionTime,
-        CUTUP_PIPELINE.GENERATE_TRANSCRIPT,
-        CUTUP_PIPELINE.GENERATE_TRANSCRIPT
-      );
-      const youtubeLangHint =
-        youtubeResult.language || youtubeResult.subtitleLanguage || null;
-      if (youtubeLangHint) setDetectedSourceLanguage(youtubeLangHint);
-      transcription = await transcribeAudio(audioUrl, youtubeLangHint, sessionId, {
-        platform,
-        title: youtubeResult.title || `${getPlatformName(platform)} video`,
-        sourceUrl: url
-      });
-      stopProgressTracking(70, 'Transcription complete');
-    }
+    const { transcription } = await resolveTranscriptionFromExtract(youtubeResult, {
+      platform,
+      sessionId,
+      sourceUrl: url,
+      durationSeconds,
+      progressStartPct: 26,
+      progressEndPct: 70
+    });
 
     const estimatedSummaryTime = estimateSummarizationDuration(transcription.text.length);
     startProgressTracking(70, 99, estimatedSummaryTime, CUTUP_PIPELINE.WRITING_SUMMARY, CUTUP_PIPELINE.WRITING_SUMMARY);
@@ -5501,63 +5539,28 @@ async function processFullText(url, sessionId, platform = 'youtube', activeTab =
       updateProgressBar(0, 0, 26, 'Running free preview…');
     }
     
-    // Check if YouTube subtitles are available (like extension)
-    let transcription = null;
-    if (shouldUseYoutubeSubtitles(youtubeResult)) {
-      console.log('[frontend-before-transcribe]', {
-        flow: 'processFullText',
-        path: 'youtube_subtitles',
-        subtitleLanguage: youtubeResult.subtitleLanguage
-      });
-      console.log('YOUTUBE: Using manual YouTube subtitles');
-      updateProgressBar(0, 0, 28, CUTUP_PIPELINE.CHECK_SUBTITLES);
-      startProgressTracking(26, 99, 5, CUTUP_PIPELINE.READ_CAPTIONS, CUTUP_PIPELINE.READ_CAPTIONS);
-      transcription = await parseYouTubeSubtitles(youtubeResult.subtitles, youtubeResult.subtitleLanguage);
-      stopProgressTracking(99, 'Subtitles parsed');
-      console.log('[frontend-transcribe-response]', {
-        flow: 'processFullText',
-        path: 'youtube_subtitles',
-        textChars: transcription?.text?.length ?? 0,
-        segmentCount: transcription?.segments?.length ?? 0
-      });
-    } else {
-      if (youtubeResult.subtitles && youtubeResult.subtitlesSource === 'auto') {
-        console.log('YOUTUBE: Skipping auto-generated captions — transcribing audio for accuracy');
-      }
-      console.log('[frontend-before-transcribe]', {
-        flow: 'processFullText',
-        path: 'api_transcribe',
-        platform,
-        audioUrlKind: String(audioUrl).startsWith('data:') ? 'data-url' : 'url',
-        durationSeconds
-      });
-      console.log(`${platform.toUpperCase()}: No subtitles available, transcribing audio`);
-      const estimatedTranscriptionTime = estimateTranscriptionDuration(null, durationSeconds);
-      startProgressTracking(
-        26,
-        99,
-        estimatedTranscriptionTime,
-        CUTUP_PIPELINE.GENERATE_TRANSCRIPT,
-        CUTUP_PIPELINE.GENERATE_TRANSCRIPT
-      );
-      const youtubeLangHint =
-        youtubeResult.language || youtubeResult.subtitleLanguage || null;
-      if (youtubeLangHint) setDetectedSourceLanguage(youtubeLangHint);
-      transcription = await transcribeAudio(audioUrl, youtubeLangHint, sessionId, {
-        platform,
-        title: youtubeResult.title || `${getPlatformName(platform)} video`,
-        sourceUrl: url
-      });
-      stopProgressTracking(99, 'Transcription complete');
-      console.log('[frontend-transcribe-response]', {
-        flow: 'processFullText',
-        path: 'api_transcribe',
-        textChars: transcription?.text?.length ?? 0,
-        segmentCount: transcription?.segments?.length ?? 0,
-        language: transcription?.language ?? null
-      });
-    }
-    
+    console.log('[frontend-before-transcribe]', {
+      flow: 'processFullText',
+      platform,
+      audioUrlKind: String(audioUrl).startsWith('data:') ? 'data-url' : 'url',
+      durationSeconds,
+      subtitlesSource: youtubeResult.subtitlesSource || null
+    });
+    const { transcription } = await resolveTranscriptionFromExtract(youtubeResult, {
+      platform,
+      sessionId,
+      sourceUrl: url,
+      durationSeconds,
+      progressStartPct: 26,
+      progressEndPct: 99
+    });
+    console.log('[frontend-transcribe-response]', {
+      flow: 'processFullText',
+      textChars: transcription?.text?.length ?? 0,
+      segmentCount: transcription?.segments?.length ?? 0,
+      language: transcription?.language ?? null
+    });
+
     // Summary is best-effort; transcript/SRT should still succeed if it fails
     let summary = null;
     try {

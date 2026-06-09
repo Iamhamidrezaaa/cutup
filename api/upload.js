@@ -27,6 +27,8 @@ import { ensureTranscriptionProvidersInit, getTranscriptionProviderRegistry } fr
 import { runQueuedTranscribe } from './infrastructure/guards.js';
 import { transcribeDebug } from './infrastructure/observability.js';
 import { prepareUploadBufferForTranscription } from './upload-media-prep.js';
+import { applyWhisperLeadingOffsetIfNeeded } from './whisper-leading-offset.js';
+import { mergeRollingCaptionChains } from './video-render/subtitle-pipeline.js';
 
 export default async function handler(req, res) {
   // Log immediately to verify this endpoint is being called
@@ -323,6 +325,18 @@ export default async function handler(req, res) {
       s.text.trim().length > 0
     );
 
+    const { segments: offsetSegments, offsetSec: whisperLeadingOffsetSec } =
+      applyWhisperLeadingOffsetIfNeeded(validSegments);
+    const timelineSegments = mergeRollingCaptionChains(offsetSegments);
+    if (whisperLeadingOffsetSec > 0) {
+      console.log('[whisper-leading-offset]', {
+        traceId,
+        offsetSec: whisperLeadingOffsetSec,
+        firstStartBefore: Number(validSegments[0]?.start),
+        firstStartAfter: Number(timelineSegments[0]?.start)
+      });
+    }
+
     // Final validation - ensure we have text
     if (!correctedText || correctedText.trim().length === 0) {
       console.error('UPLOAD: No text after all processing. Checking original transcript...');
@@ -344,20 +358,20 @@ export default async function handler(req, res) {
       }
     }
     
-    console.log('UPLOAD: Final response preparation - text length:', correctedText.length, 'segments:', validSegments.length);
+    console.log('UPLOAD: Final response preparation - text length:', correctedText.length, 'segments:', timelineSegments.length);
     console.log('UPLOAD: Text preview:', correctedText.substring(0, 100));
     
     const responseData = {
       text: correctedText,
       language: transcript.language || 'unknown',
-      segments: validSegments || []
+      segments: timelineSegments || []
     };
     
     console.log('UPLOAD: Sending response with text length:', responseData.text.length);
     console.log('UPLOAD: Response data keys:', Object.keys(responseData));
     console.log('UPLOAD: Response preview:', JSON.stringify(responseData).substring(0, 200));
 
-    const billedMinutes = billingMinutesFromWhisperSegments(validSegments);
+    const billedMinutes = billingMinutesFromWhisperSegments(timelineSegments);
     console.log('[transcript-provider]', { traceId, billedMinutes, phase: 'before_consume' });
     const consumed = await consumeTranscriptionUsage(userEmail, billedMinutes, {
       route: 'upload',
@@ -367,7 +381,7 @@ export default async function handler(req, res) {
       platform: 'upload',
       title: filename || 'Uploaded file',
       sourceUrl: 'upload://local-file',
-      durationSeconds: validSegments.length ? Math.ceil(validSegments[validSegments.length - 1].end || 0) : null
+      durationSeconds: timelineSegments.length ? Math.ceil(timelineSegments[timelineSegments.length - 1].end || 0) : null
     });
     if (respondConsumeFailure(res, consumed, req)) {
       console.log('[transcript-failed]', { traceId, reason: 'quota_consume_denied', consumed });

@@ -411,9 +411,9 @@ async function handleSummarize() {
       
       // Check if YouTube subtitles are available
       let transcription = null;
-      if (youtubeResult.subtitles) {
-        // Use YouTube subtitles if available (15-60% of total)
-        console.log('YOUTUBE: Using YouTube subtitles');
+      if (shouldUseYoutubeSubtitles(youtubeResult)) {
+        // Use manual YouTube subtitles if available (15-60% of total)
+        console.log('YOUTUBE: Using manual YouTube subtitles');
         updateProgress(20, 'در حال پردازش زیرنویس‌های یوتیوب...', '');
         
         // Simulate smooth progress during subtitle parsing
@@ -427,8 +427,11 @@ async function handleSummarize() {
         clearInterval(subtitleProgressInterval);
         updateProgress(60, 'زیرنویس پردازش شد', '');
       } else {
+        if (youtubeResult.subtitles && youtubeResult.subtitlesSource === 'auto') {
+          console.log('YOUTUBE: Skipping auto-generated captions — transcribing audio for accuracy');
+        }
         // Fallback to audio transcription (15-75% of total)
-        console.log('YOUTUBE: No subtitles available, transcribing audio');
+        console.log('YOUTUBE: Transcribing audio');
         const durationText = youtubeResult.duration ? `(حدود ${Math.round(youtubeResult.duration / 60)} دقیقه)` : '';
         updateProgress(20, 'در حال تبدیل صوت به متن...', `این مرحله ممکن است چند دقیقه طول بکشد ${durationText}`);
         
@@ -495,7 +498,7 @@ async function handleSummarize() {
 
       // Display results with subtitle info
       displayResults(summary, transcription.text, transcription.segments, {
-        isYouTubeSubtitle: !!youtubeResult.subtitles,
+        isYouTubeSubtitle: shouldUseYoutubeSubtitles(youtubeResult),
         availableLanguages: youtubeResult.availableLanguages || [],
         originalLanguage: transcription.language
       });
@@ -931,34 +934,45 @@ function resetProgress() {
   }
 }
 
+async function dataUrlToTranscribeFile(dataUrl, name = 'extracted-audio.mp3') {
+  const resp = await fetch(dataUrl);
+  const blob = await resp.blob();
+  const mime = blob.type || 'audio/mpeg';
+  return new File([blob], name, { type: mime });
+}
+
+/** Only trust creator-uploaded YouTube captions; auto-generated tracks go to Whisper. */
+function shouldUseYoutubeSubtitles(youtubeResult) {
+  return Boolean(youtubeResult?.subtitles && youtubeResult.subtitlesSource === 'manual');
+}
+
 // API Calls
 async function transcribeAudio(audioUrlOrVideoId, languageHint = null, onProgress = null) {
   try {
     let response;
-    
-    // If it's a File object, send to transcribe endpoint (upload endpoint needs redeploy)
-    if (audioUrlOrVideoId instanceof File) {
-      // Convert file to data URL first (temporary workaround until upload endpoint is redeployed)
-      const fileDataUrl = await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target.result);
-    reader.onerror = reject;
-        reader.readAsDataURL(audioUrlOrVideoId);
-  });
-      
-      console.log('TRANSCRIBE: Sending file to transcribe endpoint, size:', audioUrlOrVideoId.size, 'bytes');
-      
-      response = await fetch(`${API_BASE_URL}/api/transcribe`, {
+    let transcribePayload = audioUrlOrVideoId;
+    if (typeof audioUrlOrVideoId === 'string' && audioUrlOrVideoId.startsWith('data:')) {
+      transcribePayload = await dataUrlToTranscribeFile(audioUrlOrVideoId);
+    }
+
+    if (transcribePayload instanceof File) {
+      const formData = new FormData();
+      formData.append('file', transcribePayload);
+      if (currentSession) {
+        formData.append('user_id', currentSession);
+      }
+
+      console.log('TRANSCRIBE: Sending file to upload endpoint, size:', transcribePayload.size, 'bytes');
+
+      response = await fetch(`${API_BASE_URL}/api/upload`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           ...(currentSession ? { 'X-Session-Id': currentSession } : {})
         },
-        body: JSON.stringify({ audioUrl: fileDataUrl, languageHint }),
-        signal: AbortSignal.timeout(900000) // 15 minutes timeout for larger files (14 min video needs more time)
+        body: formData,
+        signal: AbortSignal.timeout(900000)
       });
-      
-      // Simulate progress for file upload
+
       if (onProgress) {
         onProgress(10);
         setTimeout(() => onProgress(30), 1000);
