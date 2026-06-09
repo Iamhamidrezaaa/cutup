@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   address TEXT,
   postal_code VARCHAR(32),
   avatar_url TEXT,
+  avatar_mime VARCHAR(32),
+  avatar_bytes BYTEA,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

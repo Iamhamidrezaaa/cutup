@@ -3030,10 +3030,10 @@
 }
 
 .profile-settings-avatar-stage {
-  position: relative;
-  width: 112px;
-  height: 112px;
-  margin-bottom: 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 14px;
   flex-shrink: 0;
 }
 
@@ -3046,19 +3046,17 @@
   background: #f1e8ec;
   box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
   display: block;
+  flex-shrink: 0;
 }
 
 .profile-settings-avatar-edit {
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  transform: translate(-50%, 42%);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  min-height: 32px;
-  padding: 5px 14px 5px 12px;
+  gap: 7px;
+  min-height: 34px;
+  margin-top: 0;
+  padding: 6px 16px 6px 13px;
   border-radius: 999px;
   border: 1px solid #d1d5db;
   background: #fff;
@@ -3074,13 +3072,15 @@
 }
 
 .profile-settings-avatar-edit:hover {
-  transform: translate(-50%, 42%) translateY(-1px);
+  transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.14);
 }
 
 .profile-settings-avatar-edit-icon {
   display: block;
   flex-shrink: 0;
+  width: 18px;
+  height: 18px;
   color: #008069;
 }
 

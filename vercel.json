@@ -164,6 +164,10 @@
       "dest": "/api/user-avatar.js"
     },
     {
+      "src": "/api/user/avatar/photo",
+      "dest": "/api/user-avatar-photo.js"
+    },
+    {
       "src": "/api/offers",
       "dest": "/api/offers.js"
     },

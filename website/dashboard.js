@@ -84,6 +84,9 @@ function emitPaymentFailedAnalytics() {
 }
 
 let currentSession = null;
+if (typeof window !== 'undefined') {
+  window.__CUTUP_SESSION__ = null;
+}
 let currentUser = null;
 let subscriptionInfo = null;
 let plansCache = [];
@@ -888,7 +891,6 @@ function renderProfileSectionSafe(sectionName, renderFn) {
 
 function renderPersonalSectionHtml(ctx) {
   const { profile, disp, incomplete, avatarSrc } = ctx;
-  const hasCustomAvatar = Boolean(String(profile.avatar_url || '').trim());
   return `
         <section class="profile-settings-card profile-settings-card--span-full" data-profile-section="personal">
           <header class="profile-settings-card-head">
@@ -900,7 +902,7 @@ function renderPersonalSectionHtml(ctx) {
               <div class="profile-settings-avatar-stage">
                 <img class="profile-settings-avatar" data-prof-avatar-img src="${escapeHtml(avatarSrc)}" alt="" width="112" height="112" />
                 <button type="button" class="profile-settings-avatar-edit" data-prof-avatar-pick aria-label="Edit profile photo">
-                  <svg class="profile-settings-avatar-edit-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <svg class="profile-settings-avatar-edit-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                     <path d="M9 4h2l1.2 2.2H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2.8L9 4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
                     <circle cx="12" cy="13" r="3.5" stroke="currentColor" stroke-width="1.8"/>
                   </svg>
@@ -909,9 +911,6 @@ function renderPersonalSectionHtml(ctx) {
                 <input type="file" data-prof-avatar-input accept="image/jpeg,image/png,image/webp" hidden />
               </div>
               <p class="profile-settings-avatar-name">${escapeHtml(disp)}</p>
-              <p class="profile-settings-avatar-hint" data-prof-avatar-hint>${
-                hasCustomAvatar ? 'Profile photo' : 'Add a profile photo'
-              }</p>
               ${incomplete ? '<span class="profile-settings-pill profile-settings-pill--warn">Incomplete</span>' : '<span class="profile-settings-pill profile-settings-pill--ok">Complete</span>'}
             </div>
           </motion>
@@ -1151,8 +1150,6 @@ function bindProfileAvatarPicker(root) {
           el.src = url;
         });
       }
-      const hint = section.querySelector('[data-prof-avatar-hint]');
-      if (hint) hint.textContent = 'Profile photo';
       showDashboardBanner('Profile photo updated.', 'success');
     },
     onError: (msg) => {
@@ -1995,6 +1992,7 @@ async function initDashboard() {
     return { ok: false };
   }
   currentSession = activeSession;
+  if (typeof window !== 'undefined') window.__CUTUP_SESSION__ = currentSession;
   if (!currentSession) {
     hideInitialLoader();
     try {

@@ -68,7 +68,7 @@ window.CutupProfileAvatar = (function () {
     const x = (VIEWPORT_PX / 2 - (img.naturalWidth * scale) / 2 + offsetX) * ratio;
     const y = (VIEWPORT_PX / 2 - (img.naturalHeight * scale) / 2 + offsetY) * ratio;
     ctx.drawImage(img, x, y, iw, ih);
-    return out.toDataURL('image/jpeg', 0.9);
+    return out.toDataURL('image/jpeg', 0.85);
   }
 
   function bindDrag(canvas) {
@@ -236,29 +236,38 @@ window.CutupProfileAvatar = (function () {
 
   async function uploadCropped(dataUrl) {
     const session =
-      typeof currentSession !== 'undefined'
-        ? currentSession
-        : localStorage.getItem('cutup_session');
-    const base = typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : window.location.origin;
-    const res = await fetch(`${base}/api/user/avatar`, {
+      (typeof window !== 'undefined' && window.__CUTUP_SESSION__) ||
+      localStorage.getItem('cutup_session') ||
+      new URLSearchParams(window.location.search).get('session') ||
+      '';
+    const base =
+      typeof API_BASE_URL !== 'undefined' && API_BASE_URL
+        ? API_BASE_URL
+        : typeof window !== 'undefined' && window.CUTUP_API_BASE
+          ? window.CUTUP_API_BASE
+          : '';
+    const url = `${base}/api/user/avatar`;
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Session-Id': session || ''
+        'X-Session-Id': session
       },
       body: JSON.stringify({ image: dataUrl, session })
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.ok) {
-      const code = data.error || 'upload_failed';
+      const code = data.error || (res.status === 404 ? 'route_not_found' : 'upload_failed');
       const friendly =
         code === 'invalid_image'
-          ? 'Image is too large or unsupported. Use JPG, PNG or WebP under 800KB after crop.'
-          : code === 'file_too_large'
-            ? 'Cropped image is too large.'
-            : code === 'no_session' || code === 'invalid_session'
+          ? 'Image is too large or unsupported. Try zooming out slightly and save again.'
+          : code === 'profile_error'
+            ? 'Could not save profile photo. Database may need an update — contact support.'
+            : code === 'no_session' || code === 'invalid_session' || code === 'session_expired'
               ? 'Session expired. Please sign in again.'
-              : 'Could not upload profile photo.';
+              : code === 'route_not_found'
+                ? 'Upload service is not available yet. Please try again after the site updates.'
+                : 'Could not upload profile photo.';
       throw new Error(friendly);
     }
     return data;

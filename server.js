@@ -677,6 +677,16 @@ app.post('/api/user/avatar', async (req, res) => {
   }
 });
 
+app.get('/api/user/avatar/photo', async (req, res) => {
+  try {
+    const mod = await import('./api/user-avatar-photo.js');
+    return mod.default(req, res);
+  } catch (e) {
+    console.error('[user-avatar-photo]', e);
+    return res.status(503).end();
+  }
+});
+
 app.post('/api/account/logout-other-sessions', async (req, res) => {
   if (!accountSecurityHandler) return res.status(503).json({ ok: false, error: 'not_loaded' });
   return accountSecurityHandler(req, res);

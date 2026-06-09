@@ -984,11 +984,15 @@ export async function ensureUserProfilesTable() {
         address TEXT,
         postal_code VARCHAR(32),
         avatar_url TEXT,
+        avatar_mime VARCHAR(32),
+        avatar_bytes BYTEA,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
     await pool.query(`ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT`);
+    await pool.query(`ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS avatar_mime VARCHAR(32)`);
+    await pool.query(`ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS avatar_bytes BYTEA`);
     await pool.query(
       `CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id ON user_profiles (user_id)`
     );
@@ -1064,9 +1068,12 @@ export async function getUserProfileApiPayload(email) {
   };
 }
 
-export async function updateUserAvatarUrl(email, avatarUrl) {
+export async function updateUserAvatarBytes(email, { bytes, mime, avatarUrl }) {
   if (!email || !isBillingDbConfigured()) {
     return { ok: false, error: 'invalid_request' };
+  }
+  if (!bytes || !Buffer.isBuffer(bytes) || !bytes.length) {
+    return { ok: false, error: 'invalid_image' };
   }
   const url = String(avatarUrl || '').trim();
   if (!url) return { ok: false, error: 'avatar_url_required' };
@@ -1079,13 +1086,39 @@ export async function updateUserAvatarUrl(email, avatarUrl) {
     const userId = uRes.rows[0].id;
     await ensureUserProfileRow(pool, userId);
     await pool.query(
-      `UPDATE user_profiles SET avatar_url = $2, updated_at = NOW() WHERE user_id = $1::uuid`,
-      [userId, url.slice(0, 512)]
+      `UPDATE user_profiles
+       SET avatar_url = $2,
+           avatar_mime = $3,
+           avatar_bytes = $4,
+           updated_at = NOW()
+       WHERE user_id = $1::uuid`,
+      [userId, url.slice(0, 512), String(mime || 'image/jpeg').slice(0, 32), bytes]
     );
     return { ok: true, profile: await getUserProfileApiPayload(email) };
   } catch (e) {
-    console.error('[billing] updateUserAvatarUrl', e);
+    console.error('[billing] updateUserAvatarBytes', e);
     return { ok: false, error: 'profile_error' };
+  }
+}
+
+export async function getUserAvatarBytes(userId) {
+  if (!userId || !isBillingDbConfigured()) return null;
+  try {
+    await ensureUserProfilesTable();
+    const pool = getPool();
+    const r = await pool.query(
+      `SELECT avatar_bytes AS bytes, avatar_mime AS mime
+       FROM user_profiles
+       WHERE user_id = $1::uuid AND avatar_bytes IS NOT NULL
+       LIMIT 1`,
+      [String(userId)]
+    );
+    const row = r.rows[0];
+    if (!row?.bytes) return null;
+    return { bytes: row.bytes, mime: row.mime || 'image/jpeg' };
+  } catch (e) {
+    console.error('[billing] getUserAvatarBytes', e);
+    return null;
   }
 }
 
