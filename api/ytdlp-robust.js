@@ -1,9 +1,15 @@
 import { spawnWithTimeout } from './infrastructure/gpu-guard.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { existsSync } from 'fs';
-import { join } from 'path';
+import { existsSync, writeFileSync, mkdirSync, readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+import { tmpdir } from 'os';
 import { parseYouTubeVideoId, normalizeYouTubeWatchUrl } from './media-url.js';
+
+const __apiDir = dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = join(__apiDir, '..');
+let materializedInstagramCookiesPath = null;
 
 const execAsync = promisify(exec);
 const YTDLP_TIMEOUT_MS = Math.max(10000, Number(process.env.YTDLP_TIMEOUT_MS || 120000));
@@ -54,31 +60,94 @@ export function resolveCookiesPath() {
   return null;
 }
 
+function cookieFileCandidates(name) {
+  return [
+    join(PROJECT_ROOT, 'cookies', name),
+    join(process.cwd(), 'cookies', name),
+    join('/var/www/cutup/cookies', name),
+    join('/var/www/cutup', 'cookies', name)
+  ];
+}
+
+function normalizeCookieFileContent(raw) {
+  return String(raw || '')
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .trimEnd();
+}
+
+/** Write cookies from INSTAGRAM_COOKIES_BASE64 env to a temp file (for VPS / PM2). */
+export function materializeInstagramCookiesFromEnv() {
+  const b64 = String(process.env.INSTAGRAM_COOKIES_BASE64 || '').trim();
+  if (!b64) return null;
+  try {
+    const content = normalizeCookieFileContent(Buffer.from(b64, 'base64').toString('utf8'));
+    if (!content.includes('instagram.com') || !content.includes('sessionid')) {
+      console.error('[instagram-cookies] INSTAGRAM_COOKIES_BASE64 missing instagram.com sessionid');
+      return null;
+    }
+    const dir = join(tmpdir(), 'cutup-cookies');
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, 'instagram_cookies.txt');
+    writeFileSync(path, `${content}\n`, 'utf8');
+    materializedInstagramCookiesPath = path;
+    return path;
+  } catch (e) {
+    console.error('[instagram-cookies] materialize failed:', e?.message || e);
+    return null;
+  }
+}
+
 export function resolveInstagramCookiesPath() {
+  if (materializedInstagramCookiesPath && existsSync(materializedInstagramCookiesPath)) {
+    return materializedInstagramCookiesPath;
+  }
+
+  const fromEnvBlob = materializeInstagramCookiesFromEnv();
+  if (fromEnvBlob) return fromEnvBlob;
+
   const envPath = String(
     process.env.INSTAGRAM_COOKIES_PATH || process.env.YTDLP_INSTAGRAM_COOKIES_PATH || ''
   ).trim();
   const candidates = [
     envPath,
-    join(process.cwd(), 'cookies', 'instagram_cookies.txt'),
-    join(process.cwd(), 'cookies', 'instagram.txt')
+    ...cookieFileCandidates('instagram_cookies.txt'),
+    ...cookieFileCandidates('instagram.txt')
   ].filter(Boolean);
+
   for (const p of candidates) {
-    if (existsSync(p)) return p;
+    if (!existsSync(p)) continue;
+    try {
+      const normalized = normalizeCookieFileContent(readFileSync(p, 'utf8'));
+      if (!normalized.includes('instagram.com')) continue;
+      writeFileSync(p, `${normalized}\n`, 'utf8');
+      return p;
+    } catch {
+      /* try next */
+    }
   }
   return null;
 }
 
-/** Ordered auth strategies for Instagram reels/posts (anonymous → cookies file → browser). */
+export function logInstagramCookiesStatus() {
+  const path = resolveInstagramCookiesPath();
+  if (path) {
+    console.log(`[instagram-cookies] ready (${path})`);
+    return { ok: true, path };
+  }
+  console.warn(
+    '[instagram-cookies] NOT configured — put cookies/instagram_cookies.txt on server or set INSTAGRAM_COOKIES_BASE64 in .env'
+  );
+  return { ok: false, path: null };
+}
+
+/** Cookies-first when available; anonymous only as last resort. */
 export function buildInstagramAuthVariants() {
-  const variants = [{ label: 'anonymous', extraArgs: [] }];
+  const variants = [];
   const igPath = resolveInstagramCookiesPath();
   if (igPath) {
     variants.push({ label: 'instagram_cookies', extraArgs: ['--cookies', igPath] });
-  }
-  const shared = resolveCookiesPath();
-  if (shared && shared !== igPath) {
-    variants.push({ label: 'shared_cookies', extraArgs: ['--cookies', shared] });
   }
   const browser = String(
     process.env.INSTAGRAM_COOKIES_BROWSER || process.env.YTDLP_COOKIES_FROM_BROWSER || ''
@@ -86,6 +155,11 @@ export function buildInstagramAuthVariants() {
   if (browser) {
     variants.push({ label: `browser_${browser}`, extraArgs: ['--cookies-from-browser', browser] });
   }
+  const shared = resolveCookiesPath();
+  if (shared && shared !== igPath) {
+    variants.push({ label: 'shared_cookies', extraArgs: ['--cookies', shared] });
+  }
+  variants.push({ label: 'anonymous', extraArgs: [] });
   return variants;
 }
 

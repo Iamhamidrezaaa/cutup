@@ -75,6 +75,10 @@ void import('./api/yekpay.js')
   .then((m) => m.logYekpayStartupOnce())
   .catch((e) => console.warn('[yekpay] startup log unavailable:', e?.message || e));
 
+void import('./api/ytdlp-robust.js')
+  .then((m) => m.logInstagramCookiesStatus?.())
+  .catch((e) => console.warn('[instagram-cookies] startup check failed:', e?.message || e));
+
 // CORS middleware - Allow all origins for Chrome Extension
 app.use(cors({
   origin: '*',

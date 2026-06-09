@@ -637,8 +637,8 @@ function mapPipelineErrorToUserMessage(error, fallback = USER_ERROR_GENERIC) {
   if (code.includes('MALFORMED_URL') || code.includes('UNSUPPORTED_URL')) {
     return 'The link format is not supported. Please paste a direct video URL.';
   }
-  if (code.includes('SOCIAL_LOGIN_REQUIRED')) {
-    return 'This social media link requires login/cookies and is not accessible right now.';
+  if (code.includes('SOCIAL_LOGIN_REQUIRED') || code.includes('INSTAGRAM_COOKIES_MISSING')) {
+    return 'Instagram session is not set up on the server yet. Please contact support or try again after cookies are configured.';
   }
   if (code.includes('YTDLP_TIMEOUT')) {
     return 'Extraction timed out on the media provider. Please try again shortly.';

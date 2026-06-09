@@ -31,7 +31,9 @@ import {
   classifyYtDlpError,
   applyYtdlpBurstDelay,
   buildInstagramAuthVariants,
-  isInstagramAuthBlock
+  isInstagramAuthBlock,
+  resolveInstagramCookiesPath,
+  logInstagramCookiesStatus
 } from './ytdlp-robust.js';
 
 const INSTAGRAM_USER_AGENT =
@@ -244,6 +246,10 @@ export default async function handler(req, res) {
     slotConsumed = true;
     console.log(`[youtube-download] User ${userId} authorized for ${type} download from ${detectedPlatform}, download slot reserved`);
 
+    if (detectedPlatform === 'instagram') {
+      logInstagramCookiesStatus();
+    }
+
     console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: ${type} download for URL: ${finalUrl}, quality: ${quality}`);
     const isShorts = /youtube\.com\/shorts\//i.test(cleanedUrl);
     plog('DOWNLOAD_START', { detectedPlatform, type, quality });
@@ -334,6 +340,9 @@ export default async function handler(req, res) {
         
         if (detectedPlatform === 'instagram') {
           baseArgs.push('--user-agent', INSTAGRAM_USER_AGENT);
+          baseArgs.push('--referer', 'https://www.instagram.com/');
+          baseArgs.push('--add-header', 'Origin:https://www.instagram.com');
+          baseArgs.push('--sleep-requests', '1');
           if (Array.isArray(authExtraArgs) && authExtraArgs.length) {
             baseArgs.push(...authExtraArgs);
             console.log(`${detectedPlatform.toUpperCase()}_DOWNLOAD: Auth args:`, authExtraArgs.slice(0, 2).join(' '));
@@ -862,8 +871,15 @@ export default async function handler(req, res) {
     } else if (stderrText.includes('spawn') || stdoutText.includes('spawn')) {
       legacyCode = 'YTDLP_SPAWN_FAILED';
     } else if (detectedPlatform === 'instagram') {
-      legacyCode = 'INSTAGRAM_EXTRACTION_FAILED';
-      console.log('[instagram-story]', { traceId, failed: true, url: cleaned?.slice(0, 80) });
+      legacyCode = resolveInstagramCookiesPath()
+        ? 'INSTAGRAM_EXTRACTION_FAILED'
+        : 'INSTAGRAM_COOKIES_MISSING';
+      console.log('[instagram-download]', {
+        traceId,
+        failed: true,
+        cookies: Boolean(resolveInstagramCookiesPath()),
+        url: cleaned?.slice(0, 80)
+      });
     } else if (detectedPlatform === 'tiktok') {
       legacyCode = 'TIKTOK_EXTRACTION_FAILED';
     }

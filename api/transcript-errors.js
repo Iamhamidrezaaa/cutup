@@ -230,8 +230,23 @@ export function mapLegacyDownloadError(legacyCode, { message, platform } = {}) {
           : userMessageForCode('PLATFORM_ERROR')
     };
   }
+  if (c === 'INSTAGRAM_COOKIES_MISSING') {
+    return {
+      errorCode: 'PLATFORM_ERROR',
+      message:
+        'Instagram session is not configured on the server. Upload cookies/instagram_cookies.txt or set INSTAGRAM_COOKIES_BASE64 in .env, then restart.',
+      retryable: false
+    };
+  }
   if (c.includes('INSTAGRAM') || c.includes('TIKTOK') || c.includes('YTDLP') || c.includes('DOWNLOAD')) {
-    return { errorCode: 'DOWNLOAD_FAILED', message: userMessageForCode('DOWNLOAD_FAILED'), retryable: true };
+    return {
+      errorCode: 'DOWNLOAD_FAILED',
+      message:
+        platform === 'instagram'
+          ? 'Could not download this Reel. Refresh Instagram cookies on the server and try again.'
+          : userMessageForCode('DOWNLOAD_FAILED'),
+      retryable: true
+    };
   }
   return { errorCode: 'DOWNLOAD_FAILED', message: userMessageForCode('DOWNLOAD_FAILED'), retryable: true };
 }
