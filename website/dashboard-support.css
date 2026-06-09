@@ -535,11 +535,77 @@
   margin-top: 8px;
 }
 
-.cutup-support-create-attach-row {
+.cutup-support-file-attach {
+  margin: 8px 0 12px;
+}
+
+.cutup-support-file-attach__row {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 4px 0 12px;
+  flex-wrap: wrap;
+}
+
+.cutup-support-choose-file-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  background: #fff;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.cutup-support-choose-file-btn:hover {
+  border-color: #a5b4fc;
+  background: #fafaff;
+  color: #4338ca;
+}
+
+.cutup-support-file-attach__name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cutup-support-file-attach__name--selected {
+  color: #475569;
+  font-weight: 500;
+}
+
+.cutup-support-file-attach__hint {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #94a3b8;
+}
+
+.cutup-support-form .cutup-support-file-attach,
+.cutup-support-reply .cutup-support-file-attach {
+  margin-bottom: 0;
+}
+
+.cutup-support-form .cutup-support-file-attach label,
+.cutup-support-reply .cutup-support-file-attach label {
+  display: inline-flex;
+  margin: 0;
+}
+
+.cutup-support-file-attach .cutup-support-choose-file-btn {
+  font-weight: 600;
+  color: #334155;
 }
 
 .cutup-support-attach-preview button {
@@ -550,20 +616,19 @@
   font-size: 12px;
 }
 
-.cutup-support-reply__actions {
+.cutup-support-reply__send-row {
   display: flex;
-  flex-direction: row;
-  align-items: flex-end;
-  gap: 10px;
-  flex-shrink: 0;
+  justify-content: flex-end;
+  margin-top: 4px;
 }
 
 .cutup-support-attach-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
   background: #fff;
@@ -844,14 +909,8 @@
   margin: 0;
 }
 
-.cutup-support-reply__row {
-  display: flex;
-  gap: 10px;
-  align-items: flex-end;
-}
-
 .cutup-support-reply textarea {
-  flex: 1;
+  width: 100%;
   min-height: 44px;
   max-height: 140px;
   padding: 11px 14px;
@@ -1240,11 +1299,6 @@
   .cutup-support-msg__avatar {
     width: 30px;
     height: 30px;
-  }
-
-  .cutup-support-reply__row {
-    flex-direction: column;
-    align-items: stretch;
   }
 
   .cutup-support-reply .btn-primary {

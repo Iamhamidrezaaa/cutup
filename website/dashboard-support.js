@@ -8,6 +8,9 @@
   var ACTIVITY_FEED_LIMIT = 5;
   var ATTACH_MAX_BYTES = 3 * 1024 * 1024;
   var ATTACH_EXT_RE = /\.(pdf|jpe?g|png|webp|txt|zip|heif|heic)$/i;
+  var ATTACH_ACCEPT =
+    '.pdf,.jpg,.jpeg,.png,.webp,.txt,.zip,.heif,.heic,image/png,image/jpeg,image/webp,image/heic,image/heif,application/pdf,text/plain,application/zip';
+  var ATTACH_HINT = 'PDF, JPG, PNG, WebP, TXT, ZIP, HEIC · max 3 MB · optional';
 
   var DEPARTMENTS = [
     { value: 'TECHNICAL_SUPPORT', label: 'Technical Support' },
@@ -47,6 +50,29 @@
     '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
     '<path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
     '</svg>';
+
+  function renderFilePickerHtml(inputId, nameId) {
+    return (
+      '<div class="cutup-support-file-attach">' +
+        '<div class="cutup-support-file-attach__row">' +
+          '<label class="cutup-support-attach-btn" for="' + esc(inputId) + '" title="Attach file" aria-label="Attach file">' +
+            ICON_CLIP +
+          '</label>' +
+          '<label class="cutup-support-choose-file-btn" for="' + esc(inputId) + '">Choose file</label>' +
+          '<span class="cutup-support-file-attach__name" id="' + esc(nameId) + '">No file chosen</span>' +
+          '<input type="file" id="' + esc(inputId) + '" class="cutup-support-file-input" accept="' + esc(ATTACH_ACCEPT) + '" hidden>' +
+        '</div>' +
+        '<p class="cutup-support-file-attach__hint">' + esc(ATTACH_HINT) + '</p>' +
+      '</div>'
+    );
+  }
+
+  function setAttachFileNameLabel(nameId, filename) {
+    var el = document.getElementById(nameId);
+    if (!el) return;
+    el.textContent = filename ? String(filename) : 'No file chosen';
+    el.classList.toggle('cutup-support-file-attach__name--selected', Boolean(filename));
+  }
 
   var RATING_OPTIONS = [
     { score: 1, emoji: '😡', label: 'Very dissatisfied' },
@@ -340,12 +366,7 @@
           '<div id="cutupSupportDeflect" class="cutup-support-deflect" hidden></div>' +
           '<label>Message<textarea name="message" maxlength="8000" placeholder="Describe your issue in detail…" rows="4"></textarea></label>' +
           '<div id="cutupSupportCreateAttachPreview" class="cutup-support-attach-preview" hidden></div>' +
-          '<div class="cutup-support-create-attach-row">' +
-            '<label class="cutup-support-attach-btn" title="Attach file">' +
-              '<input type="file" id="cutupSupportCreateFile" accept=".pdf,.jpg,.jpeg,.png,.webp,.txt,.zip,.heif,.heic,image/png,image/jpeg,image/webp,image/heic,image/heif,application/pdf,text/plain,application/zip" hidden>' +
-              ICON_CLIP +
-            '</label>' +
-          '</div>' +
+          renderFilePickerHtml('cutupSupportCreateFile', 'cutupSupportCreateFileName') +
           '<div id="cutupSupportTurnstile" class="cf-turnstile" data-sitekey="' + esc(TURNSTILE_SITE_KEY) + '"></div>' +
           '<p id="cutupSupportFormError" class="cutup-support-form-error" hidden role="alert"></p>' +
           '<div class="cutup-support-form__actions">' +
@@ -618,15 +639,10 @@
       : '<div class="cutup-support-reply">' +
           '<label for="cutupSupportReply">Reply</label>' +
           '<div id="cutupSupportAttachPreview" class="cutup-support-attach-preview" hidden></div>' +
-          '<div class="cutup-support-reply__row">' +
-            '<textarea id="cutupSupportReply" placeholder="Write a reply…" rows="3"></textarea>' +
-            '<div class="cutup-support-reply__actions">' +
-              '<label class="cutup-support-attach-btn" title="Attach file">' +
-                '<input type="file" id="cutupSupportFile" accept=".pdf,.jpg,.jpeg,.png,.webp,.txt,.zip,.heif,.heic,image/png,image/jpeg,image/webp,image/heic,image/heif,application/pdf,text/plain,application/zip" hidden>' +
-                ICON_CLIP +
-              '</label>' +
-              btnPrimary('Send', 'id="cutupSupportSendReply" data-no-icon') +
-            '</div>' +
+          '<textarea id="cutupSupportReply" placeholder="Write a reply…" rows="3"></textarea>' +
+          renderFilePickerHtml('cutupSupportFile', 'cutupSupportReplyFileName') +
+          '<div class="cutup-support-reply__send-row">' +
+            btnPrimary('Send', 'id="cutupSupportSendReply" data-no-icon') +
           '</div>' +
         '</div>';
     return (
@@ -732,6 +748,7 @@
     bindCreateAttachmentInput(
       document.getElementById('cutupSupportCreateFile'),
       document.getElementById('cutupSupportCreateAttachPreview'),
+      'cutupSupportCreateFileName',
     );
 
     root.querySelector('#cutupSupportForm')?.addEventListener('submit', async function (e) {
@@ -875,16 +892,21 @@
     return { ok: r.ok, data: d };
   }
 
-  function bindCreateAttachmentInput(fileInput, previewHost) {
+  function bindCreateAttachmentInput(fileInput, previewHost, nameId) {
     if (!fileInput || fileInput.dataset.bound === '1') return;
     fileInput.dataset.bound = '1';
     fileInput.addEventListener('change', async function () {
       var file = fileInput.files?.[0];
-      if (!file) return;
+      if (!file) {
+        setAttachFileNameLabel(nameId, null);
+        return;
+      }
+      setAttachFileNameLabel(nameId, file.name);
       var validationErr = attachValidationError(file);
       if (validationErr) {
         if (typeof showDashboardBanner === 'function') showDashboardBanner(validationErr, 'error');
         fileInput.value = '';
+        setAttachFileNameLabel(nameId, null);
         return;
       }
       var up = await uploadAttachment(file);
@@ -893,9 +915,11 @@
         if (typeof showDashboardBanner === 'function') {
           showDashboardBanner(attachUploadErrorMessage(up.data), 'error');
         }
+        setAttachFileNameLabel(nameId, null);
         return;
       }
       state.createPendingAttachments = [up.data.attachment];
+      setAttachFileNameLabel(nameId, up.data.attachment.filename);
       if (previewHost) {
         previewHost.hidden = false;
         previewHost.innerHTML = '<span>📎 ' + esc(up.data.attachment.filename) + '</span> <button type="button" id="cutupSupportCreateClearAttach">Remove</button>';
@@ -903,6 +927,7 @@
           state.createPendingAttachments = [];
           previewHost.hidden = true;
           previewHost.innerHTML = '';
+          setAttachFileNameLabel(nameId, null);
         });
       }
     });
@@ -954,11 +979,16 @@
     var preview = document.getElementById('cutupSupportAttachPreview');
     fileInput?.addEventListener('change', async function () {
       var file = fileInput.files?.[0];
-      if (!file) return;
+      if (!file) {
+        setAttachFileNameLabel('cutupSupportReplyFileName', null);
+        return;
+      }
+      setAttachFileNameLabel('cutupSupportReplyFileName', file.name);
       var validationErr = attachValidationError(file);
       if (validationErr) {
         if (typeof showDashboardBanner === 'function') showDashboardBanner(validationErr, 'error');
         fileInput.value = '';
+        setAttachFileNameLabel('cutupSupportReplyFileName', null);
         return;
       }
       var up = await uploadAttachment(file);
@@ -967,9 +997,11 @@
         if (typeof showDashboardBanner === 'function') {
           showDashboardBanner(attachUploadErrorMessage(up.data), 'error');
         }
+        setAttachFileNameLabel('cutupSupportReplyFileName', null);
         return;
       }
       state.pendingAttachments = [up.data.attachment];
+      setAttachFileNameLabel('cutupSupportReplyFileName', up.data.attachment.filename);
       if (preview) {
         preview.hidden = false;
         preview.innerHTML = '<span>📎 ' + esc(up.data.attachment.filename) + '</span> <button type="button" id="cutupSupportClearAttach">Remove</button>';
@@ -977,6 +1009,7 @@
           state.pendingAttachments = [];
           preview.hidden = true;
           preview.innerHTML = '';
+          setAttachFileNameLabel('cutupSupportReplyFileName', null);
         });
       }
     });
