@@ -1,8 +1,8 @@
 {
-  "builtAt": "2026-06-08T20:38:13.839Z",
+  "builtAt": "2026-06-09T15:58:10.486Z",
   "templateVersion": "V3.2-td-padding",
-  "bundleMtime": "2026-06-08T20:38:13.837Z",
-  "bundleSize": 675475,
+  "bundleMtime": "2026-06-09T15:58:10.481Z",
+  "bundleSize": 677613,
   "entry": "services/email/runtime-entry.ts",
   "outfile": "api/email-platform/index.js"
 }

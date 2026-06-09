@@ -108,6 +108,19 @@ export const EMAIL_REGISTRY: Record<EmailTemplateId, EmailRegistryEntry> = {
     },
     event: EMAIL_EVENTS.CREDITS_EXHAUSTED,
   },
+  [EMAIL_TEMPLATES.SUBSCRIPTION_EXPIRED]: {
+    template: EMAIL_TEMPLATES.SUBSCRIPTION_EXPIRED,
+    subject: () => 'Your Cutup subscription has ended',
+    preview: () => 'Your subscription has ended — renew to keep access',
+    senderRole: 'billing',
+    sampleData: {
+      firstName: sample.firstName,
+      planName: sample.planName,
+      amount: sample.amount,
+      payUrl: goLink({ dest: 'billing' }),
+    },
+    event: EMAIL_EVENTS.SUBSCRIPTION_EXPIRED,
+  },
   [EMAIL_TEMPLATES.ACCOUNT_DELETION_REQUESTED]: {
     template: EMAIL_TEMPLATES.ACCOUNT_DELETION_REQUESTED,
     subject: () => 'Your Cutup account deletion request',

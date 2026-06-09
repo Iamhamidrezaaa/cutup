@@ -2512,6 +2512,7 @@ export async function markPendingPaymentExpiredIfStale(email, paymentId) {
      FROM users u
      WHERE p.id = $1::uuid AND p.user_id = u.id AND u.email = $2
        AND p.status = 'pending'
+       AND lower(COALESCE(p.provider, '')) NOT IN ('renewal')
        AND p.created_at < NOW() - INTERVAL '30 minutes'
      RETURNING p.id`,
     [paymentId, email]
@@ -2539,6 +2540,27 @@ export async function setPaymentProviderOrderId(paymentId, email, providerOrderI
   const r = await pool.query(
     `UPDATE payments p SET provider_order_id = $3, updated_at = NOW()
      FROM users u WHERE p.id = $1::uuid AND p.user_id = u.id AND u.email = $2
+     RETURNING p.id`,
+    [paymentId, email, String(providerOrderId).slice(0, 64)]
+  );
+  return r.rowCount > 0;
+}
+
+/** Resume a pending payable invoice — refresh gateway order id and YekPay provider. */
+export async function preparePaymentYekpayResume(email, paymentId, providerOrderId) {
+  const pool = getPool();
+  const r = await pool.query(
+    `UPDATE payments p SET
+       status = 'pending',
+       provider = 'yekpay',
+       provider_order_id = $3,
+       external_id = NULL,
+       authority = NULL,
+       created_at = NOW(),
+       updated_at = NOW()
+     FROM users u
+     WHERE p.id = $1::uuid AND p.user_id = u.id AND lower(u.email) = lower($2)
+       AND p.status = 'pending'
      RETURNING p.id`,
     [paymentId, email, String(providerOrderId).slice(0, 64)]
   );

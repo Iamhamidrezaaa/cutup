@@ -184,6 +184,7 @@ var EMAIL_TEMPLATES = {
   SUBSCRIPTION_UPGRADED: "SUBSCRIPTION_UPGRADED",
   USAGE_WARNING_80: "USAGE_WARNING_80",
   USAGE_WARNING_100: "USAGE_WARNING_100",
+  SUBSCRIPTION_EXPIRED: "SUBSCRIPTION_EXPIRED",
   ACCOUNT_DELETION_REQUESTED: "ACCOUNT_DELETION_REQUESTED",
   ACCOUNT_DELETION_COMPLETED: "ACCOUNT_DELETION_COMPLETED",
   SUPPORT_TICKET_CREATED: "SUPPORT_TICKET_CREATED",
@@ -200,6 +201,7 @@ var EMAIL_EVENTS = {
   SUBSCRIPTION_UPGRADED: "subscription_upgraded",
   CREDITS_80_PERCENT: "credits_80_percent",
   CREDITS_EXHAUSTED: "credits_exhausted",
+  SUBSCRIPTION_EXPIRED: "subscription_expired",
   ACCOUNT_DELETION_REQUESTED: "account_deletion_requested",
   ACCOUNT_DELETED: "account_deleted",
   TICKET_CREATED: "ticket_created",
@@ -311,6 +313,19 @@ var EMAIL_REGISTRY = {
       limit: 50
     },
     event: EMAIL_EVENTS.CREDITS_EXHAUSTED
+  },
+  [EMAIL_TEMPLATES.SUBSCRIPTION_EXPIRED]: {
+    template: EMAIL_TEMPLATES.SUBSCRIPTION_EXPIRED,
+    subject: () => "Your Cutup subscription has ended",
+    preview: () => "Your subscription has ended \u2014 renew to keep access",
+    senderRole: "billing",
+    sampleData: {
+      firstName: sample.firstName,
+      planName: sample.planName,
+      amount: sample.amount,
+      payUrl: goLink({ dest: "billing" })
+    },
+    event: EMAIL_EVENTS.SUBSCRIPTION_EXPIRED
   },
   [EMAIL_TEMPLATES.ACCOUNT_DELETION_REQUESTED]: {
     template: EMAIL_TEMPLATES.ACCOUNT_DELETION_REQUESTED,
@@ -12807,8 +12822,38 @@ function UsageWarning100({
   ] });
 }
 
-// emails/templates/AccountDeletionRequested.tsx
+// emails/templates/SubscriptionExpired.tsx
 import { jsx as jsx42, jsxs as jsxs18 } from "react/jsx-runtime";
+function SubscriptionExpired({
+  firstName = "there",
+  planName = "Pro",
+  amount = "\u20AC19.00",
+  payUrl
+}) {
+  const pay = payUrl || "";
+  return /* @__PURE__ */ jsxs18(CutupLayout, { preview: "Your subscription has ended \u2014 renew to keep access", children: [
+    /* @__PURE__ */ jsx42(StatusBadge, { variant: "warning", children: "Subscription ended" }),
+    /* @__PURE__ */ jsx42(
+      HeroSection,
+      {
+        title: "Your subscription has ended",
+        subtitle: `Hi ${firstName}, your ${planName} plan is no longer active. Renew now to restore exports and monthly credits.`
+      }
+    ),
+    /* @__PURE__ */ jsxs18(EmailCard, { children: [
+      /* @__PURE__ */ jsx42(PlanBadge, { plan: planName }),
+      /* @__PURE__ */ jsxs18(DetailTable, { children: [
+        /* @__PURE__ */ jsx42(DetailRow, { label: "Plan", value: planName }),
+        /* @__PURE__ */ jsx42(DetailRow, { label: "Renewal amount", value: amount, last: true })
+      ] })
+    ] }),
+    pay ? /* @__PURE__ */ jsx42(EmailButton, { href: pay, fullWidth: true, children: "Renew subscription" }) : null,
+    /* @__PURE__ */ jsx42(EmailText, { inset: true, muted: true, small: true, style: { color: BRAND.warning }, children: "This link opens your billing dashboard. Sign in if prompted, then complete payment to renew." })
+  ] });
+}
+
+// emails/templates/AccountDeletionRequested.tsx
+import { jsx as jsx43, jsxs as jsxs19 } from "react/jsx-runtime";
 function AccountDeletionRequested({
   firstName = "there",
   cancelUrl,
@@ -12816,37 +12861,37 @@ function AccountDeletionRequested({
   cooldownDays = 30
 }) {
   const cancel = cancelUrl || SITE.profileUrl;
-  return /* @__PURE__ */ jsxs18(CutupLayout, { preview: "Account deletion scheduled", children: [
-    /* @__PURE__ */ jsx42(StatusBadge, { variant: "danger", children: "Deletion scheduled" }),
-    /* @__PURE__ */ jsx42(
+  return /* @__PURE__ */ jsxs19(CutupLayout, { preview: "Account deletion scheduled", children: [
+    /* @__PURE__ */ jsx43(StatusBadge, { variant: "danger", children: "Deletion scheduled" }),
+    /* @__PURE__ */ jsx43(
       HeroSection,
       {
         title: "Account deletion scheduled",
         subtitle: `Hi ${firstName}, we received your request. Your account is scheduled for permanent deletion.`
       }
     ),
-    /* @__PURE__ */ jsxs18(EmailCard, { children: [
-      /* @__PURE__ */ jsxs18(Text3, { className: "email-card-body-text", style: { margin: "0 0 14px" }, children: [
-        /* @__PURE__ */ jsx42("strong", { children: "Countdown:" }),
+    /* @__PURE__ */ jsxs19(EmailCard, { children: [
+      /* @__PURE__ */ jsxs19(Text3, { className: "email-card-body-text", style: { margin: "0 0 14px" }, children: [
+        /* @__PURE__ */ jsx43("strong", { children: "Countdown:" }),
         " ",
         cooldownDays,
         "-day email lockout after deletion is confirmed."
       ] }),
-      /* @__PURE__ */ jsx42(Text3, { className: "email-card-body-text", style: { margin: "0 0 10px" }, children: "\u2022 Your account and data will be permanently removed once confirmed." }),
-      /* @__PURE__ */ jsxs18(Text3, { className: "email-card-body-text", style: { margin: "0 0 10px" }, children: [
+      /* @__PURE__ */ jsx43(Text3, { className: "email-card-body-text", style: { margin: "0 0 10px" }, children: "\u2022 Your account and data will be permanently removed once confirmed." }),
+      /* @__PURE__ */ jsxs19(Text3, { className: "email-card-body-text", style: { margin: "0 0 10px" }, children: [
         "\u2022 The same email cannot register a new account for ",
-        /* @__PURE__ */ jsxs18("strong", { children: [
+        /* @__PURE__ */ jsxs19("strong", { children: [
           cooldownDays,
           " days"
         ] }),
         "."
       ] }),
-      /* @__PURE__ */ jsx42(Text3, { className: "email-card-body-text", style: { margin: 0 }, children: "\u2022 Changed your mind? Cancel below before deletion completes." })
+      /* @__PURE__ */ jsx43(Text3, { className: "email-card-body-text", style: { margin: 0 }, children: "\u2022 Changed your mind? Cancel below before deletion completes." })
     ] }),
-    /* @__PURE__ */ jsx42(EmailButton, { href: cancel, fullWidth: true, children: "Cancel Deletion" }),
-    confirmDeletionUrl ? /* @__PURE__ */ jsx42(EmailButton, { href: confirmDeletionUrl, variant: "secondary", children: "Confirm Deletion" }) : null,
-    /* @__PURE__ */ jsx42(EmailButton, { href: SITE.supportHomeUrl, variant: "secondary", children: "Contact Support" }),
-    /* @__PURE__ */ jsxs18(EmailText, { inset: true, muted: true, small: true, style: { color: BRAND.danger }, children: [
+    /* @__PURE__ */ jsx43(EmailButton, { href: cancel, fullWidth: true, children: "Cancel Deletion" }),
+    confirmDeletionUrl ? /* @__PURE__ */ jsx43(EmailButton, { href: confirmDeletionUrl, variant: "secondary", children: "Confirm Deletion" }) : null,
+    /* @__PURE__ */ jsx43(EmailButton, { href: SITE.supportHomeUrl, variant: "secondary", children: "Contact Support" }),
+    /* @__PURE__ */ jsxs19(EmailText, { inset: true, muted: true, small: true, style: { color: BRAND.danger }, children: [
       "Didn't request this? Email ",
       SITE.supportEmail,
       " immediately."
@@ -12855,33 +12900,33 @@ function AccountDeletionRequested({
 }
 
 // emails/templates/AccountDeletionCompleted.tsx
-import { jsx as jsx43, jsxs as jsxs19 } from "react/jsx-runtime";
+import { jsx as jsx44, jsxs as jsxs20 } from "react/jsx-runtime";
 function AccountDeletionCompleted({
   firstName = "there",
   cooldownDays = 30
 }) {
-  return /* @__PURE__ */ jsxs19(CutupLayout, { preview: "Your Cutup account has been deleted", children: [
-    /* @__PURE__ */ jsx43(StatusBadge, { variant: "neutral", children: "Account deleted" }),
-    /* @__PURE__ */ jsx43(
+  return /* @__PURE__ */ jsxs20(CutupLayout, { preview: "Your Cutup account has been deleted", children: [
+    /* @__PURE__ */ jsx44(StatusBadge, { variant: "neutral", children: "Account deleted" }),
+    /* @__PURE__ */ jsx44(
       HeroSection,
       {
         title: "Your account has been deleted",
         subtitle: `Hi ${firstName}, your Cutup account and associated data have been permanently removed.`
       }
     ),
-    /* @__PURE__ */ jsxs19(EmailCard, { children: [
-      /* @__PURE__ */ jsx43(Text3, { className: "email-card-body-text", style: { margin: "0 0 10px" }, children: "\u2022 Your account is no longer available." }),
-      /* @__PURE__ */ jsxs19(Text3, { className: "email-card-body-text", style: { margin: 0 }, children: [
+    /* @__PURE__ */ jsxs20(EmailCard, { children: [
+      /* @__PURE__ */ jsx44(Text3, { className: "email-card-body-text", style: { margin: "0 0 10px" }, children: "\u2022 Your account is no longer available." }),
+      /* @__PURE__ */ jsxs20(Text3, { className: "email-card-body-text", style: { margin: 0 }, children: [
         "\u2022 The same email address is locked for ",
-        /* @__PURE__ */ jsxs19("strong", { children: [
+        /* @__PURE__ */ jsxs20("strong", { children: [
           cooldownDays,
           " days"
         ] }),
         " and cannot be used to register a new account during this period."
       ] })
     ] }),
-    /* @__PURE__ */ jsx43(EmailButton, { href: SITE.supportHomeUrl, variant: "secondary", children: "Contact Support" }),
-    /* @__PURE__ */ jsxs19(EmailText, { inset: true, muted: true, small: true, children: [
+    /* @__PURE__ */ jsx44(EmailButton, { href: SITE.supportHomeUrl, variant: "secondary", children: "Contact Support" }),
+    /* @__PURE__ */ jsxs20(EmailText, { inset: true, muted: true, small: true, children: [
       "If you believe this was a mistake, contact ",
       SITE.supportEmail,
       " as soon as possible."
@@ -12890,7 +12935,7 @@ function AccountDeletionCompleted({
 }
 
 // emails/templates/SupportTicketCreated.tsx
-import { jsx as jsx44, jsxs as jsxs20 } from "react/jsx-runtime";
+import { jsx as jsx45, jsxs as jsxs21 } from "react/jsx-runtime";
 function formatEmailDate(value) {
   if (!value) {
     return (/* @__PURE__ */ new Date()).toLocaleDateString("en-US", { dateStyle: "medium" });
@@ -12910,33 +12955,33 @@ function SupportTicketCreated({
 }) {
   const dateLabel = formatEmailDate(createdAt);
   const url = ticketUrl || SITE.supportTicketUrl(ticketNumber);
-  return /* @__PURE__ */ jsxs20(CutupLayout, { preview: `Ticket #${ticketNumber} received`, children: [
-    /* @__PURE__ */ jsx44(StatusBadge, { variant: "info", children: "Ticket received" }),
-    /* @__PURE__ */ jsx44(
+  return /* @__PURE__ */ jsxs21(CutupLayout, { preview: `Ticket #${ticketNumber} received`, children: [
+    /* @__PURE__ */ jsx45(StatusBadge, { variant: "info", children: "Ticket received" }),
+    /* @__PURE__ */ jsx45(
       HeroSection,
       {
         title: "We've received your request",
         subtitle: `Hi ${firstName}, our support team has your ticket and will respond shortly.`
       }
     ),
-    /* @__PURE__ */ jsxs20(EmailCard, { children: [
-      /* @__PURE__ */ jsxs20(StatusBadge, { variant: "info", inline: true, children: [
+    /* @__PURE__ */ jsxs21(EmailCard, { children: [
+      /* @__PURE__ */ jsxs21(StatusBadge, { variant: "info", inline: true, children: [
         "#",
         ticketNumber
       ] }),
-      /* @__PURE__ */ jsxs20(DetailTable, { children: [
-        /* @__PURE__ */ jsx44(DetailRow, { label: "Subject", value: subject }),
-        /* @__PURE__ */ jsx44(DetailRow, { label: "Created", value: dateLabel }),
-        /* @__PURE__ */ jsx44(DetailRow, { label: "Response time", value: "Within 24 hours", last: true })
+      /* @__PURE__ */ jsxs21(DetailTable, { children: [
+        /* @__PURE__ */ jsx45(DetailRow, { label: "Subject", value: subject }),
+        /* @__PURE__ */ jsx45(DetailRow, { label: "Created", value: dateLabel }),
+        /* @__PURE__ */ jsx45(DetailRow, { label: "Response time", value: "Within 24 hours", last: true })
       ] })
     ] }),
-    /* @__PURE__ */ jsx44(EmailButton, { href: url, fullWidth: true, children: "View Ticket" }),
-    /* @__PURE__ */ jsx44(EmailText, { inset: true, muted: true, small: true, children: "Need to add more details? Reply to this email or update your ticket in the dashboard." })
+    /* @__PURE__ */ jsx45(EmailButton, { href: url, fullWidth: true, children: "View Ticket" }),
+    /* @__PURE__ */ jsx45(EmailText, { inset: true, muted: true, small: true, children: "Need to add more details? Reply to this email or update your ticket in the dashboard." })
   ] });
 }
 
 // emails/templates/SupportTicketReply.tsx
-import { jsx as jsx45, jsxs as jsxs21 } from "react/jsx-runtime";
+import { jsx as jsx46, jsxs as jsxs22 } from "react/jsx-runtime";
 function SupportTicketReply({
   firstName = "there",
   ticketNumber = "0000",
@@ -12947,17 +12992,17 @@ function SupportTicketReply({
   ticketUrl
 }) {
   const url = ticketUrl || SITE.supportTicketUrl(ticketNumber);
-  return /* @__PURE__ */ jsxs21(CutupLayout, { preview: `Update on Ticket #${ticketNumber}`, children: [
-    /* @__PURE__ */ jsx45(StatusBadge, { variant: "info", children: "New reply" }),
-    /* @__PURE__ */ jsx45(
+  return /* @__PURE__ */ jsxs22(CutupLayout, { preview: `Update on Ticket #${ticketNumber}`, children: [
+    /* @__PURE__ */ jsx46(StatusBadge, { variant: "info", children: "New reply" }),
+    /* @__PURE__ */ jsx46(
       HeroSection,
       {
         title: `Update on ticket #${ticketNumber}`,
         subtitle: `Hi ${firstName}, ${agentName} replied to your support request.`
       }
     ),
-    /* @__PURE__ */ jsxs21(EmailCard, { children: [
-      agentAvatarUrl ? /* @__PURE__ */ jsx45(
+    /* @__PURE__ */ jsxs22(EmailCard, { children: [
+      agentAvatarUrl ? /* @__PURE__ */ jsx46(
         Img,
         {
           src: agentAvatarUrl,
@@ -12972,7 +13017,7 @@ function SupportTicketReply({
           }
         }
       ) : null,
-      /* @__PURE__ */ jsx45(
+      /* @__PURE__ */ jsx46(
         Text3,
         {
           style: {
@@ -12984,7 +13029,7 @@ function SupportTicketReply({
           children: agentName
         }
       ),
-      /* @__PURE__ */ jsx45(
+      /* @__PURE__ */ jsx46(
         Text3,
         {
           style: {
@@ -12996,7 +13041,7 @@ function SupportTicketReply({
           children: agentJobTitle
         }
       ),
-      /* @__PURE__ */ jsx45(
+      /* @__PURE__ */ jsx46(
         Text3,
         {
           className: "email-card-body-text email-word-break",
@@ -13005,12 +13050,12 @@ function SupportTicketReply({
         }
       )
     ] }),
-    /* @__PURE__ */ jsx45(EmailButton, { href: url, fullWidth: true, children: "View Ticket" })
+    /* @__PURE__ */ jsx46(EmailButton, { href: url, fullWidth: true, children: "View Ticket" })
   ] });
 }
 
 // emails/templates/SupportTicketClosed.tsx
-import { jsx as jsx46, jsxs as jsxs22 } from "react/jsx-runtime";
+import { jsx as jsx47, jsxs as jsxs23 } from "react/jsx-runtime";
 function SupportTicketClosed({
   firstName = "there",
   ticketNumber = "0000",
@@ -13021,45 +13066,6 @@ function SupportTicketClosed({
 }) {
   const rate = ratingUrl || SITE.supportTicketUrl(ticketNumber);
   const reopen = ticketUrl || SITE.supportTicketUrl(ticketNumber);
-  return /* @__PURE__ */ jsxs22(CutupLayout, { preview: `Ticket #${ticketNumber} resolved`, children: [
-    /* @__PURE__ */ jsx46(SuccessIndicator, { label: "Resolved" }),
-    /* @__PURE__ */ jsx46(
-      HeroSection,
-      {
-        title: `Ticket #${ticketNumber} resolved`,
-        subtitle: `Hi ${firstName}, your support request has been marked as resolved.`
-      }
-    ),
-    /* @__PURE__ */ jsxs22(EmailCard, { children: [
-      /* @__PURE__ */ jsx46(StatusBadge, { variant: "success", inline: true, children: "Resolution summary" }),
-      /* @__PURE__ */ jsxs22(DetailTable, { children: [
-        /* @__PURE__ */ jsx46(DetailRow, { label: "Ticket", value: `#${ticketNumber}` }),
-        /* @__PURE__ */ jsx46(DetailRow, { label: "Subject", value: subject }),
-        /* @__PURE__ */ jsx46(
-          DetailRow,
-          {
-            label: "Outcome",
-            value: resolutionSummary || "Issue resolved by support team",
-            last: true
-          }
-        )
-      ] })
-    ] }),
-    /* @__PURE__ */ jsx46(EmailButton, { href: rate, fullWidth: true, children: "Rate Support" }),
-    /* @__PURE__ */ jsx46(EmailButton, { href: reopen, variant: "secondary", children: "Reopen Ticket" }),
-    /* @__PURE__ */ jsx46(EmailText, { inset: true, muted: true, small: true, children: "How was your experience? Your feedback helps us improve Cutup." })
-  ] });
-}
-
-// emails/templates/SupportTicketResolved.tsx
-import { jsx as jsx47, jsxs as jsxs23 } from "react/jsx-runtime";
-function SupportTicketResolved({
-  firstName = "there",
-  ticketNumber = "0000",
-  subject = "Support request",
-  ticketUrl
-}) {
-  const url = ticketUrl || SITE.supportTicketUrl(ticketNumber);
   return /* @__PURE__ */ jsxs23(CutupLayout, { preview: `Ticket #${ticketNumber} resolved`, children: [
     /* @__PURE__ */ jsx47(SuccessIndicator, { label: "Resolved" }),
     /* @__PURE__ */ jsx47(
@@ -13070,19 +13076,58 @@ function SupportTicketResolved({
       }
     ),
     /* @__PURE__ */ jsxs23(EmailCard, { children: [
-      /* @__PURE__ */ jsx47(StatusBadge, { variant: "success", inline: true, children: "Resolved" }),
+      /* @__PURE__ */ jsx47(StatusBadge, { variant: "success", inline: true, children: "Resolution summary" }),
       /* @__PURE__ */ jsxs23(DetailTable, { children: [
         /* @__PURE__ */ jsx47(DetailRow, { label: "Ticket", value: `#${ticketNumber}` }),
-        /* @__PURE__ */ jsx47(DetailRow, { label: "Subject", value: subject, last: true })
+        /* @__PURE__ */ jsx47(DetailRow, { label: "Subject", value: subject }),
+        /* @__PURE__ */ jsx47(
+          DetailRow,
+          {
+            label: "Outcome",
+            value: resolutionSummary || "Issue resolved by support team",
+            last: true
+          }
+        )
       ] })
     ] }),
-    /* @__PURE__ */ jsx47(EmailButton, { href: url, fullWidth: true, children: "View Ticket" }),
-    /* @__PURE__ */ jsx47(EmailText, { inset: true, muted: true, small: true, children: "If you still need help, reply in the dashboard and we will reopen your ticket." })
+    /* @__PURE__ */ jsx47(EmailButton, { href: rate, fullWidth: true, children: "Rate Support" }),
+    /* @__PURE__ */ jsx47(EmailButton, { href: reopen, variant: "secondary", children: "Reopen Ticket" }),
+    /* @__PURE__ */ jsx47(EmailText, { inset: true, muted: true, small: true, children: "How was your experience? Your feedback helps us improve Cutup." })
+  ] });
+}
+
+// emails/templates/SupportTicketResolved.tsx
+import { jsx as jsx48, jsxs as jsxs24 } from "react/jsx-runtime";
+function SupportTicketResolved({
+  firstName = "there",
+  ticketNumber = "0000",
+  subject = "Support request",
+  ticketUrl
+}) {
+  const url = ticketUrl || SITE.supportTicketUrl(ticketNumber);
+  return /* @__PURE__ */ jsxs24(CutupLayout, { preview: `Ticket #${ticketNumber} resolved`, children: [
+    /* @__PURE__ */ jsx48(SuccessIndicator, { label: "Resolved" }),
+    /* @__PURE__ */ jsx48(
+      HeroSection,
+      {
+        title: `Ticket #${ticketNumber} resolved`,
+        subtitle: `Hi ${firstName}, your support request has been marked as resolved.`
+      }
+    ),
+    /* @__PURE__ */ jsxs24(EmailCard, { children: [
+      /* @__PURE__ */ jsx48(StatusBadge, { variant: "success", inline: true, children: "Resolved" }),
+      /* @__PURE__ */ jsxs24(DetailTable, { children: [
+        /* @__PURE__ */ jsx48(DetailRow, { label: "Ticket", value: `#${ticketNumber}` }),
+        /* @__PURE__ */ jsx48(DetailRow, { label: "Subject", value: subject, last: true })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsx48(EmailButton, { href: url, fullWidth: true, children: "View Ticket" }),
+    /* @__PURE__ */ jsx48(EmailText, { inset: true, muted: true, small: true, children: "If you still need help, reply in the dashboard and we will reopen your ticket." })
   ] });
 }
 
 // emails/templates/SecurityNotification.tsx
-import { jsx as jsx48, jsxs as jsxs24 } from "react/jsx-runtime";
+import { jsx as jsx49, jsxs as jsxs25 } from "react/jsx-runtime";
 function SecurityNotification({
   firstName = "there",
   title = "Security notification",
@@ -13091,12 +13136,12 @@ function SecurityNotification({
   actionLabel = "Review Account"
 }) {
   const action = actionUrl || SITE.profileUrl;
-  return /* @__PURE__ */ jsxs24(CutupLayout, { preview: title, children: [
-    /* @__PURE__ */ jsx48(StatusBadge, { variant: "danger", children: "Security alert" }),
-    /* @__PURE__ */ jsx48(HeroSection, { title, subtitle: `Hi ${firstName}, we detected activity on your account that needs your attention.` }),
-    /* @__PURE__ */ jsx48(EmailCard, { children: /* @__PURE__ */ jsx48(Text3, { className: "email-card-body-text email-word-break", style: { margin: 0 }, children: message }) }),
-    /* @__PURE__ */ jsx48(EmailButton, { href: action, fullWidth: true, children: actionLabel }),
-    /* @__PURE__ */ jsxs24(EmailText, { inset: true, muted: true, small: true, style: { color: BRAND.danger }, children: [
+  return /* @__PURE__ */ jsxs25(CutupLayout, { preview: title, children: [
+    /* @__PURE__ */ jsx49(StatusBadge, { variant: "danger", children: "Security alert" }),
+    /* @__PURE__ */ jsx49(HeroSection, { title, subtitle: `Hi ${firstName}, we detected activity on your account that needs your attention.` }),
+    /* @__PURE__ */ jsx49(EmailCard, { children: /* @__PURE__ */ jsx49(Text3, { className: "email-card-body-text email-word-break", style: { margin: 0 }, children: message }) }),
+    /* @__PURE__ */ jsx49(EmailButton, { href: action, fullWidth: true, children: actionLabel }),
+    /* @__PURE__ */ jsxs25(EmailText, { inset: true, muted: true, small: true, style: { color: BRAND.danger }, children: [
       "If this wasn't you, contact ",
       SITE.supportEmail,
       " immediately."
@@ -13105,7 +13150,7 @@ function SecurityNotification({
 }
 
 // emails/templates/SystemNotification.tsx
-import { jsx as jsx49, jsxs as jsxs25 } from "react/jsx-runtime";
+import { jsx as jsx50, jsxs as jsxs26 } from "react/jsx-runtime";
 function SystemNotification({
   firstName = "there",
   title = "Cutup update",
@@ -13113,11 +13158,11 @@ function SystemNotification({
   ctaUrl,
   ctaLabel = "Open Dashboard"
 }) {
-  return /* @__PURE__ */ jsxs25(CutupLayout, { preview: title, children: [
-    /* @__PURE__ */ jsx49(StatusBadge, { variant: "info", children: "System update" }),
-    /* @__PURE__ */ jsx49(HeroSection, { title, subtitle: `Hi ${firstName}, here's an important update from Cutup.` }),
-    /* @__PURE__ */ jsx49(EmailCard, { children: /* @__PURE__ */ jsx49(Text3, { className: "email-card-body-text email-word-break", style: { margin: 0, whiteSpace: "pre-wrap" }, children: message || "\u2014" }) }),
-    /* @__PURE__ */ jsx49(EmailButton, { href: ctaUrl || SITE.dashboardUrl, fullWidth: true, children: ctaLabel })
+  return /* @__PURE__ */ jsxs26(CutupLayout, { preview: title, children: [
+    /* @__PURE__ */ jsx50(StatusBadge, { variant: "info", children: "System update" }),
+    /* @__PURE__ */ jsx50(HeroSection, { title, subtitle: `Hi ${firstName}, here's an important update from Cutup.` }),
+    /* @__PURE__ */ jsx50(EmailCard, { children: /* @__PURE__ */ jsx50(Text3, { className: "email-card-body-text email-word-break", style: { margin: 0, whiteSpace: "pre-wrap" }, children: message || "\u2014" }) }),
+    /* @__PURE__ */ jsx50(EmailButton, { href: ctaUrl || SITE.dashboardUrl, fullWidth: true, children: ctaLabel })
   ] });
 }
 
@@ -13129,6 +13174,7 @@ var TEMPLATE_COMPONENTS = {
   [EMAIL_TEMPLATES.SUBSCRIPTION_UPGRADED]: SubscriptionUpgraded,
   [EMAIL_TEMPLATES.USAGE_WARNING_80]: UsageWarning80,
   [EMAIL_TEMPLATES.USAGE_WARNING_100]: UsageWarning100,
+  [EMAIL_TEMPLATES.SUBSCRIPTION_EXPIRED]: SubscriptionExpired,
   [EMAIL_TEMPLATES.ACCOUNT_DELETION_REQUESTED]: AccountDeletionRequested,
   [EMAIL_TEMPLATES.ACCOUNT_DELETION_COMPLETED]: AccountDeletionCompleted,
   [EMAIL_TEMPLATES.SUPPORT_TICKET_CREATED]: SupportTicketCreated,
@@ -13370,6 +13416,7 @@ var EVENT_TEMPLATE_MAP = {
   [EMAIL_EVENTS.SUBSCRIPTION_UPGRADED]: EMAIL_TEMPLATES.SUBSCRIPTION_UPGRADED,
   [EMAIL_EVENTS.CREDITS_80_PERCENT]: EMAIL_TEMPLATES.USAGE_WARNING_80,
   [EMAIL_EVENTS.CREDITS_EXHAUSTED]: EMAIL_TEMPLATES.USAGE_WARNING_100,
+  [EMAIL_EVENTS.SUBSCRIPTION_EXPIRED]: EMAIL_TEMPLATES.SUBSCRIPTION_EXPIRED,
   [EMAIL_EVENTS.ACCOUNT_DELETION_REQUESTED]: EMAIL_TEMPLATES.ACCOUNT_DELETION_REQUESTED,
   [EMAIL_EVENTS.ACCOUNT_DELETED]: EMAIL_TEMPLATES.ACCOUNT_DELETION_COMPLETED,
   [EMAIL_EVENTS.TICKET_CREATED]: EMAIL_TEMPLATES.SUPPORT_TICKET_CREATED,

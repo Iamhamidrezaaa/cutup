@@ -123,7 +123,7 @@ app.get('/api/system-health', async (req, res) => {
 app.get('/sitemap.xml', async (req, res) => sitemapHandler(req, res));
 
 // Import and use API routes
-let uploadHandler, adminCmsMediaHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, projectsHandler, oauthGoogleStartHandler, generateDocxHandler, exportVideoHandler, stripeCheckoutHandler, stripePortalHandler, paymentCreateHandler, paymentVerifyHandler, paymentCallbackHandler, paymentRetryHandler, invoicesHandler, invoiceByIdHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler, userProfileHandler, accountSecurityHandler, auditEventHandler, adminAuditSummaryHandler, adminAuditListHandler, adminAuditUserTimelineHandler, adminAuditChartsHandler, adminAuditFunnelHandler, adminAuditAlertsHandler, adminAuditEvaluateAlertsHandler, adminAuditSeedHandler, adminAuditDashboardHandler, adminAuditJourneyHandler, adminAuditNotesHandler, adminAuditExportHandler, offersHandler, adminOffersHandler, creatorWallHandler, adminCreatorWallHandler, systemHealthHandler, adminOpsStateHandler, adminProvidersHandler;
+let uploadHandler, adminCmsMediaHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, projectsHandler, oauthGoogleStartHandler, generateDocxHandler, exportVideoHandler, stripeCheckoutHandler, stripePortalHandler, paymentCreateHandler, paymentVerifyHandler, paymentCallbackHandler, paymentRetryHandler, paymentPayInvoiceHandler, paymentCancelInvoiceHandler, invoicesHandler, invoiceByIdHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler, cronSubscriptionExpiryHandler, userProfileHandler, accountSecurityHandler, auditEventHandler, adminAuditSummaryHandler, adminAuditListHandler, adminAuditUserTimelineHandler, adminAuditChartsHandler, adminAuditFunnelHandler, adminAuditAlertsHandler, adminAuditEvaluateAlertsHandler, adminAuditSeedHandler, adminAuditDashboardHandler, adminAuditJourneyHandler, adminAuditNotesHandler, adminAuditExportHandler, offersHandler, adminOffersHandler, creatorWallHandler, adminCreatorWallHandler, systemHealthHandler, adminOpsStateHandler, adminProvidersHandler;
 
 async function loadRoutes() {
   try {
@@ -231,6 +231,10 @@ async function loadRoutes() {
     paymentCallbackHandler = paymentCallbackModule.default;
     const paymentRetryModule = await import('./api/payment-retry.js');
     paymentRetryHandler = paymentRetryModule.default;
+    const paymentPayInvoiceModule = await import('./api/payment-pay-invoice.js');
+    paymentPayInvoiceHandler = paymentPayInvoiceModule.default;
+    const paymentCancelInvoiceModule = await import('./api/payment-cancel-invoice.js');
+    paymentCancelInvoiceHandler = paymentCancelInvoiceModule.default;
     const invoicesModule = await import('./api/invoices.js');
     invoicesHandler = invoicesModule.default;
     const invoiceByIdModule = await import('./api/invoice-by-id.js');
@@ -315,7 +319,9 @@ async function loadRoutes() {
     contactHandler = contactModule.default;
     const cronConvModule = await import('./api/cron-conversion-emails.js');
     cronConversionEmailsHandler = cronConvModule.default;
-    console.log('✅ Leads + conversion cron handlers loaded');
+    const cronSubExpiryModule = await import('./api/cron-subscription-expiry.js');
+    cronSubscriptionExpiryHandler = cronSubExpiryModule.default;
+    console.log('✅ Leads + conversion + subscription expiry cron handlers loaded');
 
     const userProfileModule = await import('./api/user-profile.js');
     userProfileHandler = userProfileModule.default;
@@ -579,6 +585,18 @@ app.post('/api/payment/retry', async (req, res) => {
   }
   return paymentRetryHandler(req, res);
 });
+app.post('/api/payment/pay-invoice', async (req, res) => {
+  if (!paymentPayInvoiceHandler) {
+    return res.status(503).json({ error: 'Payment pay-invoice not loaded' });
+  }
+  return paymentPayInvoiceHandler(req, res);
+});
+app.post('/api/payment/cancel-invoice', async (req, res) => {
+  if (!paymentCancelInvoiceHandler) {
+    return res.status(503).json({ error: 'Payment cancel-invoice not loaded' });
+  }
+  return paymentCancelInvoiceHandler(req, res);
+});
 
 app.get('/api/invoices', async (req, res) => {
   if (!invoicesHandler) {
@@ -651,6 +669,19 @@ app.post('/api/cron/conversion-emails', async (req, res) => {
     return res.status(503).json({ ok: false });
   }
   return cronConversionEmailsHandler(req, res);
+});
+
+app.get('/api/cron/subscription-expiry', async (req, res) => {
+  if (!cronSubscriptionExpiryHandler) {
+    return res.status(503).json({ ok: false });
+  }
+  return cronSubscriptionExpiryHandler(req, res);
+});
+app.post('/api/cron/subscription-expiry', async (req, res) => {
+  if (!cronSubscriptionExpiryHandler) {
+    return res.status(503).json({ ok: false });
+  }
+  return cronSubscriptionExpiryHandler(req, res);
 });
 
 app.get('/api/user/profile', async (req, res) => {

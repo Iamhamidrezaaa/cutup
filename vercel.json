@@ -128,6 +128,14 @@
       "dest": "/api/payment-retry.js"
     },
     {
+      "src": "/api/payment/pay-invoice",
+      "dest": "/api/payment-pay-invoice.js"
+    },
+    {
+      "src": "/api/payment/cancel-invoice",
+      "dest": "/api/payment-cancel-invoice.js"
+    },
+    {
       "src": "/api/invoices",
       "dest": "/api/invoices.js"
     },
@@ -154,6 +162,10 @@
     {
       "src": "/api/cron/eur-irr-rate",
       "dest": "/api/cron-eur-irr-rate.js"
+    },
+    {
+      "src": "/api/cron/subscription-expiry",
+      "dest": "/api/cron-subscription-expiry.js"
     },
     {
       "src": "/api/user/profile",
@@ -305,6 +317,10 @@
     {
       "path": "/api/cron/eur-irr-rate",
       "schedule": "30 8 * * *"
+    },
+    {
+      "path": "/api/cron/subscription-expiry",
+      "schedule": "0 * * * *"
     }
   ]
 }

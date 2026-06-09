@@ -10,6 +10,7 @@ import {
   PLAN_CREDITS
 } from './plans/permissions.js';
 import { buildBillingDashboardPayload, emptyBillingPayload } from './billing-dashboard.js';
+import { isSubscriptionPeriodExpired } from './billing-payable-invoices.js';
 import {
   isBillingDbConfigured,
   ensureUserByEmail,
@@ -240,7 +241,8 @@ export default async function handler(req, res) {
           endDate: subShape.endDate,
           billingPeriod: subShape.billingPeriod,
           stripeCustomerId: subscriptionRow?.stripe_customer_id || null,
-          stripeSubscriptionId: subscriptionRow?.stripe_subscription_id || null
+          stripeSubscriptionId: subscriptionRow?.stripe_subscription_id || null,
+          isExpired: userId === SPECIAL_EMAIL ? false : isSubscriptionPeriodExpired(subscriptionRow)
         }
       };
 

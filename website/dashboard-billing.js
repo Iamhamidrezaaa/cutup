@@ -217,23 +217,73 @@
     );
   }
 
-  function renderBillingActivitySection(events) {
+  function formatPayableReason(reason) {
+    var r = String(reason || '').toLowerCase();
+    if (r === 'renewal') return 'Subscription renewal';
+    return 'Plan payment';
+  }
+
+  function renderPayableInvoicesSection(invoices) {
+    var list = Array.isArray(invoices) ? invoices : [];
+    if (!list.length) {
+      return (
+        '<div class="bd-payable-empty">' +
+          '<span>Billing activity appears here after your first payment or plan change.</span>' +
+        '</div>'
+      );
+    }
+    return (
+      '<div class="bd-payable-list">' +
+        list.map(function (inv) {
+          var stKey = 'pending';
+          return (
+            '<article class="bd-payable-card" data-payment-id="' + esc(inv.id) + '">' +
+              '<div class="bd-payable-card__main">' +
+                '<div class="bd-payable-card__title">' + esc(inv.planName || inv.plan || 'Plan') + '</div>' +
+                '<div class="bd-payable-card__meta">' +
+                  '<span>' + esc(formatBillingDate(inv.createdAt, true)) + '</span>' +
+                  '<span class="bd-payable-card__dot">·</span>' +
+                  '<span>' + esc(formatPayableReason(inv.reason)) + '</span>' +
+                '</div>' +
+              '</div>' +
+              '<div class="bd-payable-card__side">' +
+                '<strong class="bd-payable-card__amount">' + esc(formatMoney(inv.amount, inv.currency)) + '</strong>' +
+                '<span class="' + statusBadgeClass(stKey) + '">Due</span>' +
+              '</div>' +
+              '<div class="bd-payable-card__actions">' +
+                '<button type="button" class="bd-btn" data-pay-invoice="' + esc(inv.id) + '">Pay</button>' +
+                '<button type="button" class="bd-btn bd-btn--ghost" data-delete-invoice="' + esc(inv.id) + '">Delete</button>' +
+              '</div>' +
+            '</article>'
+          );
+        }).join('') +
+      '</div>'
+    );
+  }
+
+  function renderBillingActivitySection(events, payableInvoices) {
     return (
       '<section class="bd-block bd-block--panel bd-block--activity">' +
         '<h2 class="bd-block__title">Billing Activity</h2>' +
         '<p class="bd-block__lead">Payments, renewals, and plan changes.</p>' +
-        '<div id="billingActivityFeed" class="af-host"></div>' +
+        renderPayableInvoicesSection(payableInvoices) +
+        '<div id="billingActivityFeed" class="af-host' + (payableInvoices && payableInvoices.length ? ' af-host--after-payable' : '') + '"></div>' +
       '</section>'
     );
   }
 
-  function mountBillingActivityFeed(events) {
+  function mountBillingActivityFeed(events, payableInvoices) {
     var host = document.getElementById('billingActivityFeed');
     if (!host || !window.CutupActivityFeed || typeof window.CutupActivityFeed.renderTimeline !== 'function') return;
+    var hasPayable = Array.isArray(payableInvoices) && payableInvoices.length > 0;
+    if (hasPayable && !(events || []).length) {
+      host.innerHTML = '';
+      return;
+    }
     window.CutupActivityFeed.renderTimeline(host, events || [], {
       limit: 10,
       category: 'billing',
-      emptyMessage: 'Billing activity appears here after your first payment or plan change.'
+      emptyMessage: hasPayable ? '' : 'Billing activity appears here after your first payment or plan change.'
     });
   }
 
@@ -372,6 +422,7 @@
       usage: raw.usage || { monthlyCredits: 0, usedCredits: 0, remainingCredits: 0 },
       paymentMethod: raw.paymentMethod ?? null,
       billingHistory: Array.isArray(raw.billingHistory) ? raw.billingHistory : [],
+      payableInvoices: Array.isArray(raw.payableInvoices) ? raw.payableInvoices : [],
       upcomingCharge: raw.upcomingCharge ?? null,
       paymentFailure: raw.paymentFailure ?? null,
       actions: raw.actions || {},
@@ -443,6 +494,65 @@
         if (btn) btn.disabled = false;
       }
     });
+
+    async function payInvoice(paymentId, btn) {
+      if (!paymentId || !ctx.session) return;
+      if (btn) btn.disabled = true;
+      try {
+        var payFn = typeof ctx.onPayInvoice === 'function' ? ctx.onPayInvoice : null;
+        if (payFn) {
+          await payFn(paymentId);
+          return;
+        }
+        var pr = await fetch(apiRoot(ctx) + '/api/payment/pay-invoice', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Session-Id': ctx.session },
+          body: JSON.stringify({ payment_id: paymentId })
+        });
+        var pd = await pr.json().catch(function () { return {}; });
+        var redirect = pd.redirect_url || pd.payment_url;
+        if (pr.ok && redirect) {
+          window.location.href = redirect;
+          return;
+        }
+        ctx.showBanner?.('Could not start payment. Please try again.', 'error');
+      } catch (_e) {
+        ctx.showBanner?.('Could not start payment. Please try again.', 'error');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    root.querySelectorAll('[data-pay-invoice]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        void payInvoice(btn.getAttribute('data-pay-invoice'), btn);
+      });
+    });
+
+    root.querySelectorAll('[data-delete-invoice]').forEach(function (btn) {
+      btn.addEventListener('click', async function () {
+        var paymentId = btn.getAttribute('data-delete-invoice');
+        if (!paymentId || !ctx.session) return;
+        btn.disabled = true;
+        try {
+          var dr = await fetch(apiRoot(ctx) + '/api/payment/cancel-invoice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Session-Id': ctx.session },
+            body: JSON.stringify({ payment_id: paymentId })
+          });
+          if (dr.ok) {
+            if (typeof ctx.onRetryLoad === 'function') await ctx.onRetryLoad();
+            else ctx.showBanner?.('Invoice removed.', 'neutral');
+            return;
+          }
+          ctx.showBanner?.('Could not remove invoice.', 'error');
+        } catch (_e) {
+          ctx.showBanner?.('Could not remove invoice.', 'error');
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
   }
 
   async function fetchPortal(ctx) {
@@ -496,13 +606,13 @@
           renderUsageSection(d.usage) +
           renderLibraryLinkSection(ctx.libraryCycleOutputs, libTotal) +
           renderPaymentSection(d.paymentMethod, d.actions && d.actions.canOpenPortal) +
-          renderBillingActivitySection(ctx.activityFeed) +
+          renderBillingActivitySection(ctx.activityFeed, d.payableInvoices) +
           renderHistorySection(d.billingHistory) +
           renderActionsSection(sub, d.actions) +
         '</div>';
 
       bindActions(ctx);
-      mountBillingActivityFeed(ctx.activityFeed);
+      mountBillingActivityFeed(ctx.activityFeed, d.payableInvoices);
       target.querySelector('#billingOpenLibraryBtn')?.addEventListener('click', function () {
         if (typeof ctx.onOpenLibrary === 'function') ctx.onOpenLibrary();
       });

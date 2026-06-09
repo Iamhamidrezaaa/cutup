@@ -112,10 +112,11 @@
       .join('');
   }
 
-  function ctaForPlan(plan, context, currentPlan) {
+  function ctaForPlan(plan, context, currentPlan, subscriptionExpired) {
     var current = P().resolvePlanKey ? P().resolvePlanKey(currentPlan || 'free') : 'free';
     var rank = P().planRank ? P().planRank(plan) : 0;
     var curRank = P().planRank ? P().planRank(current) : 0;
+    var expired = Boolean(subscriptionExpired);
 
     if (plan === 'free') {
       if (context === 'dashboard') {
@@ -127,11 +128,20 @@
       return '<a href="/#tool" class="btn btn-secondary">Try free</a>';
     }
 
-    var disabled = rank <= curRank;
-    var label = disabled ? (rank === curRank ? 'Current plan' : 'Not available') : 'Upgrade';
+    var isCurrent = plan === current;
+    var isRenewal = expired && isCurrent;
+    var disabled = isRenewal ? false : rank <= curRank;
+    var label = isRenewal
+      ? 'Renewal'
+      : disabled
+        ? rank === curRank
+          ? 'Current plan'
+          : 'Not available'
+        : 'Upgrade';
     var cls =
       'btn btn-primary pricing-dashboard-cta' +
       (disabled ? ' disabled-plan-btn' : '') +
+      (isRenewal ? ' pricing-dashboard-cta--renewal' : '') +
       (plan === 'pro' && !disabled ? '' : '');
     var aria = disabled ? ' aria-disabled="true" tabindex="-1"' : '';
     var href = disabled ? 'javascript:void(0)' : 'javascript:void(0)';
@@ -150,7 +160,7 @@
     );
   }
 
-  function buildFoot(context, currentPlan) {
+  function buildFoot(context, currentPlan, subscriptionExpired) {
     var order = P().PLAN_ORDER || ['free', 'starter', 'pro', 'business'];
     var cells = order
       .map(function (plan) {
@@ -158,7 +168,7 @@
           '<td class="' +
           footTdClass(plan, currentPlan) +
           '">' +
-          ctaForPlan(plan, context, currentPlan) +
+          ctaForPlan(plan, context, currentPlan, subscriptionExpired) +
           '</td>'
         );
       })
@@ -171,7 +181,7 @@
     );
   }
 
-  function buildMatrixHtml(context, currentPlan) {
+  function buildMatrixHtml(context, currentPlan, subscriptionExpired) {
     return (
       '<div class="pricing-compare-wrap" role="region" aria-label="Plan comparison">' +
       '<table class="pricing-compare">' +
@@ -181,7 +191,7 @@
       '<tbody>' +
       buildBodyRows(currentPlan) +
       '</tbody>' +
-      buildFoot(context || 'landing', currentPlan) +
+      buildFoot(context || 'landing', currentPlan, subscriptionExpired) +
       '</table></div>' +
       '<p class="pricing-compare__footnote">Plans renew monthly in EUR. You will always see the exact total on the checkout page before you confirm.</p>'
     );
@@ -198,11 +208,13 @@
       ? P().resolvePlanKey(options.currentPlan || 'free')
       : 'free';
     var onUpgrade = typeof options.onUpgrade === 'function' ? options.onUpgrade : null;
+    var subscriptionExpired = Boolean(options.subscriptionExpired);
 
     root.querySelectorAll('a.pricing-dashboard-cta[data-cutup-plan]').forEach(function (a) {
       var plan = (a.getAttribute('data-cutup-plan') || '').trim().toLowerCase();
       if (!PAID_PLANS.includes(plan)) return;
-      var disabled = planRank(plan) <= planRank(currentPlan);
+      var isRenewal = subscriptionExpired && plan === currentPlan;
+      var disabled = isRenewal ? false : planRank(plan) <= planRank(currentPlan);
       if (disabled) return;
 
       if (a.dataset.cutupMatrixBound === '1') return;
@@ -228,7 +240,11 @@
     options = options || {};
     var el = typeof container === 'string' ? document.querySelector(container) : container;
     if (!el) return null;
-    el.innerHTML = buildMatrixHtml(options.context || 'landing', options.currentPlan);
+    el.innerHTML = buildMatrixHtml(
+      options.context || 'landing',
+      options.currentPlan,
+      options.subscriptionExpired
+    );
     bindMatrixCtas(el, options);
     if (global.CutupPlanDisplay && global.CutupPlanDisplay.hydratePricingCompareTable) {
       global.CutupPlanDisplay.hydratePricingCompareTable();
@@ -276,6 +292,7 @@
     mount(body, {
       context: 'dashboard',
       currentPlan: options.currentPlan || 'free',
+      subscriptionExpired: options.subscriptionExpired,
       onUpgrade: options.onUpgrade
     });
     modal.classList.add('is-open');

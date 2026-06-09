@@ -14,6 +14,10 @@ import {
 import { getPool } from './db/pool.js';
 import { getPlanDef, resolvePlanKey } from './plans-config.js';
 import { PLAN_CREDITS, PLAN_LABELS } from './plans/permissions.js';
+import {
+  listPayableInvoicesByEmail,
+  isSubscriptionPeriodExpired
+} from './billing-payable-invoices.js';
 
 const SPECIAL_EMAIL = 'h.asgarizade@gmail.com';
 
@@ -249,6 +253,8 @@ export async function buildBillingDashboardPayload(email) {
   const stripeExtras = await fetchStripeBillingExtras(subRow);
   const status = stripeExtras.subscriptionStatus || subRow?.status || (planKey === 'free' ? 'free' : 'active');
   const billingHistory = await listBillingHistoryRows(email, 50);
+  const payableInvoices = await listPayableInvoicesByEmail(email);
+  const subscriptionExpired = isSubscriptionPeriodExpired(subRow);
   const lastFailure = await getLastPaymentFailure(email);
 
   const price = planPriceMeta(planKey);
@@ -288,7 +294,8 @@ export async function buildBillingDashboardPayload(email) {
       cancelAtPeriodEnd: stripeExtras.cancelAtPeriodEnd || false,
       cancelAt: stripeExtras.cancelAt,
       stripeCustomerId: subRow?.stripe_customer_id || null,
-      stripeSubscriptionId: subRow?.stripe_subscription_id || null
+      stripeSubscriptionId: subRow?.stripe_subscription_id || null,
+      isExpired: subscriptionExpired
     },
     usage: {
       monthlyCredits: creditLimit,
@@ -301,6 +308,7 @@ export async function buildBillingDashboardPayload(email) {
     lifetime,
     paymentMethod: stripeExtras.paymentMethod,
     billingHistory,
+    payableInvoices,
     upcomingCharge,
     paymentFailure,
     actions: {

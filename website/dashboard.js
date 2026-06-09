@@ -248,6 +248,15 @@ function formatSubscriptionStatus(sub) {
   return 'Active subscription';
 }
 
+function isSubscriptionExpiredForPlans(info) {
+  if (info?.subscription?.isExpired != null) return Boolean(info.subscription.isExpired);
+  const planKey = String(info?.plan || 'free').toLowerCase();
+  if (planKey === 'free') return false;
+  const end = info?.subscription?.endDate;
+  if (!end) return false;
+  return new Date(end).getTime() < Date.now();
+}
+
 function dashboardCheckoutForPlan(planId) {
   const targetPlan = String(planId || '').toLowerCase();
   if (!targetPlan || !currentSession) return;
@@ -260,6 +269,10 @@ function dashboardCheckoutForPlan(planId) {
     }
   } catch (_e) {
     /* noop */
+  }
+  if (typeof startPaymentCheckout === 'function') {
+    void startPaymentCheckout(targetPlan, 'yekpay');
+    return;
   }
   const selected = offersResolvedState?.selectedOffer || null;
   const selectedTarget = String(window.CutupOffersResolver?.inferTargetPlan?.(selected) || '').toLowerCase();
@@ -274,6 +287,7 @@ function openDashboardPricingMatrix(highlightPlan) {
   const planKey = String(subscriptionInfo?.plan || 'free').toLowerCase();
   window.CutupPricingMatrix.openModal({
     currentPlan: planKey,
+    subscriptionExpired: isSubscriptionExpiredForPlans(subscriptionInfo),
     onUpgrade: (plan) => {
       window.CutupPricingMatrix.closeModal();
       dashboardCheckoutForPlan(plan);
@@ -1603,11 +1617,76 @@ function cutupRepairSessionInHash() {
   );
 }
 
-function cutupBuildDashboardUrl({ session, hash } = {}) {
+function cutupBuildDashboardUrl({ session, hash, payInvoice } = {}) {
   const path = '/dashboard.html';
-  const query = session ? `?session=${encodeURIComponent(session)}` : '';
+  const qp = new URLSearchParams();
+  if (session) qp.set('session', session);
+  if (payInvoice) qp.set('payInvoice', String(payInvoice));
+  const qs = qp.toString();
   const fragment = hash ? `#${String(hash).replace(/^#/, '')}` : '';
-  return `${path}${query}${fragment}`;
+  return `${path}${qs ? `?${qs}` : ''}${fragment}`;
+}
+
+async function redirectToGoogleAuthForPayInvoice(paymentId) {
+  const returnPath = cutupBuildDashboardUrl({ payInvoice: paymentId, hash: 'billing' });
+  try {
+    sessionStorage.setItem('cutup_post_auth_url', returnPath);
+  } catch (_e) {
+    /* noop */
+  }
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/oauth/google/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ selectAccount: true })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok && data?.authUrl) {
+      window.location.href = data.authUrl;
+      return;
+    }
+  } catch (_e) {
+    /* noop */
+  }
+  window.location.href = '/?signin=1';
+}
+
+async function resumePayInvoiceFromUrl(paymentId) {
+  const id = String(paymentId || '').trim();
+  if (!id) return false;
+  try {
+    const { response, data } = await apiPost(`${API_BASE_URL}/api/payment/pay-invoice`, { payment_id: id }, {
+      headers: { 'X-Session-Id': currentSession }
+    });
+    const redirect = data?.redirect_url || data?.payment_url;
+    if (response.ok && redirect) {
+      if (typeof sendAnalyticsEvent === 'function') {
+        sendAnalyticsEvent('payment_started', { source: 'pay_invoice_link', sessionId: currentSession });
+      }
+      window.location.href = redirect;
+      return true;
+    }
+    if (data?.already_paid) {
+      showDashboardBanner('This invoice is already paid.', 'neutral');
+      return true;
+    }
+    showDashboardBanner('Could not open payment for this invoice.', 'error');
+  } catch (_e) {
+    showDashboardBanner('Could not open payment for this invoice.', 'error');
+  }
+  return false;
+}
+
+function consumePayInvoiceQueryParam() {
+  const params = new URLSearchParams(window.location.search);
+  const id = params.get('payInvoice');
+  if (!id) return null;
+  params.delete('payInvoice');
+  const session = params.get('session');
+  const qs = params.toString();
+  const hash = window.location.hash || '';
+  window.history.replaceState({}, document.title, `${window.location.pathname}${qs ? `?${qs}` : ''}${hash}`);
+  return id;
 }
 
 function cutupActivateDashboardSection(sectionId) {
@@ -1643,6 +1722,23 @@ function getSessionFromLocation() {
 
   if (authSuccess === 'success' && sessionId) {
     localStorage.setItem('cutup_session', sessionId);
+    let storedPostAuth = null;
+    try {
+      storedPostAuth = sessionStorage.getItem('cutup_post_auth_url');
+      if (storedPostAuth) sessionStorage.removeItem('cutup_post_auth_url');
+    } catch (_e) {
+      /* noop */
+    }
+    if (storedPostAuth) {
+      try {
+        const u = new URL(storedPostAuth, window.location.origin);
+        u.searchParams.set('session', sessionId);
+        window.location.replace(`${u.pathname}${u.search}${u.hash}`);
+        return { activeSession: sessionId, paymentReturn, bouncingCheckout: true };
+      } catch (_e2) {
+        /* fall through */
+      }
+    }
     if (cutupShouldResumeOnHomepage()) {
       window.location.replace(`${window.location.origin}/?resume=1`);
       return { activeSession: sessionId, paymentReturn, bouncingHome: true };
@@ -1995,6 +2091,11 @@ async function initDashboard() {
   if (typeof window !== 'undefined') window.__CUTUP_SESSION__ = currentSession;
   if (!currentSession) {
     hideInitialLoader();
+    const payInvoiceGuest = new URLSearchParams(window.location.search).get('payInvoice');
+    if (payInvoiceGuest) {
+      void redirectToGoogleAuthForPayInvoice(payInvoiceGuest);
+      return { ok: false };
+    }
     try {
       const hash = String(window.location.hash || '').replace(/^#/, '').trim();
       if (hash && /^(support|help|notifications|billing|subscription)/.test(hash)) {
@@ -2163,6 +2264,13 @@ async function initDashboard() {
         /* noop */
       }
     }
+  }
+
+  const pendingPayInvoice = consumePayInvoiceQueryParam();
+  if (pendingPayInvoice) {
+    cutupActivateDashboardSection('billing');
+    const resumed = await resumePayInvoiceFromUrl(pendingPayInvoice);
+    if (resumed) return { ok: true, paymentReturn };
   }
 
   return { ok: true, paymentReturn };
@@ -2697,6 +2805,7 @@ function renderPlansSection() {
     window.CutupPricingMatrix.mount('#dashPlansMatrixRoot', {
       context: 'dashboard',
       currentPlan: planKey,
+      subscriptionExpired: isSubscriptionExpiredForPlans(subscriptionInfo),
       onUpgrade: (plan) => dashboardCheckoutForPlan(plan)
     });
   }

@@ -4,6 +4,7 @@ export { PaymentReceipt, type PaymentReceiptData } from './PaymentReceipt';
 export { SubscriptionUpgraded, type SubscriptionUpgradedData } from './SubscriptionUpgraded';
 export { UsageWarning80, type UsageWarningData } from './UsageWarning80';
 export { UsageWarning100 } from './UsageWarning100';
+export { SubscriptionExpired, type SubscriptionExpiredData } from './SubscriptionExpired';
 export { AccountDeletionRequested, type AccountDeletionRequestedData } from './AccountDeletionRequested';
 export { AccountDeletionCompleted, type AccountDeletionCompletedData } from './AccountDeletionCompleted';
 export { SupportTicketCreated, type SupportTicketData } from './SupportTicketCreated';

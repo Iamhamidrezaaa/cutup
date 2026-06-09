@@ -10,6 +10,7 @@ import {
   getPaymentByProviderExternalId,
   getPaymentByProviderOrderId,
   preparePaymentYekpayRetry,
+  preparePaymentYekpayResume,
   getUserIdByEmail,
   createPaymentAttempt,
   getMaxPaymentAttemptNumber,
@@ -39,6 +40,7 @@ import { recordServerAuditEvent } from './audit-internal.js';
 import { redeemOfferAtomic, validateOfferForCheckout } from './offers-repository.js';
 import { generateUniqueOrderId } from './payment-order-id.js';
 import { ensurePaymentAttemptsSchema } from './payment-attempts-bootstrap.js';
+import { cancelPayableInvoice } from './billing-payable-invoices.js';
 
 const PAID_PLAN_KEYS = ['starter', 'pro', 'business'];
 
@@ -1005,6 +1007,134 @@ export async function paymentRetryHandler(req, res) {
     retry_attempt: attemptNumber,
     redirect_url: created.paymentUrl
   });
+}
+
+/** Resume payment for a pending payable invoice (Billing Activity → Pay). */
+export async function paymentPayInvoiceHandler(req, res) {
+  setCORSHeaders(res);
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (!isBillingDbConfigured()) return res.status(503).json({ error: 'Billing database not configured' });
+  const auth = requireSessionUser(req, res);
+  if (!auth) return;
+
+  const body = readJsonBody(req);
+  const paymentId = body?.payment_id || body?.paymentId;
+  if (!paymentId) return res.status(400).json({ ok: false, error: 'payment_id_required' });
+
+  let payment = await getPaymentForUserById(paymentId, auth.email);
+  if (!payment) return res.status(404).json({ ok: false, error: 'payment_not_found' });
+  if (payment.status === 'success') {
+    return res.status(200).json({ ok: true, already_paid: true });
+  }
+  if (payment.status !== 'pending') {
+    return res.status(409).json({ ok: false, error: 'payment_not_pending' });
+  }
+
+  const yk = getYekpayConfig();
+  if (!yk.merchantId || yk.configError || !yk.apiBaseUrl) {
+    return res.status(503).json({ ok: false, error: 'Payment provider not configured' });
+  }
+
+  const planKey = String(payment.plan_key || payment.plan || '').toLowerCase();
+  if (!PAID_PLAN_KEYS.includes(planKey)) {
+    return res.status(400).json({ ok: false, error: 'invalid_plan' });
+  }
+
+  const amountEur = Number(payment.final_amount_eur ?? payment.amount_eur ?? payment.amount ?? 0);
+  if (!Number.isFinite(amountEur) || amountEur <= 0 || amountEur > 500) {
+    return res.status(400).json({ ok: false, error: 'invalid_stored_eur' });
+  }
+
+  try {
+    await ensurePaymentAttemptsSchema();
+  } catch (e) {
+    console.warn('[payment] pay-invoice schema ensure', e?.message || e);
+  }
+
+  const orderId = generateUniqueOrderId();
+  const maxAttempt = await getMaxPaymentAttemptNumber(payment.id);
+  const attemptNumber = maxAttempt + 1;
+
+  const prepared = await preparePaymentYekpayResume(auth.email, payment.id, orderId);
+  if (!prepared) {
+    return res.status(409).json({ ok: false, error: 'payment_not_resumable' });
+  }
+
+  await createPaymentAttempt({
+    paymentId: payment.id,
+    userId: await getUserIdByEmail(auth.email),
+    attemptNumber,
+    status: 'pending'
+  });
+
+  const profile = await getUserProfileApiPayload(auth.email);
+  const yekpayAmountEur = Math.round(amountEur * 100) / 100;
+  const { fromCurrencyCode, toCurrencyCode } = yekpayCurrencyPair();
+
+  const created = await yekpayCreatePaymentRequest(
+    attachYekpayOrderIdentifiers(
+      {
+        merchantId: yk.merchantId,
+        fromCurrencyCode,
+        toCurrencyCode,
+        email: profile?.email || auth.email,
+        mobile: profile?.phone || '',
+        firstName: profile?.first_name || '',
+        lastName: profile?.last_name || '',
+        address: profile?.address || '',
+        postalCode: profile?.postal_code || '',
+        country: (profile?.country || 'IR').toUpperCase(),
+        city: 'N/A',
+        description: `Cutup ${planKey} plan`,
+        amount: yekpayAmountEur,
+        callback: yk.callbackUrl
+      },
+      orderId
+    )
+  );
+
+  if (!created.ok || !created.authority || !created.paymentUrl) {
+    await markPaymentAttemptStatus(payment.id, attemptNumber, 'failed', created.error || 'resume_create_failed');
+    return res.status(502).json({ ok: false, error: 'pay_invoice_failed' });
+  }
+
+  await updatePaymentExternalId(payment.id, auth.email, created.authority);
+  await markPaymentAttemptStatus(payment.id, attemptNumber, 'success');
+
+  void recordServerAuditEvent({
+    eventType: 'product',
+    eventName: 'payment_pay_invoice',
+    userId: await getUserIdByEmail(auth.email),
+    sessionId: auth.sessionId,
+    metadata: { paymentId: String(payment.id), plan: planKey },
+    req
+  });
+
+  return res.status(200).json({
+    ok: true,
+    payment_id: payment.id,
+    order_id: orderId,
+    redirect_url: created.paymentUrl,
+    payment_url: created.paymentUrl
+  });
+}
+
+export async function paymentCancelInvoiceHandler(req, res) {
+  setCORSHeaders(res);
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (!isBillingDbConfigured()) return res.status(503).json({ error: 'Billing database not configured' });
+  const auth = requireSessionUser(req, res);
+  if (!auth) return;
+
+  const body = readJsonBody(req);
+  const paymentId = body?.payment_id || body?.paymentId;
+  if (!paymentId) return res.status(400).json({ ok: false, error: 'payment_id_required' });
+
+  const canceled = await cancelPayableInvoice(auth.email, paymentId);
+  if (!canceled) return res.status(404).json({ ok: false, error: 'invoice_not_found' });
+  return res.status(200).json({ ok: true });
 }
 
 export async function invoicesListHandler(req, res) {

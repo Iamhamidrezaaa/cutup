@@ -115,6 +115,19 @@ const EMAIL_REGISTRY_META = {
     sampleData: { firstName: sample.firstName, used: 50, remaining: 0, limit: 50 },
     event: 'credits_exhausted',
   },
+  SUBSCRIPTION_EXPIRED: {
+    template: 'SUBSCRIPTION_EXPIRED',
+    subject: () => 'Your Cutup subscription has ended',
+    preview: () => 'Your subscription has ended — renew to keep access',
+    senderRole: 'billing',
+    sampleData: {
+      firstName: sample.firstName,
+      planName: sample.planName,
+      amount: sample.amount,
+      payUrl: sample.downloadUrl,
+    },
+    event: 'subscription_expired',
+  },
   ACCOUNT_DELETION_REQUESTED: {
     template: 'ACCOUNT_DELETION_REQUESTED',
     subject: () => 'Your Cutup account deletion request',

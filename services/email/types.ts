@@ -7,6 +7,7 @@ export const EMAIL_TEMPLATES = {
   SUBSCRIPTION_UPGRADED: 'SUBSCRIPTION_UPGRADED',
   USAGE_WARNING_80: 'USAGE_WARNING_80',
   USAGE_WARNING_100: 'USAGE_WARNING_100',
+  SUBSCRIPTION_EXPIRED: 'SUBSCRIPTION_EXPIRED',
   ACCOUNT_DELETION_REQUESTED: 'ACCOUNT_DELETION_REQUESTED',
   ACCOUNT_DELETION_COMPLETED: 'ACCOUNT_DELETION_COMPLETED',
   SUPPORT_TICKET_CREATED: 'SUPPORT_TICKET_CREATED',
@@ -28,6 +29,7 @@ export type EmailTemplateId = (typeof EMAIL_TEMPLATES)[keyof typeof EMAIL_TEMPLA
  * subscription_upgraded        → SUBSCRIPTION_UPGRADED
  * credits_80_percent           → USAGE_WARNING_80
  * credits_exhausted            → USAGE_WARNING_100
+ * subscription_expired         → SUBSCRIPTION_EXPIRED
  * account_deletion_requested   → ACCOUNT_DELETION_REQUESTED
  * account_deleted              → ACCOUNT_DELETION_COMPLETED
  * ticket_created               → SUPPORT_TICKET_CREATED
@@ -41,6 +43,7 @@ export const EMAIL_EVENTS = {
   SUBSCRIPTION_UPGRADED: 'subscription_upgraded',
   CREDITS_80_PERCENT: 'credits_80_percent',
   CREDITS_EXHAUSTED: 'credits_exhausted',
+  SUBSCRIPTION_EXPIRED: 'subscription_expired',
   ACCOUNT_DELETION_REQUESTED: 'account_deletion_requested',
   ACCOUNT_DELETED: 'account_deleted',
   TICKET_CREATED: 'ticket_created',

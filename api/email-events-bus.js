@@ -211,6 +211,10 @@ export function emitCreditsExhausted(payload) {
   return emitEmailEvent('credits_exhausted', payload);
 }
 
+export function emitSubscriptionExpired(payload) {
+  return emitEmailEvent('subscription_expired', payload);
+}
+
 export function emitAccountDeletionRequested(payload) {
   return emitEmailEvent('account_deletion_requested', payload);
 }
