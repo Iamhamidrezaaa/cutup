@@ -39,6 +39,7 @@ import { transcribeDebug } from './infrastructure/observability.js';
 import { buildLanguageConfidence } from './spoken-language-detection.js';
 import { applyWhisperLeadingOffsetIfNeeded } from './whisper-leading-offset.js';
 import { mergeRollingCaptionChains } from './video-render/subtitle-pipeline.js';
+import { refineTranscriptTimings } from './refine-transcript-timings.js';
 
 export default async function handler(req, res) {
   const requestId = req.headers['x-request-id'] || `req_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -471,8 +472,9 @@ export default async function handler(req, res) {
       s.text.trim().length > 0
     );
 
+    const wordSyncedSegments = refineTranscriptTimings(validSegments);
     const { segments: offsetSegments, offsetSec: whisperLeadingOffsetSec } =
-      applyWhisperLeadingOffsetIfNeeded(validSegments);
+      applyWhisperLeadingOffsetIfNeeded(wordSyncedSegments);
     const timelineSegments = mergeRollingCaptionChains(offsetSegments);
     if (whisperLeadingOffsetSec > 0) {
       console.log('[whisper-leading-offset]', {

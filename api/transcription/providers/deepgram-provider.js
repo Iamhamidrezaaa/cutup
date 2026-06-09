@@ -7,7 +7,12 @@ function wordsToSegments(words) {
   if (!Array.isArray(words) || words.length === 0) return [];
   /** @type {{ start: number, end: number, texts: string[] }[]} */
   const buckets = [];
-  let cur = { start: Number(words[0].start) || 0, end: Number(words[0].end) || 0, texts: [String(words[0].word || '').trim()].filter(Boolean) };
+  let cur = {
+    start: Number(words[0].start) || 0,
+    end: Number(words[0].end) || 0,
+    texts: [String(words[0].word || '').trim()].filter(Boolean),
+    words: [{ word: String(words[0].word || '').trim(), start: Number(words[0].start) || 0, end: Number(words[0].end) || 0 }]
+  };
 
   for (let i = 1; i < words.length; i++) {
     const w = words[i];
@@ -15,14 +20,16 @@ function wordsToSegments(words) {
     const end = Number(w.end) || 0;
     const gap = start - cur.end;
     const joinedLen = cur.texts.join(' ').length;
+    const wordEntry = { word: String(w.word || '').trim(), start, end };
 
     if (gap > 1.25 || joinedLen > 220) {
       buckets.push(cur);
-      cur = { start, end, texts: [String(w.word || '').trim()].filter(Boolean) };
+      cur = { start, end, texts: [wordEntry.word].filter(Boolean), words: [wordEntry] };
     } else {
       cur.end = end;
-      const t = String(w.word || '').trim();
+      const t = wordEntry.word;
       if (t) cur.texts.push(t);
+      cur.words.push(wordEntry);
     }
   }
   buckets.push(cur);
@@ -30,7 +37,8 @@ function wordsToSegments(words) {
   return buckets.map((b) => ({
     start: b.start,
     end: Math.max(b.end, b.start + 0.05),
-    text: b.texts.join(' ')
+    text: b.texts.join(' '),
+    words: b.words
   }));
 }
 

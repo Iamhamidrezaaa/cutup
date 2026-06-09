@@ -61,6 +61,55 @@
 
   const ROLLING_CHAIN_GAP_SEC = 0.18;
   const BLINK_MAX_DUR_SEC = 0.15;
+  const TIGHT_TAIL_PAD_SEC = 0.06;
+  const MIN_CUE_DURATION_SEC = 0.08;
+  const MIN_CUE_GAP_SEC = 0.02;
+
+  function roundTimelineSec(value) {
+    var n = Number(value);
+    if (!isFinite(n)) return 0;
+    return Math.round(n * 1000) / 1000;
+  }
+
+  function applyTightSpeechSync(segments) {
+    var list = (segments || []).map(function (seg) {
+      var start = roundTimelineSec(seg.start);
+      var end = roundTimelineSec(seg.end);
+      var words = seg.words;
+      if (Array.isArray(words) && words.length) {
+        var timed = words.filter(function (w) {
+          return isFinite(Number(w && w.start)) && isFinite(Number(w && w.end));
+        });
+        if (timed.length) {
+          var ws = Number(timed[0].start);
+          var we = Number(timed[timed.length - 1].end);
+          start = roundTimelineSec(Math.max(0, ws));
+          end = roundTimelineSec(Math.max(start + MIN_CUE_DURATION_SEC, we + TIGHT_TAIL_PAD_SEC));
+        }
+      } else if (isFinite(Number(seg._audioStart)) && isFinite(Number(seg._audioEnd))) {
+        start = roundTimelineSec(Math.max(0, Number(seg._audioStart)));
+        end = roundTimelineSec(Math.max(start + MIN_CUE_DURATION_SEC, Number(seg._audioEnd) + TIGHT_TAIL_PAD_SEC));
+      }
+      if (end <= start) end = roundTimelineSec(start + MIN_CUE_DURATION_SEC);
+      return { start: start, end: end, text: seg.text };
+    });
+    return eliminateCueOverlaps(list);
+  }
+
+  function eliminateCueOverlaps(segments) {
+    var sorted = (segments || []).slice().sort(function (a, b) {
+      return a.start - b.start;
+    });
+    for (var i = 0; i < sorted.length - 1; i++) {
+      var cur = sorted[i];
+      var next = sorted[i + 1];
+      var maxEnd = roundTimelineSec(next.start - MIN_CUE_GAP_SEC);
+      if (cur.end > maxEnd) {
+        cur.end = roundTimelineSec(Math.max(cur.start + MIN_CUE_DURATION_SEC, maxEnd));
+      }
+    }
+    return sorted;
+  }
 
   function normalizeCueText(text) {
     return String(text || '').replace(/\r?\n+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -161,6 +210,7 @@
       });
     list = mergeRollingCaptionChains(list);
     list = dropBlinkDuplicateCues(list);
+    list = applyTightSpeechSync(list);
     return list;
   }
 
@@ -240,6 +290,8 @@
     prepareAccurate,
     decodeSubtitleTextEntities,
     normalizeTimelineSegments,
-    mergeRollingCaptionChains
+    mergeRollingCaptionChains,
+    applyTightSpeechSync,
+    roundTimelineSec
   };
 })(typeof window !== 'undefined' ? window : globalThis);

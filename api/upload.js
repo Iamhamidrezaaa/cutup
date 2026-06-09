@@ -29,6 +29,7 @@ import { transcribeDebug } from './infrastructure/observability.js';
 import { prepareUploadBufferForTranscription } from './upload-media-prep.js';
 import { applyWhisperLeadingOffsetIfNeeded } from './whisper-leading-offset.js';
 import { mergeRollingCaptionChains } from './video-render/subtitle-pipeline.js';
+import { refineTranscriptTimings } from './refine-transcript-timings.js';
 
 export default async function handler(req, res) {
   // Log immediately to verify this endpoint is being called
@@ -325,8 +326,9 @@ export default async function handler(req, res) {
       s.text.trim().length > 0
     );
 
+    const wordSyncedSegments = refineTranscriptTimings(validSegments);
     const { segments: offsetSegments, offsetSec: whisperLeadingOffsetSec } =
-      applyWhisperLeadingOffsetIfNeeded(validSegments);
+      applyWhisperLeadingOffsetIfNeeded(wordSyncedSegments);
     const timelineSegments = mergeRollingCaptionChains(offsetSegments);
     if (whisperLeadingOffsetSec > 0) {
       console.log('[whisper-leading-offset]', {

@@ -5,6 +5,7 @@
 import { decodeSubtitleTextEntities } from './subtitle-text-entities.js';
 import { getDomainLocalizationRules } from './domain-translation-hints.js';
 import { sanitizeTranslatedSegments, sanitizeTranslationCueText } from './translation-output-sanitizer.js';
+import { refineTranscriptTimings } from './refine-transcript-timings.js';
 import {
   isSegmentTimingLineageCaptureActive,
   recordSegmentTimingStage
@@ -213,20 +214,32 @@ function mergePair(a, b) {
 export function refineCueTimingsFromWords(segments) {
   return (segments || []).map((seg) => {
     const words = seg?.words;
-    if (!Array.isArray(words) || !words.length) return seg;
-    const timed = words.filter(
-      (w) => Number.isFinite(Number(w?.start)) && Number.isFinite(Number(w?.end))
-    );
-    if (!timed.length) return seg;
-    const audioStart = Number(timed[0].start);
-    const audioEnd = Number(timed[timed.length - 1].end);
-    return {
-      ...seg,
-      start: audioStart,
-      end: audioEnd,
-      _audioStart: audioStart,
-      _audioEnd: audioEnd
-    };
+    if (Array.isArray(words) && words.length) {
+      const timed = words.filter(
+        (w) => Number.isFinite(Number(w?.start)) && Number.isFinite(Number(w?.end))
+      );
+      if (timed.length) {
+        const audioStart = Number(timed[0].start);
+        const audioEnd = Number(timed[timed.length - 1].end);
+        return {
+          ...seg,
+          start: audioStart,
+          end: audioEnd,
+          _audioStart: audioStart,
+          _audioEnd: audioEnd
+        };
+      }
+    }
+    const anchoredStart = Number(seg?._audioStart);
+    const anchoredEnd = Number(seg?._audioEnd);
+    if (Number.isFinite(anchoredStart) && Number.isFinite(anchoredEnd) && anchoredEnd > anchoredStart) {
+      return {
+        ...seg,
+        start: anchoredStart,
+        end: anchoredEnd
+      };
+    }
+    return seg;
   });
 }
 
@@ -459,7 +472,9 @@ export async function postProcessTranslatedSegments(opts) {
     pipelineStages.exportText = working[traceIdx]?.text || '';
   }
 
-  const exportOneToOne = sanitizeTranslatedSegments(oneToOneForTiming, originalSegments);
+  const exportOneToOne = refineTranscriptTimings(
+    sanitizeTranslatedSegments(oneToOneForTiming, originalSegments)
+  );
 
   const timingReport = buildTimingDriftReport({
     originalSegments: sourceWithWordTiming,

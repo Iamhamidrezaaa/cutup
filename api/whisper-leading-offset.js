@@ -15,11 +15,22 @@ const MIN_WORD_DURATION_SEC = 0.05;
  * @param {{ minLeadingSec?: number, maxLeadingSec?: number, firstSpeechSec?: number|null }} [opts]
  * @returns {number} seconds to subtract from all cue times (0 = no change)
  */
+function segmentHasWordTimestamps(seg) {
+  return (
+    Array.isArray(seg?.words) &&
+    seg.words.some((w) => Number.isFinite(Number(w?.start)) && Number.isFinite(Number(w?.end)))
+  );
+}
+
 export function detectWhisperLeadingOffsetSec(segments, opts = {}) {
   if (!WHISPER_LEADING_OFFSET_ENABLED) return 0;
 
   const segs = Array.isArray(segments) ? segments : [];
   if (!segs.length) return 0;
+
+  if (opts.skipWhenWordTimestamps !== false && segs.some(segmentHasWordTimestamps)) {
+    return 0;
+  }
 
   const minLead = Number(opts.minLeadingSec ?? DEFAULT_MIN_LEAD_SEC);
   const maxLead = Number(opts.maxLeadingSec ?? DEFAULT_MAX_LEAD_SEC);

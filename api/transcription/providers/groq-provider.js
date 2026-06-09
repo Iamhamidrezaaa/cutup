@@ -33,6 +33,8 @@ export async function transcribeGroq({
   formData.append('model', 'whisper-large-v3');
   if (languageHint) formData.append('language', languageHint);
   formData.append('response_format', 'verbose_json');
+  formData.append('timestamp_granularities[]', 'word');
+  formData.append('timestamp_granularities[]', 'segment');
 
   const formHeaders = formData.getHeaders();
 

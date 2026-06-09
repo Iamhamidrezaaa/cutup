@@ -44,11 +44,22 @@ export async function transcribeLargeFile(audioBuffer, mimeType, extension = 'mp
       const chunkIndex = batchStart + batchIndex;
       return transcribeOneChunk(chunk.buffer, mimeType, extension).then((result) => {
         const adjustedSegments = result.segments
-          .map((segment) => ({
-            ...segment,
-            start: segment.start + chunk.offset,
-            end: segment.end + chunk.offset
-          }))
+          .map((segment) => {
+            const offset = chunk.offset;
+            const words = Array.isArray(segment.words)
+              ? segment.words.map((w) => ({
+                  ...w,
+                  start: Number(w.start) + offset,
+                  end: Number(w.end) + offset
+                }))
+              : segment.words;
+            return {
+              ...segment,
+              start: segment.start + offset,
+              end: segment.end + offset,
+              words
+            };
+          })
           .filter((segment) => segment.end > segment.start);
 
         return {
