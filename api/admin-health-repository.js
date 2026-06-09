@@ -11,6 +11,13 @@ import {
   mediaToolComponentStatus,
   mediaToolDetail
 } from './media-tool-health.js';
+import { ensureAuditEventsTable } from './audit-repository.js';
+import { ensureAdminsSchema } from './admins-repository.js';
+
+/** usage_history.type values written by credits-engine / billing-repository */
+const USAGE_JOB_TYPES_SQL = `(
+  'transcription', 'summarization', 'srt', 'download', 'mp4_export'
+)`;
 
 const CACHE_MS = 30_000;
 let cache = { at: 0, data: null };
@@ -61,6 +68,7 @@ async function queryTableExists(pool, names) {
 
 async function queryIncidents(pool) {
   try {
+    await ensureAuditEventsTable();
     const r = await pool.query(
       `SELECT event_type, event_name,
               COALESCE(metadata->>'email', '') AS email,
@@ -106,17 +114,31 @@ async function queryMetrics(pool) {
         (SELECT COUNT(*)::int FROM admin_sessions WHERE expires_at > NOW()) AS admin_sessions,
         (SELECT COUNT(*)::int FROM payments WHERE status = 'pending') AS pending_payments,
         (SELECT COUNT(*)::int FROM payments
-          WHERE status IN ('failed','canceled') AND created_at >= NOW() - INTERVAL '24 hours') AS failed_payments_24h,
+          WHERE status IN ('failed', 'canceled')
+            AND updated_at >= NOW() - INTERVAL '24 hours') AS failed_payments_24h,
         (SELECT COUNT(*)::int FROM audit_events
           WHERE created_at >= NOW() - INTERVAL '24 hours'
-            AND event_name IN ('payment_failed','payment_verify_failed','callback_failed','yekpay_verify_failed')) AS callback_failures_24h,
+            AND event_name IN (
+              'payment_failed', 'payment_verify_failed', 'callback_failed',
+              'yekpay_verify_failed', 'payment_callback_failed'
+            )) AS callback_failures_24h,
         (SELECT COUNT(*)::int FROM audit_events
-          WHERE created_at >= NOW() - INTERVAL '24 hours' AND event_type = 'error') AS errors_24h,
-        (SELECT COUNT(DISTINCT user_id)::int FROM usage_history
-          WHERE created_at >= NOW() - INTERVAL '15 minutes' AND user_id IS NOT NULL) AS live_users_15m,
+          WHERE created_at >= NOW() - INTERVAL '24 hours'
+            AND (
+              event_type = 'error'
+              OR event_name LIKE '%failed%'
+              OR event_name LIKE '%error%'
+            )) AS errors_24h,
+        (SELECT COUNT(*)::int FROM (
+           SELECT user_id FROM usage_history
+           WHERE created_at >= NOW() - INTERVAL '15 minutes' AND user_id IS NOT NULL
+           UNION
+           SELECT user_id FROM audit_events
+           WHERE created_at >= NOW() - INTERVAL '15 minutes' AND user_id IS NOT NULL
+         ) live) AS live_users_15m,
         (SELECT COUNT(*)::int FROM usage_history
           WHERE created_at >= NOW() - INTERVAL '24 hours'
-            AND type IN ('transcribe','summarize','translate','download')) AS ai_jobs_24h
+            AND type IN ${USAGE_JOB_TYPES_SQL}) AS ai_jobs_24h
     `);
     const row = r.rows[0] || {};
     out.activeAdminSessions = Number(row.admin_sessions || 0);
@@ -189,7 +211,8 @@ function buildPrimaryInfrastructure() {
         boolConfigured('AWS_S3_BUCKET') ||
         boolConfigured('BLOB_READ_WRITE_TOKEN') ||
         boolConfigured('R2_ACCOUNT_ID'),
-      critical: false
+      critical: false,
+      meta: 'optional'
     }
   ];
 }
@@ -246,6 +269,7 @@ export async function getAdminOpsHealthDb() {
     });
   } else {
     try {
+      await Promise.all([ensureAdminsSchema(), ensureAuditEventsTable()]);
       const pool = getPool();
       const latencyMs = await measureDbLatencyMs(pool);
       database = {
