@@ -896,22 +896,21 @@ function renderPersonalSectionHtml(ctx) {
             <p class="profile-settings-card-desc">Your name and contact details for billing and support.</p>
           </header>
           <motion class="profile-settings-avatar-row">
-            <div class="profile-settings-avatar-wrap" data-prof-avatar-root>
-              <img class="profile-settings-avatar" data-prof-avatar-img src="${escapeHtml(avatarSrc)}" alt="" width="80" height="80" />
-              <button type="button" class="profile-settings-avatar-edit" data-prof-avatar-pick aria-label="Change profile photo">
-                <svg class="profile-settings-avatar-edit-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M9 4h2l1.2 2.2H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2.8L9 4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
-                  <circle cx="12" cy="13" r="3.5" stroke="currentColor" stroke-width="1.8"/>
-                </svg>
-              </button>
-              <input type="file" data-prof-avatar-input accept="image/jpeg,image/png,image/webp" hidden />
-            </div>
-            <div class="profile-settings-avatar-copy">
+            <div class="profile-settings-avatar-stack" data-prof-avatar-root>
+              <div class="profile-settings-avatar-stage">
+                <img class="profile-settings-avatar" data-prof-avatar-img src="${escapeHtml(avatarSrc)}" alt="" width="112" height="112" />
+                <button type="button" class="profile-settings-avatar-edit" data-prof-avatar-pick aria-label="Edit profile photo">
+                  <svg class="profile-settings-avatar-edit-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M9 4h2l1.2 2.2H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2.8L9 4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                    <circle cx="12" cy="13" r="3.5" stroke="currentColor" stroke-width="1.8"/>
+                  </svg>
+                  <span class="profile-settings-avatar-edit-label">Edit</span>
+                </button>
+                <input type="file" data-prof-avatar-input accept="image/jpeg,image/png,image/webp" hidden />
+              </div>
               <p class="profile-settings-avatar-name">${escapeHtml(disp)}</p>
               <p class="profile-settings-avatar-hint" data-prof-avatar-hint>${
-                hasCustomAvatar
-                  ? 'Custom profile photo · JPG, PNG or WebP up to 5MB'
-                  : 'Add a profile photo or keep your sign-in provider picture'
+                hasCustomAvatar ? 'Profile photo' : 'Add a profile photo'
               }</p>
               ${incomplete ? '<span class="profile-settings-pill profile-settings-pill--warn">Incomplete</span>' : '<span class="profile-settings-pill profile-settings-pill--ok">Complete</span>'}
             </div>
@@ -1152,8 +1151,8 @@ function bindProfileAvatarPicker(root) {
           el.src = url;
         });
       }
-      const hint = section.closest('[data-profile-section="personal"]')?.querySelector('[data-prof-avatar-hint]');
-      if (hint) hint.textContent = 'Custom profile photo · JPG, PNG or WebP up to 5MB';
+      const hint = section.querySelector('[data-prof-avatar-hint]');
+      if (hint) hint.textContent = 'Profile photo';
       showDashboardBanner('Profile photo updated.', 'success');
     },
     onError: (msg) => {
