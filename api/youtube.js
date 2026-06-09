@@ -82,7 +82,10 @@ export default async function handler(req, res) {
     console.log('[transcript-download]', { traceId, videoId: finalVideoId });
     console.log(`YOUTUBE: Extracting audio for video ID: ${finalVideoId}`);
 
-    const youtubeUrl = `https://www.youtube.com/watch?v=${finalVideoId}`;
+    const isShortsInput = /\/shorts\//i.test(cleanedUrl || originalUrl);
+    const youtubeUrl = isShortsInput
+      ? `https://www.youtube.com/shorts/${finalVideoId}`
+      : `https://www.youtube.com/watch?v=${finalVideoId}`;
     const cached = getCachedExtraction(youtubeUrl, traceId);
     if (cached?.routePayload?.youtubeSuccess) {
       extractionDebug(traceId, { phase: 'cache_hit', normalizedUrl: youtubeUrl });
@@ -418,11 +421,15 @@ export default async function handler(req, res) {
               ? 'YTDLP_TIMEOUT'
               : 'YOUTUBE_ERROR';
       return sendTranscriptErrorFromLegacy(res, {
-        statusCode: legacy === 'VIDEO_UNAVAILABLE' ? 422 : legacy === 'SOCIAL_LOGIN_REQUIRED' ? 401 : 500,
+        statusCode: legacy === 'VIDEO_UNAVAILABLE' ? 422 : legacy === 'SOCIAL_LOGIN_REQUIRED' ? 401 : 503,
         legacyCode: legacy,
-        message: mapped.message,
+        message:
+          mapped.code === 'YTDLP_TEMP_BLOCK'
+            ? userMessageForCode('TRANSCRIPTION_TIMEOUT')
+            : mapped.message,
         traceId,
-        stage: 'youtube-download'
+        stage: 'youtube-download',
+        retryable: mapped.temporary === true
       });
     }
 
