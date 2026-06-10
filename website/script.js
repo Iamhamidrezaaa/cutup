@@ -504,7 +504,12 @@ function buildPipelineErrorFromApi(data, response, traceId) {
   e.pipelineCode = legacy || `HTTP_${response?.status || 500}`;
   e.requestId = data?.requestId || traceId;
   e.traceId = traceId;
-  if (response?.status === 401) e.errorCode = 'SESSION_EXPIRED';
+  if (response?.status === 504 || response?.status === 503) {
+    e.errorCode = 'TRANSCRIPTION_TIMEOUT';
+    e.retryable = true;
+    e.message =
+      'Video download took too long and the server timed out. Please retry in a minute — shorter clips work best.';
+  } else if (response?.status === 401) e.errorCode = 'SESSION_EXPIRED';
   else if (response?.status === 403 && legacy.includes('LIMIT')) e.errorCode = 'QUOTA_EXCEEDED';
   else if (legacy.includes('TIMEOUT')) e.errorCode = 'TRANSCRIPTION_TIMEOUT';
   else if (legacy.includes('UNAVAILABLE') || legacy.includes('PRIVATE')) e.errorCode = 'VIDEO_UNAVAILABLE';
@@ -514,7 +519,9 @@ function buildPipelineErrorFromApi(data, response, traceId) {
   else if (legacy.includes('YOUTUBE') || legacy.includes('YTDLP') || legacy.includes('DOWNLOAD')) e.errorCode = 'DOWNLOAD_FAILED';
   if (e.errorCode) {
     e.retryable = isRetryableErrorCode(e.errorCode);
-    e.message = mapErrorCodeToUserMessage(e.errorCode);
+    if (response?.status !== 504 && response?.status !== 503) {
+      e.message = mapErrorCodeToUserMessage(e.errorCode);
+    }
   }
   return e;
 }
@@ -4885,7 +4892,12 @@ async function extractYouTubeAudio(url, sessionId = null) {
         'X-Trace-Id': traceId,
         ...(sessionId ? { 'X-Session-Id': sessionId } : {})
       },
-      body: JSON.stringify({ videoId, url: normalizedUrl }),
+      body: JSON.stringify({
+        videoId,
+        url: normalizedUrl,
+        originalUrl: resolved.original,
+        isShorts: /\/shorts\//i.test(resolved.cleaned || resolved.original)
+      }),
       signal: AbortSignal.timeout(getPipelineFetchTimeoutMs('extract'))
     });
 
