@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   alignCleanSrtToVideoSpeech,
-  applyCleanSrtFirstCueLeadIn,
   buildCleanSrtExactSubtitles,
   buildPreviewAlignedSubtitles,
   snapCleanSrtTimelineToZero,
@@ -23,16 +22,15 @@ test('clean SRT export keeps first cue text after uniform lead snap', () => {
   assert.equal(exact[0].start, 1.954);
   assert.equal(exact[1].start, 1.964);
 
-  const withLead = applyCleanSrtFirstCueLeadIn(
-    exact.map((c) => ({
-      ...c,
-      renderStart: c.start,
-      renderEnd: c.end
-    }))
-  );
-  assert.equal(withLead[0].renderStart, 0);
-  assert.ok(withLead[0].renderEnd >= 1.9);
-  assert.equal(withLead[1].renderStart, 1.964);
+  const lockedExact = exact.map((c, i) => ({
+    ...c,
+    id: `master-${i}`,
+    locked: true,
+    renderStart: c.start,
+    renderEnd: c.end
+  }));
+  assert.equal(lockedExact[0].start, 1.954);
+  assert.equal(lockedExact[1].start, 1.964);
 
   const aligned = buildPreviewAlignedSubtitles(cues);
   assert.ok(aligned.length >= 2);
@@ -48,11 +46,13 @@ test('clean SRT export keeps first cue text after uniform lead snap', () => {
     format: 'cutup-style-v1',
     preset: { id: 'mrBeast' },
     cues: cues.map((c, i) => ({
+      id: `master-${i}`,
       index: i + 1,
       start: c.start,
       end: c.end,
       text: c.text,
       lines: [c.text],
+      locked: true,
       stylePresetId: 'mrBeast'
     }))
   };
@@ -66,11 +66,8 @@ test('clean SRT export keeps first cue text after uniform lead snap', () => {
   assert.ok(plain.includes('this kid'));
   const dialogues = ass.timingAudit?.assDialogues || [];
   const firstAss = dialogues[0];
-  assert.ok(firstAss && firstAss.assStart === 0, 'first cue lead-in shows from video start');
-  const introEnd = Math.max(...dialogues.filter((d) => d.assStart < 1.97).map((d) => d.assEnd));
-  assert.ok(introEnd >= 1.9, 'intro subtitles cover ~2s lead-in window');
-  const afterIntro = dialogues.find((d) => d.assStart >= 1.96);
-  assert.ok(afterIntro);
+  assert.ok(firstAss && firstAss.assStart === 1.954, 'ASS preserves master clean SRT start time');
+  assert.equal(dialogues.length, cues.length);
 });
 
 test('alignCleanSrtToVideoSpeech shifts timeline to speech anchor', () => {

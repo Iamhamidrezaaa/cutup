@@ -58,6 +58,12 @@ import {
 } from './caption-forensics.js';
 import { auditSourceAlignedPipelineStages } from './subtitle-pipeline.js';
 import {
+  assertMasterAssSyncOrThrow,
+  buildMasterCleanSrtFromSegments,
+  lockMasterCues,
+  normalizeLockedMasterCues
+} from './master-subtitle-cues.js';
+import {
   isSubtitleTextForensicEnabled,
   logSubtitleTextForensicStage,
   forensicMaxCues
@@ -446,26 +452,30 @@ export function generateAssContent(segments, presetId, dims = {}) {
   const captionModeNorm = String(captionMode || 'viral').toLowerCase();
   const burnFromPreviewCues = Boolean(dims.burnFromPreviewCues);
   const strictCleanSrtTimings = Boolean(dims.strictCleanSrtTimings);
-  const useSourceAlignedTimings = captionModeNorm === 'accurate' || burnFromPreviewCues;
   const inputSegmentCount = finalOnlySegments.length;
-  let canonicalSubtitles = strictCleanSrtTimings
-    ? buildCleanSrtExactSubtitles(finalOnlySegments)
-    : burnFromPreviewCues
-    ? buildPreviewAlignedSubtitles(finalOnlySegments)
-    : useSourceAlignedTimings
-      ? buildSourceAlignedSubtitles(finalOnlySegments)
-      : buildPhraseBurnSubtitles(finalOnlySegments);
-  if (strictCleanSrtTimings || burnFromPreviewCues) {
-    canonicalSubtitles = dedupeOverlappingBurnCues(canonicalSubtitles);
+  const inputLocked = finalOnlySegments.length > 0 && finalOnlySegments.every((s) => s?.locked === true);
+  const masterExactInput = inputLocked || strictCleanSrtTimings || burnFromPreviewCues;
+
+  let masterCues;
+  if (inputLocked) {
+    masterCues = normalizeLockedMasterCues(finalOnlySegments);
+  } else if (masterExactInput) {
+    masterCues = lockMasterCues(
+      buildCleanSrtExactSubtitles(finalOnlySegments).map((c) => ({
+        id: c.id,
+        start: c.start,
+        end: c.end,
+        text: c.text
+      }))
+    );
+  } else {
+    masterCues = buildMasterCleanSrtFromSegments(finalOnlySegments, { shortForm: true });
   }
+
+  const useMasterLockedPipeline = true;
+  let canonicalSubtitles = masterCues;
   const exportPhraseCueCount = canonicalSubtitles.length;
-  const burnPath = strictCleanSrtTimings
-    ? 'clean-srt-exact'
-    : burnFromPreviewCues
-    ? 'preview-export-doc'
-    : useSourceAlignedTimings
-      ? 'source-aligned-segment'
-      : 'phrase-rhythm';
+  const burnPath = masterExactInput ? 'master-clean-srt-exact' : 'master-clean-srt-segmented';
   if (isDebugExportEnabled()) {
     console.log('[burn-caption-export]', {
       path: burnPath,
@@ -473,7 +483,9 @@ export function generateAssContent(segments, presetId, dims = {}) {
       inputSegmentCount,
       exportPhraseCueCount,
       assDialogueCount: exportPhraseCueCount,
-      coalesceSkipped: !useSourceAlignedTimings
+      masterLockedPipeline: useMasterLockedPipeline,
+      coalesceSkipped: true,
+      resegmentSkipped: true
     });
   }
   if (isSubtitleTextForensicEnabled(forensicSample)) {
@@ -491,12 +503,12 @@ export function generateAssContent(segments, presetId, dims = {}) {
   }
   if (isDebugExportEnabled()) {
     console.log('[ass-timing-path]', {
-      useSourceAlignedTimings,
+      useMasterLockedPipeline,
       captionMode,
       cueCount: canonicalSubtitles.length,
-      note: useSourceAlignedTimings
-        ? 'ASS Dialogue times match input segments (SRT/preview)'
-        : 'ASS uses rhythm blocks from composeRhythmBlocks'
+      note: useMasterLockedPipeline
+        ? 'ASS Dialogue times match Master Clean SRT (no re-segmentation)'
+        : 'legacy subtitle path'
     });
     console.log(
       '[canonical-caption-blocks]',
@@ -541,52 +553,64 @@ export function generateAssContent(segments, presetId, dims = {}) {
       : renderProfile.styleMode === 'cinematic'
         ? 0.84
         : 0.74;
-  const previewMinVisibleSec = 4 / 30 + 0.002;
-  let visibleCues = strictCleanSrtTimings
-    ? applyCleanSrtFirstCueLeadIn(
-        cues.map((cue) => ({
-          ...cue,
-          renderStart: Number(cue.sourceStart ?? cue.start),
-          renderEnd: Number(cue.sourceEnd ?? cue.end)
-        }))
-      )
-    : burnFromPreviewCues
-    ? cues.map((cue) => {
-        const start = Number(cue.sourceStart ?? cue.start);
-        let end = Number(cue.sourceEnd ?? cue.end);
-        if (end - start < previewMinVisibleSec) {
-          end = start + previewMinVisibleSec;
-        }
-        return { ...cue, renderStart: start, renderEnd: end };
-      })
-    : useSourceAlignedTimings
-      ? cues.map((cue) => ({
-          ...cue,
-          renderStart: Number(cue.sourceStart ?? cue.start),
-          renderEnd: Number(cue.sourceEnd ?? cue.end)
-        }))
-      : applyVisualReadabilityWindows(cues, {
-        minCueDurationSec: minReadableCueSec,
-        minGapSec: 0.035,
-        maxTailExtensionSec: renderProfile.styleMode === 'safe' ? 0.62 : 0.48,
-        maxLeadExtensionSec: renderProfile.styleMode === 'safe' ? 0.22 : 0.16,
-        videoDurationSec: durationSec || 0
-      });
+  let visibleCues;
+  if (useMasterLockedPipeline) {
+    visibleCues = cues.map((cue) => ({
+      ...cue,
+      renderStart: Number(cue.sourceStart ?? cue.start),
+      renderEnd: Number(cue.sourceEnd ?? cue.end),
+      sourceStart: Number(cue.sourceStart ?? cue.start),
+      sourceEnd: Number(cue.sourceEnd ?? cue.end)
+    }));
+  } else {
+    const previewMinVisibleSec = 4 / 30 + 0.002;
+    const useSourceAlignedTimings = captionModeNorm === 'accurate' || burnFromPreviewCues;
+    visibleCues = strictCleanSrtTimings
+      ? applyCleanSrtFirstCueLeadIn(
+          cues.map((cue) => ({
+            ...cue,
+            renderStart: Number(cue.sourceStart ?? cue.start),
+            renderEnd: Number(cue.sourceEnd ?? cue.end)
+          }))
+        )
+      : burnFromPreviewCues
+        ? cues.map((cue) => {
+            const start = Number(cue.sourceStart ?? cue.start);
+            let end = Number(cue.sourceEnd ?? cue.end);
+            if (end - start < previewMinVisibleSec) {
+              end = start + previewMinVisibleSec;
+            }
+            return { ...cue, renderStart: start, renderEnd: end };
+          })
+        : useSourceAlignedTimings
+          ? cues.map((cue) => ({
+              ...cue,
+              renderStart: Number(cue.sourceStart ?? cue.start),
+              renderEnd: Number(cue.sourceEnd ?? cue.end)
+            }))
+          : applyVisualReadabilityWindows(cues, {
+              minCueDurationSec: minReadableCueSec,
+              minGapSec: 0.035,
+              maxTailExtensionSec: renderProfile.styleMode === 'safe' ? 0.62 : 0.48,
+              maxLeadExtensionSec: renderProfile.styleMode === 'safe' ? 0.22 : 0.16,
+              videoDurationSec: durationSec || 0
+            });
 
-  const verticalChunkChars = layout.isVertical
-    ? resolveVerticalChunkCharBudget(playResX, layout.marginL, layout.marginR, layout.fontSize)
-    : 0;
-  if (strictCleanSrtTimings || burnFromPreviewCues) {
-    visibleCues = expandCueVisualChunks(visibleCues, {
-      isVertical: layout.isVertical,
-      maxWordsPerChunk: layout.isVertical ? 4 : 5,
-      minWordsToSplit: layout.isVertical ? 4 : 6,
-      minChunkSec: 0.38,
-      minDurToSplitSec: layout.isVertical ? 0.5 : 2.2,
-      maxCharsPerChunk: verticalChunkChars,
-      forceSplitOverflow: layout.isVertical
-    });
-    visibleCues = clipOverlappingCueRenderEnds(visibleCues);
+    const verticalChunkChars = layout.isVertical
+      ? resolveVerticalChunkCharBudget(playResX, layout.marginL, layout.marginR, layout.fontSize)
+      : 0;
+    if (strictCleanSrtTimings || burnFromPreviewCues) {
+      visibleCues = expandCueVisualChunks(visibleCues, {
+        isVertical: layout.isVertical,
+        maxWordsPerChunk: layout.isVertical ? 4 : 5,
+        minWordsToSplit: layout.isVertical ? 4 : 6,
+        minChunkSec: 0.38,
+        minDurToSplitSec: layout.isVertical ? 0.5 : 2.2,
+        maxCharsPerChunk: verticalChunkChars,
+        forceSplitOverflow: layout.isVertical
+      });
+      visibleCues = clipOverlappingCueRenderEnds(visibleCues);
+    }
   }
 
   const visibility = validateVisualVisibility(visibleCues, {
@@ -598,7 +622,7 @@ export function generateAssContent(segments, presetId, dims = {}) {
     maxExtraGapSec: 0.6
   });
   if (visibility.invisibleCount > 0) {
-    if (burnFromPreviewCues) {
+    if (burnFromPreviewCues || useMasterLockedPipeline) {
       console.warn('[preview-burn-visibility-warn]', {
         invisibleCount: visibility.invisibleCount,
         warnings: visibility.warnings.slice(0, 12)
@@ -880,21 +904,25 @@ export function generateAssContent(segments, presetId, dims = {}) {
       });
     }
     const syncStart = Number(
-      burnFromPreviewCues
-        ? enrichedCue.renderStart ?? enrichedCue.sourceStart ?? enrichedCue.start
-        : useSourceAlignedTimings
-          ? enrichedCue.sourceStart ?? enrichedCue.start
-          : enrichedCue.firstWordStart ?? enrichedCue.sourceStart ?? enrichedCue.start
+      useMasterLockedPipeline
+        ? enrichedCue.sourceStart ?? enrichedCue.start
+        : burnFromPreviewCues
+          ? enrichedCue.renderStart ?? enrichedCue.sourceStart ?? enrichedCue.start
+          : captionModeNorm === 'accurate'
+            ? enrichedCue.sourceStart ?? enrichedCue.start
+            : enrichedCue.firstWordStart ?? enrichedCue.sourceStart ?? enrichedCue.start
     );
     const syncEnd = Number(
-      burnFromPreviewCues
-        ? enrichedCue.renderEnd ?? enrichedCue.sourceEnd ?? enrichedCue.end
-        : useSourceAlignedTimings
-          ? enrichedCue.sourceEnd ?? enrichedCue.end
-          : Math.max(
-              Number(enrichedCue.lastWordEnd ?? enrichedCue.sourceEnd ?? enrichedCue.end),
-              Number(enrichedCue.renderEnd ?? enrichedCue.end)
-            )
+      useMasterLockedPipeline
+        ? enrichedCue.sourceEnd ?? enrichedCue.end
+        : burnFromPreviewCues
+          ? enrichedCue.renderEnd ?? enrichedCue.sourceEnd ?? enrichedCue.end
+          : captionModeNorm === 'accurate'
+            ? enrichedCue.sourceEnd ?? enrichedCue.end
+            : Math.max(
+                Number(enrichedCue.lastWordEnd ?? enrichedCue.sourceEnd ?? enrichedCue.end),
+                Number(enrichedCue.renderEnd ?? enrichedCue.end)
+              )
     );
     timingAuditRows.push({
       id: cueKey,
@@ -978,6 +1006,14 @@ export function generateAssContent(segments, presetId, dims = {}) {
     for (const record of records) {
       console.log('[caption-forensics]', JSON.stringify(record));
     }
+  }
+
+  if (useMasterLockedPipeline && masterCues?.length) {
+    assertMasterAssSyncOrThrow(masterCues, timingAuditRows, {
+      presetId: selectedPresetId,
+      captionMode: captionModeNorm,
+      burnPath
+    });
   }
 
   return {

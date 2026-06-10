@@ -214,15 +214,115 @@
     return list;
   }
 
+  const TOKEN_RE = /[\p{L}\p{M}\p{N}]+(?:[''\-][\p{L}\p{M}\p{N}]+)*/gu;
+  const SHORT_FORM_MAX_WORDS = 5;
+  const SHORT_FORM_MAX_CHARS = 42;
+  const PAUSE_GAP_SEC = 0.28;
+
+  function cueWords(text) {
+    return String(text || '').match(TOKEN_RE) || [];
+  }
+
+  function isProtectedToken(word, prevWord) {
+    const w = String(word || '');
+    if (!w) return false;
+    if (/\d/.test(w) || /^\$/.test(w) || /%$/.test(w)) return true;
+    if (/^[A-Z][\p{L}\p{M}']+$/.test(w) && w.length > 1) {
+      if (prevWord && /^[A-Z][\p{L}\p{M}']+$/.test(prevWord)) return true;
+      return true;
+    }
+    return false;
+  }
+
+  function isProtectedBoundary(words, splitAfterIndex) {
+    const left = words[splitAfterIndex];
+    const right = words[splitAfterIndex + 1];
+    if (!left || !right) return false;
+    if (isProtectedToken(left, words[splitAfterIndex - 1])) return true;
+    if (isProtectedToken(right, left)) return true;
+    return false;
+  }
+
+  function segmentSegmentToMasterCues(segment) {
+    const text = normalizeCueText(segment.text);
+    if (!text) return [];
+    const words = cueWords(text);
+    if (!words.length) return [];
+    const segStart = Number(segment.start);
+    const segEnd = Number(segment.end);
+    const dur = Math.max(0.08 * words.length, segEnd - segStart);
+    const per = dur / words.length;
+    const timeline = words.map(function (word, i) {
+      const start = segStart + i * per;
+      const end = Math.min(segEnd, Math.max(start + 0.06, segStart + (i + 1) * per));
+      return { word: word, start: start, end: end };
+    });
+
+    const specs = [];
+    var bucketStart = 0;
+    for (var i = 0; i < words.length; i++) {
+      var token = words[i];
+      var chunkLen = i - bucketStart + 1;
+      var chunkText = words.slice(bucketStart, i + 1).join(' ');
+      var hitPunctStrong = /[.!?…]["']?$/.test(token);
+      var hitPunctSoft = /[,;:]["']?$/.test(token) && chunkLen >= 2;
+      var hitMaxWords = chunkLen >= SHORT_FORM_MAX_WORDS;
+      var hitMaxChars = chunkText.length > SHORT_FORM_MAX_CHARS;
+      var atEnd = i === words.length - 1;
+      if (hitPunctStrong || hitPunctSoft || hitMaxWords || hitMaxChars || atEnd) {
+        var splitAt = i;
+        if ((hitMaxWords || hitMaxChars) && !hitPunctStrong && !hitPunctSoft && chunkLen > 1) {
+          while (splitAt > bucketStart && isProtectedBoundary(words, splitAt - 1)) {
+            splitAt -= 1;
+          }
+        }
+        specs.push({ tokenStart: bucketStart, tokenEnd: splitAt });
+        bucketStart = splitAt + 1;
+        i = splitAt;
+      }
+    }
+
+    return specs.map(function (spec) {
+      var slice = timeline.slice(spec.tokenStart, spec.tokenEnd + 1);
+      var start = slice.length ? slice[0].start : segStart;
+      var end = slice.length ? slice[slice.length - 1].end : segEnd;
+      return {
+        start: roundTimelineSec(start),
+        end: roundTimelineSec(Math.max(start + MIN_CUE_DURATION_SEC, end)),
+        text: words.slice(spec.tokenStart, spec.tokenEnd + 1).join(' ')
+      };
+    });
+  }
+
+  function segmentShortFormMasterCues(segments) {
+    const out = [];
+    for (const seg of segments || []) {
+      if (!seg || seg.end <= seg.start) continue;
+      const pieces = segmentSegmentToMasterCues(seg);
+      for (const piece of pieces) {
+        if (piece.text) {
+          out.push({
+            id: 'master-' + out.length,
+            start: piece.start,
+            end: piece.end,
+            text: piece.text,
+            locked: true
+          });
+        }
+      }
+    }
+    return out;
+  }
+
   function prepareAccurate(segments) {
     const out = [];
     for (const s of segments || []) {
       if (!s || s.end <= s.start) continue;
       let text = clean(s.text, { stripTranslationLeakage: true });
       if (!text || isGarbage(text)) continue;
-      out.push({ start: s.start, end: s.end, text });
+      out.push({ start: s.start, end: s.end, text, words: s.words });
     }
-    return normalizeTimelineSegments(out);
+    return segmentShortFormMasterCues(normalizeTimelineSegments(out));
   }
 
   function prepareClean(segments) {
@@ -288,6 +388,7 @@
     prepareSegments,
     prepareSegmentsForMode,
     prepareAccurate,
+    segmentShortFormMasterCues,
     decodeSubtitleTextEntities,
     normalizeTimelineSegments,
     mergeRollingCaptionChains,

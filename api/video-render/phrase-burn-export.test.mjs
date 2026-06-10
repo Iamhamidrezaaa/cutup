@@ -1,24 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  buildSourceAlignedSubtitles,
-  buildPhraseBurnSubtitles
-} from './subtitle-pipeline.js';
+import { buildSourceAlignedSubtitles } from './subtitle-pipeline.js';
 import { generateAssContent } from './ass-generator.js';
 
-test('viral export uses phrase burn path with more cues than source-aligned coalesce', () => {
-  const segments = Array.from({ length: 15 }, (_, i) => ({
+test('viral export uses master locked cues without phrase re-segmentation', () => {
+  const segments = Array.from({ length: 4 }, (_, i) => ({
+    id: `master-${i}`,
     start: 1.79 + i * 0.45,
     end: 1.79 + i * 0.45 + 0.4,
-    text: `Word block number ${i} for phrase cadence test`
+    text: `Cue ${i} text.`,
+    locked: true
   }));
 
-  const beforeCoalescePath = buildSourceAlignedSubtitles(segments);
-  const phrasePath = buildPhraseBurnSubtitles(segments);
-  assert.ok(phrasePath.length > beforeCoalescePath.length);
-
   const ass = generateAssContent(segments, 'mrBeast', { captionMode: 'viral' });
-  assert.equal(ass.cueCount, phrasePath.length);
+  assert.equal(ass.cueCount, segments.length);
+  for (let i = 0; i < segments.length; i++) {
+    const dlg = ass.timingAudit.assDialogues[i];
+    assert.equal(dlg.assStart, segments[i].start);
+    assert.equal(dlg.assEnd, segments[i].end);
+  }
 });
 
 test('accurate mode keeps source-aligned segment path', () => {

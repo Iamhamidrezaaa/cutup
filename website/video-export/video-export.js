@@ -185,10 +185,12 @@
         .trim();
 
     return {
-      segments: parsed.map((s) => ({
+      segments: parsed.map((s, i) => ({
+        id: `master-${i}`,
         start: Number(s.start),
         end: Number(s.end),
-        text: stripTags(s.text)
+        text: stripTags(s.text),
+        locked: true
       })),
       source: 'clean-srt'
     };
@@ -202,10 +204,12 @@
 
   function segmentsFromExportDoc(doc) {
     if (!doc || doc.format !== 'cutup-style-v1' || !Array.isArray(doc.cues)) return [];
-    return doc.cues.map((c) => ({
+    return doc.cues.map((c, i) => ({
+      id: c.id || `master-${i}`,
       start: Number(c.start),
       end: Number(c.end),
-      text: String(c.text || (Array.isArray(c.lines) ? c.lines.join(' ') : '')).trim()
+      text: String(c.text || (Array.isArray(c.lines) ? c.lines.join(' ') : '')).trim(),
+      locked: c.locked !== false
     }));
   }
 

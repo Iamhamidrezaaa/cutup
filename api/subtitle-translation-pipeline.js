@@ -10,6 +10,11 @@ import {
   isSegmentTimingLineageCaptureActive,
   recordSegmentTimingStage
 } from './video-render/segment-timing-lineage.js';
+import {
+  applyTranslationToLockedCues,
+  lockMasterCues,
+  normalizeLockedMasterCues
+} from './video-render/master-subtitle-cues.js';
 
 const PERSIAN_TARGET = new Set(['fa', 'fas', 'per', 'persian', 'farsi']);
 
@@ -472,9 +477,24 @@ export async function postProcessTranslatedSegments(opts) {
     pipelineStages.exportText = working[traceIdx]?.text || '';
   }
 
-  const exportOneToOne = refineTranscriptTimings(
-    sanitizeTranslatedSegments(oneToOneForTiming, originalSegments)
-  );
+  const sanitized = sanitizeTranslatedSegments(oneToOneForTiming, originalSegments);
+  const exportOneToOne = refineTranscriptTimings(sanitized).map((seg, i) => ({
+    ...seg,
+    start: Number(originalSegments[i]?.start ?? seg.start),
+    end: Number(originalSegments[i]?.end ?? seg.end),
+    text: String(seg.text || '').trim()
+  }));
+
+  const hasLockedMaster = (originalSegments || []).some((s) => s?.locked === true);
+  let lockedExport;
+  if (hasLockedMaster) {
+    lockedExport = applyTranslationToLockedCues(
+      normalizeLockedMasterCues(originalSegments),
+      exportOneToOne
+    );
+  } else {
+    lockedExport = lockMasterCues(exportOneToOne);
+  }
 
   const timingReport = buildTimingDriftReport({
     originalSegments: sourceWithWordTiming,
@@ -500,7 +520,13 @@ export async function postProcessTranslatedSegments(opts) {
   }
 
   return {
-    segments: exportOneToOne.map(({ start, end, text }) => ({ start, end, text })),
+    segments: lockedExport.map(({ id, start, end, text, locked }) => ({
+      id,
+      start,
+      end,
+      text,
+      locked: locked !== false
+    })),
     timingReport,
     pipelineStages
   };
