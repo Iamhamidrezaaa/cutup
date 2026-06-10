@@ -19,6 +19,13 @@ const V2_MODELS = Object.freeze({
   [OPENAI_PROVIDER_ID]: OPENAI_WHISPER_MODEL
 });
 
+const WORD_GAP_MIN_SEC = 0.45;
+const WORD_GROUP_PAUSE_SEC = 0.42;
+
+function wordText(w) {
+  return String(w?.word ?? w?.text ?? '').trim();
+}
+
 /** @returns {'v1'|'v2'} */
 export function getAsrPipelineVersion() {
   const raw = String(process.env.ASR_PIPELINE || 'v2').trim().toLowerCase();
@@ -46,35 +53,116 @@ export function preserveProviderOutput(providerResult, providerId) {
   if (Array.isArray(raw.words) && raw.words.length) {
     words = JSON.parse(JSON.stringify(raw.words));
   } else {
-    for (const seg of segments) {
-      if (Array.isArray(seg?.words)) {
-        words.push(...JSON.parse(JSON.stringify(seg.words)));
-      }
-    }
+    words = collectProviderWords([], segments);
   }
 
-  const reconciled = reconcileSegmentsWithProviderWords(segments, words);
+  const timeline = resolveV2SegmentTimeline(segments, words);
 
   return {
     text: String(raw.text ?? providerResult?.text ?? ''),
-    segments: reconciled.segments,
+    segments: timeline.segments,
     words,
     language: String(raw.language ?? providerResult?.language ?? 'unknown'),
     provider: providerId,
     model: V2_MODELS[providerId] || null,
     durationSeconds: providerResult?.durationSeconds ?? null,
+    segmentSource: timeline.segmentSource,
+    wordGapFill: timeline.wordGapFill
+  };
+}
+
+/** Collect provider words from top-level or nested segment.words (deduped). */
+export function collectProviderWords(topLevelWords, segments) {
+  const seen = new Set();
+  const out = [];
+  const push = (w) => {
+    const text = wordText(w);
+    const ws = Number(w?.start);
+    const we = Number(w?.end);
+    if (!text || !Number.isFinite(ws) || !Number.isFinite(we) || we <= ws) return;
+    const key = `${ws.toFixed(3)}|${we.toFixed(3)}|${text}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(JSON.parse(JSON.stringify(w)));
+  };
+  if (Array.isArray(topLevelWords)) {
+    for (const w of topLevelWords) push(w);
+  }
+  for (const seg of segments || []) {
+    if (Array.isArray(seg?.words)) {
+      for (const w of seg.words) push(w);
+    }
+  }
+  return out.sort((a, b) => Number(a.start) - Number(b.start));
+}
+
+function countTokensInSegments(segments) {
+  return (segments || []).reduce((n, s) => {
+    const t = String(s?.text || '').trim();
+    if (!t) return n;
+    return n + t.split(/\s+/).filter(Boolean).length;
+  }, 0);
+}
+
+function largestSegmentGapSec(segments) {
+  const sorted = [...(segments || [])].sort((a, b) => Number(a.start) - Number(b.start));
+  let max = 0;
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const gap = Number(sorted[i + 1].start) - Number(sorted[i].end);
+    if (gap > max) max = gap;
+  }
+  return max;
+}
+
+/**
+ * V2 segment timeline: prefer provider word timestamps when segment stream has holes.
+ */
+export function resolveV2SegmentTimeline(rawSegments, words) {
+  const segments = Array.isArray(rawSegments) ? JSON.parse(JSON.stringify(rawSegments)) : [];
+  const wordList = Array.isArray(words) && words.length
+    ? words
+    : collectProviderWords([], segments);
+
+  if (!wordList.length) {
+    return {
+      segments,
+      segmentSource: 'provider_segments_only',
+      wordGapFill: { mode: 'none', inserted: 0, wordCount: 0, maxSegmentGapSec: largestSegmentGapSec(segments) }
+    };
+  }
+
+  const maxGap = largestSegmentGapSec(segments);
+  const wordSegments = groupProviderWordsByPause(wordList);
+  const wordTokens = wordList.length;
+  const segTokens = countTokensInSegments(segments);
+
+  const useWordPrimary =
+    maxGap >= WORD_GAP_MIN_SEC ||
+    wordSegments.length > segments.length + 1 ||
+    wordTokens > segTokens + 2;
+
+  if (useWordPrimary) {
+    return {
+      segments: wordSegments,
+      segmentSource: 'provider_words',
+      wordGapFill: {
+        mode: 'word_primary',
+        inserted: wordSegments.length,
+        providerSegmentCount: segments.length,
+        maxSegmentGapSec: Number(maxGap.toFixed(3)),
+        wordCount: wordList.length
+      }
+    };
+  }
+
+  const reconciled = reconcileSegmentsWithProviderWords(segments, wordList);
+  return {
+    segments: reconciled.segments,
+    segmentSource: 'provider_segments_plus_gap_fill',
     wordGapFill: reconciled.wordGapFill
   };
 }
 
-const WORD_GAP_MIN_SEC = 0.45;
-const WORD_GROUP_PAUSE_SEC = 0.42;
-
-function wordText(w) {
-  return String(w?.word ?? w?.text ?? '').trim();
-}
-
-/** Words whose midpoint is not covered by any provider segment. */
 export function findUncoveredProviderWords(segments, words) {
   const segs = Array.isArray(segments) ? segments : [];
   const list = Array.isArray(words) ? words : [];
@@ -246,7 +334,9 @@ export async function transcribeAsrV2(ctx) {
         phase: 'provider_ok',
         providerId,
         segmentCount: preserved.segments.length,
-        wordCount: preserved.words.length
+        wordCount: preserved.words.length,
+        segmentSource: preserved.segmentSource,
+        wordGapFill: preserved.wordGapFill
       });
       return {
         ...preserved,
@@ -323,7 +413,8 @@ export function finalizeV2Transcript(transcript) {
         language: transcript.language,
         provider: transcript.provider,
         model: transcript.model,
-        wordGapFill: transcript.wordGapFill || null
+        wordGapFill: transcript.wordGapFill || null,
+        segmentSource: transcript.segmentSource || null
       }
     : preserveProviderOutput(transcript, transcript?.provider || GROQ_PROVIDER_ID);
 
@@ -340,6 +431,7 @@ export function finalizeV2Transcript(transcript) {
     provider: preserved.provider,
     model: preserved.model,
     wordGapFill: reconciled.wordGapFill,
+    segmentSource: preserved.segmentSource || reconciled.segmentSource || null,
     cleanSrt: segmentsToCleanSrt(reconciled.segments),
     asrPipeline: 'v2'
   };

@@ -7,7 +7,8 @@ import {
   segmentsToCleanSrt,
   formatRawAsrDebugPayload,
   reconcileSegmentsWithProviderWords,
-  findUncoveredProviderWords
+  findUncoveredProviderWords,
+  resolveV2SegmentTimeline
 } from './transcription-v2.js';
 import { buildV1V2ComparisonReport } from './asr-pipeline-comparison.js';
 
@@ -60,6 +61,35 @@ test('formatRawAsrDebugPayload returns first 50 segments', () => {
   });
   assert.equal(payload.segment_count, 1);
   assert.equal(payload.first_50_segments[0].text, 'a');
+});
+
+test('resolveV2SegmentTimeline uses word_primary when segment gap is large', () => {
+  const segments = [
+    { start: 8.88, end: 12.08, text: 'Sorry I just wanna challenge you' },
+    { start: 18.679, end: 20.679, text: 'I mean challenge deadlifting' }
+  ];
+  const words = [
+    { word: 'Sorry', start: 8.9, end: 9.1 },
+    { word: 'I', start: 9.2, end: 9.3 },
+    { word: 'just', start: 9.35, end: 9.5 },
+    { word: 'wanna', start: 9.55, end: 9.8 },
+    { word: 'challenge', start: 9.85, end: 10.2 },
+    { word: 'you', start: 10.25, end: 10.4 },
+    { word: 'what', start: 12.5, end: 12.8 },
+    { word: 'kidding', start: 12.85, end: 13.2 },
+    { word: 'challenge', start: 13.3, end: 13.7 },
+    { word: 'with', start: 13.75, end: 13.9 },
+    { word: 'you', start: 13.95, end: 14.1 },
+    { word: 'guys', start: 14.15, end: 14.5 },
+    { word: 'I', start: 18.7, end: 18.8 },
+    { word: 'mean', start: 18.85, end: 19.0 },
+    { word: 'deadlifting', start: 19.5, end: 20.0 }
+  ];
+  const { segments: out, segmentSource, wordGapFill } = resolveV2SegmentTimeline(segments, words);
+  assert.equal(segmentSource, 'provider_words');
+  assert.equal(wordGapFill.mode, 'word_primary');
+  assert.ok(out.some((s) => s.text.includes('kidding')));
+  assert.ok(out.some((s) => s.text.includes('deadlifting')));
 });
 
 test('reconcileSegmentsWithProviderWords fills segment gap from provider words', () => {

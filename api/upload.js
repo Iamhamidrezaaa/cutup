@@ -477,7 +477,8 @@ export default async function handler(req, res) {
         ? {
             asrPipeline: 'v2',
             model: finalized.model,
-            ...(finalized.wordGapFill ? { wordGapFill: finalized.wordGapFill } : {})
+            ...(finalized.wordGapFill ? { wordGapFill: finalized.wordGapFill } : {}),
+            ...(finalized.segmentSource ? { segmentSource: finalized.segmentSource } : {})
           }
         : {}),
       transcriptionRuntime,

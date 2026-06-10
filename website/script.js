@@ -816,8 +816,19 @@ function normalizeTranscriptionResult(result) {
   if (result.asrPipeline === 'v2') {
     window.cutupAsrPipeline = 'v2';
     window.cutupProviderWords = Array.isArray(result.words) ? result.words : [];
+    window.cutupAsrSegmentSource = result.segmentSource || null;
+    console.log('[asr-client]', {
+      pipeline: 'v2',
+      segmentCount: rawSegments.length,
+      wordCount: window.cutupProviderWords.length,
+      segmentSource: result.segmentSource || null,
+      wordGapFill: result.wordGapFill || null,
+      largestGapSec: computeClientSegmentGapSec(rawSegments)
+    });
   } else if (result.asrPipeline === 'v1') {
     window.cutupAsrPipeline = 'v1';
+  } else {
+    console.warn('[asr-client] API did not report asrPipeline — server may need restart or deploy');
   }
   const normalized = {
     text: String(text || '').trim(),
@@ -5291,7 +5302,11 @@ async function transcribeAudio(audioUrlOrFile, languageHint = null, sessionId = 
       errorCode: result?.errorCode,
       hasText: !!result?.text,
       textLength: result?.text?.length || 0,
-      segmentCount: Array.isArray(result?.segments) ? result.segments.length : 0
+      segmentCount: Array.isArray(result?.segments) ? result.segments.length : 0,
+      asrPipeline: result?.asrPipeline || null,
+      segmentSource: result?.segmentSource || null,
+      wordGapFill: result?.wordGapFill || null,
+      wordCount: Array.isArray(result?.words) ? result.words.length : 0
     });
     
     if (result && result.success === false) {
@@ -5414,6 +5429,15 @@ async function summarizeText(text, language = null, sessionId = null, contextMet
 
 function isClientAsrV2() {
   return window.cutupAsrPipeline === 'v2';
+}
+
+function computeClientSegmentGapSec(segments) {
+  const sorted = [...(segments || [])].sort((a, b) => Number(a.start) - Number(b.start));
+  let max = 0;
+  for (let i = 0; i < sorted.length - 1; i++) {
+    max = Math.max(max, Number(sorted[i + 1].start) - Number(sorted[i].end));
+  }
+  return Number(max.toFixed(3));
 }
 
 /** Pass-through for ASR V2 — no merge, offset, or timing mutation on the client. */
