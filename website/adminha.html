@@ -535,7 +535,8 @@
               <h2 style="margin:0 0 8px">ASR Comparison Mode</h2>
               <p style="margin:0;color:var(--muted,#64748b);font-size:14px;max-width:720px">
                 Upload one video or audio file. Cutup extracts audio once, then runs OpenAI whisper-1,
-                Whisper Large V3, and Whisper Large V3 Turbo on the same buffer. Production transcription is unchanged.
+                Whisper Large V3, and Whisper Large V3 Turbo on the same buffer (in parallel). The job runs in the
+                background — keep this tab open while status updates. Production transcription is unchanged.
               </p>
             </div>
             <div id="asrBenchWorkspace" class="asr-bench-upload">
@@ -770,7 +771,7 @@
     <script src="admin-support.js?v=20260609-feedback-v1"></script>
     <script src="admin-ai-state-charts.js"></script>
     <script src="admin-ai-state.js"></script>
-    <script src="admin-asr-benchmark.js?v=20260609-asr-bench-v1"></script>
+    <script src="admin-asr-benchmark.js?v=20260609-asr-bench-v2"></script>
     <script src="admin-audit-log-charts.js"></script>
     <script src="admin-audit-log.js"></script>
     <script src="admin-content-studio.js"></script>

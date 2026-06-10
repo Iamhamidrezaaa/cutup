@@ -8,6 +8,9 @@
     'whisper-large-v3-turbo': 'Whisper Large V3 Turbo'
   };
 
+  const POLL_MS = 2500;
+  const MAX_POLL_MS = 20 * 60 * 1000;
+
   function apiBase() {
     const b = window.CUTUP_API_BASE;
     return typeof b === 'string' ? b.replace(/\/$/, '') : '';
@@ -32,6 +35,25 @@
     if (!el) return;
     el.textContent = msg || '';
     el.classList.toggle('is-error', Boolean(isError));
+  }
+
+  function stageLabel(job) {
+    const stage = job?.stage || 'queued';
+    const map = {
+      queued: 'Queued…',
+      extracting_audio: 'Extracting audio from video (once)…',
+      audio_ready: 'Audio ready — starting engines…',
+      transcribing: 'Running OpenAI whisper-1, Large V3, and Turbo in parallel…',
+      comparing: 'Building comparison report…',
+      done: 'Complete'
+    };
+    if (map[stage]) return map[stage];
+    if (String(stage).startsWith('engine_done_')) {
+      const done = job?.enginesDone ?? 0;
+      const total = job?.enginesTotal ?? 3;
+      return `Engine finished (${done}/${total}) — ${stage.replace('engine_done_', '')}`;
+    }
+    return stage;
   }
 
   function renderProviders(report, engineResults) {
@@ -103,6 +125,35 @@
     `;
   }
 
+  function renderResult(data) {
+    renderMeta(data);
+    renderProviders(data.report, data.engineResults);
+    renderDifferences(data.report);
+    const summaryEl = document.getElementById('asrBenchSummary');
+    if (summaryEl) summaryEl.textContent = data.summaryText || '';
+  }
+
+  async function pollBenchmark(traceId, onProgress) {
+    const started = Date.now();
+    while (Date.now() - started < MAX_POLL_MS) {
+      const res = await fetch(apiUrl(`/api/admin/asr-benchmark?traceId=${encodeURIComponent(traceId)}`), {
+        method: 'GET',
+        credentials: 'include'
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || data.message || `Poll failed HTTP ${res.status}`);
+      }
+      if (typeof onProgress === 'function') onProgress(data);
+      if (data.status === 'completed' && data.report) return data;
+      if (data.status === 'failed') {
+        throw new Error(data.error || data.job?.error || 'ASR benchmark failed on server');
+      }
+      await new Promise((r) => setTimeout(r, POLL_MS));
+    }
+    throw new Error('Benchmark is still running on the server. Save the trace id and poll again later.');
+  }
+
   async function runBenchmark() {
     const fileInput = document.getElementById('asrBenchFile');
     const langInput = document.getElementById('asrBenchLang');
@@ -112,7 +163,7 @@
       return;
     }
 
-    setStatus('Running all ASR engines on the same extracted audio…');
+    setStatus('Uploading file and starting benchmark job…');
     const btn = document.getElementById('asrBenchRunBtn');
     if (btn) btn.disabled = true;
 
@@ -127,19 +178,32 @@
         body: fd,
         credentials: 'include'
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.message || data.error || `HTTP ${res.status}`);
+      const started = await res.json().catch(() => ({}));
+      if (!res.ok && res.status !== 202) {
+        throw new Error(started.message || started.error || `HTTP ${res.status}`);
+      }
+      if (!started.traceId) {
+        throw new Error('Server did not return traceId');
       }
 
-      renderMeta(data);
-      renderProviders(data.report, data.engineResults);
-      renderDifferences(data.report);
-      const summaryEl = document.getElementById('asrBenchSummary');
-      if (summaryEl) summaryEl.textContent = data.summaryText || '';
+      setStatus(`Job ${started.traceId} — waiting for engines…`);
+
+      const final = await pollBenchmark(started.traceId, (data) => {
+        setStatus(`${stageLabel(data.job)} (trace: ${started.traceId})`);
+      });
+
+      renderResult(final);
       setStatus('Benchmark complete.');
     } catch (err) {
-      setStatus(err.message || String(err), true);
+      const msg = String(err?.message || err);
+      if (msg === 'Failed to fetch') {
+        setStatus(
+          'Connection lost while waiting. The job may still be running on the server — check server logs or retry with a shorter clip.',
+          true
+        );
+      } else {
+        setStatus(msg, true);
+      }
     } finally {
       if (btn) btn.disabled = false;
     }
@@ -155,5 +219,5 @@
     });
   }
 
-  window.CutupAdminAsrBenchmark = { mount, runBenchmark };
+  window.CutupAdminAsrBenchmark = { mount, runBenchmark, pollBenchmark, renderResult };
 })();

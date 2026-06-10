@@ -261,13 +261,17 @@ export async function transcribeBenchmarkEngine(engine, ctx) {
   return normalized;
 }
 
-export async function runAllBenchmarkEngines(ctx) {
-  const results = [];
-  for (const engine of BENCHMARK_ENGINES) {
+export async function runAllBenchmarkEngines(ctx, opts = {}) {
+  const onEngineDone = typeof opts.onEngineDone === 'function' ? opts.onEngineDone : null;
+  const parallel = opts.parallel !== false;
+
+  async function runOne(engine) {
     try {
-      results.push(await transcribeBenchmarkEngine(engine, ctx));
+      const result = await transcribeBenchmarkEngine(engine, ctx);
+      if (onEngineDone) onEngineDone(engine, result);
+      return result;
     } catch (err) {
-      results.push({
+      const failed = {
         engineId: engine.id,
         provider: engine.label,
         backend: engine.backend,
@@ -281,8 +285,19 @@ export async function runAllBenchmarkEngines(ctx) {
         segmentCount: 0,
         avgConfidence: null,
         rawResponse: null
-      });
+      };
+      if (onEngineDone) onEngineDone(engine, failed);
+      return failed;
     }
+  }
+
+  if (parallel) {
+    return Promise.all(BENCHMARK_ENGINES.map((engine) => runOne(engine)));
+  }
+
+  const results = [];
+  for (const engine of BENCHMARK_ENGINES) {
+    results.push(await runOne(engine));
   }
   return results;
 }
