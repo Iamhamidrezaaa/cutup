@@ -90,7 +90,12 @@
 
 .cutup-preset-card[data-preset-id='ali-abdaal'] .cutup-preset-card__line,
 .cutup-preset-card[data-preset-id='ali-abdaal'] .cutup-preset-card__name {
-  color: #1e293b;
+  color: #f1f5f9;
+}
+
+.cutup-preset-card[data-preset-id='ali-abdaal'] .cutup-preset-card__tag {
+  color: #94a3b8;
+  opacity: 1;
 }
 
 .cutup-preset-card__name {
