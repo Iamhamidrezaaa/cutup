@@ -19,6 +19,9 @@ parspack.txt
 cookies/*.txt
 cookies.txt
 
+# ASR benchmark artifacts (admin-only diagnostics)
+trace/
+
 # فایل‌های موقت
 # Adaptive translation training outputs (generated)
 translation-training-data/dataset.jsonl

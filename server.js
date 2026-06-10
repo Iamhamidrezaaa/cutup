@@ -139,7 +139,7 @@ app.get('/api/system-health', async (req, res) => {
 app.get('/sitemap.xml', async (req, res) => sitemapHandler(req, res));
 
 // Import and use API routes
-let uploadHandler, adminCmsMediaHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, projectsHandler, oauthGoogleStartHandler, generateDocxHandler, exportVideoHandler, stripeCheckoutHandler, stripePortalHandler, paymentCreateHandler, paymentVerifyHandler, paymentCallbackHandler, paymentRetryHandler, paymentPayInvoiceHandler, paymentCancelInvoiceHandler, invoicesHandler, invoiceByIdHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, pipelineFeedbackHandler, cronConversionEmailsHandler, cronSubscriptionExpiryHandler, userProfileHandler, accountSecurityHandler, auditEventHandler, adminAuditSummaryHandler, adminAuditListHandler, adminAuditUserTimelineHandler, adminAuditChartsHandler, adminAuditFunnelHandler, adminAuditAlertsHandler, adminAuditEvaluateAlertsHandler, adminAuditSeedHandler, adminAuditDashboardHandler, adminAuditJourneyHandler, adminAuditNotesHandler, adminAuditExportHandler, offersHandler, adminOffersHandler, creatorWallHandler, adminCreatorWallHandler, systemHealthHandler, adminOpsStateHandler, adminProvidersHandler;
+let uploadHandler, adminCmsMediaHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, projectsHandler, oauthGoogleStartHandler, generateDocxHandler, exportVideoHandler, stripeCheckoutHandler, stripePortalHandler, paymentCreateHandler, paymentVerifyHandler, paymentCallbackHandler, paymentRetryHandler, paymentPayInvoiceHandler, paymentCancelInvoiceHandler, invoicesHandler, invoiceByIdHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, pipelineFeedbackHandler, cronConversionEmailsHandler, cronSubscriptionExpiryHandler, userProfileHandler, accountSecurityHandler, auditEventHandler, adminAuditSummaryHandler, adminAuditListHandler, adminAuditUserTimelineHandler, adminAuditChartsHandler, adminAuditFunnelHandler, adminAuditAlertsHandler, adminAuditEvaluateAlertsHandler, adminAuditSeedHandler, adminAuditDashboardHandler, adminAuditJourneyHandler, adminAuditNotesHandler, adminAuditExportHandler, offersHandler, adminOffersHandler, creatorWallHandler, adminCreatorWallHandler, systemHealthHandler, adminOpsStateHandler, adminProvidersHandler, adminAsrBenchmarkHandler;
 
 async function loadRoutes() {
   try {
@@ -288,6 +288,10 @@ async function loadRoutes() {
     const adminProvidersModule = await import('./api/admin/providers.js');
     adminProvidersHandler = adminProvidersModule.default;
     console.log('✅ Admin transcription providers handler loaded');
+
+    const adminAsrBenchmarkModule = await import('./api/admin-asr-benchmark.js');
+    adminAsrBenchmarkHandler = adminAsrBenchmarkModule.default;
+    console.log('✅ Admin ASR benchmark handler loaded');
 
     const { ensureAdminsSchema, syncPrimaryAdminAccount } = await import('./api/admins-repository.js');
     await ensureAdminsSchema();
@@ -1029,6 +1033,13 @@ app.get('/api/admin/providers', async (req, res) => {
     return res.status(503).json({ error: 'not_loaded' });
   }
   return adminProvidersHandler(req, res);
+});
+
+app.all('/api/admin/asr-benchmark', async (req, res) => {
+  if (!adminAsrBenchmarkHandler) {
+    return res.status(503).json({ error: 'not_loaded' });
+  }
+  return adminAsrBenchmarkHandler(req, res);
 });
 
 app.get('/api/admin/audit/dashboard', async (req, res) => {

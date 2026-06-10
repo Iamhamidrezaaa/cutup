@@ -1,0 +1,141 @@
+.asr-bench-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.asr-bench-upload {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  padding: 16px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 12px;
+  background: var(--card, #fff);
+}
+
+.asr-bench-upload label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted, #64748b);
+}
+
+.asr-bench-upload input[type='file'],
+.asr-bench-upload input[type='text'] {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 8px;
+  min-width: 220px;
+}
+
+.asr-bench-status {
+  font-size: 14px;
+  color: var(--muted, #64748b);
+}
+
+.asr-bench-status.is-error {
+  color: var(--err, #dc2626);
+}
+
+.asr-bench-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.asr-bench-meta span {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #f1f5f9;
+}
+
+.asr-bench-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.asr-bench-col {
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 12px;
+  background: var(--card, #fff);
+  overflow: hidden;
+}
+
+.asr-bench-col-head {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border, #e2e8f0);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.asr-bench-col-stats {
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--muted, #64748b);
+  border-bottom: 1px solid var(--border, #e2e8f0);
+}
+
+.asr-bench-col-body {
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.55;
+  max-height: 360px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.asr-bench-diff-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.asr-bench-diff-card {
+  border: 1px solid #fcd34d;
+  background: #fffbeb;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.asr-bench-diff-card h4 {
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+
+.asr-bench-diff-row {
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.asr-bench-diff-row strong {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.asr-bench-missing {
+  color: #b45309;
+  font-size: 12px;
+}
+
+.asr-bench-summary {
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 12px;
+  padding: 14px;
+  background: #f8fafc;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.asr-bench-skipped {
+  opacity: 0.65;
+}

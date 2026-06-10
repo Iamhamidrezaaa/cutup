@@ -2591,6 +2591,10 @@ async function refreshSection(section) {
   if (section === 'notifications') return loadAdminNotifications();
   if (section === 'support') return loadAdminSupport();
   if (section === 'ops') return loadOpsCommandCenter();
+  if (section === 'asr-benchmark') {
+    window.CutupAdminAsrBenchmark?.mount?.();
+    return Promise.resolve();
+  }
   if (section === 'blog') return loadBlogPosts();
   if (section === 'pages' || section === 'blog') {
     const cur = window.CutupCmsNav?.getCurrent?.() || {};
