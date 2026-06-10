@@ -5174,8 +5174,10 @@ async function resolveTranscriptionFromExtract(extractResult, {
     CUTUP_PIPELINE.GENERATE_TRANSCRIPT,
     CUTUP_PIPELINE.GENERATE_TRANSCRIPT
   );
-  const langHint = extractResult.language || extractResult.subtitleLanguage || null;
-  if (langHint) setDetectedSourceLanguage(langHint);
+  const rawLangHint = extractResult.language || extractResult.subtitleLanguage || null;
+  const slavicMetaHint = /^(ru|uk|pl)$/i.test(String(rawLangHint || '').slice(0, 2));
+  const langHint = slavicMetaHint ? null : rawLangHint;
+  if (rawLangHint) setDetectedSourceLanguage(rawLangHint);
   const transcription = await transcribeAudio(extractResult.audioUrl, langHint, sessionId, {
     platform,
     title: extractResult.title || `${getPlatformName(platform)} video`,

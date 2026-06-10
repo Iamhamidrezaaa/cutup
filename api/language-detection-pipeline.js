@@ -14,8 +14,13 @@ import {
 
 export const VERIFICATION_CONFIDENCE_THRESHOLD = 0.85;
 export const HIGH_CONFIDENCE_LATIN_BLOCK = 0.95;
+export const MIN_SLAVIC_HINT_CONFIDENCE = 0.9;
+export const MIN_SLAVIC_HINT_AGREEMENT = 0.999;
 const RTL_SUSPICIOUS_LANGS = new Set(['ru', 'ar', 'fa', 'he']);
 const LATIN_SUSPICIOUS_RATIO = 0.6;
+/** Acoustic models often confuse these with accented English — never weak-hint Whisper. */
+const ACCENT_SUSCEPTIBLE_HINT_LANGS = new Set(['ru', 'uk', 'pl', 'bg', 'sr', 'hr', 'sk', 'cs', 'be']);
+const SLAVIC_TRANSCRIPT_LANGS = new Set(['ru', 'uk', 'pl']);
 
 function logLanguageEvent(event, payload) {
   console.log(`[${event}]`, JSON.stringify(payload));
@@ -108,6 +113,162 @@ export function inferAccentProfile(providerLanguage, finalLanguage, analysis) {
   }
 
   return { accent: null, accentConfidence: 0 };
+}
+
+export function isStrongSlavicHintEvidence(preTranscription) {
+  if (!preTranscription) return false;
+  const lang = normalizeLanguageCode(preTranscription.language);
+  if (!SLAVIC_TRANSCRIPT_LANGS.has(lang)) return false;
+  const agreement = Number(preTranscription.providerAgreement ?? 0);
+  const confidence = Number(preTranscription.languageConfidence ?? 0);
+  const votes = Array.isArray(preTranscription.verificationVotes)
+    ? preTranscription.verificationVotes
+    : [];
+  const unanimous =
+    votes.length >= 2 &&
+    votes.every((v) => normalizeLanguageCode(v.language) === lang);
+  return (
+    agreement >= MIN_SLAVIC_HINT_AGREEMENT &&
+    confidence >= MIN_SLAVIC_HINT_CONFIDENCE &&
+    (votes.length === 0 || unanimous)
+  );
+}
+
+/**
+ * Decide Whisper `language` param. Weak Slavic hints are suppressed (accent ≠ language).
+ */
+export function resolveTranscriptionLanguageHint(opts = {}) {
+  const clientHintNorm = opts.clientHint ? normalizeLanguageCode(opts.clientHint) : null;
+  const clientHint =
+    clientHintNorm && clientHintNorm !== 'unknown' ? clientHintNorm : null;
+  const pre = opts.preTranscription || null;
+  const preLang = normalizeLanguageCode(pre?.language);
+  const traceId = opts.traceId || null;
+
+  function safeHint(lang, source, meta = {}, preTranscription = pre) {
+    const strongSlavic = isStrongSlavicHintEvidence(preTranscription);
+    if (!lang || lang === 'unknown') {
+      return { languageHint: null, source: 'auto', suppressed: true, suspectedAccent: preLang || clientHint || null };
+    }
+    if (ACCENT_SUSCEPTIBLE_HINT_LANGS.has(lang) && !strongSlavic) {
+      logLanguageEvent('transcription_language_hint_suppressed', {
+        traceId,
+        requestedLanguage: lang,
+        source,
+        reason: 'accent_susceptible_weak_evidence',
+        providerAgreement: pre?.providerAgreement ?? null,
+        languageConfidence: pre?.languageConfidence ?? null
+      });
+      return {
+        languageHint: null,
+        source: 'auto',
+        suppressed: true,
+        suspectedAccent: lang,
+        ...meta
+      };
+    }
+    return {
+      languageHint: lang,
+      source,
+      suppressed: false,
+      suspectedAccent: null,
+      ...meta
+    };
+  }
+
+  if (clientHint && !ACCENT_SUSCEPTIBLE_HINT_LANGS.has(clientHint)) {
+    return safeHint(clientHint, 'client');
+  }
+  if (clientHint && ACCENT_SUSCEPTIBLE_HINT_LANGS.has(clientHint)) {
+    logLanguageEvent('transcription_language_hint_suppressed', {
+      traceId,
+      requestedLanguage: clientHint,
+      source: 'client_metadata',
+      reason: 'accent_susceptible_client_hint_ignored'
+    });
+  }
+
+  if (preLang && preLang !== 'unknown') {
+    const hint = safeHint(
+      preLang,
+      'pre_transcription',
+      {
+        providerAgreement: pre?.providerAgreement ?? null,
+        languageConfidence: pre?.languageConfidence ?? null
+      },
+      pre
+    );
+    return hint;
+  }
+
+  return { languageHint: null, source: 'auto', suppressed: true, suspectedAccent: null };
+}
+
+export function shouldAttemptAccentEnglishRetranscribe(transcript, hintResolution = {}, preTranscription = null) {
+  const providerLang = normalizeLanguageCode(transcript?.language);
+  if (!SLAVIC_TRANSCRIPT_LANGS.has(providerLang)) return false;
+
+  const analysis = analyzeTranscriptLanguage(transcript?.text, transcript?.segments || []);
+  if (analysis.cyrillicRatio < 0.2) return false;
+
+  if (isStrongSlavicHintEvidence(preTranscription || hintResolution)) {
+    return analysis.latinRatio > 0.12;
+  }
+
+  return true;
+}
+
+export function pickAccentRetranscribeWinner(originalTranscript, englishRetryTranscript, preTranscription = null) {
+  const originalLang = normalizeLanguageCode(originalTranscript?.language);
+  const originalAnalysis = analyzeTranscriptLanguage(
+    originalTranscript?.text,
+    originalTranscript?.segments || []
+  );
+  const retryAnalysis = analyzeTranscriptLanguage(
+    englishRetryTranscript?.text,
+    englishRetryTranscript?.segments || []
+  );
+
+  const retryLooksEnglish =
+    retryAnalysis.latinRatio >= 0.42 &&
+    retryAnalysis.cyrillicRatio < 0.15 &&
+    String(englishRetryTranscript?.text || '').trim().length > 8;
+
+  const originalLooksAuthenticRussian =
+    isStrongSlavicHintEvidence(preTranscription) &&
+    originalAnalysis.cyrillicRatio >= 0.45 &&
+    originalAnalysis.latinRatio < 0.08 &&
+    !retryLooksEnglish;
+
+  if (originalLooksAuthenticRussian) {
+    return {
+      usedRetry: false,
+      transcript: originalTranscript,
+      fromLanguage: originalLang,
+      reason: 'authentic_russian_retained'
+    };
+  }
+
+  if (retryLooksEnglish) {
+    return {
+      usedRetry: true,
+      transcript: {
+        ...englishRetryTranscript,
+        language: 'en',
+        accentRetranscribeApplied: true,
+        priorMisdetectedLanguage: originalLang
+      },
+      fromLanguage: originalLang,
+      reason: 'accent_english_retranscribe'
+    };
+  }
+
+  return {
+    usedRetry: false,
+    transcript: originalTranscript,
+    fromLanguage: originalLang,
+    reason: 'retry_not_better'
+  };
 }
 
 export function applyEnglishAccentProtection(candidateLanguage, providerLanguage, analysis) {

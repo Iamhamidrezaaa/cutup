@@ -3,7 +3,10 @@ import {
   inferAccentProfile,
   applyEnglishAccentProtection,
   applyLatinScriptGuard,
-  majorityLanguageVote
+  majorityLanguageVote,
+  resolveTranscriptionLanguageHint,
+  shouldAttemptAccentEnglishRetranscribe,
+  pickAccentRetranscribeWinner
 } from './language-detection-pipeline.js';
 import { analyzeTranscriptLanguage } from './transcript-language-analysis.js';
 
@@ -82,6 +85,61 @@ const vote = majorityLanguageVote([
 ]);
 if (vote.language !== 'en' || vote.providerAgreement < 0.6) {
   console.error('FAIL: triple-sample majority vote expected en with ~0.67 agreement');
+  process.exit(1);
+}
+
+const weakRuHint = resolveTranscriptionLanguageHint({
+  clientHint: 'ru',
+  preTranscription: {
+    language: 'ru',
+    providerAgreement: 0.67,
+    languageConfidence: 0.82,
+    verificationVotes: [
+      { language: 'ru' },
+      { language: 'ru' },
+      { language: 'en' }
+    ]
+  }
+});
+if (weakRuHint.languageHint !== null || !weakRuHint.suppressed) {
+  console.error('FAIL: weak ru hint should be suppressed');
+  process.exit(1);
+}
+
+const strongRuHint = resolveTranscriptionLanguageHint({
+  preTranscription: {
+    language: 'ru',
+    providerAgreement: 1,
+    languageConfidence: 0.94,
+    verificationVotes: [{ language: 'ru' }, { language: 'ru' }, { language: 'ru' }]
+  }
+});
+if (strongRuHint.languageHint !== 'ru') {
+  console.error('FAIL: strong unanimous ru hint should pass');
+  process.exit(1);
+}
+
+const cyrillicMislabel = {
+  language: 'ru',
+  text: 'Ты можешь попробовать.',
+  segments: [{ text: 'Ты можешь попробовать.', start: 0, end: 2 }]
+};
+if (!shouldAttemptAccentEnglishRetranscribe(cyrillicMislabel, { suppressed: true }, null)) {
+  console.error('FAIL: should retranscribe weak cyrillic ru');
+  process.exit(1);
+}
+
+const picked = pickAccentRetranscribeWinner(
+  cyrillicMislabel,
+  {
+    language: 'en',
+    text: 'You can try it.',
+    segments: [{ text: 'You can try it.', start: 0, end: 2 }]
+  },
+  null
+);
+if (!picked.usedRetry || picked.transcript.language !== 'en') {
+  console.error('FAIL: pickAccentRetranscribeWinner expected english retry');
   process.exit(1);
 }
 

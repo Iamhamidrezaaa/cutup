@@ -40,7 +40,10 @@ import { transcribeDebug } from './infrastructure/observability.js';
 import {
   resolvePipelineLanguage,
   formatLanguageDetectionForApi,
-  runPreTranscriptionLanguageDetection
+  runPreTranscriptionLanguageDetection,
+  resolveTranscriptionLanguageHint,
+  shouldAttemptAccentEnglishRetranscribe,
+  pickAccentRetranscribeWinner
 } from './language-detection-pipeline.js';
 import { applyWhisperLeadingOffsetIfNeeded } from './whisper-leading-offset.js';
 import { mergeRollingCaptionChains } from './video-render/subtitle-pipeline.js';
@@ -272,7 +275,7 @@ export default async function handler(req, res) {
     else if (mimeType.includes('webm')) extension = 'webm';
 
     let preTranscription = null;
-    let effectiveLanguageHint = languageHint;
+    let hintResolution = { languageHint: languageHint || null, source: 'client', suppressed: false };
     try {
       preTranscription = await runPreTranscriptionLanguageDetection({
         traceId,
@@ -281,19 +284,6 @@ export default async function handler(req, res) {
         mimeType,
         extension
       });
-      if (
-        !effectiveLanguageHint &&
-        preTranscription?.language &&
-        preTranscription.language !== 'unknown'
-      ) {
-        effectiveLanguageHint = preTranscription.language;
-        console.log('[pre-transcription-language]', {
-          traceId,
-          language: preTranscription.language,
-          providerAgreement: preTranscription.providerAgreement,
-          languageConfidence: preTranscription.languageConfidence
-        });
-      }
     } catch (preLangErr) {
       console.warn('[pre-transcription-language-failed]', {
         traceId,
@@ -301,17 +291,35 @@ export default async function handler(req, res) {
       });
     }
 
+    hintResolution = resolveTranscriptionLanguageHint({
+      traceId,
+      clientHint: languageHint,
+      preTranscription
+    });
+    const effectiveLanguageHint = hintResolution.languageHint;
+    if (preTranscription?.language) {
+      console.log('[pre-transcription-language]', {
+        traceId,
+        detectedLanguage: preTranscription.language,
+        whisperLanguageHint: effectiveLanguageHint,
+        hintSource: hintResolution.source,
+        hintSuppressed: hintResolution.suppressed,
+        providerAgreement: preTranscription.providerAgreement,
+        languageConfidence: preTranscription.languageConfidence
+      });
+    }
+
     // Transcription router (OpenAI → local Whisper fallback)
     console.log('TRANSCRIBE: Starting transcription router…');
 
-    const transcribeOne = async (buf, mt, ext) =>
+    const transcribeOne = async (buf, mt, ext, hintOverride = undefined) =>
       transcribeAudioPayload({
         fetch,
         traceId,
         audioBuffer: buf,
         mimeType: mt,
         extension: ext,
-        languageHint: effectiveLanguageHint
+        languageHint: hintOverride !== undefined ? hintOverride : effectiveLanguageHint
       });
 
     /** @type {{ text: string, segments: unknown[], language: string }} */
@@ -407,6 +415,35 @@ export default async function handler(req, res) {
         traceId,
         phase: 'transcription'
       });
+    }
+
+    if (
+      !transcriptFromCache &&
+      audioBuffer.length <= 25 * 1024 * 1024 &&
+      shouldAttemptAccentEnglishRetranscribe(transcript, hintResolution, preTranscription)
+    ) {
+      console.log('[accent-english-retranscribe]', {
+        traceId,
+        providerLanguage: transcript.language,
+        suspectedAccent: hintResolution.suspectedAccent || null
+      });
+      try {
+        const englishRetry = await transcribeOne(audioBuffer, mimeType, extension, 'en');
+        const picked = pickAccentRetranscribeWinner(transcript, englishRetry, preTranscription);
+        if (picked.usedRetry) {
+          console.log('[accent-english-retranscribe-applied]', {
+            traceId,
+            from: picked.fromLanguage,
+            reason: picked.reason
+          });
+          transcript = picked.transcript;
+        }
+      } catch (retryErr) {
+        console.warn('[accent-english-retranscribe-failed]', {
+          traceId,
+          message: retryErr?.message || String(retryErr)
+        });
+      }
     }
 
     console.log('TRANSCRIBE: Success, text length:', transcript.text?.length || 0);
@@ -618,7 +655,7 @@ export default async function handler(req, res) {
     const languageProfile = await resolvePipelineLanguage({
       traceId,
       fetch,
-      providerLanguage: transcript.language,
+      providerLanguage: transcript.priorMisdetectedLanguage || transcript.language,
       providerConfidence: transcript.languageConfidence,
       providerId: transcript.provider,
       text: correctedText,

@@ -34,7 +34,10 @@ import { captureTranscriptionSubtitleIntegrity } from './subtitle-integrity-audi
 import {
   resolvePipelineLanguage,
   formatLanguageDetectionForApi,
-  runPreTranscriptionLanguageDetection
+  runPreTranscriptionLanguageDetection,
+  resolveTranscriptionLanguageHint,
+  shouldAttemptAccentEnglishRetranscribe,
+  pickAccentRetranscribeWinner
 } from './language-detection-pipeline.js';
 
 export default async function handler(req, res) {
@@ -197,7 +200,6 @@ export default async function handler(req, res) {
     transcribeDebug(traceId, { phase: 'input_ready', bytes: audioBuffer.length, route: 'upload' });
 
     let preTranscription = null;
-    let effectiveLanguageHint = null;
     try {
       preTranscription = await runPreTranscriptionLanguageDetection({
         traceId,
@@ -206,15 +208,6 @@ export default async function handler(req, res) {
         mimeType,
         extension
       });
-      if (preTranscription?.language && preTranscription.language !== 'unknown') {
-        effectiveLanguageHint = preTranscription.language;
-        console.log('[pre-transcription-language]', {
-          traceId,
-          language: preTranscription.language,
-          providerAgreement: preTranscription.providerAgreement,
-          languageConfidence: preTranscription.languageConfidence
-        });
-      }
     } catch (preLangErr) {
       console.warn('[pre-transcription-language-failed]', {
         traceId,
@@ -222,15 +215,33 @@ export default async function handler(req, res) {
       });
     }
 
+    const hintResolution = resolveTranscriptionLanguageHint({
+      traceId,
+      clientHint: null,
+      preTranscription
+    });
+    const effectiveLanguageHint = hintResolution.languageHint;
+    if (preTranscription?.language) {
+      console.log('[pre-transcription-language]', {
+        traceId,
+        detectedLanguage: preTranscription.language,
+        whisperLanguageHint: effectiveLanguageHint,
+        hintSource: hintResolution.source,
+        hintSuppressed: hintResolution.suppressed,
+        providerAgreement: preTranscription.providerAgreement,
+        languageConfidence: preTranscription.languageConfidence
+      });
+    }
+
     try {
-      const transcribeOne = async (buf, mt, ext) =>
+      const transcribeOne = async (buf, mt, ext, hintOverride = undefined) =>
         transcribeAudioPayload({
           fetch,
           traceId,
           audioBuffer: buf,
           mimeType: mt,
           extension: ext,
-          languageHint: effectiveLanguageHint
+          languageHint: hintOverride !== undefined ? hintOverride : effectiveLanguageHint
         });
 
       transcript = await runQueuedTranscribe({
@@ -298,6 +309,34 @@ export default async function handler(req, res) {
         traceId,
         phase: 'transcription'
       });
+    }
+
+    if (
+      audioBuffer.length <= 25 * 1024 * 1024 &&
+      shouldAttemptAccentEnglishRetranscribe(transcript, hintResolution, preTranscription)
+    ) {
+      console.log('[accent-english-retranscribe]', {
+        traceId,
+        providerLanguage: transcript.language,
+        suspectedAccent: hintResolution.suspectedAccent || null
+      });
+      try {
+        const englishRetry = await transcribeOne(audioBuffer, mimeType, extension, 'en');
+        const picked = pickAccentRetranscribeWinner(transcript, englishRetry, preTranscription);
+        if (picked.usedRetry) {
+          console.log('[accent-english-retranscribe-applied]', {
+            traceId,
+            from: picked.fromLanguage,
+            reason: picked.reason
+          });
+          transcript = picked.transcript;
+        }
+      } catch (retryErr) {
+        console.warn('[accent-english-retranscribe-failed]', {
+          traceId,
+          message: retryErr?.message || String(retryErr)
+        });
+      }
     }
 
     // Get detected language from transcript
@@ -400,7 +439,7 @@ export default async function handler(req, res) {
     const languageProfile = await resolvePipelineLanguage({
       traceId,
       fetch,
-      providerLanguage: transcript.language,
+      providerLanguage: transcript.priorMisdetectedLanguage || transcript.language,
       providerConfidence: transcript.languageConfidence,
       providerId: transcript.provider,
       text: correctedText,
