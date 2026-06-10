@@ -545,13 +545,42 @@ function clearPipelineRetryUi() {
   if (btn) btn.style.display = 'none';
 }
 
+function clearProgressBarFailureState() {
+  const progressContainer = document.getElementById('downloadProgressContainer');
+  const progressFill = document.getElementById('progressFill');
+  if (progressContainer) progressContainer.classList.remove('progress-failed');
+  if (progressFill) progressFill.style.removeProperty('background');
+}
+
+function markProgressBarFailed(shortLabel = 'Could not finish') {
+  const progressTitle = document.getElementById('progressTitle');
+  const progressFill = document.getElementById('progressFill');
+  const progressContainer = document.getElementById('downloadProgressContainer');
+  if (progressTitle) progressTitle.textContent = shortLabel;
+  if (progressFill) {
+    progressFill.style.background = 'linear-gradient(90deg, #e74c3c, #c0392b)';
+  }
+  if (progressContainer) {
+    progressContainer.classList.add('progress-failed');
+    progressContainer.style.display = 'block';
+    if (progressContainer._hideT) {
+      clearTimeout(progressContainer._hideT);
+      progressContainer._hideT = null;
+    }
+  }
+}
+
 function showPipelineError(error, retryFn) {
   const errorCode = error?.errorCode || error?.pipelineCode;
   const retryable = error?.retryable === true || (error?.retryable !== false && isRetryableErrorCode(errorCode));
   const traceId = error?.traceId || error?.requestId;
   if (traceId) console.warn('[transcript-trace]', traceId, { errorCode, retryable, stage: error?.pipelineStage || error?.phase });
   const text = formatPipelineErrorForUi(error);
-  showMessage(text, 'error');
+  markProgressBarFailed('Download failed');
+  showMessage(text, 'error', { persistMs: 30000 });
+  if (downloadMessage?.scrollIntoView) {
+    downloadMessage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
   const btn = document.getElementById('pipelineRetryBtn');
   if (!btn) return;
   if (retryable && typeof retryFn === 'function') {
@@ -559,8 +588,10 @@ function showPipelineError(error, retryFn) {
     btn.style.display = 'inline-block';
     btn.onclick = () => {
       btn.style.display = 'none';
+      clearProgressBarFailureState();
       if (typeof cutupLastPipelineRetry === 'function') cutupLastPipelineRetry();
     };
+    btn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   } else {
     clearPipelineRetryUi();
   }
@@ -620,8 +651,8 @@ function mapPipelineErrorToUserMessage(error, fallback = USER_ERROR_GENERIC) {
   if (code.includes('FILE_TOO_LARGE')) {
     return 'This file is too large for one run. Try a shorter clip.';
   }
-  if (code.includes('DOWNLOAD_FAILED')) {
-    return 'The platform temporarily rejected the request.';
+  if (code.includes('DOWNLOAD_FAILED') || /could not extract video stream/i.test(msg)) {
+    return 'We could not download audio from YouTube right now. Wait a minute and tap Retry, or try another public video.';
   }
   if (code.includes('PLATFORM_ERROR') || code.includes('SOCIAL_DOWNLOAD_EMPTY') || code.includes('AUDIO_EXTRACTION')) {
     return "We couldn't access this video.";
@@ -3491,7 +3522,7 @@ function getExampleUrl(platform) {
 }
 
 // Show message (toast-style; timings tuned so errors are readable on mobile)
-function showMessage(text, type = 'info') {
+function showMessage(text, type = 'info', opts = {}) {
   if (!downloadMessage) return;
   if (type === 'error') {
     console.warn('[ui-error-trigger]', {
@@ -3504,10 +3535,19 @@ function showMessage(text, type = 'info') {
   downloadMessage.className = `download-message ${type}`;
   downloadMessage.style.display = 'block';
   clearTimeout(downloadMessage._hideT);
-  const ms = type === 'error' ? 10000 : type === 'info' ? 8000 : 5500;
-  downloadMessage._hideT = setTimeout(() => {
-    downloadMessage.style.display = 'none';
-  }, ms);
+  const ms =
+    Number(opts.persistMs) > 0
+      ? Number(opts.persistMs)
+      : type === 'error'
+        ? 10000
+        : type === 'info'
+          ? 8000
+          : 5500;
+  if (ms > 0) {
+    downloadMessage._hideT = setTimeout(() => {
+      downloadMessage.style.display = 'none';
+    }, ms);
+  }
 }
 
 function trackEvent(eventName, properties = {}) {
@@ -4860,6 +4900,60 @@ async function processFullTextFile(file, sessionId, activeTab = 'fulltext') {
   }
 }
 
+/** Fallback when /api/youtube JSON extract fails — streams audio via youtube-download. */
+async function extractYouTubeAudioViaDownload(resolved, sessionId, traceId) {
+  if (!sessionId) return null;
+  const requestId = makeRequestId();
+  const sourceUrl = resolved.cleaned || resolved.original || resolved.normalizedUrl;
+  console.log('[youtube-extract-fallback]', { traceId, route: 'youtube-download', videoId: resolved.videoId });
+  updateProgressBar(0, 0, Math.max(progressCurrentPercent || 0, 12), 'Trying alternate download…');
+
+  const response = await fetchWithRetry(`${API_BASE_URL}/api/youtube-download`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Session-Id': sessionId,
+      'X-Request-Id': requestId,
+      'X-Trace-Id': traceId
+    },
+    body: JSON.stringify({
+      url: sourceUrl,
+      videoId: resolved.videoId,
+      type: 'audio',
+      quality: 'best',
+      platform: 'youtube'
+    }),
+    signal: AbortSignal.timeout(getPipelineFetchTimeoutMs('extract'))
+  });
+
+  if (!response.ok) {
+    const errJson = await response.json().catch(() => null);
+    console.error('[youtube-extract-fallback-failed]', { traceId, status: response.status, body: errJson });
+    throw buildPipelineErrorFromApi(errJson, response, traceId);
+  }
+
+  const audioBlob = await response.blob();
+  if (!audioBlob?.size) {
+    const e = new Error('No audio was returned from alternate downloader');
+    e.errorCode = 'DOWNLOAD_FAILED';
+    e.traceId = traceId;
+    throw e;
+  }
+
+  const audioUrl = await blobToDataUrl(audioBlob);
+  return {
+    audioUrl,
+    language: null,
+    subtitles: null,
+    subtitleLanguage: null,
+    subtitlesSource: null,
+    availableLanguages: [],
+    title: null,
+    duration: null,
+    videoId: resolved.videoId
+  };
+}
+
 // Extract YouTube audio (like extension)
 async function extractYouTubeAudio(url, sessionId = null) {
   const resolved = resolveYouTubeUrlForPipeline(url);
@@ -4955,6 +5049,26 @@ async function extractYouTubeAudio(url, sessionId = null) {
       message: error?.message,
       errorCode: error?.errorCode
     });
+    const code = String(error?.errorCode || error?.pipelineCode || '').toUpperCase();
+    const canFallback =
+      sessionId &&
+      (code === 'DOWNLOAD_FAILED' ||
+        code === 'TRANSCRIPTION_TIMEOUT' ||
+        code === 'PLATFORM_ERROR' ||
+        code === 'UNKNOWN_ERROR' ||
+        /could not extract/i.test(String(error?.message || '')));
+    if (canFallback) {
+      try {
+        const fallbackPayload = await extractYouTubeAudioViaDownload(resolved, sessionId, traceId);
+        if (fallbackPayload?.audioUrl) {
+          console.log('[youtube-extract-fallback-ok]', { traceId, bytes: audioBlobSizeHint(fallbackPayload.audioUrl) });
+          return fallbackPayload;
+        }
+      } catch (fallbackErr) {
+        console.error('[youtube-extract-fallback-error]', { traceId, message: fallbackErr?.message });
+        throw fallbackErr?.errorCode ? fallbackErr : error;
+      }
+    }
     if (error.errorCode || error.pipelineCode) throw error;
     if (error.name === 'AbortError' || error.name === 'TimeoutError') {
       const e = new Error(mapErrorCodeToUserMessage('TRANSCRIPTION_TIMEOUT'));
@@ -4974,6 +5088,14 @@ async function extractYouTubeAudio(url, sessionId = null) {
     }
     throw error;
   }
+}
+
+function audioBlobSizeHint(dataUrl) {
+  const s = String(dataUrl || '');
+  if (!s.startsWith('data:')) return null;
+  const idx = s.indexOf(',');
+  if (idx < 0) return null;
+  return Math.floor((s.length - idx) * 0.75);
 }
 
 // Transcribe audio (like extension)
@@ -5489,6 +5611,7 @@ async function processSummarize(url, sessionId, platform = 'youtube') {
     }
     
   } catch (error) {
+    stopProgressTracking(progressCurrentPercent || 0, 'Failed');
     console.error('[PIPELINE ERROR][processSummarize]', error);
     reportClientError('process', error);
     showPipelineError(error, cutupLastPipelineRetry);
@@ -5622,6 +5745,7 @@ async function processFullText(url, sessionId, platform = 'youtube', activeTab =
     }
     
   } catch (error) {
+    stopProgressTracking(progressCurrentPercent || 0, 'Failed');
     console.error('[frontend-runtime-error]', {
       stage: 'processFullText',
       name: error?.name,
@@ -7148,6 +7272,8 @@ function showQualityModal(formats, url, sessionId, isPro, isStarter, userPlan, t
 function showProgressBar(title = 'Working on it…', showFileSize = true) {
   const habitHint = document.getElementById('retentionHabitHint');
   if (habitHint) habitHint.hidden = true;
+  clearProgressBarFailureState();
+  clearPipelineRetryUi();
 
   const progressContainer = document.getElementById('downloadProgressContainer');
   const progressTitle = document.getElementById('progressTitle');
@@ -7381,9 +7507,8 @@ function estimateSummarizationDuration(textLength = 0) {
   return Math.max(5, textLength / 1000);
 }
 
-// Hide progress bar
+// Hide progress bar (skipped while progress-failed — user dismisses via Retry or new run)
 function hideProgressBar() {
-  // Clear all intervals
   if (progressInterval) {
     clearInterval(progressInterval);
     progressInterval = null;
@@ -7392,18 +7517,21 @@ function hideProgressBar() {
     clearInterval(progressAnimateToFinalInterval);
     progressAnimateToFinalInterval = null;
   }
-  
-  // Reset all progress tracking variables
+
+  const progressContainer = document.getElementById('downloadProgressContainer');
+  if (progressContainer?.classList.contains('progress-failed')) {
+    return;
+  }
+
   progressStartTime = null;
   progressEstimatedDuration = null;
   progressCurrentPercent = 0;
   progressTargetPercent = 0;
   progressStatusText = '';
   progressStatusTextAt50 = null;
-  
-  const progressContainer = document.getElementById('downloadProgressContainer');
+
   if (progressContainer) {
-    setTimeout(() => {
+    progressContainer._hideT = setTimeout(() => {
       progressContainer.style.display = 'none';
     }, 1000);
   }

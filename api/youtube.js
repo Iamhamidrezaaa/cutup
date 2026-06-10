@@ -142,7 +142,7 @@ export default async function handler(req, res) {
         traceId,
         mode: 'audio_extract',
         formatFallbacks: ['bestaudio', 'best'],
-        maxTotalMs: Number(process.env.YOUTUBE_EXTRACT_BUDGET_MS || 50000)
+        maxTotalMs: Number(process.env.YOUTUBE_EXTRACT_BUDGET_MS || 90000)
       });
 
       try {
@@ -200,13 +200,12 @@ export default async function handler(req, res) {
           
           const base64Audio = audioBuffer.toString('base64');
           const mimeType = 'audio/mpeg';
-          
-          setCORSHeaders(res);
-          return res.status(200).json({
+          return {
             audioUrl: `data:${mimeType};base64,${base64Audio}`,
             videoId: finalVideoId,
-            format: 'mp3'
-          });
+            format: 'mp3',
+            size: audioBuffer.length
+          };
         } else {
           throw new Error('Audio file not found after download');
         }
@@ -385,16 +384,22 @@ export default async function handler(req, res) {
             : mapped.code === 'YTDLP_TEMP_BLOCK'
               ? 'YTDLP_TIMEOUT'
               : 'YOUTUBE_ERROR';
+      const extractionBlocked =
+        mapped.code === 'YTDLP_FAILED' ||
+        mapped.code === 'YTDLP_TEMP_BLOCK' ||
+        legacy === 'YOUTUBE_ERROR';
       return sendTranscriptErrorFromLegacy(res, {
         statusCode: legacy === 'VIDEO_UNAVAILABLE' ? 422 : legacy === 'SOCIAL_LOGIN_REQUIRED' ? 401 : 503,
         legacyCode: legacy,
         message:
           mapped.code === 'YTDLP_TEMP_BLOCK'
             ? userMessageForCode('TRANSCRIPTION_TIMEOUT')
-            : mapped.message,
+            : extractionBlocked
+              ? 'We could not download audio from YouTube right now. Wait a minute and tap Retry, or try another public video.'
+              : mapped.message,
         traceId,
         stage: 'youtube-download',
-        retryable: mapped.temporary === true
+        retryable: mapped.temporary === true || extractionBlocked
       });
     }
 

@@ -1525,6 +1525,15 @@ main {
   display: block;
 }
 
+.download-progress-container.progress-failed {
+  border: 1px solid #f5c6cb;
+  background: #fff5f5;
+}
+
+.download-progress-container.progress-failed .progress-title {
+  color: #721c24;
+}
+
 .pipeline-retry-btn {
   display: none;
   margin: 10px auto 0;
