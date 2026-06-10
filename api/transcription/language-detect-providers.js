@@ -1,10 +1,8 @@
 /**
- * Lightweight language-only detection passes (verification mode).
+ * OpenAI-first language detection (no Groq/Deepgram required).
  */
 import FormDataLib from 'form-data';
 import { OPENAI_PROVIDER_ID } from './provider-ids.js';
-import { GROQ_PROVIDER_ID } from './provider-ids.js';
-import { DEEPGRAM_PROVIDER_ID } from './provider-ids.js';
 import {
   estimateDeepgramLanguageConfidence,
   estimateWhisperLanguageConfidence
@@ -18,7 +16,7 @@ async function whisperDetectLanguage({ fetch, audioBuffer, mimeType, extension, 
     contentType: mimeType || 'audio/mpeg',
     knownLength: audioBuffer.length
   });
-  formData.append('model', providerId === GROQ_PROVIDER_ID ? 'whisper-large-v3' : 'whisper-1');
+  formData.append('model', 'whisper-1');
   formData.append('response_format', 'verbose_json');
 
   const response = await fetch(apiUrl, {
@@ -42,6 +40,11 @@ async function whisperDetectLanguage({ fetch, audioBuffer, mimeType, extension, 
   return { provider: providerId, language, confidence, traceId };
 }
 
+export function isOpenAiLanguageDetectionAvailable() {
+  const apiKey = process.env.OPENAI_API_KEY || '';
+  return apiKey.length >= 10;
+}
+
 export async function detectLanguageOpenAi(ctx) {
   const apiKey = process.env.OPENAI_API_KEY || '';
   if (!apiKey || apiKey.length < 10) {
@@ -55,104 +58,63 @@ export async function detectLanguageOpenAi(ctx) {
   });
 }
 
-export async function detectLanguageGroq(ctx) {
-  const apiKey = process.env.GROQ_API_KEY || '';
-  if (!apiKey || apiKey.length < 10) {
-    throw new Error('GROQ_API_KEY missing');
-  }
-  return whisperDetectLanguage({
-    ...ctx,
-    apiUrl: 'https://api.groq.com/openai/v1/audio/transcriptions',
-    apiKey,
-    providerId: GROQ_PROVIDER_ID
-  });
-}
-
-export async function detectLanguageDeepgram(ctx) {
-  const apiKey = process.env.DEEPGRAM_API_KEY || '';
-  if (!apiKey || apiKey.length < 10) {
-    throw new Error('DEEPGRAM_API_KEY missing');
+/**
+ * Run OpenAI Whisper language detection on first / middle / last audio samples.
+ * @param {object} ctx
+ * @param {typeof fetch} ctx.fetch
+ * @param {Array<{ position: string, buffer: Buffer, mimeType: string, extension: string }>} ctx.samples
+ * @param {string} [ctx.traceId]
+ */
+export async function detectLanguageOpenAiTripleSample(ctx) {
+  if (!isOpenAiLanguageDetectionAvailable()) {
+    return [];
   }
 
-  const params = new URLSearchParams({
-    model: 'nova-3',
-    detect_language: 'true',
-    punctuate: 'false',
-    smart_format: 'false'
-  });
+  const samples = Array.isArray(ctx.samples) ? ctx.samples : [];
+  const votes = [];
 
-  const response = await fetch(`https://api.deepgram.com/v1/listen?${params.toString()}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Token ${apiKey}`,
-      'Content-Type': ctx.mimeType || 'audio/mpeg'
-    },
-    body: ctx.audioBuffer,
-    timeout: 90000
-  });
-
-  const raw = await response.text();
-  if (!response.ok) {
-    throw new Error(`deepgram language detect failed: ${response.status} ${raw.slice(0, 200)}`);
+  for (const sample of samples) {
+    if (!sample?.buffer?.length) continue;
+    try {
+      const result = await detectLanguageOpenAi({
+        fetch: ctx.fetch,
+        audioBuffer: sample.buffer,
+        mimeType: sample.mimeType || 'audio/mpeg',
+        extension: sample.extension || 'mp3',
+        traceId: ctx.traceId
+      });
+      votes.push({
+        ...result,
+        position: sample.position || null,
+        startSec: sample.startSec ?? null
+      });
+    } catch (err) {
+      console.warn('[language_detect_sample_failed]', {
+        traceId: ctx.traceId || null,
+        position: sample.position || null,
+        message: err?.message || String(err)
+      });
+    }
   }
 
-  let json;
-  try {
-    json = JSON.parse(raw);
-  } catch {
-    throw new Error('deepgram language detect invalid JSON');
-  }
-
-  const alt = json?.results?.channels?.[0]?.alternatives?.[0];
-  const language =
-    normalizeLanguageCode(
-      json?.metadata?.detected_language ||
-        alt?.languages?.[0] ||
-        json?.results?.channels?.[0]?.detected_language
-    ) || 'unknown';
-  const confidence = estimateDeepgramLanguageConfidence(alt?.confidence, language);
-  return { provider: DEEPGRAM_PROVIDER_ID, language, confidence, traceId: ctx.traceId };
+  return votes;
 }
 
 /**
- * Parallel verification on a short audio sample.
- * @param {object} ctx
- * @param {typeof fetch} ctx.fetch
- * @param {Buffer} ctx.audioBuffer
- * @param {string} ctx.mimeType
- * @param {string} ctx.extension
- * @param {string} [ctx.traceId]
+ * @deprecated Use detectLanguageOpenAiTripleSample — only OpenAI is required in production.
+ * Kept for backward compatibility; runs triple-sample when only OpenAI is configured.
  */
 export async function detectLanguageParallelVerification(ctx) {
-  const detectors = [
-    { id: OPENAI_PROVIDER_ID, fn: detectLanguageOpenAi, env: 'OPENAI_API_KEY' },
-    { id: GROQ_PROVIDER_ID, fn: detectLanguageGroq, env: 'GROQ_API_KEY' },
-    { id: DEEPGRAM_PROVIDER_ID, fn: detectLanguageDeepgram, env: 'DEEPGRAM_API_KEY' }
-  ];
-
-  const available = detectors.filter((d) => {
-    const key = process.env[d.env] || '';
-    return key.length >= 10;
-  });
-
-  const settled = await Promise.allSettled(
-    available.map((d) =>
-      d.fn({
-        fetch: ctx.fetch,
-        audioBuffer: ctx.audioBuffer,
-        mimeType: ctx.mimeType,
-        extension: ctx.extension,
-        traceId: ctx.traceId
-      })
-    )
+  const { sliceAudioVerificationSamples } = await import('./audio-language-sample.js');
+  const samples = await sliceAudioVerificationSamples(
+    ctx.audioBuffer,
+    ctx.mimeType,
+    ctx.extension,
+    15
   );
-
-  const votes = [];
-  for (let i = 0; i < settled.length; i++) {
-    const s = settled[i];
-    if (s.status === 'fulfilled' && s.value?.language) {
-      votes.push(s.value);
-    }
-  }
-  return votes;
+  return detectLanguageOpenAiTripleSample({
+    fetch: ctx.fetch,
+    samples,
+    traceId: ctx.traceId
+  });
 }

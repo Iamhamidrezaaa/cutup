@@ -1,20 +1,39 @@
 /**
- * Language detection pipeline — accent-safe, multi-provider verification.
+ * Language detection pipeline — OpenAI-first, accent-safe verification.
  */
 import {
   analyzeTranscriptLanguage,
   resolveSpokenLanguage
 } from './transcript-language-analysis.js';
 import { normalizeLanguageCode, isSupportedLanguageCode } from './supported-languages.js';
-import { sliceAudioFirstSeconds } from './transcription/audio-language-sample.js';
-import { detectLanguageParallelVerification } from './transcription/language-detect-providers.js';
+import { sliceAudioVerificationSamples } from './transcription/audio-language-sample.js';
+import {
+  detectLanguageOpenAiTripleSample,
+  isOpenAiLanguageDetectionAvailable
+} from './transcription/language-detect-providers.js';
 
 export const VERIFICATION_CONFIDENCE_THRESHOLD = 0.85;
+export const HIGH_CONFIDENCE_LATIN_BLOCK = 0.95;
 const RTL_SUSPICIOUS_LANGS = new Set(['ru', 'ar', 'fa', 'he']);
 const LATIN_SUSPICIOUS_RATIO = 0.6;
 
 function logLanguageEvent(event, payload) {
   console.log(`[${event}]`, JSON.stringify(payload));
+}
+
+function logLanguageDetectionResult(payload) {
+  logLanguageEvent('language_detection_result', {
+    rawProviderLanguage: payload.rawProviderLanguage ?? null,
+    finalLanguage: payload.finalLanguage ?? null,
+    verificationTriggered: Boolean(payload.verificationTriggered),
+    overrideApplied: Boolean(payload.overrideApplied),
+    traceId: payload.traceId ?? null,
+    languageConfidence: payload.languageConfidence ?? null,
+    providerAgreement: payload.providerAgreement ?? null,
+    accent: payload.accent ?? null,
+    preTranscriptionLanguage: payload.preTranscriptionLanguage ?? null,
+    latinRatio: payload.latinRatio ?? null
+  });
 }
 
 function latinLetterRatio(text, segments = []) {
@@ -32,8 +51,35 @@ function isSuspiciousRtlDetection(language, latinRatio) {
 }
 
 /**
- * Infer accent separately from spoken language (never conflate accent with language).
+ * Never classify as ru/ar/fa/he when transcript is >60% Latin unless confidence > 0.95.
  */
+export function applyLatinScriptGuard(candidateLanguage, latinRatio, confidence, analysis = null) {
+  const lang = normalizeLanguageCode(candidateLanguage);
+  if (latinRatio <= LATIN_SUSPICIOUS_RATIO || !RTL_SUSPICIOUS_LANGS.has(lang)) {
+    return { language: lang, overrideApplied: false };
+  }
+  if (Number(confidence) > HIGH_CONFIDENCE_LATIN_BLOCK) {
+    return { language: lang, overrideApplied: false };
+  }
+
+  const englishDominant =
+    analysis?.top === 'en' ||
+    (analysis?.latinRatio ?? latinRatio) >= 0.55 ||
+    (analysis?.densities?.enWordDensity || 0) >= 0.04;
+
+  const fallback = englishDominant
+    ? 'en'
+    : isSupportedLanguageCode(analysis?.top)
+      ? analysis.top
+      : 'en';
+
+  return {
+    language: fallback,
+    overrideApplied: true,
+    reason: 'latin_script_guard'
+  };
+}
+
 export function inferAccentProfile(providerLanguage, finalLanguage, analysis) {
   const provider = normalizeLanguageCode(providerLanguage);
   const final = normalizeLanguageCode(finalLanguage);
@@ -64,9 +110,6 @@ export function inferAccentProfile(providerLanguage, finalLanguage, analysis) {
   return { accent: null, accentConfidence: 0 };
 }
 
-/**
- * English must never be downgraded to another language solely because of accent.
- */
 export function applyEnglishAccentProtection(candidateLanguage, providerLanguage, analysis) {
   const candidate = normalizeLanguageCode(candidateLanguage);
   const provider = normalizeLanguageCode(providerLanguage);
@@ -109,6 +152,12 @@ export function majorityLanguageVote(votes) {
   };
 }
 
+function averageVoteConfidence(votes) {
+  const confs = (votes || []).map((v) => Number(v.confidence)).filter(Number.isFinite);
+  if (!confs.length) return 0.72;
+  return Number((confs.reduce((a, b) => a + b, 0) / confs.length).toFixed(4));
+}
+
 function computeConsistencyScore({ finalLanguage, analysis, providerLanguage, providerAgreement }) {
   const lang = normalizeLanguageCode(finalLanguage);
   const contentTop = normalizeLanguageCode(analysis.top);
@@ -143,8 +192,58 @@ function computeConsistencyScore({ finalLanguage, analysis, providerLanguage, pr
 }
 
 /**
- * Sync transcript-only resolution (translate-srt, no audio).
+ * Pre-transcription OpenAI verification: first / middle / last 15s majority vote.
  */
+export async function runPreTranscriptionLanguageDetection(opts) {
+  const { traceId = null, fetch, audioBuffer, mimeType = 'audio/mpeg', extension = 'mp3' } = opts;
+
+  if (!fetch || !audioBuffer || !Buffer.isBuffer(audioBuffer) || audioBuffer.length === 0) {
+    return {
+      language: null,
+      languageConfidence: 0,
+      providerAgreement: 0,
+      verificationVotes: [],
+      verificationTriggered: false
+    };
+  }
+
+  if (!isOpenAiLanguageDetectionAvailable()) {
+    return {
+      language: null,
+      languageConfidence: 0,
+      providerAgreement: 0,
+      verificationVotes: [],
+      verificationTriggered: false
+    };
+  }
+
+  const samples = await sliceAudioVerificationSamples(audioBuffer, mimeType, extension, 15);
+  const verificationVotes = await detectLanguageOpenAiTripleSample({ fetch, samples, traceId });
+  const vote = majorityLanguageVote(verificationVotes);
+  const languageConfidence = averageVoteConfidence(verificationVotes);
+
+  logLanguageEvent('language_verification_triggered', {
+    traceId,
+    phase: 'pre_transcription',
+    strategy: 'openai_triple_sample',
+    votes: verificationVotes.map((v) => ({
+      position: v.position,
+      language: v.language,
+      confidence: v.confidence
+    })),
+    majorityLanguage: vote.language,
+    providerAgreement: vote.providerAgreement
+  });
+
+  return {
+    language: vote.language !== 'unknown' ? vote.language : null,
+    languageConfidence,
+    providerAgreement: vote.providerAgreement,
+    verificationVotes,
+    verificationTriggered: true
+  };
+}
+
 export function resolveLanguageFromTranscript(whisperLanguage, text, segments = [], opts = {}) {
   const providerLanguage = normalizeLanguageCode(opts.providerLanguage || whisperLanguage);
   const providerConfidence = Number(opts.providerConfidence ?? 0.72);
@@ -156,11 +255,22 @@ export function resolveLanguageFromTranscript(whisperLanguage, text, segments = 
     providerLanguage || whisperLanguage,
     analysis
   );
-  if (!isSupportedLanguageCode(language)) language = 'unknown';
 
   const latinRatio = latinLetterRatio(text, segments);
+  let overrideApplied = false;
   let verificationTriggered = false;
-  let verificationApplied = false;
+
+  const latinGuard = applyLatinScriptGuard(language, latinRatio, providerConfidence, analysis);
+  if (latinGuard.overrideApplied) {
+    overrideApplied = true;
+    language = latinGuard.language;
+    logLanguageEvent('language_override_applied', {
+      traceId: opts.traceId || null,
+      from: resolved.detectedLanguage,
+      to: language,
+      reason: latinGuard.reason
+    });
+  }
 
   if (
     providerConfidence < VERIFICATION_CONFIDENCE_THRESHOLD ||
@@ -168,17 +278,20 @@ export function resolveLanguageFromTranscript(whisperLanguage, text, segments = 
   ) {
     verificationTriggered = true;
     const contentOverride = applyEnglishAccentProtection(analysis.top, providerLanguage, analysis);
-    if (contentOverride !== language) {
+    const guarded = applyLatinScriptGuard(contentOverride, latinRatio, providerConfidence, analysis);
+    if (guarded.language !== language) {
       logLanguageEvent('language_override_applied', {
         traceId: opts.traceId || null,
         from: language,
-        to: contentOverride,
+        to: guarded.language,
         reason: 'transcript_content_verification'
       });
-      language = contentOverride;
-      verificationApplied = true;
+      language = guarded.language;
+      overrideApplied = true;
     }
   }
+
+  if (!isSupportedLanguageCode(language)) language = 'unknown';
 
   const { accent, accentConfidence } = inferAccentProfile(
     providerLanguage || whisperLanguage,
@@ -186,7 +299,7 @@ export function resolveLanguageFromTranscript(whisperLanguage, text, segments = 
     analysis
   );
 
-  const providerAgreement = verificationApplied ? 0.67 : providerLanguage === language ? 1 : 0.5;
+  const providerAgreement = overrideApplied ? 0.67 : providerLanguage === language ? 1 : 0.5;
   const languageConfidence = computeConsistencyScore({
     finalLanguage: language,
     analysis,
@@ -197,13 +310,25 @@ export function resolveLanguageFromTranscript(whisperLanguage, text, segments = 
   if (providerLanguage !== language) {
     logLanguageEvent('language_detection_mismatch', {
       traceId: opts.traceId || null,
-      providerLanguage,
-      resolvedLanguage: language,
+      rawProviderLanguage: providerLanguage,
+      finalLanguage: language,
       providerConfidence,
       latinRatio,
       resolution: resolved.resolution
     });
   }
+
+  logLanguageDetectionResult({
+    traceId: opts.traceId || null,
+    rawProviderLanguage: providerLanguage,
+    finalLanguage: language,
+    verificationTriggered,
+    overrideApplied,
+    languageConfidence,
+    providerAgreement,
+    accent,
+    latinRatio
+  });
 
   return buildLanguageProfile({
     language,
@@ -215,13 +340,12 @@ export function resolveLanguageFromTranscript(whisperLanguage, text, segments = 
     analysis,
     resolved,
     verificationTriggered,
-    verificationApplied
+    overrideApplied,
+    verificationVotes: [],
+    preTranscription: null
   });
 }
 
-/**
- * Full async pipeline with multi-provider verification on audio sample.
- */
 export async function resolvePipelineLanguage(opts) {
   const {
     traceId = null,
@@ -233,7 +357,8 @@ export async function resolvePipelineLanguage(opts) {
     segments = [],
     audioBuffer = null,
     mimeType = 'audio/mpeg',
-    extension = 'mp3'
+    extension = 'mp3',
+    preTranscription = null
   } = opts;
 
   const providerLang = normalizeLanguageCode(providerLanguage);
@@ -247,20 +372,74 @@ export async function resolvePipelineLanguage(opts) {
   let language = applyEnglishAccentProtection(resolved.detectedLanguage, providerLang, analysis);
   let languageConfidence = Math.max(providerConf, resolved.confidence || 0);
   let providerAgreement = providerLang === language ? 1 : 0.55;
-  let verificationTriggered = false;
-  let verificationApplied = false;
-  let verificationVotes = [];
+  let verificationTriggered = Boolean(preTranscription?.verificationTriggered);
+  let overrideApplied = false;
+  let verificationVotes = preTranscription?.verificationVotes || [];
 
   const latinRatio = latinLetterRatio(text, segments);
-  const needsVerification =
+
+  const latinGuardInitial = applyLatinScriptGuard(language, latinRatio, languageConfidence, analysis);
+  if (latinGuardInitial.overrideApplied) {
+    overrideApplied = true;
+    language = latinGuardInitial.language;
+    logLanguageEvent('language_override_applied', {
+      traceId,
+      from: resolved.detectedLanguage,
+      to: language,
+      reason: latinGuardInitial.reason
+    });
+  }
+
+  const preLang = normalizeLanguageCode(preTranscription?.language);
+  if (preLang && preLang !== 'unknown') {
+    const guardedPre = applyLatinScriptGuard(
+      applyEnglishAccentProtection(preLang, providerLang, analysis),
+      latinRatio,
+      preTranscription.languageConfidence || languageConfidence,
+      analysis
+    );
+    if (
+      providerConf < VERIFICATION_CONFIDENCE_THRESHOLD ||
+      providerLang !== guardedPre.language ||
+      isSuspiciousRtlDetection(language, latinRatio)
+    ) {
+      verificationTriggered = true;
+      if (guardedPre.language !== language) {
+        logLanguageEvent('language_override_applied', {
+          traceId,
+          from: language,
+          to: guardedPre.language,
+          reason: 'pre_transcription_majority_vote',
+          votes: verificationVotes.map((v) => ({ position: v.position, language: v.language }))
+        });
+        overrideApplied = true;
+      }
+      language = guardedPre.language;
+      providerAgreement = preTranscription.providerAgreement ?? providerAgreement;
+      languageConfidence = Math.max(
+        languageConfidence,
+        preTranscription.languageConfidence || 0,
+        computeConsistencyScore({
+          finalLanguage: language,
+          analysis,
+          providerLanguage: providerLang,
+          providerAgreement
+        })
+      );
+    }
+  }
+
+  const needsPostVerification =
     languageConfidence < VERIFICATION_CONFIDENCE_THRESHOLD ||
     isSuspiciousRtlDetection(language, latinRatio) ||
     (providerLang !== language && providerLang !== 'unknown');
 
-  if (needsVerification) {
+  if (needsPostVerification && (!preLang || preLang === 'unknown')) {
     verificationTriggered = true;
     logLanguageEvent('language_verification_triggered', {
       traceId,
+      phase: 'post_transcription',
+      strategy: 'openai_triple_sample',
       providerLanguage: providerLang,
       initialLanguage: language,
       providerConfidence: providerConf,
@@ -270,31 +449,32 @@ export async function resolvePipelineLanguage(opts) {
 
     if (fetch && audioBuffer && Buffer.isBuffer(audioBuffer) && audioBuffer.length > 0) {
       try {
-        const sample = await sliceAudioFirstSeconds(audioBuffer, mimeType, extension, 15);
-        verificationVotes = await detectLanguageParallelVerification({
-          fetch,
-          audioBuffer: sample.buffer,
-          mimeType: sample.mimeType,
-          extension: sample.extension,
-          traceId
-        });
+        const samples = await sliceAudioVerificationSamples(audioBuffer, mimeType, extension, 15);
+        verificationVotes = await detectLanguageOpenAiTripleSample({ fetch, samples, traceId });
         const vote = majorityLanguageVote(verificationVotes);
         if (vote.language && vote.language !== 'unknown') {
           const protectedLang = applyEnglishAccentProtection(vote.language, providerLang, analysis);
-          if (protectedLang !== language) {
+          const guarded = applyLatinScriptGuard(
+            protectedLang,
+            latinRatio,
+            averageVoteConfidence(verificationVotes),
+            analysis
+          );
+          if (guarded.language !== language) {
             logLanguageEvent('language_override_applied', {
               traceId,
               from: language,
-              to: protectedLang,
-              reason: 'multi_provider_majority_vote',
-              votes: verificationVotes.map((v) => ({ provider: v.provider, language: v.language }))
+              to: guarded.language,
+              reason: 'post_transcription_triple_sample_vote',
+              votes: verificationVotes.map((v) => ({ position: v.position, language: v.language }))
             });
-            verificationApplied = true;
+            overrideApplied = true;
           }
-          language = protectedLang;
+          language = guarded.language;
           providerAgreement = vote.providerAgreement;
           languageConfidence = Math.max(
             languageConfidence,
+            averageVoteConfidence(verificationVotes),
             computeConsistencyScore({
               finalLanguage: language,
               analysis,
@@ -311,19 +491,32 @@ export async function resolvePipelineLanguage(opts) {
       }
     }
 
-    if (!verificationApplied) {
+    if (!overrideApplied) {
       const contentOverride = applyEnglishAccentProtection(analysis.top, providerLang, analysis);
-      if (contentOverride !== language) {
+      const guarded = applyLatinScriptGuard(contentOverride, latinRatio, languageConfidence, analysis);
+      if (guarded.language !== language) {
         logLanguageEvent('language_override_applied', {
           traceId,
           from: language,
-          to: contentOverride,
+          to: guarded.language,
           reason: 'transcript_content_fallback'
         });
-        language = contentOverride;
-        verificationApplied = true;
+        language = guarded.language;
+        overrideApplied = true;
       }
     }
+  }
+
+  const latinGuardFinal = applyLatinScriptGuard(language, latinRatio, languageConfidence, analysis);
+  if (latinGuardFinal.overrideApplied && latinGuardFinal.language !== language) {
+    overrideApplied = true;
+    logLanguageEvent('language_override_applied', {
+      traceId,
+      from: language,
+      to: latinGuardFinal.language,
+      reason: latinGuardFinal.reason
+    });
+    language = latinGuardFinal.language;
   }
 
   if (!isSupportedLanguageCode(language)) {
@@ -342,17 +535,30 @@ export async function resolvePipelineLanguage(opts) {
   if (providerLang && providerLang !== language) {
     logLanguageEvent('language_detection_mismatch', {
       traceId,
-      providerLanguage: providerLang,
-      resolvedLanguage: language,
+      rawProviderLanguage: providerLang,
+      finalLanguage: language,
       providerConfidence: providerConf,
       accent,
       accentConfidence,
       latinRatio,
       providerId,
       verificationTriggered,
-      verificationApplied
+      overrideApplied
     });
   }
+
+  logLanguageDetectionResult({
+    traceId,
+    rawProviderLanguage: providerLang,
+    finalLanguage: language,
+    verificationTriggered,
+    overrideApplied,
+    languageConfidence,
+    providerAgreement,
+    accent,
+    preTranscriptionLanguage: preLang || null,
+    latinRatio
+  });
 
   return buildLanguageProfile({
     language,
@@ -364,14 +570,24 @@ export async function resolvePipelineLanguage(opts) {
     analysis,
     resolved,
     verificationTriggered,
-    verificationApplied,
-    verificationVotes
+    overrideApplied,
+    verificationVotes,
+    preTranscription
   });
 }
 
-/** API-facing language detection payload (backward-compatible fields included). */
 export function formatLanguageDetectionForApi(profile) {
   const resolvedLanguage = profile?.language || 'unknown';
+  const sampleVotes = (profile?.verificationVotes || []).map((v) => ({
+    position: v.position || null,
+    provider: v.provider,
+    language: v.language,
+    confidence: v.confidence
+  }));
+  const firstVote = sampleVotes.find((v) => v.position === 'first');
+  const middleVote = sampleVotes.find((v) => v.position === 'middle');
+  const lastVote = sampleVotes.find((v) => v.position === 'last');
+
   return {
     detectedLanguage: resolvedLanguage,
     language: profile.language,
@@ -379,15 +595,23 @@ export function formatLanguageDetectionForApi(profile) {
     accent: profile.accent ?? null,
     accentConfidence: profile.accentConfidence ?? 0,
     providerAgreement: profile.providerAgreement ?? 0,
+    rawProviderLanguage: profile.providerLanguage ?? profile.whisperLanguage ?? null,
+    providerLanguage: profile.providerLanguage,
     whisperLanguage: profile.whisperLanguage ?? profile.providerLanguage ?? null,
     confidence: profile.languageConfidence,
     detectedBy: profile.detectedBy,
     needsReview: profile.needsReview,
     transcriptSample: profile.transcriptSample,
-    providerLanguage: profile.providerLanguage,
     verificationTriggered: profile.verificationTriggered,
-    verificationApplied: profile.verificationApplied,
-    verificationVotes: profile.verificationVotes
+    overrideApplied: profile.overrideApplied,
+    verificationApplied: profile.overrideApplied,
+    verificationVotes: sampleVotes,
+    preTranscriptionLanguage: profile.preTranscription?.language ?? null,
+    sampleVotes: {
+      first: firstVote?.language ?? null,
+      middle: middleVote?.language ?? null,
+      last: lastVote?.language ?? null
+    }
   };
 }
 
@@ -401,8 +625,9 @@ function buildLanguageProfile({
   analysis,
   resolved,
   verificationTriggered,
-  verificationApplied,
-  verificationVotes = []
+  overrideApplied,
+  verificationVotes = [],
+  preTranscription = null
 }) {
   return {
     language,
@@ -418,12 +643,15 @@ function buildLanguageProfile({
     whisperLanguage: providerLanguage,
     providerLanguage,
     verificationTriggered,
-    verificationApplied,
+    overrideApplied,
+    verificationApplied: overrideApplied,
     verificationVotes: verificationVotes.map((v) => ({
       provider: v.provider,
       language: v.language,
-      confidence: v.confidence
+      confidence: v.confidence,
+      position: v.position || null
     })),
+    preTranscription,
     analysis: {
       top: analysis.top,
       latinRatio: analysis.latinRatio,

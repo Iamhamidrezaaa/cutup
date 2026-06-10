@@ -2,6 +2,7 @@ import {
   resolveLanguageFromTranscript,
   inferAccentProfile,
   applyEnglishAccentProtection,
+  applyLatinScriptGuard,
   majorityLanguageVote
 } from './language-detection-pipeline.js';
 import { analyzeTranscriptLanguage } from './transcript-language-analysis.js';
@@ -40,6 +41,18 @@ if (protectedLang !== 'en') {
   process.exit(1);
 }
 
+const latinGuard = applyLatinScriptGuard('ru', 0.81, 0.9, analysis);
+if (latinGuard.language !== 'en' || !latinGuard.overrideApplied) {
+  console.error('FAIL: applyLatinScriptGuard expected en override');
+  process.exit(1);
+}
+
+const latinGuardHigh = applyLatinScriptGuard('ru', 0.81, 0.96, analysis);
+if (latinGuardHigh.overrideApplied) {
+  console.error('FAIL: high confidence should not override');
+  process.exit(1);
+}
+
 const suspiciousLatin = resolveLanguageFromTranscript(
   'ru',
   'Hello everyone this is a test of English speech with many Latin letters.',
@@ -63,12 +76,12 @@ if (realRussian.language !== 'ru') {
 }
 
 const vote = majorityLanguageVote([
-  { provider: 'openai', language: 'en' },
-  { provider: 'deepgram', language: 'en' },
-  { provider: 'groq', language: 'ru' }
+  { provider: 'openai', position: 'first', language: 'en' },
+  { provider: 'openai', position: 'middle', language: 'en' },
+  { provider: 'openai', position: 'last', language: 'ru' }
 ]);
 if (vote.language !== 'en' || vote.providerAgreement < 0.6) {
-  console.error('FAIL: majority vote expected en with ~0.67 agreement');
+  console.error('FAIL: triple-sample majority vote expected en with ~0.67 agreement');
   process.exit(1);
 }
 

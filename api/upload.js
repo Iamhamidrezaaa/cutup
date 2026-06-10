@@ -30,7 +30,11 @@ import { prepareUploadBufferForTranscription } from './upload-media-prep.js';
 import { applyWhisperLeadingOffsetIfNeeded } from './whisper-leading-offset.js';
 import { mergeRollingCaptionChains } from './video-render/subtitle-pipeline.js';
 import { refineTranscriptTimings } from './refine-transcript-timings.js';
-import { resolvePipelineLanguage, formatLanguageDetectionForApi } from './language-detection-pipeline.js';
+import {
+  resolvePipelineLanguage,
+  formatLanguageDetectionForApi,
+  runPreTranscriptionLanguageDetection
+} from './language-detection-pipeline.js';
 
 export default async function handler(req, res) {
   // Log immediately to verify this endpoint is being called
@@ -191,6 +195,32 @@ export default async function handler(req, res) {
     let transcript;
     transcribeDebug(traceId, { phase: 'input_ready', bytes: audioBuffer.length, route: 'upload' });
 
+    let preTranscription = null;
+    let effectiveLanguageHint = null;
+    try {
+      preTranscription = await runPreTranscriptionLanguageDetection({
+        traceId,
+        fetch,
+        audioBuffer,
+        mimeType,
+        extension
+      });
+      if (preTranscription?.language && preTranscription.language !== 'unknown') {
+        effectiveLanguageHint = preTranscription.language;
+        console.log('[pre-transcription-language]', {
+          traceId,
+          language: preTranscription.language,
+          providerAgreement: preTranscription.providerAgreement,
+          languageConfidence: preTranscription.languageConfidence
+        });
+      }
+    } catch (preLangErr) {
+      console.warn('[pre-transcription-language-failed]', {
+        traceId,
+        message: preLangErr?.message || String(preLangErr)
+      });
+    }
+
     try {
       const transcribeOne = async (buf, mt, ext) =>
         transcribeAudioPayload({
@@ -199,7 +229,7 @@ export default async function handler(req, res) {
           audioBuffer: buf,
           mimeType: mt,
           extension: ext,
-          languageHint: null
+          languageHint: effectiveLanguageHint
         });
 
       transcript = await runQueuedTranscribe({
@@ -376,7 +406,8 @@ export default async function handler(req, res) {
       segments: timelineSegments,
       audioBuffer,
       mimeType,
-      extension
+      extension,
+      preTranscription
     });
     const resolvedLanguage = languageProfile.language || transcript.language || 'unknown';
 

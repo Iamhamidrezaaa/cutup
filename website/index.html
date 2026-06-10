@@ -303,6 +303,11 @@
                 <button class="copy-btn" id="copyBtn" title="Copy active tab">📋 Copy</button>
               </div>
             </div>
+            <section id="languageDetectionDebug" class="language-detection-debug" hidden aria-label="Language detection debug">
+              <h3 class="language-detection-debug__title">Language detection (backend debug)</h3>
+              <p class="language-detection-debug__hint">Compare provider language vs final pipeline language. Badge uses <strong>Final language</strong>.</p>
+              <dl class="language-detection-debug__grid" id="languageDetectionDebugGrid"></dl>
+            </section>
             <div class="result-tabs">
               <button class="tab-btn active" data-tab="fulltext" type="button">Transcript</button>
               <button class="tab-btn" data-tab="summary" type="button">Summary</button>
