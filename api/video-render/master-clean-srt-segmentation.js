@@ -2,7 +2,9 @@
  * Master Clean SRT segmentation — short-form rules (single source of truth).
  * Target: 1 line per cue, max 5 words, max 42 visible chars.
  * Split at punctuation first, natural pauses second; never split names/numbers.
+ * ZERO WORD LOSS: every input token appears in exactly one output cue.
  */
+import { assertCompleteWordPartition, cueWords as integrityCueWords } from './clean-srt-word-integrity.js';
 
 const TOKEN_RE = /[\p{L}\p{M}\p{N}]+(?:[''\-][\p{L}\p{M}\p{N}]+)*/gu;
 
@@ -180,22 +182,20 @@ export function segmentSegmentToMasterCues(segment, opts = {}) {
     }
   }
 
-  const merged = [];
-  for (const spec of refined.length ? refined : specs) {
-    const pieceText = words.slice(spec.tokenStart, spec.tokenEnd + 1).join(' ');
-    if (!pieceText) continue;
-    if (
-      merged.length &&
-      visibleCharCount(pieceText) <= 2 &&
-      visibleCharCount(merged[merged.length - 1].text) + 1 + pieceText.length <= maxChars
-    ) {
-      const prev = merged[merged.length - 1];
-      prev.tokenEnd = spec.tokenEnd;
-      prev.text = words.slice(prev.tokenStart, spec.tokenEnd + 1).join(' ');
-      continue;
-    }
-    merged.push({ ...spec, text: pieceText });
+  const partitionSpecs = refined.length ? refined : specs;
+  if (!partitionSpecs.length && words.length) {
+    partitionSpecs.push({
+      tokenStart: 0,
+      tokenEnd: words.length - 1,
+      boundaryReason: 'fallback_single_cue'
+    });
   }
+  assertCompleteWordPartition(words, partitionSpecs);
+
+  const merged = partitionSpecs.map((spec) => ({
+    ...spec,
+    text: words.slice(spec.tokenStart, spec.tokenEnd + 1).join(' ')
+  }));
 
   return merged.map((spec) => {
     const { start, end } = cueTimingFromWordRange(
@@ -223,6 +223,24 @@ export function segmentPreparedSegmentsToMasterCues(preparedSegments, opts = {})
     const pieces = segmentSegmentToMasterCues(seg, opts);
     for (const piece of pieces) {
       if (piece.text && piece.end > piece.start) out.push(piece);
+    }
+  }
+  const sourceWords = integrityCueWords(
+    (preparedSegments || []).map((s) => String(s?.text || '')).join(' ')
+  );
+  const outWords = integrityCueWords(out.map((p) => p.text).join(' '));
+  if (sourceWords.length !== outWords.length) {
+    const err = new Error(
+      `SUBTITLE_WORD_LOSS: segment_batch word count ${sourceWords.length} → ${outWords.length}`
+    );
+    err.code = 'SUBTITLE_WORD_LOSS';
+    throw err;
+  }
+  for (let i = 0; i < sourceWords.length; i++) {
+    if (sourceWords[i].toLowerCase() !== outWords[i].toLowerCase()) {
+      const err = new Error(`SUBTITLE_WORD_LOSS: word mismatch at ${i} (${sourceWords[i]} vs ${outWords[i]})`);
+      err.code = 'SUBTITLE_WORD_LOSS';
+      throw err;
     }
   }
   return out;

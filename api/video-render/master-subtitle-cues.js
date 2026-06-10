@@ -1,12 +1,16 @@
 /**
  * Master subtitle cues — lock, guard, and sync validation (single source of truth).
  */
-import { prepareCleanSrtBurnCues, stripBurnNonSpeechTags } from './subtitle-pipeline.js';
+import { stripBurnNonSpeechTags } from './subtitle-pipeline.js';
 import {
   segmentPreparedSegmentsToMasterCues,
   SHORT_FORM_MAX_CHARS,
   SHORT_FORM_MAX_WORDS
 } from './master-clean-srt-segmentation.js';
+import {
+  assertCleanSrtWordIntegrity,
+  normalizePostProcessedForCleanSrt
+} from './clean-srt-word-integrity.js';
 
 const TIMING_TOLERANCE_MS = 1;
 
@@ -173,7 +177,7 @@ export function normalizeLockedMasterCues(rawSegments) {
  */
 export function buildMasterCleanSrtFromSegments(rawSegments, opts = {}) {
   const shortForm = opts.shortForm !== false;
-  const prepared = prepareCleanSrtBurnCues(rawSegments);
+  const prepared = normalizePostProcessedForCleanSrt(rawSegments);
   const segmented = shortForm
     ? segmentPreparedSegmentsToMasterCues(prepared, {
         maxWords: opts.maxWords ?? SHORT_FORM_MAX_WORDS,
@@ -184,6 +188,14 @@ export function buildMasterCleanSrtFromSegments(rawSegments, opts = {}) {
         end: Number(s.end),
         text: stripBurnNonSpeechTags(s.text)
       }));
+
+  if (opts.validateWordIntegrity !== false) {
+    assertCleanSrtWordIntegrity(prepared, segmented, {
+      stage: 'post_processed_to_clean_srt',
+      traceId: opts.traceId || null
+    });
+  }
+
   return lockMasterCues(segmented, opts);
 }
 

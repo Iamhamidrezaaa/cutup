@@ -9,6 +9,7 @@ import {
   buildMasterCleanSrtFromSegments,
   validateMasterVsAss
 } from './video-render/master-subtitle-cues.js';
+import { buildCleanSrtWordLossReport } from './video-render/clean-srt-word-integrity.js';
 
 const TOKEN_RE = /[\p{L}\p{M}\p{N}]+(?:[''\-][\p{L}\p{M}\p{N}]+)*/gu;
 const GAP_WARN_SEC = 1.5;
@@ -393,14 +394,19 @@ export function captureTranscriptionSubtitleIntegrity(opts = {}) {
 
   const postProcessed = afterPostProcess?.length ? afterPostProcess : afterOffset;
   let cleanSrt;
+  let wordLossReport = null;
   try {
-    cleanSrt = buildMasterCleanSrtFromSegments(postProcessed, { shortForm: true });
+    cleanSrt = buildMasterCleanSrtFromSegments(postProcessed, { shortForm: true, traceId });
+    wordLossReport = buildCleanSrtWordLossReport(postProcessed, cleanSrt);
   } catch (err) {
-    console.warn('[subtitle-integrity-clean-srt-build-failed]', {
+    wordLossReport = err?.report || buildCleanSrtWordLossReport(postProcessed, []);
+    console.error('[subtitle-integrity-clean-srt-build-failed]', {
       traceId,
-      message: err?.message || String(err)
+      code: err?.code || null,
+      message: err?.message || String(err),
+      wordLossReport
     });
-    cleanSrt = cloneSegmentsForAudit(postProcessed);
+    throw err;
   }
 
   const report = buildSubtitleIntegrityReport({
@@ -423,6 +429,7 @@ export function captureTranscriptionSubtitleIntegrity(opts = {}) {
     to: t.to,
     ...compareSegmentStages(t.a, t.b)
   }));
+  report.wordLoss = wordLossReport;
 
   if (report.warnings.length > 0) {
     console.warn(

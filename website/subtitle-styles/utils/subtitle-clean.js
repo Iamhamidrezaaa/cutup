@@ -314,15 +314,64 @@
     return out;
   }
 
-  function prepareAccurate(segments) {
-    const out = [];
-    for (const s of segments || []) {
-      if (!s || s.end <= s.start) continue;
-      let text = clean(s.text, { stripTranslationLeakage: true });
-      if (!text || isGarbage(text)) continue;
-      out.push({ start: s.start, end: s.end, text, words: s.words });
+  function stripNonSpeechForCleanSrt(text) {
+    return String(text || '')
+      .replace(/\[(?:music|applause|laughter|inaudible|crowd cheering)\]\s*/gi, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+
+  function assertClientWordIntegrity(postProcessed, cleanCues) {
+    function wordsFrom(segs) {
+      const list = [];
+      for (const seg of segs || []) {
+        const t = normalizeCueText(seg.text);
+        const w = t.match(TOKEN_RE) || [];
+        for (const token of w) {
+          const n = token.toLowerCase().replace(/[^\p{L}\p{M}\p{N}']/gu, '');
+          if (n) list.push(n);
+        }
+      }
+      return list;
     }
-    return segmentShortFormMasterCues(normalizeTimelineSegments(out));
+    const a = wordsFrom(postProcessed);
+    const b = wordsFrom(cleanCues);
+    if (a.join(' ') !== b.join(' ')) {
+      console.error('[subtitle_word_loss_client]', {
+        sourceWordCount: a.length,
+        cleanWordCount: b.length,
+        missingPreview: a.filter((w, i) => b[i] !== w).slice(0, 8)
+      });
+      throw new Error('SUBTITLE_WORD_LOSS: clean_srt_client');
+    }
+  }
+
+  function normalizePostProcessedForCleanSrtClient(segments) {
+    return (segments || [])
+      .filter(function (s) {
+        return s && s.end > s.start;
+      })
+      .map(function (s) {
+        return {
+          start: Number(s.start),
+          end: Number(s.end),
+          text: stripNonSpeechForCleanSrt(clean(s.text, { stripTranslationLeakage: true })),
+          words: s.words
+        };
+      })
+      .filter(function (s) {
+        return normalizeCueText(s.text);
+      })
+      .sort(function (a, b) {
+        return a.start - b.start;
+      });
+  }
+
+  function prepareAccurate(segments) {
+    const normalized = normalizePostProcessedForCleanSrtClient(segments);
+    const split = segmentShortFormMasterCues(normalized);
+    assertClientWordIntegrity(normalized, split);
+    return split;
   }
 
   function prepareClean(segments) {
