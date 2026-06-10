@@ -183,7 +183,15 @@ export async function transcribeWithRouter(ctx) {
         segmentCount: Array.isArray(result.segments) ? result.segments.length : 0,
         textChars: result.text ? String(result.text).length : 0
       });
-      return result;
+      return {
+        ...result,
+        asrDiagnostics: {
+          winnerProviderId: id,
+          attemptedProviders: [...attemptedProviders],
+          providerDurationMs: Date.now() - t0,
+          capture: result.asrCapture || null
+        }
+      };
     } catch (err) {
       recordProviderFailure(id, summarizeFailureKind(err));
       const msg = String(/** @type {{ message?: string }} */ (err).message || err);
@@ -294,6 +302,9 @@ export async function transcribeAudioPayload(ctx) {
     language: r.language || 'unknown',
     languageConfidence: r.languageConfidence,
     confidence: r.languageConfidence ?? r.confidence,
-    provider: r.provider || null
+    provider: r.provider || null,
+    durationSeconds: r.durationSeconds ?? null,
+    asrDiagnostics: r.asrDiagnostics || null,
+    asrCapture: r.asrCapture || r.asrDiagnostics?.capture || null
   };
 }

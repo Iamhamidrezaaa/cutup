@@ -1,6 +1,7 @@
 import { TranscriptionProviderError } from '../errors.js';
 import { DEEPGRAM_PROVIDER_ID } from '../provider-ids.js';
 import { enrichTranscriptionLanguageFields } from '../provider-language-confidence.js';
+import { buildAsrCapture, buildDeepgramRequestParams } from '../asr-provider-capture.js';
 
 export { DEEPGRAM_PROVIDER_ID };
 
@@ -70,6 +71,9 @@ export async function transcribeDeepgram({
     e.status = 401;
     throw e;
   }
+
+  const requestParams = buildDeepgramRequestParams({ languageHint });
+  const t0 = Date.now();
 
   const params = new URLSearchParams({
     model: 'nova-3',
@@ -158,6 +162,14 @@ export async function transcribeDeepgram({
       .join(' ')
       .trim();
 
+  const asrCapture = buildAsrCapture({
+    providerId: DEEPGRAM_PROVIDER_ID,
+    requestParams,
+    rawResponse: json,
+    durationMs: Date.now() - t0,
+    httpStatus: 200
+  });
+
   return enrichTranscriptionLanguageFields(
     {
       success: true,
@@ -165,7 +177,8 @@ export async function transcribeDeepgram({
       segments,
       language: detected || 'unknown',
       durationSeconds,
-      deepgramConfidence: alt?.confidence
+      deepgramConfidence: alt?.confidence,
+      asrCapture
     },
     DEEPGRAM_PROVIDER_ID
   );

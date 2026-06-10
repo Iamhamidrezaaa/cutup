@@ -26,6 +26,7 @@ import {
 import { traceLog } from './pipeline-trace.js';
 import { logSubtitleTextForensicStage } from './video-render/subtitle-text-forensics.js';
 import { captureTranscriptionSubtitleIntegrity } from './subtitle-integrity-audit.js';
+import { captureTranscriptionAsrDiagnostics } from './asr-diagnostics.js';
 import { transcribeAudioPayload, messageForAllProvidersFailed } from './transcription/transcription-router.js';
 import { ensureTranscriptionProvidersInit, getTranscriptionProviderRegistry } from './transcription/init.js';
 import { AllProvidersFailedError, TranscriptionProviderError } from './transcription/errors.js';
@@ -345,7 +346,13 @@ export default async function handler(req, res) {
                 segments: chunkResult.segments,
                 language: chunkResult.language,
                 languageConfidence: chunkResult.languageConfidence,
-                provider: chunkResult.provider
+                provider: chunkResult.provider,
+                asrChunkCaptures: chunkResult.asrChunkCaptures || [],
+                asrChunkDiagnostics: chunkResult.asrChunkDiagnostics || [],
+                asrDiagnostics: {
+                  winnerProviderId: chunkResult.provider,
+                  chunking: chunkResult.chunking || null
+                }
               };
             }
             const single = await transcribeOne(audioBuffer, mimeType, extension);
@@ -417,6 +424,8 @@ export default async function handler(req, res) {
       });
     }
 
+    /** @type {object|null} */
+    let accentRetranscribeMeta = null;
     if (
       !transcriptFromCache &&
       audioBuffer.length <= 25 * 1024 * 1024 &&
@@ -428,15 +437,30 @@ export default async function handler(req, res) {
         suspectedAccent: hintResolution.suspectedAccent || null
       });
       try {
+        const primaryCapture =
+          transcript.asrCapture || transcript.asrDiagnostics?.capture || null;
         const englishRetry = await transcribeOne(audioBuffer, mimeType, extension, 'en');
         const picked = pickAccentRetranscribeWinner(transcript, englishRetry, preTranscription);
+        accentRetranscribeMeta = {
+          attempted: true,
+          applied: Boolean(picked.usedRetry),
+          reason: picked.reason || null,
+          fromLanguage: picked.fromLanguage || null,
+          primaryCapture,
+          retryCapture: englishRetry.asrCapture || englishRetry.asrDiagnostics?.capture || null
+        };
         if (picked.usedRetry) {
           console.log('[accent-english-retranscribe-applied]', {
             traceId,
             from: picked.fromLanguage,
             reason: picked.reason
           });
-          transcript = picked.transcript;
+          transcript = {
+            ...picked.transcript,
+            provider: englishRetry.provider || picked.transcript.provider,
+            asrDiagnostics: englishRetry.asrDiagnostics || picked.transcript.asrDiagnostics,
+            asrCapture: englishRetry.asrCapture || englishRetry.asrDiagnostics?.capture || null
+          };
         }
       } catch (retryErr) {
         console.warn('[accent-english-retranscribe-failed]', {
@@ -445,6 +469,20 @@ export default async function handler(req, res) {
         });
       }
     }
+
+    const asrDiagnosticsResult = await captureTranscriptionAsrDiagnostics({
+      traceId,
+      route: 'transcribe',
+      audioBuffer,
+      mimeType,
+      extension,
+      transcript,
+      transcriptFromCache: Boolean(transcriptFromCache),
+      languageHint: effectiveLanguageHint,
+      hintResolution,
+      preTranscription,
+      accentRetranscribe: accentRetranscribeMeta
+    });
 
     console.log('TRANSCRIBE: Success, text length:', transcript.text?.length || 0);
     console.log('TRANSCRIBE V4.0: Segments count:', transcript.segments?.length || 0);
@@ -706,6 +744,15 @@ export default async function handler(req, res) {
         warningCount: subtitleIntegrity.report?.warnings?.length || 0,
         removedCount: subtitleIntegrity.report?.removedSegments?.length || 0,
         suspiciousGapCount: subtitleIntegrity.report?.suspiciousGaps?.length || 0
+      },
+      asrDiagnostics: {
+        providerId: asrDiagnosticsResult.report?.winner?.providerId,
+        backend: asrDiagnosticsResult.report?.winner?.backend,
+        model: asrDiagnosticsResult.report?.winner?.model,
+        qualityConcern: asrDiagnosticsResult.report?.quality?.summary?.qualityConcern,
+        missedGapCount: asrDiagnosticsResult.report?.quality?.summary?.missedGapCount,
+        lowConfidenceCount: asrDiagnosticsResult.report?.quality?.summary?.lowConfidenceCount,
+        hallucinationCount: asrDiagnosticsResult.report?.quality?.summary?.hallucinationCount
       }
     });
   } catch (err) {

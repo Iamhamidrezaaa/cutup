@@ -70,7 +70,11 @@ export async function transcribeLargeFile(audioBuffer, mimeType, extension = 'mp
           language: result.language,
           languageConfidence: result.languageConfidence,
           provider: result.provider,
-          index: chunkIndex
+          asrCapture: result.asrCapture || result.asrDiagnostics?.capture || null,
+          index: chunkIndex,
+          chunkOffsetSec: chunk.offset,
+          chunkByteStart: chunk.byteStart ?? null,
+          chunkByteLength: chunk.buffer?.length ?? null
         };
       });
     });
@@ -95,12 +99,34 @@ export async function transcribeLargeFile(audioBuffer, mimeType, extension = 'mp
 
   console.log(`CHUNK_PROCESSOR: Combined ${transcriptions.length} chunks, total segments: ${combinedSegments.length}`);
 
+  const asrChunkCaptures = transcriptions
+    .map((t) => t.asrCapture)
+    .filter(Boolean);
+  const asrChunkDiagnostics = transcriptions.map((t) => ({
+    chunkIndex: t.index,
+    timeOffsetSec: t.chunkOffsetSec,
+    byteLength: t.chunkByteLength,
+    providerId: t.provider || detectedProvider,
+    segmentCount: Array.isArray(t.segments) ? t.segments.length : 0,
+    textChars: t.text ? String(t.text).length : 0
+  }));
+
   return {
     text: combinedText,
     segments: combinedSegments,
     language: detectedLanguage || 'unknown',
     languageConfidence: detectedLanguageConfidence,
-    provider: detectedProvider
+    provider: detectedProvider,
+    asrChunkCaptures,
+    asrChunkDiagnostics,
+    chunking: {
+      fileSizeBytes: fileSize,
+      chunkSizeBytes: CHUNK_SIZE,
+      whisperMaxSizeBytes: WHISPER_MAX_SIZE,
+      overlapBytes: 2 * 1024 * 1024,
+      chunkCount: chunks.length,
+      vadEnabled: false
+    }
   };
 }
 
@@ -134,7 +160,8 @@ function splitAudioIntoChunks(audioBuffer, chunkSize) {
     
     chunks.push({
       buffer: chunkBuffer,
-      offset: timeOffset, // Time offset in seconds
+      offset: timeOffset,
+      byteStart: offset,
       index: chunkIndex++
     });
     

@@ -2,6 +2,10 @@ import FormDataLib from 'form-data';
 import { classifyOpenAiTranscriptionFailure, createQuotaError } from '../../transcription-provider.js';
 import { OPENAI_PROVIDER_ID } from '../provider-ids.js';
 import { enrichTranscriptionLanguageFields } from '../provider-language-confidence.js';
+import {
+  buildAsrCapture,
+  buildWhisperCompatibleRequestParams
+} from '../asr-provider-capture.js';
 
 export { OPENAI_PROVIDER_ID };
 
@@ -30,6 +34,13 @@ export async function transcribeOpenAi({
     throw e;
   }
 
+  const requestParams = buildWhisperCompatibleRequestParams({
+    model: 'whisper-1',
+    languageHint,
+    providerId: OPENAI_PROVIDER_ID
+  });
+
+  const t0 = Date.now();
   const formData = new FormDataLib();
   formData.append('file', audioBuffer, {
     filename: `audio.${extension}`,
@@ -104,13 +115,22 @@ export async function transcribeOpenAi({
   const durationSeconds =
     segments.length > 0 ? Math.max(...segments.map((s) => Number(s.end) || 0)) : 0;
 
+  const asrCapture = buildAsrCapture({
+    providerId: OPENAI_PROVIDER_ID,
+    requestParams,
+    rawResponse: transcript,
+    durationMs: Date.now() - t0,
+    httpStatus: 200
+  });
+
   return enrichTranscriptionLanguageFields(
     {
       success: true,
       text,
       segments,
       language,
-      durationSeconds
+      durationSeconds,
+      asrCapture
     },
     OPENAI_PROVIDER_ID
   );
