@@ -813,12 +813,21 @@ function normalizeTranscriptionResult(result) {
     });
   }
   const rawSegments = Array.isArray(result.segments) ? result.segments : [];
+  if (result.asrPipeline === 'v2') {
+    window.cutupAsrPipeline = 'v2';
+    window.cutupProviderWords = Array.isArray(result.words) ? result.words : [];
+  } else if (result.asrPipeline === 'v1') {
+    window.cutupAsrPipeline = 'v1';
+  }
   const normalized = {
     text: String(text || '').trim(),
     segments: rawSegments.length ? normalizeSegmentsForDisplay(rawSegments) : [],
     language: result.language ?? langDet?.language ?? langDet?.detectedLanguage ?? null,
     languageDetection: langDet,
-    transcriptionRuntime: result.transcriptionRuntime || null
+    transcriptionRuntime: result.transcriptionRuntime || null,
+    asrPipeline: result.asrPipeline || window.cutupAsrPipeline || null,
+    words: Array.isArray(result.words) ? result.words : window.cutupProviderWords || [],
+    wordGapFill: result.wordGapFill || null
   };
   if (normalized.segments.length) {
     window.CutupWhisperTimingTrace?.recordWhisperTimingStage?.('after_client_normalize', normalized.segments);
@@ -5403,8 +5412,24 @@ async function summarizeText(text, language = null, sessionId = null, contextMet
   }
 }
 
+function isClientAsrV2() {
+  return window.cutupAsrPipeline === 'v2';
+}
+
+/** Pass-through for ASR V2 — no merge, offset, or timing mutation on the client. */
 function normalizeSegmentsForDisplay(segments) {
   if (!Array.isArray(segments) || !segments.length) return segments || [];
+  if (isClientAsrV2()) {
+    return segments
+      .map((s) => ({
+        start: Number(s.start),
+        end: Number(s.end),
+        text: String(s.text || '').trim(),
+        ...(Array.isArray(s.words) ? { words: s.words } : {}),
+        ...(s.fromProviderWords ? { fromProviderWords: true } : {})
+      }))
+      .filter((s) => s.text && Number.isFinite(s.start) && Number.isFinite(s.end) && s.end > s.start);
+  }
   if (window.CutupSubtitleClean?.normalizeTimelineSegments) {
     return window.CutupSubtitleClean.normalizeTimelineSegments(segments);
   }
@@ -6516,6 +6541,9 @@ function buildCleanSrtFromSource() {
           window.cutupLastTranscription?.segments
   );
   if (!raw.length) return '';
+  if (isClientAsrV2()) {
+    return generateSRT(raw);
+  }
   const prepared = window.CutupSubtitleClean?.prepareSegmentsForMode
     ? window.CutupSubtitleClean.prepareSegmentsForMode(raw, 'accurate')
     : raw;

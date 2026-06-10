@@ -44,6 +44,7 @@ export async function finalizeAsrPipelineOutput(opts = {}) {
       model: v2.model,
       asrPipeline: 'v2',
       cleanSrt: v2.cleanSrt,
+      wordGapFill: v2.wordGapFill || null,
       whisperLeadingOffsetSec: 0,
       languageDetection: null,
       subtitleIntegrity: null,

@@ -473,7 +473,13 @@ export default async function handler(req, res) {
       language: finalized.resolvedLanguage,
       segments: timelineSegments || [],
       ...(finalized.words ? { words: finalized.words } : {}),
-      ...(finalized.asrPipeline === 'v2' ? { asrPipeline: 'v2', model: finalized.model } : {}),
+      ...(finalized.asrPipeline === 'v2'
+        ? {
+            asrPipeline: 'v2',
+            model: finalized.model,
+            ...(finalized.wordGapFill ? { wordGapFill: finalized.wordGapFill } : {})
+          }
+        : {}),
       transcriptionRuntime,
       ...(finalized.languageDetection ? { languageDetection: finalized.languageDetection } : {}),
       ...(finalized.subtitleIntegrity ? { subtitleIntegrity: finalized.subtitleIntegrity } : {})

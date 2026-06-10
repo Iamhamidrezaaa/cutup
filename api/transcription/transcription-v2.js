@@ -53,14 +53,123 @@ export function preserveProviderOutput(providerResult, providerId) {
     }
   }
 
+  const reconciled = reconcileSegmentsWithProviderWords(segments, words);
+
   return {
     text: String(raw.text ?? providerResult?.text ?? ''),
-    segments,
+    segments: reconciled.segments,
     words,
     language: String(raw.language ?? providerResult?.language ?? 'unknown'),
     provider: providerId,
     model: V2_MODELS[providerId] || null,
-    durationSeconds: providerResult?.durationSeconds ?? null
+    durationSeconds: providerResult?.durationSeconds ?? null,
+    wordGapFill: reconciled.wordGapFill
+  };
+}
+
+const WORD_GAP_MIN_SEC = 0.45;
+const WORD_GROUP_PAUSE_SEC = 0.42;
+
+function wordText(w) {
+  return String(w?.word ?? w?.text ?? '').trim();
+}
+
+/** Words whose midpoint is not covered by any provider segment. */
+export function findUncoveredProviderWords(segments, words) {
+  const segs = Array.isArray(segments) ? segments : [];
+  const list = Array.isArray(words) ? words : [];
+  return list.filter((w) => {
+    const text = wordText(w);
+    const ws = Number(w?.start);
+    const we = Number(w?.end);
+    if (!text || !Number.isFinite(ws) || !Number.isFinite(we) || we <= ws) return false;
+    const mid = (ws + we) / 2;
+    return !segs.some((seg) => {
+      const ss = Number(seg?.start);
+      const se = Number(seg?.end);
+      return Number.isFinite(ss) && Number.isFinite(se) && mid >= ss && mid <= se;
+    });
+  });
+}
+
+/** Group provider words by natural pause gaps — uses provider timestamps only. */
+export function groupProviderWordsByPause(words, pauseSec = WORD_GROUP_PAUSE_SEC) {
+  const sorted = [...(words || [])]
+    .filter((w) => wordText(w) && Number.isFinite(Number(w?.start)) && Number.isFinite(Number(w?.end)))
+    .sort((a, b) => Number(a.start) - Number(b.start));
+
+  const groups = [];
+  let bucket = [];
+
+  function flush() {
+    if (!bucket.length) return;
+    const text = bucket.map(wordText).join(' ').trim();
+    if (!text) {
+      bucket = [];
+      return;
+    }
+    groups.push({
+      start: Number(bucket[0].start),
+      end: Number(bucket[bucket.length - 1].end),
+      text,
+      words: bucket.map((w) => ({ ...w })),
+      fromProviderWords: true
+    });
+    bucket = [];
+  }
+
+  for (const w of sorted) {
+    if (!bucket.length) {
+      bucket.push(w);
+      continue;
+    }
+    const prev = bucket[bucket.length - 1];
+    const gap = Number(w.start) - Number(prev.end);
+    if (gap > pauseSec) {
+      flush();
+    }
+    bucket.push(w);
+  }
+  flush();
+  return groups;
+}
+
+/**
+ * When Whisper segments skip audio but word timestamps exist, insert word-only cues.
+ * Does not modify existing segment text or boundaries.
+ */
+export function reconcileSegmentsWithProviderWords(segments, words) {
+  const base = Array.isArray(segments) ? JSON.parse(JSON.stringify(segments)) : [];
+  const uncovered = findUncoveredProviderWords(base, words);
+  if (!uncovered.length) {
+    return { segments: base, wordGapFill: { inserted: 0, gaps: [] } };
+  }
+
+  const wordGroups = groupProviderWordsByPause(uncovered);
+  const merged = [...base, ...wordGroups].sort((a, b) => Number(a.start) - Number(b.start));
+
+  const gaps = [];
+  const sortedBase = [...base].sort((a, b) => Number(a.start) - Number(b.start));
+  for (let i = 0; i < sortedBase.length - 1; i++) {
+    const gapStart = Number(sortedBase[i].end);
+    const gapEnd = Number(sortedBase[i + 1].start);
+    if (gapEnd - gapStart >= WORD_GAP_MIN_SEC) {
+      const filled = wordGroups.filter(
+        (g) => Number(g.start) >= gapStart - 0.05 && Number(g.end) <= gapEnd + 0.05
+      );
+      if (filled.length) {
+        gaps.push({ start: gapStart, end: gapEnd, insertedCues: filled.length });
+      }
+    }
+  }
+
+  return {
+    segments: merged,
+    wordGapFill: {
+      inserted: wordGroups.length,
+      uncoveredWordCount: uncovered.length,
+      gaps
+    }
   };
 }
 
@@ -213,18 +322,25 @@ export function finalizeV2Transcript(transcript) {
         words: transcript.words || [],
         language: transcript.language,
         provider: transcript.provider,
-        model: transcript.model
+        model: transcript.model,
+        wordGapFill: transcript.wordGapFill || null
       }
     : preserveProviderOutput(transcript, transcript?.provider || GROQ_PROVIDER_ID);
 
+  const reconciled =
+    preserved.wordGapFill != null
+      ? { segments: preserved.segments, wordGapFill: preserved.wordGapFill }
+      : reconcileSegmentsWithProviderWords(preserved.segments, preserved.words);
+
   return {
     text: preserved.text,
-    segments: preserved.segments,
+    segments: reconciled.segments,
     words: preserved.words,
     language: preserved.language,
     provider: preserved.provider,
     model: preserved.model,
-    cleanSrt: segmentsToCleanSrt(preserved.segments),
+    wordGapFill: reconciled.wordGapFill,
+    cleanSrt: segmentsToCleanSrt(reconciled.segments),
     asrPipeline: 'v2'
   };
 }

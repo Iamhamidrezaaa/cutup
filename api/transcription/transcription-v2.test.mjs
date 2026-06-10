@@ -5,7 +5,9 @@ import {
   isAsrPipelineV2,
   preserveProviderOutput,
   segmentsToCleanSrt,
-  formatRawAsrDebugPayload
+  formatRawAsrDebugPayload,
+  reconcileSegmentsWithProviderWords,
+  findUncoveredProviderWords
 } from './transcription-v2.js';
 import { buildV1V2ComparisonReport } from './asr-pipeline-comparison.js';
 
@@ -58,6 +60,29 @@ test('formatRawAsrDebugPayload returns first 50 segments', () => {
   });
   assert.equal(payload.segment_count, 1);
   assert.equal(payload.first_50_segments[0].text, 'a');
+});
+
+test('reconcileSegmentsWithProviderWords fills segment gap from provider words', () => {
+  const segments = [
+    { start: 8.88, end: 11.547, text: 'Sorry I just wanna challenge' },
+    { start: 11.547, end: 12.08, text: 'you' },
+    { start: 18.679, end: 20.679, text: 'I mean challenge deadlifting' }
+  ];
+  const words = [
+    { word: 'what', start: 12.4, end: 12.7 },
+    { word: 'kidding', start: 12.75, end: 13.1 },
+    { word: 'challenge', start: 13.2, end: 13.6 },
+    { word: 'with', start: 13.65, end: 13.8 },
+    { word: 'you', start: 13.85, end: 14.0 },
+    { word: 'guys', start: 14.05, end: 14.4 }
+  ];
+  const uncovered = findUncoveredProviderWords(segments, words);
+  assert.equal(uncovered.length, 6);
+  const { segments: out, wordGapFill } = reconcileSegmentsWithProviderWords(segments, words);
+  assert.equal(wordGapFill.inserted, 1);
+  assert.equal(out.length, 4);
+  assert.ok(out.some((s) => s.text.includes('kidding')));
+  assert.ok(out.some((s) => s.text.includes('deadlifting')));
 });
 
 test('buildV1V2ComparisonReport detects timing and segment loss', () => {
