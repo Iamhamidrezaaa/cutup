@@ -825,6 +825,59 @@ function normalizeTranscriptionResult(result) {
   return normalized;
 }
 
+function formatLanguageDetectionDebugValue(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '—';
+  return String(value);
+}
+
+function resolveFinalLanguageForUi(options = {}) {
+  const langDet = options.languageDetection || null;
+  return (
+    langDet?.language ??
+    langDet?.detectedLanguage ??
+    options.originalLanguage ??
+    null
+  );
+}
+
+/** Visible debug panel for backend languageDetection payload on the results page. */
+function renderLanguageDetectionDebugBlock(langDet) {
+  const container = document.getElementById('languageDetectionDebug');
+  const grid = document.getElementById('languageDetectionDebugGrid');
+  if (!container || !grid) return;
+
+  const providerLang =
+    langDet?.rawProviderLanguage ?? langDet?.providerLanguage ?? langDet?.whisperLanguage ?? null;
+  const finalLang = langDet?.language ?? langDet?.detectedLanguage ?? null;
+  const langConf = langDet?.languageConfidence ?? langDet?.confidence ?? null;
+  const sampleVotes = langDet?.sampleVotes || {};
+
+  const rows = [
+    ['Provider language', providerLang],
+    ['Final language', finalLang],
+    ['Language confidence', langConf],
+    ['Accent', langDet?.accent ?? null],
+    ['Accent confidence', langDet?.accentConfidence ?? null],
+    ['Provider agreement', langDet?.providerAgreement ?? null],
+    ['Verification triggered', langDet?.verificationTriggered ?? null],
+    ['Override applied', langDet?.overrideApplied ?? langDet?.verificationApplied ?? null],
+    ['Sample first (15s)', sampleVotes.first ?? null],
+    ['Sample middle (15s)', sampleVotes.middle ?? null],
+    ['Sample last (15s)', sampleVotes.last ?? null]
+  ];
+
+  grid.innerHTML = rows
+    .map(
+      ([label, value]) =>
+        `<div class="language-detection-debug__row"><dt>${label}</dt><dd>${formatLanguageDetectionDebugValue(value)}</dd></div>`
+    )
+    .join('');
+
+  container.hidden = false;
+}
+
 function stripPreviewMarkersFromTranscript(text) {
   return String(text || '')
     .replace(/\n\n\[Preview only[\s\S]*$/i, '')
@@ -4739,6 +4792,7 @@ async function processSummarizeFile(file, sessionId) {
     // Display results in result section — summary tab active by default
     displayResults(summary, transcription.text, transcription.segments || [], {
       originalLanguage: transcription.language,
+      languageDetection: transcription.languageDetection || null,
       activeTab: 'summary',
       outputMode: 'fulltext',
       previewMode: isPreviewMode,
@@ -4845,6 +4899,7 @@ async function processFullTextFile(file, sessionId, activeTab = 'fulltext') {
     // One transcription → SRT + full text; show SRT first, transcript tab is instant from cache
     displayResults(summaryPending, transcription.text, transcription.segments || [], {
       originalLanguage: transcription.language,
+      languageDetection: transcription.languageDetection || null,
       activeTab: resultActiveTab,
       outputMode: resultOutputMode,
       previewMode: isPreviewMode,
@@ -5591,6 +5646,7 @@ async function processSummarize(url, sessionId, platform = 'youtube') {
       isYouTubeSubtitle: shouldUseYoutubeSubtitles(youtubeResult),
       availableLanguages: youtubeResult.availableLanguages || [],
       originalLanguage: transcription.language,
+      languageDetection: transcription.languageDetection || null,
       activeTab: 'summary',
       outputMode: 'fulltext',
       previewMode: isPreviewMode,
@@ -5726,6 +5782,7 @@ async function processFullText(url, sessionId, platform = 'youtube', activeTab =
       isYouTubeSubtitle: shouldUseYoutubeSubtitles(youtubeResult),
       availableLanguages: youtubeResult.availableLanguages || [],
       originalLanguage: transcription.language,
+      languageDetection: transcription.languageDetection || null,
       activeTab,
       outputMode: activeTab === 'srt' ? 'srt' : 'fulltext',
       previewMode: isPreviewMode,
@@ -6023,7 +6080,8 @@ function displayResults(summary, fullText, segments = null, options = {}) {
   const transcriptRaw = typeof fullText === 'string' ? fullText : (fullText?.text || fullText?.transcript || '');
   window.originalFullText = String(transcriptRaw || '').trim();
   window.originalSummary = typeof summary === 'string' ? summary : (summary?.summary || summaryTextContent);
-  setDetectedSourceLanguage(options && options.originalLanguage);
+  const finalUiLanguage = resolveFinalLanguageForUi(options);
+  setDetectedSourceLanguage(finalUiLanguage);
   window.originalTextLanguage = window.cutupDetectedSourceLanguage;
   window.originalSrtLanguage = window.cutupDetectedSourceLanguage;
   ['fulltextLanguage', 'summaryLanguage', 'srtLanguage'].forEach((id) => {
@@ -6121,6 +6179,12 @@ function displayResults(summary, fullText, segments = null, options = {}) {
   cutupLangDebug({
     phase: 'displayResults',
     outputMode,
+    rawProviderLanguage:
+      options.languageDetection?.rawProviderLanguage ??
+      options.languageDetection?.providerLanguage ??
+      options.languageDetection?.whisperLanguage ??
+      null,
+    finalLanguage: finalUiLanguage,
     displayOriginalLanguage: options.originalLanguage ?? null,
     storedSourceIso: window.cutupDetectedSourceLanguage,
     transcriptCharsShown: (previewFullText || '').length,
@@ -6155,6 +6219,9 @@ function displayResults(summary, fullText, segments = null, options = {}) {
       platform: typeof currentPlatform !== 'undefined' ? currentPlatform : 'unknown'
     });
   }
+
+  renderLanguageDetectionDebugBlock(options.languageDetection || null);
+  window.cutupLastLanguageDetection = options.languageDetection || null;
 
   // Show result section
   resultSection.style.display = 'block';
@@ -6194,7 +6261,8 @@ function displayResults(summary, fullText, segments = null, options = {}) {
     platform: options.platform || (typeof currentPlatform !== 'undefined' ? currentPlatform : null),
     sourceUrl: options.sourceUrl || (typeof getCurrentUrl === 'function' ? getCurrentUrl() : null),
     lastDisplayOptions: {
-      originalLanguage: options.originalLanguage,
+      originalLanguage: finalUiLanguage || options.originalLanguage,
+      languageDetection: options.languageDetection || null,
       isYouTubeSubtitle: options.isYouTubeSubtitle,
       availableLanguages: options.availableLanguages || [],
       previewMode: options.previewMode,
@@ -6208,7 +6276,8 @@ function displayResults(summary, fullText, segments = null, options = {}) {
       sourceUrl: options.sourceUrl || null,
       videoId: options.videoId || null,
       thumbnailUrl: options.thumbnailUrl || null
-    }
+    },
+    languageDetection: options.languageDetection || null
   };
 
   const habitHint = document.getElementById('retentionHabitHint');
