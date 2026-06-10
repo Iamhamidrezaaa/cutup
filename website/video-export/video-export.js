@@ -687,6 +687,12 @@
     }
     const renderSec = resolveRenderDurationSec(data);
     showCreatorWallOptIn(container, { ...data, renderDurationSec: renderSec }, jobId);
+    global.CutupPipelineFeedback?.show?.('export', {
+      jobId,
+      contextKey: jobId,
+      presetId: data.presetId || getActivePresetId(),
+      quality: data.quality || null
+    });
   }
 
   function togglePreview(container) {

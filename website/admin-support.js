@@ -14,6 +14,7 @@
     { id: 'waiting', label: 'Waiting', icon: '⏳' },
     { id: 'resolved', label: 'Resolved', icon: '✅' },
     { id: 'breached', label: 'Breached SLA', icon: '🔴' },
+    { id: 'user_feedback', label: 'User Feedback', icon: '💬' },
   ];
 
   var KPI_MAP = {
@@ -42,6 +43,9 @@
     lightboxUrl: null,
     myProfile: null,
     profilePanelOpen: false,
+    feedbackAnalytics: null,
+    feedbackItems: [],
+    feedbackFilter: 'unresolved',
   };
 
   function currentAgentProfile() {
@@ -204,12 +208,88 @@
   function renderQueues() {
     return QUEUES.map(function (q) {
       var active = state.queue === q.id && !state.kpiFilter ? ' is-active' : '';
+      var badge =
+        q.id === 'user_feedback' && (state.feedbackAnalytics?.unresolvedDown || 0) > 0
+          ? '<span class="sc-queue__badge">' + esc(String(state.feedbackAnalytics.unresolvedDown)) + '</span>'
+          : '';
       return (
         '<button type="button" class="sc-queue' + active + '" data-queue="' + esc(q.id) + '">' +
-          '<span aria-hidden="true">' + q.icon + '</span><span>' + esc(q.label) + '</span>' +
+          '<span aria-hidden="true">' + q.icon + '</span><span>' + esc(q.label) + '</span>' + badge +
         '</button>'
       );
     }).join('');
+  }
+
+  function renderFeedbackPie() {
+    var a = state.feedbackAnalytics || {};
+    var up = Number(a.up) || 0;
+    var down = Number(a.down) || 0;
+    var total = up + down;
+    var upPct = total ? Math.round((up / total) * 100) : 0;
+    var downPct = total ? 100 - upPct : 0;
+    var gradient = total
+      ? 'conic-gradient(#22c55e 0 ' + upPct + '%, #ef4444 ' + upPct + '% 100%)'
+      : 'conic-gradient(#e5e7eb 0 100%)';
+    return (
+      '<div class="sc-feedback-summary">' +
+        '<div class="sc-feedback-pie" style="background:' + gradient + '" aria-hidden="true"></div>' +
+        '<div class="sc-feedback-pie-legend">' +
+          '<p class="sc-feedback-pie-title">Pipeline feedback</p>' +
+          '<div class="sc-feedback-pie-row"><span class="sc-feedback-dot sc-feedback-dot--up"></span> Positive · ' + esc(String(up)) + ' (' + upPct + '%)</div>' +
+          '<div class="sc-feedback-pie-row"><span class="sc-feedback-dot sc-feedback-dot--down"></span> Negative · ' + esc(String(down)) + ' (' + downPct + '%)</div>' +
+          '<p class="sc-feedback-pie-meta">Total responses: ' + esc(String(total)) + ' · Open negative: ' + esc(String(a.unresolvedDown || 0)) + '</p>' +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function renderFeedbackTable() {
+    var items = state.feedbackItems || [];
+    var filter = state.feedbackFilter || 'unresolved';
+    return (
+      '<section class="sc-feedback-table-wrap">' +
+        '<div class="sc-feedback-table-head">' +
+          '<h3>Negative feedback</h3>' +
+          '<div class="sc-feedback-filters">' +
+            '<button type="button" class="sc-btn sc-btn--ghost' + (filter === 'unresolved' ? ' is-active' : '') + '" data-feedback-filter="unresolved">Open</button>' +
+            '<button type="button" class="sc-btn sc-btn--ghost' + (filter === 'resolved' ? ' is-active' : '') + '" data-feedback-filter="resolved">Resolved</button>' +
+            '<button type="button" class="sc-btn sc-btn--ghost' + (filter === 'all' ? ' is-active' : '') + '" data-feedback-filter="all">All</button>' +
+          '</div>' +
+        '</div>' +
+        (items.length
+          ? '<table class="sc-feedback-table"><thead><tr>' +
+              '<th>User</th><th>Stage</th><th>Comment</th><th>Date</th><th>Status</th>' +
+            '</tr></thead><tbody>' +
+            items.map(renderFeedbackRow).join('') +
+            '</tbody></table>'
+          : '<p class="sc-empty">No negative feedback in this filter.</p>') +
+      '</section>'
+    );
+  }
+
+  function renderFeedbackRow(item) {
+    var resolved = Boolean(item.resolved);
+    var statusHtml = resolved
+      ? '<span class="sc-feedback-status sc-feedback-status--resolved">✓ Resolved</span>'
+      : '<button type="button" class="sc-feedback-resolve" data-feedback-resolve="' + esc(item.id) + '" title="Mark as resolved">✓</button>';
+    return (
+      '<tr class="' + (resolved ? 'is-resolved' : '') + '">' +
+        '<td>' + esc(item.userEmail || 'Anonymous') + '</td>' +
+        '<td>' + esc(item.stageLabel || item.action || '—') + '</td>' +
+        '<td class="sc-feedback-comment">' + esc(item.comment || '—') + '</td>' +
+        '<td>' + esc(fmtDate(item.createdAt)) + '</td>' +
+        '<td class="sc-feedback-status-cell">' + statusHtml + '</td>' +
+      '</tr>'
+    );
+  }
+
+  function renderFeedbackPanel() {
+    return (
+      '<div class="sc-feedback-panel">' +
+        renderFeedbackPie() +
+        renderFeedbackTable() +
+      '</div>'
+    );
   }
 
   function renderAgentProfilePanel() {
@@ -455,16 +535,18 @@
           '<p>Intercom-style conversations with Linear triage — customer context, attachments, and agent identity in one workspace.</p>' +
         '</header>' +
         renderAgentProfilePanel() +
-        renderAnalytics() +
-        '<div class="sc-inbox" id="scInbox">' +
+        (state.queue === 'user_feedback' ? '' : renderAnalytics()) +
+        '<div class="sc-inbox' + (state.queue === 'user_feedback' ? ' sc-inbox--feedback' : '') + '" id="scInbox">' +
           '<aside class="sc-queues" aria-label="Queues">' + renderQueues() + '</aside>' +
-          '<section class="sc-list">' +
-            '<div class="sc-list__head"><input type="search" class="sc-list__search" id="scSearch" placeholder="Search tickets…" value="' + esc(state.q) + '"></div>' +
-            '<div class="sc-cards" id="scCards">' +
-              (state.tickets.length ? state.tickets.map(renderTicketCard).join('') : '<p class="sc-empty">No tickets in this queue.</p>') +
-            '</div>' +
-          '</section>' +
-          '<aside class="sc-workspace" id="scWorkspace">' + renderWorkspace() + '</aside>' +
+          (state.queue === 'user_feedback'
+            ? '<section class="sc-feedback-main" id="scFeedbackMain">' + renderFeedbackPanel() + '</section>'
+            : '<section class="sc-list">' +
+                '<div class="sc-list__head"><input type="search" class="sc-list__search" id="scSearch" placeholder="Search tickets…" value="' + esc(state.q) + '"></div>' +
+                '<div class="sc-cards" id="scCards">' +
+                  (state.tickets.length ? state.tickets.map(renderTicketCard).join('') : '<p class="sc-empty">No tickets in this queue.</p>') +
+                '</div>' +
+              '</section>' +
+              '<aside class="sc-workspace" id="scWorkspace">' + renderWorkspace() + '</aside>') +
         '</div>' +
       '</div>'
     );
@@ -531,12 +613,41 @@
     if (res.ok && res.data.profile) state.myProfile = res.data.profile;
   }
 
+  function feedbackListQuery() {
+    var filter = state.feedbackFilter || 'unresolved';
+    var resolved = filter === 'resolved' ? 'true' : filter === 'unresolved' ? 'false' : '';
+    var q = '/api/admin/support?action=feedback_list&rating=down&limit=100';
+    if (resolved) q += '&resolved=' + resolved;
+    return q;
+  }
+
+  async function refreshFeedbackData() {
+    var results = await Promise.all([
+      apiGet('/api/admin/support?action=feedback_analytics'),
+      apiGet(feedbackListQuery()),
+      apiGet('/api/admin/support?action=admins'),
+      apiGet('/api/admin/support?action=profile'),
+    ]);
+    if (results[0].ok) state.feedbackAnalytics = results[0].data.analytics;
+    if (results[1].ok) state.feedbackItems = results[1].data.items || [];
+    if (results[2].ok) {
+      state.admins = results[2].data.admins || [];
+      state.currentAdminId = results[2].data.currentAdminId || null;
+    }
+    if (results[3].ok && results[3].data.profile) state.myProfile = results[3].data.profile;
+  }
+
   async function refreshList() {
+    if (state.queue === 'user_feedback') {
+      await refreshFeedbackData();
+      return;
+    }
     var results = await Promise.all([
       apiGet('/api/admin/support?action=analytics'),
       apiGet('/api/admin/support?action=admins'),
       apiGet('/api/admin/support?action=profile'),
       apiGet(buildListQuery()),
+      apiGet('/api/admin/support?action=feedback_analytics'),
     ]);
     if (results[0].ok) state.analytics = results[0].data.analytics;
     if (results[1].ok) {
@@ -550,6 +661,7 @@
       state.totalPages = results[3].data.totalPages || 1;
       if (results[3].data.currentAdminId) state.currentAdminId = results[3].data.currentAdminId;
     }
+    if (results[4].ok) state.feedbackAnalytics = results[4].data.analytics;
   }
 
   function showLightbox(url) {
@@ -569,11 +681,28 @@
     root.__scBound = true;
 
     root.addEventListener('click', function (e) {
+      var resolveBtn = e.target.closest('[data-feedback-resolve]');
+      if (resolveBtn) {
+        void resolveFeedback(resolveBtn.getAttribute('data-feedback-resolve'), root);
+        return;
+      }
+
+      var feedbackFilterBtn = e.target.closest('[data-feedback-filter]');
+      if (feedbackFilterBtn) {
+        state.feedbackFilter = feedbackFilterBtn.getAttribute('data-feedback-filter') || 'unresolved';
+        void refreshAndRender(root);
+        return;
+      }
+
       var queueBtn = e.target.closest('[data-queue]');
       if (queueBtn) {
         state.queue = queueBtn.getAttribute('data-queue') || 'all_open';
         state.kpiFilter = null;
         state.page = 1;
+        if (state.queue === 'user_feedback') {
+          state.selected = null;
+          state.preview = null;
+        }
         void refreshAndRender(root);
         return;
       }
@@ -759,8 +888,25 @@
     refreshCardsDom();
   }
 
+  async function resolveFeedback(feedbackId, root) {
+    if (!feedbackId) return;
+    var res = await apiPost({ action: 'feedback_resolve', feedbackId: feedbackId });
+    if (!res.ok) {
+      alert(res.data?.error || 'Could not mark as resolved');
+      return;
+    }
+    await refreshList();
+    root.innerHTML = renderInbox();
+    bindRootEvents(root);
+  }
+
   async function refreshAndRender(root) {
     await refreshList();
+    if (state.queue === 'user_feedback') {
+      root.innerHTML = renderInbox();
+      bindRootEvents(root);
+      return;
+    }
     refreshCardsDom();
     var kpi = root.querySelector('.sc-kpi-grid');
     if (kpi) kpi.outerHTML = renderAnalytics();
@@ -774,7 +920,7 @@
     var link = document.createElement('link');
     link.id = 'cutup-admin-support-center-css';
     link.rel = 'stylesheet';
-    link.href = 'admin-support-center.css?v=20260609-agent-v1';
+    link.href = 'admin-support-center.css?v=20260609-feedback-v1';
     document.head.appendChild(link);
   }
 

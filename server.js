@@ -139,7 +139,7 @@ app.get('/api/system-health', async (req, res) => {
 app.get('/sitemap.xml', async (req, res) => sitemapHandler(req, res));
 
 // Import and use API routes
-let uploadHandler, adminCmsMediaHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, projectsHandler, oauthGoogleStartHandler, generateDocxHandler, exportVideoHandler, stripeCheckoutHandler, stripePortalHandler, paymentCreateHandler, paymentVerifyHandler, paymentCallbackHandler, paymentRetryHandler, paymentPayInvoiceHandler, paymentCancelInvoiceHandler, invoicesHandler, invoiceByIdHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, cronConversionEmailsHandler, cronSubscriptionExpiryHandler, userProfileHandler, accountSecurityHandler, auditEventHandler, adminAuditSummaryHandler, adminAuditListHandler, adminAuditUserTimelineHandler, adminAuditChartsHandler, adminAuditFunnelHandler, adminAuditAlertsHandler, adminAuditEvaluateAlertsHandler, adminAuditSeedHandler, adminAuditDashboardHandler, adminAuditJourneyHandler, adminAuditNotesHandler, adminAuditExportHandler, offersHandler, adminOffersHandler, creatorWallHandler, adminCreatorWallHandler, systemHealthHandler, adminOpsStateHandler, adminProvidersHandler;
+let uploadHandler, adminCmsMediaHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, projectsHandler, oauthGoogleStartHandler, generateDocxHandler, exportVideoHandler, stripeCheckoutHandler, stripePortalHandler, paymentCreateHandler, paymentVerifyHandler, paymentCallbackHandler, paymentRetryHandler, paymentPayInvoiceHandler, paymentCancelInvoiceHandler, invoicesHandler, invoiceByIdHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, pipelineFeedbackHandler, cronConversionEmailsHandler, cronSubscriptionExpiryHandler, userProfileHandler, accountSecurityHandler, auditEventHandler, adminAuditSummaryHandler, adminAuditListHandler, adminAuditUserTimelineHandler, adminAuditChartsHandler, adminAuditFunnelHandler, adminAuditAlertsHandler, adminAuditEvaluateAlertsHandler, adminAuditSeedHandler, adminAuditDashboardHandler, adminAuditJourneyHandler, adminAuditNotesHandler, adminAuditExportHandler, offersHandler, adminOffersHandler, creatorWallHandler, adminCreatorWallHandler, systemHealthHandler, adminOpsStateHandler, adminProvidersHandler;
 
 async function loadRoutes() {
   try {
@@ -333,6 +333,15 @@ async function loadRoutes() {
 
     const contactModule = await import('./api/contact.js');
     contactHandler = contactModule.default;
+    const pipelineFeedbackModule = await import('./api/pipeline-feedback.js');
+    pipelineFeedbackHandler = pipelineFeedbackModule.default;
+    try {
+      const { ensurePipelineFeedbackSchema } = await import('./api/pipeline-feedback-bootstrap.js');
+      await ensurePipelineFeedbackSchema();
+      console.log('✅ Pipeline feedback schema ensured');
+    } catch (e) {
+      console.warn('⚠️ Pipeline feedback schema:', e?.message);
+    }
     const cronConvModule = await import('./api/cron-conversion-emails.js');
     cronConversionEmailsHandler = cronConvModule.default;
     const cronSubExpiryModule = await import('./api/cron-subscription-expiry.js');
@@ -671,6 +680,13 @@ app.post('/api/contact', async (req, res) => {
     return res.status(503).json({ ok: false });
   }
   return contactHandler(req, res);
+});
+
+app.post('/api/pipeline-feedback', async (req, res) => {
+  if (!pipelineFeedbackHandler) {
+    return res.status(503).json({ ok: false });
+  }
+  return pipelineFeedbackHandler(req, res);
 });
 
 app.get('/api/cron/conversion-emails', async (req, res) => {

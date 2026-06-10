@@ -153,6 +153,7 @@
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="cinematic-preview/cinematic-preview.css?v=20260524-cine-premium">
   <link rel="stylesheet" href="video-export/video-export.css?v=20260526-export-options">
+  <link rel="stylesheet" href="pipeline-feedback.css?v=20260609-feedback">
   <link rel="stylesheet" href="creator-wall/creator-wall.css?v=20260520-live">
   <link rel="stylesheet" href="demo-live-micro.css?v=20260520-live">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -303,11 +304,6 @@
                 <button class="copy-btn" id="copyBtn" title="Copy active tab">📋 Copy</button>
               </div>
             </div>
-            <section id="languageDetectionDebug" class="language-detection-debug" hidden aria-label="Language detection debug">
-              <h3 class="language-detection-debug__title">Language detection (backend debug)</h3>
-              <p class="language-detection-debug__hint">Compare provider language vs final pipeline language. Badge uses <strong>Final language</strong>.</p>
-              <dl class="language-detection-debug__grid" id="languageDetectionDebugGrid"></dl>
-            </section>
             <div class="result-tabs">
               <button class="tab-btn active" data-tab="fulltext" type="button">Transcript</button>
               <button class="tab-btn" data-tab="summary" type="button">Summary</button>
@@ -736,6 +732,7 @@ Here's the fastest path from link to publish-ready captions.
   <script src="cinematic-preview/fake-player-animator.js?v=20260524-cine-premium"></script>
   <script src="cinematic-preview/cinematic-preview-renderer.js?v=20260524-cine-premium"></script>
   <script src="video-export/video-export.js?v=20260520-wall"></script>
+  <script src="pipeline-feedback.js?v=20260609-feedback"></script>
   <script src="workspace-autosave.js?v=20260602-workspace"></script>
   <script src="subtitle-versions.js?v=20260526-versions"></script>
   <script src="subtitle-styles/utils/subtitle-clean.js?v=20260526-engine"></script>

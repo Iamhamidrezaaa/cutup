@@ -30,6 +30,11 @@ import {
   notifyTicketResolved,
   notifyTicketClosed,
 } from './support-notify.js';
+import {
+  getPipelineFeedbackAnalytics,
+  listPipelineFeedbackForAdmin,
+  resolvePipelineFeedback,
+} from './pipeline-feedback-repository.js';
 
 function parseBody(req) {
   let body = req.body;
@@ -90,6 +95,24 @@ export default async function handler(req, res) {
       if (action === 'analytics') {
         const result = await getSupportAnalytics();
         return res.json({ ok: true, analytics: result.analytics });
+      }
+
+      if (action === 'feedback_analytics') {
+        const analytics = await getPipelineFeedbackAnalytics();
+        return res.json({ ok: true, analytics });
+      }
+
+      if (action === 'feedback_list') {
+        const resolvedParam = req.query?.resolved;
+        let resolved = null;
+        if (resolvedParam === 'true' || resolvedParam === '1') resolved = true;
+        if (resolvedParam === 'false' || resolvedParam === '0') resolved = false;
+        const list = await listPipelineFeedbackForAdmin({
+          rating: String(req.query?.rating || 'down').trim() || 'down',
+          resolved,
+          limit: req.query?.limit
+        });
+        return res.json({ ok: true, ...list });
       }
 
       if (action === 'admins') {
@@ -233,6 +256,14 @@ export default async function handler(req, res) {
         });
         if (!saved.ok) return res.status(400).json({ ok: false, error: saved.reason });
         return res.json({ ok: true, profile: saved.profile });
+      }
+
+      if (action === 'feedback_resolve') {
+        const feedbackId = String(body?.feedbackId || body?.id || '').trim();
+        if (!feedbackId) return res.status(400).json({ ok: false, error: 'missing_id' });
+        const result = await resolvePipelineFeedback(feedbackId, admin.adminId);
+        if (!result.ok) return res.status(404).json({ ok: false, error: result.reason });
+        return res.json({ ok: true, feedback: result.feedback });
       }
 
       return res.status(400).json({ ok: false, error: 'invalid_action' });

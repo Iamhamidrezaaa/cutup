@@ -825,13 +825,6 @@ function normalizeTranscriptionResult(result) {
   return normalized;
 }
 
-function formatLanguageDetectionDebugValue(value) {
-  if (value === null || value === undefined || value === '') return '—';
-  if (typeof value === 'boolean') return value ? 'true' : 'false';
-  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '—';
-  return String(value);
-}
-
 function resolveFinalLanguageForUi(options = {}) {
   const langDet = options.languageDetection || null;
   return (
@@ -842,40 +835,8 @@ function resolveFinalLanguageForUi(options = {}) {
   );
 }
 
-/** Visible debug panel for backend languageDetection payload on the results page. */
-function renderLanguageDetectionDebugBlock(langDet) {
-  const container = document.getElementById('languageDetectionDebug');
-  const grid = document.getElementById('languageDetectionDebugGrid');
-  if (!container || !grid) return;
-
-  const providerLang =
-    langDet?.rawProviderLanguage ?? langDet?.providerLanguage ?? langDet?.whisperLanguage ?? null;
-  const finalLang = langDet?.language ?? langDet?.detectedLanguage ?? null;
-  const langConf = langDet?.languageConfidence ?? langDet?.confidence ?? null;
-  const sampleVotes = langDet?.sampleVotes || {};
-
-  const rows = [
-    ['Provider language', providerLang],
-    ['Final language', finalLang],
-    ['Language confidence', langConf],
-    ['Accent', langDet?.accent ?? null],
-    ['Accent confidence', langDet?.accentConfidence ?? null],
-    ['Provider agreement', langDet?.providerAgreement ?? null],
-    ['Verification triggered', langDet?.verificationTriggered ?? null],
-    ['Override applied', langDet?.overrideApplied ?? langDet?.verificationApplied ?? null],
-    ['Sample first (15s)', sampleVotes.first ?? null],
-    ['Sample middle (15s)', sampleVotes.middle ?? null],
-    ['Sample last (15s)', sampleVotes.last ?? null]
-  ];
-
-  grid.innerHTML = rows
-    .map(
-      ([label, value]) =>
-        `<div class="language-detection-debug__row"><dt>${label}</dt><dd>${formatLanguageDetectionDebugValue(value)}</dd></div>`
-    )
-    .join('');
-
-  container.hidden = false;
+function requestPipelineFeedback(action, meta = {}) {
+  window.CutupPipelineFeedback?.show?.(action, meta);
 }
 
 function stripPreviewMarkersFromTranscript(text) {
@@ -6220,7 +6181,6 @@ function displayResults(summary, fullText, segments = null, options = {}) {
     });
   }
 
-  renderLanguageDetectionDebugBlock(options.languageDetection || null);
   window.cutupLastLanguageDetection = options.languageDetection || null;
 
   // Show result section
@@ -6329,6 +6289,14 @@ function displayResults(summary, fullText, segments = null, options = {}) {
   setTimeout(() => {
     resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, 100);
+
+  if (!options.cacheReplay && !options.previewMode) {
+    requestPipelineFeedback('transcription', {
+      contextKey: window.cutupLastTranscription?.cacheKey || options.sourceUrl || options.title || 'transcription',
+      platform: options.platform || currentPlatform,
+      outputMode
+    });
+  }
 }
 
 window.displayResults = displayResults;
@@ -6645,7 +6613,7 @@ async function translateFulltextContent(sessionId, originalLanguage) {
       /* ignore */
     }
     if (stableSid) setCutupSession(stableSid, 'translate_fulltext_success');
-    
+    requestPipelineFeedback('translation', { kind: 'fulltext', targetLanguage, contextKey: `fulltext_${targetLanguage}` });
   } catch (error) {
     console.error('[translate-error]', { kind: 'fulltext', message: error?.message, code: error?.errorCode });
     reportClientError('translate', error);
@@ -6714,6 +6682,7 @@ async function translateSummaryContent(sessionId, originalLanguage) {
     }
     if (stableSid) setCutupSession(stableSid, 'translate_summary_success');
     console.log('[translate-render]', { kind: 'summary', chars: translatedText.length });
+    requestPipelineFeedback('translation', { kind: 'summary', targetLanguage, contextKey: `summary_${targetLanguage}` });
   } catch (error) {
     console.error('[translate-error]', { kind: 'summary', message: error?.message, code: error?.errorCode });
     reportClientError('translate', error);
@@ -6803,6 +6772,7 @@ async function translateSrtContent(sessionId, originalLanguage) {
     console.log('[translate-render]', { kind: 'srt', chars: translatedSrt.length, targetLanguage });
     if (stableSid) setCutupSession(stableSid, 'translate_srt_success');
     window.CutupWorkspaceAutosave?.scheduleSave?.();
+    requestPipelineFeedback('translation', { kind: 'srt', targetLanguage, contextKey: `srt_${targetLanguage}` });
   } catch (error) {
     console.error('[translate-error]', { kind: 'srt', message: error?.message, code: error?.errorCode });
     reportClientError('translate', error);
