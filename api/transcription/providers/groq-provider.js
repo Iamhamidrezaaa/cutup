@@ -1,6 +1,6 @@
 import FormDataLib from 'form-data';
 import { classifyOpenAiTranscriptionFailure, createQuotaError } from '../../transcription-provider.js';
-import { GROQ_PROVIDER_ID } from '../provider-ids.js';
+import { GROQ_PROVIDER_ID, GROQ_WHISPER_MODEL } from '../provider-ids.js';
 import { enrichTranscriptionLanguageFields } from '../provider-language-confidence.js';
 import {
   buildAsrCapture,
@@ -30,7 +30,7 @@ export async function transcribeGroq({
   }
 
   const requestParams = buildWhisperCompatibleRequestParams({
-    model: 'whisper-large-v3',
+    model: GROQ_WHISPER_MODEL,
     languageHint,
     providerId: GROQ_PROVIDER_ID
   });
@@ -42,7 +42,7 @@ export async function transcribeGroq({
     contentType: mimeType,
     knownLength: audioBuffer.length
   });
-  formData.append('model', 'whisper-large-v3');
+  formData.append('model', GROQ_WHISPER_MODEL);
   if (languageHint) formData.append('language', languageHint);
   formData.append('response_format', 'verbose_json');
   formData.append('timestamp_granularities[]', 'word');

@@ -2219,6 +2219,25 @@ main {
   color: var(--text-primary);
 }
 
+.transcription-runtime-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  margin: -8px 0 14px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--text-secondary, #64748b);
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.transcription-runtime-bar span strong {
+  color: var(--text-primary, #0f172a);
+  font-weight: 600;
+  margin-right: 4px;
+}
+
 .copy-btn {
   background: var(--bg-gray);
   border: 1px solid var(--border);

@@ -1,16 +1,16 @@
 /**
- * Transcription provider abstraction (primary = OpenAI Whisper today).
- * Fallback IDs reserved for future wiring (Deepgram, AssemblyAI, Groq, local).
+ * Transcription provider abstraction (primary = Groq Whisper Large V3).
  */
 
 import { getRuntimeFallbackProviders } from './transcription/registry.js';
+import { PRIMARY_TRANSCRIPTION_PROVIDER_ID } from './transcription/provider-ids.js';
 
 export const TRANSCRIPTION_PROVIDER_OPENAI = 'openai-whisper';
 
-/** Env-selected primary provider id (future multi-provider). */
+/** Env override or frozen registry primary (Groq whisper-large-v3). */
 export function getPrimaryTranscriptionProviderId() {
-  const id = String(process.env.TRANSCRIPTION_PROVIDER || TRANSCRIPTION_PROVIDER_OPENAI).trim();
-  return id || TRANSCRIPTION_PROVIDER_OPENAI;
+  const id = String(process.env.TRANSCRIPTION_PROVIDER || '').trim();
+  return id || PRIMARY_TRANSCRIPTION_PROVIDER_ID;
 }
 
 const MIN_PROVIDER_KEY_LEN = 10;

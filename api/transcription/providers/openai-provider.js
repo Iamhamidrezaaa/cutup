@@ -1,6 +1,6 @@
 import FormDataLib from 'form-data';
 import { classifyOpenAiTranscriptionFailure, createQuotaError } from '../../transcription-provider.js';
-import { OPENAI_PROVIDER_ID } from '../provider-ids.js';
+import { OPENAI_PROVIDER_ID, OPENAI_WHISPER_MODEL } from '../provider-ids.js';
 import { enrichTranscriptionLanguageFields } from '../provider-language-confidence.js';
 import {
   buildAsrCapture,
@@ -35,7 +35,7 @@ export async function transcribeOpenAi({
   }
 
   const requestParams = buildWhisperCompatibleRequestParams({
-    model: 'whisper-1',
+    model: OPENAI_WHISPER_MODEL,
     languageHint,
     providerId: OPENAI_PROVIDER_ID
   });
@@ -47,7 +47,7 @@ export async function transcribeOpenAi({
     contentType: mimeType,
     knownLength: audioBuffer.length
   });
-  formData.append('model', 'whisper-1');
+  formData.append('model', OPENAI_WHISPER_MODEL);
   if (languageHint) formData.append('language', languageHint);
   formData.append('response_format', 'verbose_json');
   formData.append('timestamp_granularities[]', 'word');

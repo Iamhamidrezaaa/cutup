@@ -7,15 +7,13 @@ import {
   OPENAI_PROVIDER_ID,
   GROQ_PROVIDER_ID,
   DEEPGRAM_PROVIDER_ID,
-  LOCAL_WHISPER_PROVIDER_ID
+  LOCAL_WHISPER_PROVIDER_ID,
+  PRIMARY_TRANSCRIPTION_PROVIDER_ID,
+  TRANSCRIPTION_PROVIDER_ORDER,
+  TRANSCRIPTION_PROVIDER_MODELS
 } from './provider-ids.js';
 
-export const TRANSCRIPTION_PROVIDER_ORDER = Object.freeze([
-  OPENAI_PROVIDER_ID,
-  GROQ_PROVIDER_ID,
-  DEEPGRAM_PROVIDER_ID,
-  LOCAL_WHISPER_PROVIDER_ID
-]);
+export { TRANSCRIPTION_PROVIDER_ORDER };
 
 const MIN_KEY_LEN = 10;
 
@@ -41,7 +39,7 @@ export function isTranscriptionProviderConfigured(id) {
 export function buildProviderListsFromEnv() {
   const fallbackOrder = TRANSCRIPTION_PROVIDER_ORDER.filter((id) => isTranscriptionProviderConfigured(id));
   const activeProviders = [...fallbackOrder];
-  const fallbackProviders = activeProviders.filter((id) => id !== OPENAI_PROVIDER_ID);
+  const fallbackProviders = activeProviders.filter((id) => id !== PRIMARY_TRANSCRIPTION_PROVIDER_ID);
   const env = Object.freeze({
     openai: isTranscriptionProviderConfigured(OPENAI_PROVIDER_ID),
     groq: isTranscriptionProviderConfigured(GROQ_PROVIDER_ID),
@@ -52,7 +50,9 @@ export function buildProviderListsFromEnv() {
     env,
     activeProviders: Object.freeze(activeProviders),
     fallbackProviders: Object.freeze(fallbackProviders),
-    fallbackOrder: Object.freeze(fallbackOrder)
+    fallbackOrder: Object.freeze(fallbackOrder),
+    primaryProviderId: PRIMARY_TRANSCRIPTION_PROVIDER_ID,
+    primaryModel: TRANSCRIPTION_PROVIDER_MODELS[PRIMARY_TRANSCRIPTION_PROVIDER_ID] || null
   };
 }
 
@@ -61,7 +61,9 @@ function freezeRegistry(snapshot) {
     env: snapshot.env,
     activeProviders: snapshot.activeProviders,
     fallbackProviders: snapshot.fallbackProviders,
-    fallbackOrder: snapshot.fallbackOrder
+    fallbackOrder: snapshot.fallbackOrder,
+    primaryProviderId: snapshot.primaryProviderId,
+    primaryModel: snapshot.primaryModel
   });
   return frozenRegistry;
 }
@@ -74,13 +76,15 @@ export function refreshTranscriptionProviderRegistry(reason = 'refresh') {
   freezeRegistry(snapshot);
   console.log('[provider-runtime]', {
     reason,
+    primaryProvider: snapshot.primaryProviderId,
+    primaryModel: snapshot.primaryModel,
     activeProviders: [...snapshot.activeProviders],
     fallbackProviders: [...snapshot.fallbackProviders],
     fallbackOrder: [...snapshot.fallbackOrder]
   });
   if (snapshot.fallbackProviders.length === 0 && snapshot.activeProviders.length > 0) {
     console.warn(
-      '⚠️  [provider-runtime] No backup providers in registry — only primary is active. Set GROQ_API_KEY and/or DEEPGRAM_API_KEY.'
+      '⚠️  [provider-runtime] No backup providers in registry — only primary is active. Set OPENAI_API_KEY and/or DEEPGRAM_API_KEY for failover.'
     );
   }
   return frozenRegistry;

@@ -17,6 +17,7 @@ import {
 } from './provider-health.js';
 import { transcribeOpenAi, OPENAI_PROVIDER_ID } from './providers/openai-provider.js';
 import { transcribeGroq, GROQ_PROVIDER_ID } from './providers/groq-provider.js';
+import { PRIMARY_TRANSCRIPTION_PROVIDER_ID } from './provider-ids.js';
 import { transcribeDeepgram, DEEPGRAM_PROVIDER_ID } from './providers/deepgram-provider.js';
 import { transcribeLocalWhisper, LOCAL_WHISPER_PROVIDER_ID } from './providers/local-whisper-provider.js';
 import { assertGpuOrCpuFallback } from '../infrastructure/gpu-guard.js';
@@ -137,7 +138,7 @@ export async function transcribeWithRouter(ctx) {
     if (retryCandidates.length === 0) {
       throw new TranscriptionProviderError(
         'PROVIDER_UNAVAILABLE',
-        'No transcription providers configured (set OPENAI_API_KEY, GROQ_API_KEY, and/or DEEPGRAM_API_KEY)',
+        'No transcription providers configured (set GROQ_API_KEY, OPENAI_API_KEY, and/or DEEPGRAM_API_KEY)',
         { failoverEligible: false, details: { traceId } }
       );
     }
@@ -257,7 +258,7 @@ export async function transcribeWithRouter(ctx) {
 }
 
 /**
- * User-facing message when every provider failed (OpenAI-first policy).
+ * User-facing message when every provider failed (Groq Large V3 primary).
  */
 export function messageForAllProvidersFailed(err, registry = null) {
   const last = err?.lastError;
@@ -268,12 +269,17 @@ export function messageForAllProvidersFailed(err, registry = null) {
   const quotaLike =
     last?.name === 'QuotaError' || /insufficient_quota|quota exceeded|billing/i.test(lastMsg);
 
-  if (quotaLike && attempted.length === 1 && attempted[0] === OPENAI_PROVIDER_ID && fallbacks.length > 0) {
+  if (
+    quotaLike &&
+    attempted.length === 1 &&
+    attempted[0] === PRIMARY_TRANSCRIPTION_PROVIDER_ID &&
+    fallbacks.length > 0
+  ) {
     return 'High demand detected. We switched transcription engines — please try again in a moment.';
   }
   if (quotaLike && fallbacks.length === 0) {
     return (
-      'High demand on our primary engine. Add a backup API key (GROQ_API_KEY or DEEPGRAM_API_KEY) on the server for automatic failover.'
+      'High demand on our primary engine. Add a backup API key (OPENAI_API_KEY or DEEPGRAM_API_KEY) on the server for automatic failover.'
     );
   }
   if (quotaLike && attempted.length > 1) {
@@ -283,7 +289,7 @@ export function messageForAllProvidersFailed(err, registry = null) {
     return 'A transcription provider was misconfigured on the server. The failover chain has been repaired — please retry.';
   }
   if (active.length === 0) {
-    return 'No transcription providers are configured. Set OPENAI_API_KEY on the server.';
+    return 'No transcription providers are configured. Set GROQ_API_KEY on the server.';
   }
   if (attempted.length > 1) {
     return 'Still working through backup transcription engines. If this persists, try again in a few minutes.';

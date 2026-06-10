@@ -32,7 +32,7 @@ function printStartupBanner(env, active, fallbackOrder) {
     console.error('⚠️  NO transcription providers are configured.');
   } else if (fallbackOrder.length <= 1) {
     console.warn(
-      '⚠️  WARNING: No backup transcription providers — set GROQ_API_KEY and/or DEEPGRAM_API_KEY for failover.'
+      '⚠️  WARNING: No backup transcription providers — set OPENAI_API_KEY and/or DEEPGRAM_API_KEY for failover.'
     );
   }
   console.log('================================');
@@ -59,7 +59,7 @@ export function initTranscriptionProviders() {
       );
     } else if (fallbackProviders.length === 0) {
       console.warn(
-        '⚠️  [provider-init] Fallback architecture is loaded but NO backup providers are active. OpenAI quota/outage will fail requests until GROQ_API_KEY or DEEPGRAM_API_KEY is set.'
+        '⚠️  [provider-init] Fallback architecture is loaded but NO backup providers are active. Groq quota/outage will fail requests until OPENAI_API_KEY or DEEPGRAM_API_KEY is set.'
       );
     }
     bootLogged = true;
@@ -69,7 +69,9 @@ export function initTranscriptionProviders() {
     env,
     activeProviders,
     fallbackProviders,
-    fallbackOrder
+    fallbackOrder,
+    primaryProviderId: reg.primaryProviderId,
+    primaryModel: reg.primaryModel
   };
 }
 
@@ -83,7 +85,9 @@ export function getTranscriptionProviderRegistry() {
     env: getTranscriptionEnvStatus(),
     activeProviders: [...reg.activeProviders],
     fallbackProviders: [...reg.fallbackProviders],
-    fallbackOrder: [...reg.fallbackOrder]
+    fallbackOrder: [...reg.fallbackOrder],
+    primaryProviderId: reg.primaryProviderId,
+    primaryModel: reg.primaryModel
   };
 }
 

@@ -8,6 +8,7 @@ import {
   TRANSCRIPTION_PROVIDER_ORDER,
   isTranscriptionProviderConfigured
 } from '../transcription/registry.js';
+import { TRANSCRIPTION_PROVIDER_MODELS } from '../transcription/provider-ids.js';
 import { getProviderHealthSnapshot } from '../transcription/provider-health.js';
 
 function canAccess(req, auth) {
@@ -41,11 +42,14 @@ export default async function handler(req, res) {
   const env = getTranscriptionEnvStatus();
 
   return res.status(200).json({
+    primaryProviderId: reg.primaryProviderId,
+    primaryModel: reg.primaryModel,
     activeProviders: [...reg.activeProviders],
     fallbackProviders: [...reg.fallbackProviders],
     fallbackOrder: [...reg.fallbackOrder],
     configuredOrder: TRANSCRIPTION_PROVIDER_ORDER.map((id) => ({
       id,
+      model: TRANSCRIPTION_PROVIDER_MODELS[id] || null,
       configured: isTranscriptionProviderConfigured(id)
     })),
     env: {

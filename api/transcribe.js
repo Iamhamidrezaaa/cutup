@@ -26,8 +26,11 @@ import {
 import { traceLog } from './pipeline-trace.js';
 import { logSubtitleTextForensicStage } from './video-render/subtitle-text-forensics.js';
 import { captureTranscriptionSubtitleIntegrity } from './subtitle-integrity-audit.js';
-import { captureTranscriptionAsrDiagnostics } from './asr-diagnostics.js';
 import { transcribeAudioPayload, messageForAllProvidersFailed } from './transcription/transcription-router.js';
+import {
+  audioDurationFromSegments,
+  buildTranscriptionRuntime
+} from './transcription/transcription-runtime.js';
 import { ensureTranscriptionProvidersInit, getTranscriptionProviderRegistry } from './transcription/init.js';
 import { AllProvidersFailedError, TranscriptionProviderError } from './transcription/errors.js';
 import { logProviderTimeout } from './provider-health.js';
@@ -325,12 +328,14 @@ export default async function handler(req, res) {
 
     /** @type {{ text: string, segments: unknown[], language: string }} */
     let transcript;
+    let transcriptionDurationMs = 0;
 
     try {
       if (transcriptFromCache) {
         transcript = transcriptFromCache;
         traceLog(traceId, 'transcription', { phase: 'cache_transcribe_skip', chars: transcript.text?.length || 0 });
       } else {
+        const transcribeStartedAt = Date.now();
         transcript = await runQueuedTranscribe({
           userEmail,
           traceId,
@@ -368,6 +373,7 @@ export default async function handler(req, res) {
             return single;
           }
         });
+        transcriptionDurationMs = Date.now() - transcribeStartedAt;
       }
     } catch (routerErr) {
       console.error('TRANSCRIBE: Transcription router error:', routerErr);
@@ -437,18 +443,16 @@ export default async function handler(req, res) {
         suspectedAccent: hintResolution.suspectedAccent || null
       });
       try {
-        const primaryCapture =
-          transcript.asrCapture || transcript.asrDiagnostics?.capture || null;
+        const accentRetryStartedAt = Date.now();
         const englishRetry = await transcribeOne(audioBuffer, mimeType, extension, 'en');
         const picked = pickAccentRetranscribeWinner(transcript, englishRetry, preTranscription);
         accentRetranscribeMeta = {
           attempted: true,
           applied: Boolean(picked.usedRetry),
           reason: picked.reason || null,
-          fromLanguage: picked.fromLanguage || null,
-          primaryCapture,
-          retryCapture: englishRetry.asrCapture || englishRetry.asrDiagnostics?.capture || null
+          fromLanguage: picked.fromLanguage || null
         };
+        transcriptionDurationMs += Date.now() - accentRetryStartedAt;
         if (picked.usedRetry) {
           console.log('[accent-english-retranscribe-applied]', {
             traceId,
@@ -457,9 +461,7 @@ export default async function handler(req, res) {
           });
           transcript = {
             ...picked.transcript,
-            provider: englishRetry.provider || picked.transcript.provider,
-            asrDiagnostics: englishRetry.asrDiagnostics || picked.transcript.asrDiagnostics,
-            asrCapture: englishRetry.asrCapture || englishRetry.asrDiagnostics?.capture || null
+            provider: englishRetry.provider || picked.transcript.provider
           };
         }
       } catch (retryErr) {
@@ -469,20 +471,6 @@ export default async function handler(req, res) {
         });
       }
     }
-
-    const asrDiagnosticsResult = await captureTranscriptionAsrDiagnostics({
-      traceId,
-      route: 'transcribe',
-      audioBuffer,
-      mimeType,
-      extension,
-      transcript,
-      transcriptFromCache: Boolean(transcriptFromCache),
-      languageHint: effectiveLanguageHint,
-      hintResolution,
-      preTranscription,
-      accentRetranscribe: accentRetranscribeMeta
-    });
 
     console.log('TRANSCRIBE: Success, text length:', transcript.text?.length || 0);
     console.log('TRANSCRIBE V4.0: Segments count:', transcript.segments?.length || 0);
@@ -730,11 +718,24 @@ export default async function handler(req, res) {
       afterPostProcess: timelineSegments
     });
 
+    const transcriptionRuntime = buildTranscriptionRuntime({
+      providerId: transcript.provider,
+      transcriptionDurationMs,
+      audioDurationSec: audioDurationFromSegments(
+        timelineSegments,
+        requestMetadata.duration ||
+          requestMetadata.durationSeconds ||
+          transcript.durationSeconds
+      ),
+      fromCache: Boolean(transcriptFromCache)
+    });
+
     return sendTranscriptSuccess(res, traceId, {
       requestId,
       text: correctedText,
       language: resolvedLanguage,
       segments: timelineSegments,
+      transcriptionRuntime,
       ...(whisperLeadingOffsetSec > 0 ? { whisperLeadingOffsetSec } : {}),
       ...(whisperTimingForensics ? { whisperTimingForensics } : {}),
       languageDetection: formatLanguageDetectionForApi(languageProfile),
@@ -744,15 +745,6 @@ export default async function handler(req, res) {
         warningCount: subtitleIntegrity.report?.warnings?.length || 0,
         removedCount: subtitleIntegrity.report?.removedSegments?.length || 0,
         suspiciousGapCount: subtitleIntegrity.report?.suspiciousGaps?.length || 0
-      },
-      asrDiagnostics: {
-        providerId: asrDiagnosticsResult.report?.winner?.providerId,
-        backend: asrDiagnosticsResult.report?.winner?.backend,
-        model: asrDiagnosticsResult.report?.winner?.model,
-        qualityConcern: asrDiagnosticsResult.report?.quality?.summary?.qualityConcern,
-        missedGapCount: asrDiagnosticsResult.report?.quality?.summary?.missedGapCount,
-        lowConfidenceCount: asrDiagnosticsResult.report?.quality?.summary?.lowConfidenceCount,
-        hallucinationCount: asrDiagnosticsResult.report?.quality?.summary?.hallucinationCount
       }
     });
   } catch (err) {
