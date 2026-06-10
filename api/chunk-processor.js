@@ -9,7 +9,7 @@ const CHUNK_SIZE = 20 * 1024 * 1024; // 20MB chunks (safe margin)
  * @param {Buffer} audioBuffer
  * @param {string} mimeType
  * @param {string} extension
- * @param {(buf: Buffer, mt: string, ext: string) => Promise<{ text: string, segments: Array, language: string }>} transcribeOneChunk
+ * @param {(buf: Buffer, mt: string, ext: string) => Promise<{ text: string, segments: Array, language: string, languageConfidence?: number, provider?: string }>} transcribeOneChunk
  */
 export async function transcribeLargeFile(audioBuffer, mimeType, extension = 'mp3', transcribeOneChunk) {
   const fileSize = audioBuffer.length;
@@ -31,6 +31,8 @@ export async function transcribeLargeFile(audioBuffer, mimeType, extension = 'mp
   const BATCH_SIZE = 1;
   const transcriptions = [];
   let detectedLanguage = null;
+  let detectedLanguageConfidence = null;
+  let detectedProvider = null;
 
   for (let batchStart = 0; batchStart < chunks.length; batchStart += BATCH_SIZE) {
     const batchEnd = Math.min(batchStart + BATCH_SIZE, chunks.length);
@@ -66,6 +68,8 @@ export async function transcribeLargeFile(audioBuffer, mimeType, extension = 'mp
           text: result.text,
           segments: adjustedSegments,
           language: result.language,
+          languageConfidence: result.languageConfidence,
+          provider: result.provider,
           index: chunkIndex
         };
       });
@@ -78,6 +82,8 @@ export async function transcribeLargeFile(audioBuffer, mimeType, extension = 'mp
 
       if (!detectedLanguage && result.language) {
         detectedLanguage = result.language;
+        detectedLanguageConfidence = result.languageConfidence ?? null;
+        detectedProvider = result.provider ?? null;
       }
     }
   }
@@ -92,7 +98,9 @@ export async function transcribeLargeFile(audioBuffer, mimeType, extension = 'mp
   return {
     text: combinedText,
     segments: combinedSegments,
-    language: detectedLanguage || 'unknown'
+    language: detectedLanguage || 'unknown',
+    languageConfidence: detectedLanguageConfidence,
+    provider: detectedProvider
   };
 }
 

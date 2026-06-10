@@ -30,6 +30,7 @@ import { prepareUploadBufferForTranscription } from './upload-media-prep.js';
 import { applyWhisperLeadingOffsetIfNeeded } from './whisper-leading-offset.js';
 import { mergeRollingCaptionChains } from './video-render/subtitle-pipeline.js';
 import { refineTranscriptTimings } from './refine-transcript-timings.js';
+import { resolvePipelineLanguage, formatLanguageDetectionForApi } from './language-detection-pipeline.js';
 
 export default async function handler(req, res) {
   // Log immediately to verify this endpoint is being called
@@ -212,7 +213,9 @@ export default async function handler(req, res) {
             return {
               text: chunkResult.text,
               segments: chunkResult.segments,
-              language: chunkResult.language
+              language: chunkResult.language,
+              languageConfidence: chunkResult.languageConfidence,
+              provider: chunkResult.provider
             };
           }
           console.log('UPLOAD: Transcription router (single request)...');
@@ -363,10 +366,25 @@ export default async function handler(req, res) {
     console.log('UPLOAD: Final response preparation - text length:', correctedText.length, 'segments:', timelineSegments.length);
     console.log('UPLOAD: Text preview:', correctedText.substring(0, 100));
     
+    const languageProfile = await resolvePipelineLanguage({
+      traceId,
+      fetch,
+      providerLanguage: transcript.language,
+      providerConfidence: transcript.languageConfidence,
+      providerId: transcript.provider,
+      text: correctedText,
+      segments: timelineSegments,
+      audioBuffer,
+      mimeType,
+      extension
+    });
+    const resolvedLanguage = languageProfile.language || transcript.language || 'unknown';
+
     const responseData = {
       text: correctedText,
-      language: transcript.language || 'unknown',
-      segments: timelineSegments || []
+      language: resolvedLanguage,
+      segments: timelineSegments || [],
+      languageDetection: formatLanguageDetectionForApi(languageProfile)
     };
     
     console.log('UPLOAD: Sending response with text length:', responseData.text.length);

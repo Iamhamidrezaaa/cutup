@@ -1,6 +1,7 @@
 import FormDataLib from 'form-data';
 import { classifyOpenAiTranscriptionFailure, createQuotaError } from '../../transcription-provider.js';
 import { GROQ_PROVIDER_ID } from '../provider-ids.js';
+import { enrichTranscriptionLanguageFields } from '../provider-language-confidence.js';
 
 export { GROQ_PROVIDER_ID };
 
@@ -94,12 +95,14 @@ export async function transcribeGroq({
   const durationSeconds =
     segments.length > 0 ? Math.max(...segments.map((s) => Number(s.end) || 0)) : 0;
 
-  return {
-    success: true,
-    provider: GROQ_PROVIDER_ID,
-    text,
-    segments,
-    language,
-    durationSeconds
-  };
+  return enrichTranscriptionLanguageFields(
+    {
+      success: true,
+      text,
+      segments,
+      language,
+      durationSeconds
+    },
+    GROQ_PROVIDER_ID
+  );
 }

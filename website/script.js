@@ -795,21 +795,28 @@ function normalizeTranscriptionResult(result) {
   }
   const text = result.text ?? result.transcript ?? result.content ?? '';
   const langDet = result.languageDetection || null;
-  if (langDet?.detectedLanguage) {
+  if (langDet?.detectedLanguage || langDet?.language) {
     console.log('[language-confidence-client]', {
-      language: langDet.detectedLanguage,
-      confidence: langDet.confidence,
+      language: langDet.language ?? langDet.detectedLanguage,
+      languageConfidence: langDet.languageConfidence ?? langDet.confidence,
+      accent: langDet.accent,
+      accentConfidence: langDet.accentConfidence,
+      providerAgreement: langDet.providerAgreement,
+      confidence: langDet.confidence ?? langDet.languageConfidence,
       detectedBy: langDet.detectedBy,
       needsReview: langDet.needsReview,
       transcriptSample: langDet.transcriptSample,
-      whisperLanguage: langDet.whisperLanguage
+      whisperLanguage: langDet.whisperLanguage,
+      providerLanguage: langDet.providerLanguage,
+      verificationTriggered: langDet.verificationTriggered,
+      verificationApplied: langDet.verificationApplied
     });
   }
   const rawSegments = Array.isArray(result.segments) ? result.segments : [];
   const normalized = {
     text: String(text || '').trim(),
     segments: rawSegments.length ? normalizeSegmentsForDisplay(rawSegments) : [],
-    language: result.language ?? langDet?.detectedLanguage ?? null,
+    language: result.language ?? langDet?.language ?? langDet?.detectedLanguage ?? null,
     languageDetection: langDet
   };
   if (normalized.segments.length) {

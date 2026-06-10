@@ -1,6 +1,7 @@
 import FormDataLib from 'form-data';
 import { classifyOpenAiTranscriptionFailure, createQuotaError } from '../../transcription-provider.js';
 import { OPENAI_PROVIDER_ID } from '../provider-ids.js';
+import { enrichTranscriptionLanguageFields } from '../provider-language-confidence.js';
 
 export { OPENAI_PROVIDER_ID };
 
@@ -103,12 +104,14 @@ export async function transcribeOpenAi({
   const durationSeconds =
     segments.length > 0 ? Math.max(...segments.map((s) => Number(s.end) || 0)) : 0;
 
-  return {
-    success: true,
-    provider: OPENAI_PROVIDER_ID,
-    text,
-    segments,
-    language,
-    durationSeconds
-  };
+  return enrichTranscriptionLanguageFields(
+    {
+      success: true,
+      text,
+      segments,
+      language,
+      durationSeconds
+    },
+    OPENAI_PROVIDER_ID
+  );
 }

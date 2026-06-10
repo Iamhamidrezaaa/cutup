@@ -1,5 +1,6 @@
 import { TranscriptionProviderError } from '../errors.js';
 import { DEEPGRAM_PROVIDER_ID } from '../provider-ids.js';
+import { enrichTranscriptionLanguageFields } from '../provider-language-confidence.js';
 
 export { DEEPGRAM_PROVIDER_ID };
 
@@ -157,12 +158,15 @@ export async function transcribeDeepgram({
       .join(' ')
       .trim();
 
-  return {
-    success: true,
-    provider: DEEPGRAM_PROVIDER_ID,
-    text: joinedText,
-    segments,
-    language: detected || 'unknown',
-    durationSeconds
-  };
+  return enrichTranscriptionLanguageFields(
+    {
+      success: true,
+      text: joinedText,
+      segments,
+      language: detected || 'unknown',
+      durationSeconds,
+      deepgramConfidence: alt?.confidence
+    },
+    DEEPGRAM_PROVIDER_ID
+  );
 }

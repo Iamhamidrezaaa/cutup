@@ -36,7 +36,7 @@ import {
   dedupeKeyForUrl
 } from './infrastructure/guards.js';
 import { transcribeDebug } from './infrastructure/observability.js';
-import { buildLanguageConfidence } from './spoken-language-detection.js';
+import { resolvePipelineLanguage, formatLanguageDetectionForApi } from './language-detection-pipeline.js';
 import { applyWhisperLeadingOffsetIfNeeded } from './whisper-leading-offset.js';
 import { mergeRollingCaptionChains } from './video-render/subtitle-pipeline.js';
 import { refineTranscriptTimings } from './refine-transcript-timings.js';
@@ -300,7 +300,9 @@ export default async function handler(req, res) {
               return {
                 text: chunkResult.text,
                 segments: chunkResult.segments,
-                language: chunkResult.language
+                language: chunkResult.language,
+                languageConfidence: chunkResult.languageConfidence,
+                provider: chunkResult.provider
               };
             }
             const single = await transcribeOne(audioBuffer, mimeType, extension);
@@ -578,12 +580,19 @@ export default async function handler(req, res) {
       );
     }
 
-    const languageConfidence = buildLanguageConfidence(
-      transcript.language,
-      correctedText,
-      timelineSegments
-    );
-    const resolvedLanguage = languageConfidence.language || transcript.language || 'unknown';
+    const languageProfile = await resolvePipelineLanguage({
+      traceId,
+      fetch,
+      providerLanguage: transcript.language,
+      providerConfidence: transcript.languageConfidence,
+      providerId: transcript.provider,
+      text: correctedText,
+      segments: timelineSegments,
+      audioBuffer,
+      mimeType,
+      extension
+    });
+    const resolvedLanguage = languageProfile.language || transcript.language || 'unknown';
 
     const { buildTranscribeApiWhisperForensicSnapshot } = await import(
       './video-render/whisper-starttime-forensics.js'
@@ -607,14 +616,7 @@ export default async function handler(req, res) {
       segments: timelineSegments,
       ...(whisperLeadingOffsetSec > 0 ? { whisperLeadingOffsetSec } : {}),
       ...(whisperTimingForensics ? { whisperTimingForensics } : {}),
-      languageDetection: {
-        detectedLanguage: resolvedLanguage,
-        whisperLanguage: languageConfidence.whisperLanguage,
-        confidence: languageConfidence.confidence,
-        detectedBy: languageConfidence.detectedBy,
-        needsReview: languageConfidence.needsReview,
-        transcriptSample: languageConfidence.transcriptSample
-      }
+      languageDetection: formatLanguageDetectionForApi(languageProfile)
     });
   } catch (err) {
     traceLog(traceId, 'failed', {

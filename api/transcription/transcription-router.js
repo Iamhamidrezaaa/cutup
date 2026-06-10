@@ -291,6 +291,9 @@ export async function transcribeAudioPayload(ctx) {
   return {
     text: r.text,
     segments: Array.isArray(r.segments) ? r.segments : [],
-    language: r.language || 'unknown'
+    language: r.language || 'unknown',
+    languageConfidence: r.languageConfidence,
+    confidence: r.languageConfidence ?? r.confidence,
+    provider: r.provider || null
   };
 }
