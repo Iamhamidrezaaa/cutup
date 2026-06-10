@@ -58,6 +58,7 @@ import {
 } from './export-stage-timings.js';
 import { publishExportJobUpdate } from './export-events.js';
 import { PIPELINE_STAGES, resolvePipelineStep, formatEtaIso } from './export-pipeline.js';
+import { captureExportSubtitleIntegrity } from '../subtitle-integrity-audit.js';
 
 const MAX_CONCURRENT = Math.max(1, Math.min(3, Number(process.env.VIDEO_RENDER_CONCURRENCY || 1)));
 const JOB_TTL_MS = Number(process.env.VIDEO_RENDER_JOB_TTL_MS || 30 * 60 * 1000);
@@ -749,6 +750,38 @@ async function runJob(job) {
       throw new Error('ASS file suspiciously small');
     }
     endExportStage(job.id, 'ass_generation');
+
+    const exportCleanSrtSegments =
+      job.captionForensics?.cleanSrtSegments?.length
+        ? job.captionForensics.cleanSrtSegments
+        : job.exportDoc?.cues?.map((c, i) => ({
+            id: c.id || `master-${i}`,
+            start: Number(c.start),
+            end: Number(c.end),
+            text: String(c.text || (Array.isArray(c.lines) ? c.lines.join(' ') : '')).trim(),
+            locked: c.locked !== false
+          })) ||
+          (job.segments || []).map((s, i) => ({
+            id: s.id || `master-${i}`,
+            start: Number(s.start),
+            end: Number(s.end),
+            text: String(s.text || '').trim(),
+            locked: s.locked !== false
+          }));
+
+    job.subtitleIntegrity = captureExportSubtitleIntegrity({
+      traceId: job.traceId || job.id,
+      jobId: job.id,
+      jobDir: job.jobDir,
+      rawProvider: job.captionForensics?.transcriptSegments || [],
+      postProcessed: job.captionForensics?.transcriptSegments || [],
+      cleanSrtSegments: exportCleanSrtSegments,
+      assTimingAudit: assResult?.timingAudit || null
+    });
+    job.subtitleIntegrityReportPath = job.subtitleIntegrity?.written?.find((p) =>
+      /subtitle_integrity_report\.json$/i.test(p)
+    );
+
     if (isDebugExportEnabled()) {
       console.log('[ass-write-verified]', { assPath: job.assPath, size: assStat.size });
     }
@@ -1082,6 +1115,16 @@ async function runJob(job) {
     diagnostics.assDebugPath = job.assDebugPath || null;
     diagnostics.exportAssPath = job.exportAssPath || null;
     diagnostics.burnAssPath = job.burnAssPath || null;
+    diagnostics.subtitleIntegrityReportPath = job.subtitleIntegrityReportPath || null;
+    diagnostics.subtitleIntegrity = job.subtitleIntegrity?.report
+      ? {
+          rawSegments: job.subtitleIntegrity.report.rawSegments,
+          cleanedSegments: job.subtitleIntegrity.report.cleanedSegments,
+          exportedSegments: job.subtitleIntegrity.report.exportedSegments,
+          warningCount: job.subtitleIntegrity.report.warnings?.length || 0,
+          exportMatchesCleanSrt: job.subtitleIntegrity.report.exportMatchesCleanSrt
+        }
+      : null;
     diagnostics.generatorAssPath = job.assPath ? resolve(job.assPath) : null;
     diagnostics.ffmpegCommandExact = job.ffmpegCommandExact || null;
     diagnostics.ffmpegCwd = job.ffmpegCwd || null;

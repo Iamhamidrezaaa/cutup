@@ -76,9 +76,25 @@
     return [];
   }
 
+  function getCleanSrtSegmentsForIntegrity() {
+    if (typeof global.buildCleanSrtFromSource !== 'function' || typeof global.parseSRTToSegments !== 'function') {
+      return [];
+    }
+    const body = global.buildCleanSrtFromSource();
+    if (!body) return [];
+    return (global.parseSRTToSegments(body) || []).map((s, i) => ({
+      id: `master-${i}`,
+      start: Number(s.start),
+      end: Number(s.end),
+      text: String(s.text || '').trim(),
+      locked: true
+    }));
+  }
+
   function getPayloadForExport() {
     const preview = global.cutupCaptionForensicsPreview;
-    if (!preview?.rows?.length) return null;
+    const cleanSrtSegments = getCleanSrtSegmentsForIntegrity();
+    if (!preview?.rows?.length && !cleanSrtSegments.length) return null;
     const selectedPresetFromUI =
       global.cutupSelectedPresetId ||
       global.cutupActiveStylePreset ||
@@ -97,7 +113,8 @@
           : global.CutupSubtitleVersions?.getActiveSegments?.() || null,
       whisperTimingTrace: global.CutupWhisperTimingTrace?.getWhisperTimingTraceForExport?.() || null,
       transcribeApiForensics: global.cutupTranscribeApiForensics || null,
-      segmentTimingLineage: global.cutupSegmentTimingLineage || null
+      segmentTimingLineage: global.cutupSegmentTimingLineage || null,
+      cleanSrtSegments
     };
   }
 

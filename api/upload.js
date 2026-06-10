@@ -30,6 +30,7 @@ import { prepareUploadBufferForTranscription } from './upload-media-prep.js';
 import { applyWhisperLeadingOffsetIfNeeded } from './whisper-leading-offset.js';
 import { mergeRollingCaptionChains } from './video-render/subtitle-pipeline.js';
 import { refineTranscriptTimings } from './refine-transcript-timings.js';
+import { captureTranscriptionSubtitleIntegrity } from './subtitle-integrity-audit.js';
 import {
   resolvePipelineLanguage,
   formatLanguageDetectionForApi,
@@ -411,11 +412,28 @@ export default async function handler(req, res) {
     });
     const resolvedLanguage = languageProfile.language || transcript.language || 'unknown';
 
+    const rawProviderSegments = JSON.parse(JSON.stringify(transcript.segments || []));
+    const subtitleIntegrity = captureTranscriptionSubtitleIntegrity({
+      traceId,
+      rawProvider: rawProviderSegments,
+      afterValidFilter: validSegments,
+      afterWordSync: wordSyncedSegments,
+      afterOffset: offsetSegments,
+      afterPostProcess: timelineSegments
+    });
+
     const responseData = {
       text: correctedText,
       language: resolvedLanguage,
       segments: timelineSegments || [],
-      languageDetection: formatLanguageDetectionForApi(languageProfile)
+      languageDetection: formatLanguageDetectionForApi(languageProfile),
+      subtitleIntegrity: {
+        rawSegments: subtitleIntegrity.report?.rawSegments,
+        cleanedSegments: subtitleIntegrity.report?.cleanedSegments,
+        warningCount: subtitleIntegrity.report?.warnings?.length || 0,
+        removedCount: subtitleIntegrity.report?.removedSegments?.length || 0,
+        suspiciousGapCount: subtitleIntegrity.report?.suspiciousGaps?.length || 0
+      }
     };
     
     console.log('UPLOAD: Sending response with text length:', responseData.text.length);

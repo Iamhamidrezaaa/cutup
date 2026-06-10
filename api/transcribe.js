@@ -25,6 +25,7 @@ import {
 } from './transcript-errors.js';
 import { traceLog } from './pipeline-trace.js';
 import { logSubtitleTextForensicStage } from './video-render/subtitle-text-forensics.js';
+import { captureTranscriptionSubtitleIntegrity } from './subtitle-integrity-audit.js';
 import { transcribeAudioPayload, messageForAllProvidersFailed } from './transcription/transcription-router.js';
 import { ensureTranscriptionProvidersInit, getTranscriptionProviderRegistry } from './transcription/init.js';
 import { AllProvidersFailedError, TranscriptionProviderError } from './transcription/errors.js';
@@ -644,6 +645,16 @@ export default async function handler(req, res) {
           }
         : undefined;
 
+    const rawProviderSegments = JSON.parse(JSON.stringify(transcript.segments || []));
+    const subtitleIntegrity = captureTranscriptionSubtitleIntegrity({
+      traceId,
+      rawProvider: rawProviderSegments,
+      afterValidFilter: validSegments,
+      afterWordSync: wordSyncedSegments,
+      afterOffset: offsetSegments,
+      afterPostProcess: timelineSegments
+    });
+
     return sendTranscriptSuccess(res, traceId, {
       requestId,
       text: correctedText,
@@ -651,7 +662,14 @@ export default async function handler(req, res) {
       segments: timelineSegments,
       ...(whisperLeadingOffsetSec > 0 ? { whisperLeadingOffsetSec } : {}),
       ...(whisperTimingForensics ? { whisperTimingForensics } : {}),
-      languageDetection: formatLanguageDetectionForApi(languageProfile)
+      languageDetection: formatLanguageDetectionForApi(languageProfile),
+      subtitleIntegrity: {
+        rawSegments: subtitleIntegrity.report?.rawSegments,
+        cleanedSegments: subtitleIntegrity.report?.cleanedSegments,
+        warningCount: subtitleIntegrity.report?.warnings?.length || 0,
+        removedCount: subtitleIntegrity.report?.removedSegments?.length || 0,
+        suspiciousGapCount: subtitleIntegrity.report?.suspiciousGaps?.length || 0
+      }
     });
   } catch (err) {
     traceLog(traceId, 'failed', {
