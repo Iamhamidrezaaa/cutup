@@ -23,21 +23,17 @@ import {
   retryableForCode
 } from './transcript-errors.js';
 import { transcribeAudioPayload, messageForAllProvidersFailed } from './transcription/transcription-router.js';
+import { isAsrPipelineV2, transcribeForPipeline } from './transcription/transcription-v2.js';
+import { finalizeAsrPipelineOutput } from './transcription/asr-pipeline-finalize.js';
 import { ensureTranscriptionProvidersInit, getTranscriptionProviderRegistry } from './transcription/init.js';
 import { runQueuedTranscribe } from './infrastructure/guards.js';
 import { transcribeDebug } from './infrastructure/observability.js';
 import { prepareUploadBufferForTranscription } from './upload-media-prep.js';
-import { applyWhisperLeadingOffsetIfNeeded } from './whisper-leading-offset.js';
-import { mergeRollingCaptionChains } from './video-render/subtitle-pipeline.js';
-import { refineTranscriptTimings } from './refine-transcript-timings.js';
-import { captureTranscriptionSubtitleIntegrity } from './subtitle-integrity-audit.js';
 import {
   audioDurationFromSegments,
   buildTranscriptionRuntime
 } from './transcription/transcription-runtime.js';
 import {
-  resolvePipelineLanguage,
-  formatLanguageDetectionForApi,
   runPreTranscriptionLanguageDetection,
   resolveTranscriptionLanguageHint,
   shouldAttemptAccentEnglishRetranscribe,
@@ -205,50 +201,64 @@ export default async function handler(req, res) {
     transcribeDebug(traceId, { phase: 'input_ready', bytes: audioBuffer.length, route: 'upload' });
 
     let preTranscription = null;
-    try {
-      preTranscription = await runPreTranscriptionLanguageDetection({
-        traceId,
-        fetch,
-        audioBuffer,
-        mimeType,
-        extension
-      });
-    } catch (preLangErr) {
-      console.warn('[pre-transcription-language-failed]', {
-        traceId,
-        message: preLangErr?.message || String(preLangErr)
-      });
-    }
+    let hintResolution = { languageHint: null, source: 'none', suppressed: false };
+    if (!isAsrPipelineV2()) {
+      try {
+        preTranscription = await runPreTranscriptionLanguageDetection({
+          traceId,
+          fetch,
+          audioBuffer,
+          mimeType,
+          extension
+        });
+      } catch (preLangErr) {
+        console.warn('[pre-transcription-language-failed]', {
+          traceId,
+          message: preLangErr?.message || String(preLangErr)
+        });
+      }
 
-    const hintResolution = resolveTranscriptionLanguageHint({
-      traceId,
-      clientHint: null,
-      preTranscription
-    });
+      hintResolution = resolveTranscriptionLanguageHint({
+        traceId,
+        clientHint: null,
+        preTranscription
+      });
+      if (preTranscription?.language) {
+        console.log('[pre-transcription-language]', {
+          traceId,
+          detectedLanguage: preTranscription.language,
+          whisperLanguageHint: hintResolution.languageHint,
+          hintSource: hintResolution.source,
+          hintSuppressed: hintResolution.suppressed,
+          providerAgreement: preTranscription.providerAgreement,
+          languageConfidence: preTranscription.languageConfidence
+        });
+      }
+    }
     const effectiveLanguageHint = hintResolution.languageHint;
-    if (preTranscription?.language) {
-      console.log('[pre-transcription-language]', {
-        traceId,
-        detectedLanguage: preTranscription.language,
-        whisperLanguageHint: effectiveLanguageHint,
-        hintSource: hintResolution.source,
-        hintSuppressed: hintResolution.suppressed,
-        providerAgreement: preTranscription.providerAgreement,
-        languageConfidence: preTranscription.languageConfidence
-      });
-    }
 
-    try {
-      const transcribeOne = async (buf, mt, ext, hintOverride = undefined) =>
-        transcribeAudioPayload({
+    const transcribeOne = async (buf, mt, ext, hintOverride = undefined) =>
+      transcribeForPipeline(
+        {
           fetch,
           traceId,
           audioBuffer: buf,
           mimeType: mt,
           extension: ext,
           languageHint: hintOverride !== undefined ? hintOverride : effectiveLanguageHint
-        });
+        },
+        (b, m, e, h) =>
+          transcribeAudioPayload({
+            fetch,
+            traceId,
+            audioBuffer: b,
+            mimeType: m,
+            extension: e,
+            languageHint: h !== undefined ? h : effectiveLanguageHint
+          })
+      );
 
+    try {
       const transcribeStartedAt = Date.now();
       transcript = await runQueuedTranscribe({
         userEmail,
@@ -327,6 +337,7 @@ export default async function handler(req, res) {
     /** @type {object|null} */
     let accentRetranscribeMeta = null;
     if (
+      !isAsrPipelineV2() &&
       audioBuffer.length <= 25 * 1024 * 1024 &&
       shouldAttemptAccentEnglishRetranscribe(transcript, hintResolution, preTranscription)
     ) {
@@ -407,38 +418,27 @@ export default async function handler(req, res) {
     console.log('UPLOAD: Whisper success, text length:', transcript.text.length);
     console.log('UPLOAD: Segments count:', transcript.segments?.length || 0);
 
-    // Use original transcript text directly (GPT correction disabled temporarily)
-    // TODO: Re-enable GPT correction with better error handling
-    let correctedText = transcript.text || '';
-    let correctedSegments = (transcript.segments && Array.isArray(transcript.segments)) ? transcript.segments : [];
-    
-    console.log('UPLOAD: Using Whisper transcription directly (GPT correction disabled)');
+    const finalized = await finalizeAsrPipelineOutput({
+      transcript,
+      traceId,
+      preTranscription,
+      fetch,
+      audioBuffer,
+      mimeType,
+      extension
+    });
 
-    // Ensure segments are valid
-    const validSegments = (correctedSegments || []).filter(s => 
-      s && 
-      typeof s.start === 'number' && 
-      typeof s.end === 'number' && 
-      s.start >= 0 && 
-      s.end > s.start &&
-      s.text && 
-      s.text.trim().length > 0
-    );
+    let correctedText = finalized.text || '';
+    const timelineSegments = finalized.segments || [];
 
-    const wordSyncedSegments = refineTranscriptTimings(validSegments);
-    const { segments: offsetSegments, offsetSec: whisperLeadingOffsetSec } =
-      applyWhisperLeadingOffsetIfNeeded(wordSyncedSegments);
-    const timelineSegments = mergeRollingCaptionChains(offsetSegments);
-    if (whisperLeadingOffsetSec > 0) {
-      console.log('[whisper-leading-offset]', {
-        traceId,
-        offsetSec: whisperLeadingOffsetSec,
-        firstStartBefore: Number(validSegments[0]?.start),
-        firstStartAfter: Number(timelineSegments[0]?.start)
-      });
-    }
+    console.log('[asr-pipeline]', {
+      traceId,
+      pipeline: finalized.asrPipeline,
+      segmentCount: timelineSegments.length,
+      provider: finalized.provider,
+      model: finalized.model
+    });
 
-    // Final validation - ensure we have text
     if (!correctedText || correctedText.trim().length === 0) {
       console.error('UPLOAD: No text after all processing. Checking original transcript...');
       console.error('UPLOAD: Original transcript.text exists:', !!transcript.text);
@@ -462,50 +462,21 @@ export default async function handler(req, res) {
     console.log('UPLOAD: Final response preparation - text length:', correctedText.length, 'segments:', timelineSegments.length);
     console.log('UPLOAD: Text preview:', correctedText.substring(0, 100));
     
-    const languageProfile = await resolvePipelineLanguage({
-      traceId,
-      fetch,
-      providerLanguage: transcript.priorMisdetectedLanguage || transcript.language,
-      providerConfidence: transcript.languageConfidence,
-      providerId: transcript.provider,
-      text: correctedText,
-      segments: timelineSegments,
-      audioBuffer,
-      mimeType,
-      extension,
-      preTranscription
-    });
-    const resolvedLanguage = languageProfile.language || transcript.language || 'unknown';
-
-    const rawProviderSegments = JSON.parse(JSON.stringify(transcript.segments || []));
-    const subtitleIntegrity = captureTranscriptionSubtitleIntegrity({
-      traceId,
-      rawProvider: rawProviderSegments,
-      afterValidFilter: validSegments,
-      afterWordSync: wordSyncedSegments,
-      afterOffset: offsetSegments,
-      afterPostProcess: timelineSegments
-    });
-
     const transcriptionRuntime = buildTranscriptionRuntime({
-      providerId: transcript.provider,
+      providerId: finalized.provider || transcript.provider,
       transcriptionDurationMs,
       audioDurationSec: audioDurationFromSegments(timelineSegments, transcript.durationSeconds)
     });
 
     const responseData = {
       text: correctedText,
-      language: resolvedLanguage,
+      language: finalized.resolvedLanguage,
       segments: timelineSegments || [],
+      ...(finalized.words ? { words: finalized.words } : {}),
+      ...(finalized.asrPipeline === 'v2' ? { asrPipeline: 'v2', model: finalized.model } : {}),
       transcriptionRuntime,
-      languageDetection: formatLanguageDetectionForApi(languageProfile),
-      subtitleIntegrity: {
-        rawSegments: subtitleIntegrity.report?.rawSegments,
-        cleanedSegments: subtitleIntegrity.report?.cleanedSegments,
-        warningCount: subtitleIntegrity.report?.warnings?.length || 0,
-        removedCount: subtitleIntegrity.report?.removedSegments?.length || 0,
-        suspiciousGapCount: subtitleIntegrity.report?.suspiciousGaps?.length || 0
-      }
+      ...(finalized.languageDetection ? { languageDetection: finalized.languageDetection } : {}),
+      ...(finalized.subtitleIntegrity ? { subtitleIntegrity: finalized.subtitleIntegrity } : {})
     };
     
     console.log('UPLOAD: Sending response with text length:', responseData.text.length);

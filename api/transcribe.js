@@ -4,7 +4,6 @@
 
 import { handleCORS, setCORSHeaders } from './cors.js';
 import fetchModule from 'node-fetch';
-import OpenAI from 'openai';
 import Busboy from 'busboy';
 import { transcribeLargeFile } from './chunk-processor.js';
 import {
@@ -24,9 +23,9 @@ import {
   retryableForCode
 } from './transcript-errors.js';
 import { traceLog } from './pipeline-trace.js';
-import { logSubtitleTextForensicStage } from './video-render/subtitle-text-forensics.js';
-import { captureTranscriptionSubtitleIntegrity } from './subtitle-integrity-audit.js';
 import { transcribeAudioPayload, messageForAllProvidersFailed } from './transcription/transcription-router.js';
+import { isAsrPipelineV2, transcribeForPipeline } from './transcription/transcription-v2.js';
+import { finalizeAsrPipelineOutput } from './transcription/asr-pipeline-finalize.js';
 import {
   audioDurationFromSegments,
   buildTranscriptionRuntime
@@ -42,16 +41,11 @@ import {
 } from './infrastructure/guards.js';
 import { transcribeDebug } from './infrastructure/observability.js';
 import {
-  resolvePipelineLanguage,
-  formatLanguageDetectionForApi,
   runPreTranscriptionLanguageDetection,
   resolveTranscriptionLanguageHint,
   shouldAttemptAccentEnglishRetranscribe,
   pickAccentRetranscribeWinner
 } from './language-detection-pipeline.js';
-import { applyWhisperLeadingOffsetIfNeeded } from './whisper-leading-offset.js';
-import { mergeRollingCaptionChains } from './video-render/subtitle-pipeline.js';
-import { refineTranscriptTimings } from './refine-transcript-timings.js';
 
 export default async function handler(req, res) {
   const requestId = req.headers['x-request-id'] || `req_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -258,7 +252,7 @@ export default async function handler(req, res) {
       requestMetadata.youtubeUrl ||
       (typeof req.body?.sourceUrl === 'string' ? req.body.sourceUrl : null);
     let transcriptFromCache = null;
-    if (cacheUrl && typeof cacheUrl === 'string' && !cacheUrl.startsWith('data:')) {
+    if (!isAsrPipelineV2() && cacheUrl && typeof cacheUrl === 'string' && !cacheUrl.startsWith('data:')) {
       const cached = getCachedExtraction(cacheUrl, traceId);
       if (cached?.transcript?.text) {
         transcriptFromCache = cached.transcript;
@@ -280,51 +274,67 @@ export default async function handler(req, res) {
 
     let preTranscription = null;
     let hintResolution = { languageHint: languageHint || null, source: 'client', suppressed: false };
-    try {
-      preTranscription = await runPreTranscriptionLanguageDetection({
-        traceId,
-        fetch,
-        audioBuffer,
-        mimeType,
-        extension
-      });
-    } catch (preLangErr) {
-      console.warn('[pre-transcription-language-failed]', {
-        traceId,
-        message: preLangErr?.message || String(preLangErr)
-      });
-    }
+    if (!isAsrPipelineV2()) {
+      try {
+        preTranscription = await runPreTranscriptionLanguageDetection({
+          traceId,
+          fetch,
+          audioBuffer,
+          mimeType,
+          extension
+        });
+      } catch (preLangErr) {
+        console.warn('[pre-transcription-language-failed]', {
+          traceId,
+          message: preLangErr?.message || String(preLangErr)
+        });
+      }
 
-    hintResolution = resolveTranscriptionLanguageHint({
-      traceId,
-      clientHint: languageHint,
-      preTranscription
-    });
+      hintResolution = resolveTranscriptionLanguageHint({
+        traceId,
+        clientHint: languageHint,
+        preTranscription
+      });
+      if (preTranscription?.language) {
+        console.log('[pre-transcription-language]', {
+          traceId,
+          detectedLanguage: preTranscription.language,
+          whisperLanguageHint: hintResolution.languageHint,
+          hintSource: hintResolution.source,
+          hintSuppressed: hintResolution.suppressed,
+          providerAgreement: preTranscription.providerAgreement,
+          languageConfidence: preTranscription.languageConfidence
+        });
+      }
+    }
     const effectiveLanguageHint = hintResolution.languageHint;
-    if (preTranscription?.language) {
-      console.log('[pre-transcription-language]', {
-        traceId,
-        detectedLanguage: preTranscription.language,
-        whisperLanguageHint: effectiveLanguageHint,
-        hintSource: hintResolution.source,
-        hintSuppressed: hintResolution.suppressed,
-        providerAgreement: preTranscription.providerAgreement,
-        languageConfidence: preTranscription.languageConfidence
-      });
-    }
 
-    // Transcription router (OpenAI → local Whisper fallback)
-    console.log('TRANSCRIBE: Starting transcription router…');
+    console.log(
+      isAsrPipelineV2()
+        ? 'TRANSCRIBE: Starting ASR V2 (Groq → OpenAI, raw output)…'
+        : 'TRANSCRIBE: Starting transcription router (V1)…'
+    );
 
     const transcribeOne = async (buf, mt, ext, hintOverride = undefined) =>
-      transcribeAudioPayload({
-        fetch,
-        traceId,
-        audioBuffer: buf,
-        mimeType: mt,
-        extension: ext,
-        languageHint: hintOverride !== undefined ? hintOverride : effectiveLanguageHint
-      });
+      transcribeForPipeline(
+        {
+          fetch,
+          traceId,
+          audioBuffer: buf,
+          mimeType: mt,
+          extension: ext,
+          languageHint: hintOverride !== undefined ? hintOverride : effectiveLanguageHint
+        },
+        (b, m, e, h) =>
+          transcribeAudioPayload({
+            fetch,
+            traceId,
+            audioBuffer: b,
+            mimeType: m,
+            extension: e,
+            languageHint: h !== undefined ? h : effectiveLanguageHint
+          })
+      );
 
     /** @type {{ text: string, segments: unknown[], language: string }} */
     let transcript;
@@ -433,6 +443,7 @@ export default async function handler(req, res) {
     /** @type {object|null} */
     let accentRetranscribeMeta = null;
     if (
+      !isAsrPipelineV2() &&
       !transcriptFromCache &&
       audioBuffer.length <= 25 * 1024 * 1024 &&
       shouldAttemptAccentEnglishRetranscribe(transcript, hintResolution, preTranscription)
@@ -473,145 +484,30 @@ export default async function handler(req, res) {
     }
 
     console.log('TRANSCRIBE: Success, text length:', transcript.text?.length || 0);
-    console.log('TRANSCRIBE V4.0: Segments count:', transcript.segments?.length || 0);
+    console.log('TRANSCRIBE: Raw segments count:', transcript.segments?.length || 0);
 
-    logSubtitleTextForensicStage(
-      'whisper_raw',
-      (transcript.segments || []).map((seg, i) => ({
-        id: `whisper-${i}`,
-        text: String(seg?.text || '')
-      })),
-      { traceId }
-    );
+    const finalized = await finalizeAsrPipelineOutput({
+      transcript,
+      traceId,
+      openAiKeyForGpt,
+      preTranscription,
+      fetch,
+      audioBuffer,
+      mimeType,
+      extension
+    });
 
-    // GPT "correction" was Persian-only prompts but ran for all languages → wrong-language output.
-    // Only run for confirmed Persian (Whisper lang + Arabic script ratio).
-    const whisperLang = String(transcript.language || '').toLowerCase();
-    const isWhisperPersian = whisperLang === 'fa' || whisperLang === 'per' || whisperLang === 'persian' || whisperLang === 'fas';
-    const totalLen = (transcript.text || '').length;
-    const scriptChars = (transcript.text || '').match(/[\u0600-\u06FF]/g)?.length || 0;
-    const scriptRatio = totalLen > 0 ? scriptChars / totalLen : 0;
-    const shouldRunPersianGptCorrection = isWhisperPersian && scriptRatio >= 0.25;
+    const correctedText = finalized.text;
+    const timelineSegments = finalized.segments;
+    const whisperLeadingOffsetSec = finalized.whisperLeadingOffsetSec;
 
-    let correctedText = transcript.text;
-    let correctedSegments = transcript.segments || [];
-    
-    try {
-      if (!shouldRunPersianGptCorrection) {
-        console.log('TRANSCRIBE: Skipping GPT correction (non-Persian or low Arabic-script ratio)');
-      } else if (openAiKeyForGpt.length >= 10) {
-      console.log('TRANSCRIBE: Starting Persian-only GPT correction...');
-        const corrected = await correctTranscriptionWithGPT(transcript.text, openAiKeyForGpt);
-      correctedText = corrected.text;
-      
-      // Update segment texts with corrected text
-      // Smart mapping: try to preserve timing while updating text
-      if (correctedSegments.length > 0 && correctedSegments.length > 0) {
-        const originalText = transcript.text;
-        
-        // Strategy: Split corrected text proportionally based on segment durations
-        // This preserves timing while updating text content
-        const totalDuration = correctedSegments[correctedSegments.length - 1].end || 0;
-          const correctedWords = correctedText.split(/\s+/).filter((w) => w.trim().length > 0);
-          const originalWords = originalText.split(/\s+/).filter((w) => w.trim().length > 0);
-        
-        // If word count is similar, map word by word
-        if (Math.abs(correctedWords.length - originalWords.length) / Math.max(originalWords.length, 1) < 0.5) {
-          let wordIndex = 0;
-          correctedSegments = correctedSegments.map((segment, segIndex) => {
-              const segmentWords = segment.text.trim().split(/\s+/).filter((w) => w.trim().length > 0);
-            const segmentWordCount = segmentWords.length;
-            
-            const wordsForSegment = correctedWords.slice(wordIndex, wordIndex + segmentWordCount);
-            wordIndex += segmentWordCount;
-            
-              const newText =
-                wordsForSegment.length > 0 ? wordsForSegment.join(' ').trim() : segment.text.trim();
-            
-            return {
-              ...segment,
-              text: newText || segment.text
-            };
-          });
-        } else {
-          let charIndex = 0;
-          correctedSegments = correctedSegments.map((segment, segIndex) => {
-            const segmentDuration = segment.end - segment.start;
-              const segmentRatio =
-                totalDuration > 0 ? segmentDuration / totalDuration : 1 / correctedSegments.length;
-            const charsForSegment = Math.ceil(correctedText.length * segmentRatio);
-            
-            const segmentText = correctedText.substring(charIndex, charIndex + charsForSegment).trim();
-            charIndex += charsForSegment;
-            
-            return {
-              ...segment,
-              text: segmentText || segment.text
-            };
-          });
-        }
-      }
-      
-      console.log('TRANSCRIBE: GPT correction completed');
-      } else {
-        console.log('TRANSCRIBE: Skipping GPT correction (OPENAI_API_KEY not configured for chat step)');
-      }
-    } catch (correctionError) {
-      console.warn('TRANSCRIBE: GPT correction failed, using original transcription:', correctionError.message);
-      // Continue with original transcription if correction fails
-    }
-
-    // Ensure segments are valid and properly formatted
-    const validSegments = (correctedSegments || []).filter(s => 
-      s && 
-      typeof s.start === 'number' && 
-      typeof s.end === 'number' && 
-      s.start >= 0 && 
-      s.end > s.start &&
-      s.text && 
-      s.text.trim().length > 0
-    );
-
-    const wordSyncedSegments = refineTranscriptTimings(validSegments);
-    const { segments: offsetSegments, offsetSec: whisperLeadingOffsetSec } =
-      applyWhisperLeadingOffsetIfNeeded(wordSyncedSegments);
-    const timelineSegments = mergeRollingCaptionChains(offsetSegments);
-    if (whisperLeadingOffsetSec > 0) {
-      console.log('[whisper-leading-offset]', {
-        traceId,
-        offsetSec: whisperLeadingOffsetSec,
-        firstStartBefore: Number(validSegments[0]?.start),
-        firstStartAfter: Number(timelineSegments[0]?.start)
-      });
-      traceLog(traceId, 'whisper_leading_offset', {
-        offsetSec: whisperLeadingOffsetSec,
-        firstStartAfter: timelineSegments[0]?.start
-      });
-    }
-    
-    logSubtitleTextForensicStage(
-      'whisper_final',
-      timelineSegments.map((seg, i) => ({
-        id: `whisper-final-${i}`,
-        text: String(seg?.text || '')
-      })),
-      { traceId, note: 'after_optional_gpt_correction' }
-    );
-
-    // Log segment information for debugging
-    console.log('TRANSCRIBE: Final segments count:', timelineSegments.length);
-    if (timelineSegments.length > 0) {
-      console.log('TRANSCRIBE: First segment:', {
-        start: timelineSegments[0].start,
-        end: timelineSegments[0].end,
-        text: timelineSegments[0].text.substring(0, 50)
-      });
-      console.log('TRANSCRIBE: Last segment:', {
-        start: timelineSegments[timelineSegments.length - 1].start,
-        end: timelineSegments[timelineSegments.length - 1].end,
-        text: timelineSegments[timelineSegments.length - 1].text.substring(0, 50)
-      });
-    }
+    console.log('[asr-pipeline]', {
+      traceId,
+      pipeline: finalized.asrPipeline,
+      segmentCount: timelineSegments.length,
+      provider: finalized.provider,
+      model: finalized.model
+    });
 
     const billedMinutes = billingMinutesFromWhisperSegments(timelineSegments);
     const sourceUrl =
@@ -660,7 +556,13 @@ export default async function handler(req, res) {
       return;
     }
 
-    if (cacheUrl && !transcriptFromCache && typeof cacheUrl === 'string' && !cacheUrl.startsWith('data:')) {
+    if (
+      !isAsrPipelineV2() &&
+      cacheUrl &&
+      !transcriptFromCache &&
+      typeof cacheUrl === 'string' &&
+      !cacheUrl.startsWith('data:')
+    ) {
       setCachedExtraction(
         cacheUrl,
         {
@@ -668,7 +570,7 @@ export default async function handler(req, res) {
           transcript: {
             text: correctedText,
             segments: timelineSegments,
-            language: transcript.language || 'unknown'
+            language: finalized.resolvedLanguage || transcript.language || 'unknown'
           },
           subtitleBlocks: timelineSegments,
           metadata: requestMetadata,
@@ -678,48 +580,8 @@ export default async function handler(req, res) {
       );
     }
 
-    const languageProfile = await resolvePipelineLanguage({
-      traceId,
-      fetch,
-      providerLanguage: transcript.priorMisdetectedLanguage || transcript.language,
-      providerConfidence: transcript.languageConfidence,
-      providerId: transcript.provider,
-      text: correctedText,
-      segments: timelineSegments,
-      audioBuffer,
-      mimeType,
-      extension,
-      preTranscription
-    });
-    const resolvedLanguage = languageProfile.language || transcript.language || 'unknown';
-
-    const { buildTranscribeApiWhisperForensicSnapshot } = await import(
-      './video-render/whisper-starttime-forensics.js'
-    );
-    const whisperTimingForensics =
-      String(process.env.WHISPER_STARTTIME_FORENSIC ?? '1') !== '0'
-        ? {
-            whisperProviderRawFirst10: buildTranscribeApiWhisperForensicSnapshot(
-              transcript.segments || []
-            ),
-            afterGptCorrectionFirst10: buildTranscribeApiWhisperForensicSnapshot(correctedSegments || []),
-            afterValidFilterFirst10: buildTranscribeApiWhisperForensicSnapshot(timelineSegments),
-            whisperLeadingOffsetSec: whisperLeadingOffsetSec || undefined
-          }
-        : undefined;
-
-    const rawProviderSegments = JSON.parse(JSON.stringify(transcript.segments || []));
-    const subtitleIntegrity = captureTranscriptionSubtitleIntegrity({
-      traceId,
-      rawProvider: rawProviderSegments,
-      afterValidFilter: validSegments,
-      afterWordSync: wordSyncedSegments,
-      afterOffset: offsetSegments,
-      afterPostProcess: timelineSegments
-    });
-
     const transcriptionRuntime = buildTranscriptionRuntime({
-      providerId: transcript.provider,
+      providerId: finalized.provider || transcript.provider,
       transcriptionDurationMs,
       audioDurationSec: audioDurationFromSegments(
         timelineSegments,
@@ -733,19 +595,15 @@ export default async function handler(req, res) {
     return sendTranscriptSuccess(res, traceId, {
       requestId,
       text: correctedText,
-      language: resolvedLanguage,
+      language: finalized.resolvedLanguage,
       segments: timelineSegments,
+      ...(finalized.words ? { words: finalized.words } : {}),
+      ...(finalized.asrPipeline === 'v2' ? { asrPipeline: 'v2', model: finalized.model } : {}),
       transcriptionRuntime,
       ...(whisperLeadingOffsetSec > 0 ? { whisperLeadingOffsetSec } : {}),
-      ...(whisperTimingForensics ? { whisperTimingForensics } : {}),
-      languageDetection: formatLanguageDetectionForApi(languageProfile),
-      subtitleIntegrity: {
-        rawSegments: subtitleIntegrity.report?.rawSegments,
-        cleanedSegments: subtitleIntegrity.report?.cleanedSegments,
-        warningCount: subtitleIntegrity.report?.warnings?.length || 0,
-        removedCount: subtitleIntegrity.report?.removedSegments?.length || 0,
-        suspiciousGapCount: subtitleIntegrity.report?.suspiciousGaps?.length || 0
-      }
+      ...(finalized.whisperTimingForensics ? { whisperTimingForensics: finalized.whisperTimingForensics } : {}),
+      ...(finalized.languageDetection ? { languageDetection: finalized.languageDetection } : {}),
+      ...(finalized.subtitleIntegrity ? { subtitleIntegrity: finalized.subtitleIntegrity } : {})
     });
   } catch (err) {
     traceLog(traceId, 'failed', {
@@ -829,78 +687,3 @@ export default async function handler(req, res) {
   }
 }
 
-// Correct transcription using GPT for better accuracy
-async function correctTranscriptionWithGPT(text, apiKey) {
-  const client = new OpenAI({
-    apiKey: apiKey
-  });
-
-  const systemPrompt = `شما یک متخصص تصحیح متن فارسی هستید که در تصحیح شعر، آهنگ و متن فارسی تخصص دارید. 
-متن تبدیل شده از صوت را با دقت بالا تصحیح کنید. به خصوص:
-- کلمات شعر و آهنگ فارسی
-- نام‌های فارسی
-- عبارات رایج فارسی
-- حفظ ساختار و معنی متن
-
-فقط اشتباهات را تصحیح کنید و ساختار کلی متن را حفظ کنید.`;
-
-  const userPrompt = `متن زیر که از تبدیل صوت به متن (احتمالاً شعر یا آهنگ فارسی) به دست آمده را با دقت بالا تصحیح کنید.
-
-متن اصلی:
-${text}
-
-لطفاً:
-1. تمام کلمات اشتباه را درست کنید
-2. ساختار شعر/آهنگ را حفظ کنید
-3. معنی و مفهوم را حفظ کنید
-4. فقط متن تصحیح شده را برگردانید، بدون توضیح اضافی
-
-متن تصحیح شده:`;
-
-  try {
-    const completion = await client.chat.completions.create({
-      model: 'gpt-4o', // Using more powerful model for better accuracy
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      temperature: 0.0, // Zero temperature for maximum accuracy
-      max_tokens: Math.min(text.length * 3, 8000) // More tokens for longer texts
-    });
-
-    const correctedText = completion.choices[0].message.content.trim();
-    
-    // Remove any markdown formatting if present
-    const cleanText = correctedText.replace(/```[\s\S]*?```/g, '').trim();
-    
-    return {
-      text: cleanText,
-      segments: null // Will be updated in the main function
-    };
-  } catch (error) {
-    console.error('CORRECTION_ERROR:', error);
-    // If gpt-4o fails, try with gpt-4o-mini
-    try {
-      const fallbackCompletion = await client.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        temperature: 0.0,
-        max_tokens: Math.min(text.length * 2, 4000)
-      });
-      
-      const correctedText = fallbackCompletion.choices[0].message.content.trim();
-      const cleanText = correctedText.replace(/```[\s\S]*?```/g, '').trim();
-      
-      return {
-        text: cleanText,
-        segments: null
-      };
-    } catch (fallbackError) {
-      console.error('FALLBACK_CORRECTION_ERROR:', fallbackError);
-      throw error;
-    }
-  }
-}

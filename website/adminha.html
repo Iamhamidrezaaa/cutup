@@ -13,7 +13,6 @@
   <link rel="stylesheet" href="admin-payments.css">
   <link rel="stylesheet" href="admin-email-center.css?v=20260602-email-v1">
   <link rel="stylesheet" href="admin-support-center.css?v=20260609-feedback-v1">
-  <link rel="stylesheet" href="admin-asr-benchmark.css?v=20260609-asr-bench-v1">
   <link rel="stylesheet" href="responsive-global.css?v=1">
   <style>
     .login-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
@@ -182,7 +181,6 @@
         <button class="nav-btn" data-section="email-preview" aria-label="Open Email preview section"><span aria-hidden="true">✉️</span><span>Emails</span></button>
         <button class="nav-btn" data-section="support" aria-label="Open Support Center section"><span aria-hidden="true">💬</span><span>Support Center</span></button>
         <button class="nav-btn" data-section="ops" aria-label="Open Operations command center"><span aria-hidden="true">🧭</span><span>Ops / AI state</span></button>
-        <button class="nav-btn" data-section="asr-benchmark" aria-label="Open ASR benchmark"><span aria-hidden="true">🎙️</span><span>ASR benchmark</span></button>
         <div id="navContentHubMount" class="cms-hub-mount content-studio-menu" aria-label="Content Studio navigation"></div>
         <button type="button" class="nav-btn" data-section="audit" id="navAuditBtn" hidden aria-label="Open Audit log section"><span aria-hidden="true">📡</span><span>Audit Log</span></button>
       </aside>
@@ -529,35 +527,6 @@
           <div id="supportAdminWorkspace" aria-live="polite"></div>
         </section>
 
-        <section id="section-asr-benchmark" class="panel">
-          <div class="asr-bench-wrap">
-            <div>
-              <h2 style="margin:0 0 8px">ASR Comparison Mode</h2>
-              <p style="margin:0;color:var(--muted,#64748b);font-size:14px;max-width:720px">
-                Upload one video or audio file. Cutup extracts audio once, then runs OpenAI whisper-1,
-                Whisper Large V3, and Whisper Large V3 Turbo on the same buffer (in parallel). The job runs in the
-                background — keep this tab open while status updates. Production transcription is unchanged.
-              </p>
-            </div>
-            <div id="asrBenchWorkspace" class="asr-bench-upload">
-              <label>
-                Video / audio file
-                <input type="file" id="asrBenchFile" accept="video/*,audio/*,.mp4,.webm,.mkv,.mov,.mp3,.wav,.m4a" />
-              </label>
-              <label>
-                Language hint (optional)
-                <input type="text" id="asrBenchLang" placeholder="en" maxlength="8" />
-              </label>
-              <button type="button" class="btn" id="asrBenchRunBtn">Run ASR benchmark</button>
-            </div>
-            <div id="asrBenchStatus" class="asr-bench-status"></div>
-            <div id="asrBenchMeta" class="asr-bench-meta"></div>
-            <div id="asrBenchGrid" class="asr-bench-grid"></div>
-            <div id="asrBenchDiffs"></div>
-            <pre id="asrBenchSummary" class="asr-bench-summary" aria-label="Comparison summary"></pre>
-          </div>
-        </section>
-
         <section id="section-ops" class="panel">
           <div id="aiStateWorkspace" class="aist-root" aria-live="polite"></div>
           <div id="opsLegacyWrap" hidden aria-hidden="true">
@@ -771,7 +740,6 @@
     <script src="admin-support.js?v=20260609-feedback-v1"></script>
     <script src="admin-ai-state-charts.js"></script>
     <script src="admin-ai-state.js"></script>
-    <script src="admin-asr-benchmark.js?v=20260609-asr-bench-v2"></script>
     <script src="admin-audit-log-charts.js"></script>
     <script src="admin-audit-log.js"></script>
     <script src="admin-content-studio.js"></script>
