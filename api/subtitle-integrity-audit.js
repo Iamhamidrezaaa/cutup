@@ -10,10 +10,15 @@ import {
   validateMasterVsAss
 } from './video-render/master-subtitle-cues.js';
 import { buildCleanSrtWordLossReport } from './video-render/clean-srt-word-integrity.js';
+import {
+  buildPipelineWordDiffReport,
+  buildReconciledWordLossReport,
+  buildSubtitleWordMappingArtifact,
+  compareSegmentStagesByWordMapping
+} from './subtitle-word-mapping.js';
 
 const TOKEN_RE = /[\p{L}\p{M}\p{N}]+(?:[''\-][\p{L}\p{M}\p{N}]+)*/gu;
 const GAP_WARN_SEC = 1.5;
-const SHORTEN_RATIO = 0.85;
 
 function cueWords(text) {
   return String(text || '').match(TOKEN_RE) || [];
@@ -83,90 +88,9 @@ export function computeStageMetrics(segments) {
   };
 }
 
-function textRetained(beforeText, afterText) {
-  const b = normalizeText(beforeText).toLowerCase();
-  const a = normalizeText(afterText).toLowerCase();
-  if (!b) return true;
-  if (a.includes(b)) return true;
-  const bWords = cueWords(b);
-  if (!bWords.length) return true;
-  const aWords = new Set(cueWords(a).map((w) => w.toLowerCase()));
-  const kept = bWords.filter((w) => aWords.has(w.toLowerCase())).length;
-  return kept / bWords.length >= 0.6;
-}
-
+/** @deprecated Use compareSegmentStagesByWordMapping — kept as alias for tests/tools. */
 export function compareSegmentStages(beforeSegments, afterSegments, opts = {}) {
-  const before = cloneSegmentsForAudit(beforeSegments);
-  const after = cloneSegmentsForAudit(afterSegments);
-  const removedSegments = [];
-  const mergedSegments = [];
-  const shortenedSegments = [];
-
-  for (const b of before) {
-    const overlaps = after.filter((a) => intervalsOverlap(b, a));
-    if (!overlaps.length) {
-      removedSegments.push({
-        type: 'segment_removed',
-        beforeIndex: b.index,
-        start: b.start,
-        end: b.end,
-        text: b.text,
-        reason: opts.reason || 'no_overlap_in_next_stage'
-      });
-      continue;
-    }
-    const primary = overlaps[0];
-    if (!textRetained(b.text, primary.text)) {
-      removedSegments.push({
-        type: 'segment_text_lost',
-        beforeIndex: b.index,
-        afterIndex: primary.index,
-        start: b.start,
-        end: b.end,
-        text: b.text,
-        afterText: primary.text,
-        reason: 'text_not_retained_in_next_stage'
-      });
-    }
-    const bDur = b.end - b.start;
-    const aDur = primary.end - primary.start;
-    if (bDur > 0.2 && aDur < bDur * SHORTEN_RATIO) {
-      shortenedSegments.push({
-        type: 'segment_shortened',
-        beforeIndex: b.index,
-        afterIndex: primary.index,
-        beforeStart: b.start,
-        beforeEnd: b.end,
-        afterStart: primary.start,
-        afterEnd: primary.end,
-        beforeDur: roundSec(bDur),
-        afterDur: roundSec(aDur),
-        text: b.text
-      });
-    }
-  }
-
-  for (const a of after) {
-    const overlappingBefore = before.filter((b) => intervalsOverlap(b, a));
-    if (overlappingBefore.length > 1) {
-      mergedSegments.push({
-        type: 'segment_merged',
-        afterIndex: a.index,
-        start: a.start,
-        end: a.end,
-        text: a.text,
-        mergedFromCount: overlappingBefore.length,
-        mergedFrom: overlappingBefore.map((b) => ({
-          index: b.index,
-          start: b.start,
-          end: b.end,
-          text: b.text
-        }))
-      });
-    }
-  }
-
-  return { removedSegments, mergedSegments, shortenedSegments };
+  return compareSegmentStagesByWordMapping(beforeSegments, afterSegments, opts);
 }
 
 export function findSuspiciousGaps(segments, referenceSegments, opts = {}) {
@@ -222,18 +146,25 @@ export function buildSubtitleIntegrityReport(opts = {}) {
   const clean = cloneSegmentsForAudit(cleanSrt);
   const exported = cloneSegmentsForAudit(exportedSegments);
 
-  const rawToProcessed = compareSegmentStages(raw, processed, {
-    reason: 'removed_during_post_processing'
+  const pipelineDiff = buildPipelineWordDiffReport({
+    rawProvider,
+    postProcessed,
+    cleanSrt
   });
-  const processedToClean = compareSegmentStages(processed, clean, {
-    reason: 'removed_during_clean_srt'
-  });
+
+  const rawToProcessed = pipelineDiff.rawToPostProcessed;
+  const processedToClean = pipelineDiff.postProcessedToCleanSrt;
   const cleanToExport =
-    exported.length > 0 ? compareSegmentStages(clean, exported, { reason: 'removed_before_export' }) : {
-      removedSegments: [],
-      mergedSegments: [],
-      shortenedSegments: []
-    };
+    exported.length > 0
+      ? compareSegmentStagesByWordMapping(cleanSrt, exported, { reason: 'removed_before_export' })
+      : {
+          removedSegments: [],
+          redistributedSegments: [],
+          mergedSegments: [],
+          shortenedSegments: []
+        };
+
+  const wordLoss = buildReconciledWordLossReport(postProcessed, cleanSrt, pipelineDiff);
 
   const suspiciousGapsClean = findSuspiciousGaps(clean, raw.length ? raw : processed);
   const suspiciousGapsExport =
@@ -256,6 +187,11 @@ export function buildSubtitleIntegrityReport(opts = {}) {
     ...processedToClean.removedSegments,
     ...cleanToExport.removedSegments
   ];
+  const redistributedSegments = [
+    ...(rawToProcessed.redistributedSegments || []),
+    ...(processedToClean.redistributedSegments || []),
+    ...(cleanToExport.redistributedSegments || [])
+  ];
   const mergedSegments = [
     ...rawToProcessed.mergedSegments,
     ...processedToClean.mergedSegments,
@@ -268,8 +204,15 @@ export function buildSubtitleIntegrityReport(opts = {}) {
   ];
   const suspiciousGaps = [...suspiciousGapsClean, ...suspiciousGapsExport];
 
+  const segmentTextLost = removedSegments.filter((r) => r.type === 'segment_text_lost');
+
   const warnings = [];
-  for (const r of removedSegments) warnings.push({ code: 'segment_removed', ...r });
+  for (const r of removedSegments) {
+    warnings.push({
+      code: r.type === 'segment_text_lost' ? 'segment_text_lost' : 'segment_removed',
+      ...r
+    });
+  }
   for (const m of mergedSegments) warnings.push({ code: 'segment_merged', ...m });
   for (const s of shortenedSegments) warnings.push({ code: 'segment_shortened', ...s });
   for (const g of suspiciousGaps) warnings.push({ code: 'suspicious_gap', ...g });
@@ -307,10 +250,14 @@ export function buildSubtitleIntegrityReport(opts = {}) {
       }
     },
     removedSegments,
+    redistributedSegments,
+    segmentTextLost,
     mergedSegments,
     shortenedSegments,
     suspiciousGaps,
     warnings,
+    pipelineDiff,
+    wordLoss,
     exportMatchesCleanSrt: assSync ? assSync.ok : null,
     exportSyncDetails: assSync
   };
@@ -326,7 +273,8 @@ export function saveSubtitleIntegrityArtifacts(opts = {}) {
     traceId,
     jobDir = null,
     report,
-    stages = {}
+    stages = {},
+    wordMapping = null
   } = opts;
 
   const dirs = [resolveSubtitleIntegrityDir(traceId)];
@@ -351,6 +299,11 @@ export function saveSubtitleIntegrityArtifacts(opts = {}) {
       const reportPath = join(dir, 'subtitle_integrity_report.json');
       writeFileSync(reportPath, JSON.stringify(report, null, 2), 'utf8');
       written.push(reportPath);
+      if (wordMapping) {
+        const mappingPath = join(dir, 'subtitle_word_mapping.json');
+        writeFileSync(mappingPath, JSON.stringify(wordMapping, null, 2), 'utf8');
+        written.push(mappingPath);
+      }
     } catch (err) {
       console.warn('[subtitle-integrity-save-failed]', {
         traceId,
@@ -370,9 +323,11 @@ export function saveSubtitleIntegrityArtifacts(opts = {}) {
       exportedSegments: report?.exportedSegments,
       warningCount: report?.warnings?.length || 0,
       removedCount: report?.removedSegments?.length || 0,
+      segmentTextLostCount: report?.segmentTextLost?.length || 0,
+      wordLossOk: report?.wordLoss?.ok ?? null,
       suspiciousGapCount: report?.suspiciousGaps?.length || 0,
       exportMatchesCleanSrt: report?.exportMatchesCleanSrt,
-      paths: written.slice(0, 6)
+      paths: written.slice(0, 8)
     })
   );
 
@@ -394,20 +349,25 @@ export function captureTranscriptionSubtitleIntegrity(opts = {}) {
 
   const postProcessed = afterPostProcess?.length ? afterPostProcess : afterOffset;
   let cleanSrt;
-  let wordLossReport = null;
   try {
     cleanSrt = buildMasterCleanSrtFromSegments(postProcessed, { shortForm: true, traceId });
-    wordLossReport = buildCleanSrtWordLossReport(postProcessed, cleanSrt);
   } catch (err) {
-    wordLossReport = err?.report || buildCleanSrtWordLossReport(postProcessed, []);
+    const fallbackReport = buildCleanSrtWordLossReport(postProcessed, []);
     console.error('[subtitle-integrity-clean-srt-build-failed]', {
       traceId,
       code: err?.code || null,
       message: err?.message || String(err),
-      wordLossReport
+      wordLossReport: err?.report || fallbackReport
     });
     throw err;
   }
+
+  const wordMapping = buildSubtitleWordMappingArtifact({
+    traceId,
+    rawProvider,
+    postProcessed,
+    cleanSrt
+  });
 
   const report = buildSubtitleIntegrityReport({
     traceId,
@@ -427,9 +387,9 @@ export function captureTranscriptionSubtitleIntegrity(opts = {}) {
   report.stageTransitions = transitions.map((t) => ({
     from: t.from,
     to: t.to,
-    ...compareSegmentStages(t.a, t.b)
+    ...compareSegmentStagesByWordMapping(t.a, t.b)
   }));
-  report.wordLoss = wordLossReport;
+  report.wordMapping = wordMapping;
 
   if (report.warnings.length > 0) {
     console.warn(
@@ -456,6 +416,7 @@ export function captureTranscriptionSubtitleIntegrity(opts = {}) {
   return saveSubtitleIntegrityArtifacts({
     traceId,
     report,
+    wordMapping,
     stages: {
       rawProvider,
       postProcessed,
@@ -485,14 +446,23 @@ export function captureExportSubtitleIntegrity(opts = {}) {
     text: String(d.text || '')
   }));
 
+  const effectivePostProcessed = postProcessed.length ? postProcessed : cleanSrtSegments;
+  const wordMapping = buildSubtitleWordMappingArtifact({
+    traceId,
+    rawProvider,
+    postProcessed: effectivePostProcessed,
+    cleanSrt: cleanSrtSegments
+  });
+
   const report = buildSubtitleIntegrityReport({
     traceId,
     jobId,
     rawProvider,
-    postProcessed: postProcessed.length ? postProcessed : cleanSrtSegments,
+    postProcessed: effectivePostProcessed,
     cleanSrt: cleanSrtSegments,
     exportedSegments
   });
+  report.wordMapping = wordMapping;
 
   if (!report.exportMatchesCleanSrt) {
     console.error(
@@ -509,6 +479,7 @@ export function captureExportSubtitleIntegrity(opts = {}) {
     traceId,
     jobDir,
     report,
+    wordMapping,
     stages: {
       rawProvider: rawProvider.length ? rawProvider : null,
       postProcessed: postProcessed.length ? postProcessed : null,

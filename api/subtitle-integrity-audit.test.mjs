@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { buildMasterCleanSrtFromSegments } from './video-render/master-subtitle-cues.js';
 import {
   buildSubtitleIntegrityReport,
   cloneSegmentsForAudit,
@@ -67,4 +68,37 @@ test('cloneSegmentsForAudit strips empty cues', () => {
     { start: 2, end: 3, text: '   ' }
   ]);
   assert.equal(out.length, 1);
+});
+
+test('integrity report: split preserves words without segment_text_lost', () => {
+  const text =
+    'What kidding challenge with you guys that lifting very nice. No, just challenge';
+  const postProcessed = [{ start: 0, end: 8, text }];
+  const cleanSrt = buildMasterCleanSrtFromSegments(postProcessed, { shortForm: true });
+  const report = buildSubtitleIntegrityReport({
+    traceId: 'split-ok',
+    rawProvider: postProcessed,
+    postProcessed,
+    cleanSrt
+  });
+
+  assert.equal(report.wordLoss.ok, true);
+  assert.equal(report.segmentTextLost.length, 0);
+  assert.ok(report.redistributedSegments.length >= 1);
+  assert.ok(report.pipelineDiff.postProcessedToCleanSrt.redistributedSegments.length >= 1);
+});
+
+test('integrity report: wordLoss.ok false when segment_text_lost exists', () => {
+  const postProcessed = [{ start: 0, end: 2, text: 'alpha beta gamma delta' }];
+  const cleanSrt = [{ start: 0, end: 1, text: 'alpha beta' }];
+  const report = buildSubtitleIntegrityReport({
+    traceId: 'loss',
+    postProcessed,
+    cleanSrt
+  });
+
+  assert.equal(report.wordLoss.ok, false);
+  assert.ok(report.segmentTextLost.length >= 1);
+  assert.ok(report.segmentTextLost[0].missingWords.length >= 2);
+  assert.ok(report.segmentTextLost[0].transferredWords.length >= 2);
 });
