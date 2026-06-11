@@ -181,7 +181,8 @@ export function buildMasterCleanSrtFromSegments(rawSegments, opts = {}) {
   const segmented = shortForm
     ? segmentPreparedSegmentsToMasterCues(prepared, {
         maxWords: opts.maxWords ?? SHORT_FORM_MAX_WORDS,
-        maxChars: opts.maxChars ?? SHORT_FORM_MAX_CHARS
+        maxChars: opts.maxChars ?? SHORT_FORM_MAX_CHARS,
+        minWords: opts.minWords
       })
     : prepared.map((s) => ({
         start: Number(s.start),

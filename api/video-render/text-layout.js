@@ -237,6 +237,19 @@ export function buildCueLines(segment, layout, uppercase) {
   } else {
     trimmed = lines.filter(Boolean);
   }
+  if (trimmed.length >= 2) {
+    const lastWords = words(trimmed[trimmed.length - 1]);
+    if (lastWords.length === 1) {
+      const orphan = trimmed.pop();
+      const merged = `${trimmed[trimmed.length - 1]} ${orphan}`.trim();
+      const maxChars = Number(layout.maxCharsPerLine) || 26;
+      if (merged.length <= maxChars * 1.08) {
+        trimmed[trimmed.length - 1] = merged;
+      } else {
+        trimmed.push(orphan);
+      }
+    }
+  }
   if (uppercase) return trimmed.map((l) => l.toUpperCase());
   return trimmed;
 }

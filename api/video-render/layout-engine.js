@@ -30,11 +30,11 @@ export function resolveCueLineLayout(baseLayout, cueText, isVertical = false) {
   layout.wordsPerLineMin = Math.min(Number(layout.wordsPerLineMin) || 2, 2);
   layout.wordsPerLineMax = Math.min(
     Number(layout.wordsPerLineMax) || 4,
-    rtl ? 6 : isVertical ? 2 : 5
+    rtl ? 6 : isVertical ? 3 : 5
   );
   layout.maxCharsPerLine = Math.min(
     Number(layout.maxCharsPerLine) || 22,
-    rtl ? Number(baseLayout.rtlMaxCharsPerLine) || 26 : isVertical ? 12 : 20
+    rtl ? Number(baseLayout.rtlMaxCharsPerLine) || 26 : isVertical ? 18 : 20
   );
 
   if (rtl) {
@@ -155,8 +155,8 @@ export function resolveRenderLayout(dims, cues, preset) {
   if (isVertical) {
     layout.mode = 'stack';
     layout.wordsPerLineMin = 2;
-    layout.wordsPerLineMax = 2;
-    layout.maxCharsPerLine = 12;
+    layout.wordsPerLineMax = 3;
+    layout.maxCharsPerLine = 18;
     layout.rtlMaxCharsPerLine = 24;
     layout.maxLines = BURN_VERTICAL_LTR_MAX_LINES;
   } else if (isHorizontal) {

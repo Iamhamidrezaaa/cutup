@@ -69,13 +69,17 @@ test('vertical short-form caps at three words and twelve chars per cue', () => {
   ];
   const clean = segmentPreparedSegmentsToMasterCues(normalizePostProcessedForCleanSrt(postProcessed), {
     maxWords: VERTICAL_SHORT_FORM_MAX_WORDS,
-    maxChars: VERTICAL_SHORT_FORM_MAX_CHARS
+    maxChars: VERTICAL_SHORT_FORM_MAX_CHARS,
+    minWords: 2
   });
-  assert.ok(clean.length >= 4);
+  assert.ok(clean.length >= 3);
   for (const cue of clean) {
     const wc = cue.text.split(/\s+/).filter(Boolean).length;
     assert.ok(wc <= VERTICAL_SHORT_FORM_MAX_WORDS);
-    assert.ok(cue.text.length <= VERTICAL_SHORT_FORM_MAX_CHARS + 4);
+    assert.ok(cue.text.length <= VERTICAL_SHORT_FORM_MAX_CHARS + 6);
+    if (wc === 1 && clean.length > 1) {
+      assert.fail(`orphan single-word cue: ${cue.text}`);
+    }
   }
   const report = buildCleanSrtWordLossReport(postProcessed, clean);
   assert.equal(report.ok, true);

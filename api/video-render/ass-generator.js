@@ -67,7 +67,8 @@ import {
 } from './master-subtitle-cues.js';
 import {
   VERTICAL_SHORT_FORM_MAX_CHARS,
-  VERTICAL_SHORT_FORM_MAX_WORDS
+  VERTICAL_SHORT_FORM_MAX_WORDS,
+  VERTICAL_SHORT_FORM_MIN_WORDS
 } from './master-clean-srt-segmentation.js';
 import {
   isSubtitleTextForensicEnabled,
@@ -272,8 +273,8 @@ function applyVerticalVisualChunking(visibleCues, layout, playResX) {
   return clipOverlappingCueRenderEnds(
     expandCueVisualChunks(visibleCues, {
       isVertical: true,
-      maxWordsPerChunk: 3,
-      minWordsToSplit: 3,
+      maxWordsPerChunk: 5,
+      minWordsToSplit: 5,
       minChunkSec: 0.34,
       minDurToSplitSec: 0.42,
       maxCharsPerChunk: verticalChunkChars,
@@ -517,7 +518,8 @@ export function generateAssContent(segments, presetId, dims = {}) {
     masterCues = buildMasterCleanSrtFromSegments(finalOnlySegments, {
       shortForm: true,
       maxWords: requestedIsVertical ? VERTICAL_SHORT_FORM_MAX_WORDS : undefined,
-      maxChars: requestedIsVertical ? VERTICAL_SHORT_FORM_MAX_CHARS : undefined
+      maxChars: requestedIsVertical ? VERTICAL_SHORT_FORM_MAX_CHARS : undefined,
+      minWords: requestedIsVertical ? VERTICAL_SHORT_FORM_MIN_WORDS : undefined
     });
   }
 

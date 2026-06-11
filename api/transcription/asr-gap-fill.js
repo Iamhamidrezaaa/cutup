@@ -11,7 +11,8 @@ import { transcribeOpenAi, OPENAI_PROVIDER_ID } from './providers/openai-provide
 import { isFailoverEligibleError } from './errors.js';
 
 const GAP_FILL_MIN_SEC = Number(process.env.ASR_V2_GAP_MIN_SEC || 2.5);
-const GAP_FILL_MAX_SEC = Number(process.env.ASR_V2_GAP_MAX_SEC || 45);
+/** Gaps longer than ~12s are usually music/outro — re-ASR often hallucinates. */
+const GAP_FILL_MAX_SEC = Number(process.env.ASR_V2_GAP_MAX_SEC || 12);
 const GAP_FILL_MAX_GAPS = Number(process.env.ASR_V2_GAP_MAX_COUNT || 4);
 const GAP_FILL_ENABLED = String(process.env.ASR_V2_GAP_FILL ?? '1') !== '0';
 

@@ -10,9 +10,10 @@ const TOKEN_RE = /[\p{L}\p{M}\p{N}]+(?:[''\-][\p{L}\p{M}\p{N}]+)*/gu;
 
 export const SHORT_FORM_MAX_WORDS = 5;
 export const SHORT_FORM_MAX_CHARS = 42;
-/** Vertical 9:16 — Captions-app style: few words, fast turnover. */
-export const VERTICAL_SHORT_FORM_MAX_WORDS = 3;
-export const VERTICAL_SHORT_FORM_MAX_CHARS = 12;
+/** Vertical 9:16 — Captions-app style: short beats, min 2 words when possible. */
+export const VERTICAL_SHORT_FORM_MAX_WORDS = 5;
+export const VERTICAL_SHORT_FORM_MAX_CHARS = 18;
+export const VERTICAL_SHORT_FORM_MIN_WORDS = 2;
 export const PAUSE_GAP_SEC = 0.28;
 
 function cueWords(text) {
@@ -91,8 +92,9 @@ function cueTimingFromWordRange(timeline, tokenStart, tokenEnd, segStart, segEnd
 }
 
 /** Never exceed maxWords/maxChars even when protected-token logic delayed a split. */
-function enforceHardCaps(specs, words, maxWords, maxChars) {
+function enforceHardCaps(specs, words, maxWords, maxChars, minWords = 1) {
   const out = [];
+  const minW = Math.max(1, Math.min(maxWords, Number(minWords) || 1));
   for (const spec of specs) {
     let cursor = spec.tokenStart;
     const end = spec.tokenEnd;
@@ -102,6 +104,13 @@ function enforceHardCaps(specs, words, maxWords, maxChars) {
         chunkEnd -= 1;
       }
       if (chunkEnd < cursor) chunkEnd = cursor;
+      if (minW >= 2 && chunkEnd < end && chunkEnd - cursor + 1 < minW) {
+        const extended = Math.min(end, cursor + minW - 1, cursor + maxWords - 1);
+        const extText = words.slice(cursor, extended + 1).join(' ');
+        if (visibleCharCount(extText) <= maxChars) {
+          chunkEnd = extended;
+        }
+      }
       out.push({
         tokenStart: cursor,
         tokenEnd: chunkEnd,
@@ -110,6 +119,70 @@ function enforceHardCaps(specs, words, maxWords, maxChars) {
       cursor = chunkEnd + 1;
     }
   }
+  return out;
+}
+
+/** Merge lone single-word cues into neighbors when caps allow (avoids flash "IS" / "A"). */
+function mergeOrphanSingleWordSpecs(specs, words, maxWords, maxChars) {
+  if (!Array.isArray(specs) || specs.length < 2) return specs;
+  const out = specs.map((s) => ({ ...s }));
+
+  for (let i = 0; i < out.length - 1; i++) {
+    const spec = out[i];
+    const wc = spec.tokenEnd - spec.tokenStart + 1;
+    if (wc !== 1) continue;
+    const next = out[i + 1];
+    const nextWc = next.tokenEnd - next.tokenStart + 1;
+    const mergedLen = wc + nextWc;
+    const mergedText = words.slice(spec.tokenStart, next.tokenEnd + 1).join(' ');
+    if (mergedLen <= maxWords && visibleCharCount(mergedText) <= maxChars) {
+      next.tokenStart = spec.tokenStart;
+      out.splice(i, 1);
+      i -= 1;
+      continue;
+    }
+    if (nextWc >= 2) {
+      const peelEnd = next.tokenStart;
+      const pairText = words.slice(spec.tokenStart, peelEnd + 1).join(' ');
+      if (visibleCharCount(pairText) <= maxChars) {
+        out[i] = { ...spec, tokenEnd: peelEnd, boundaryReason: 'orphan_peel_forward' };
+        next.tokenStart = peelEnd + 1;
+        if (next.tokenStart > next.tokenEnd) {
+          out.splice(i + 1, 1);
+        }
+        i -= 1;
+      }
+    }
+  }
+
+  for (let i = 1; i < out.length; i++) {
+    const spec = out[i];
+    const wc = spec.tokenEnd - spec.tokenStart + 1;
+    if (wc !== 1) continue;
+    const prev = out[i - 1];
+    const mergedLen = prev.tokenEnd - prev.tokenStart + 1 + 1;
+    const mergedText = words.slice(prev.tokenStart, spec.tokenEnd + 1).join(' ');
+    if (mergedLen <= maxWords && visibleCharCount(mergedText) <= maxChars) {
+      prev.tokenEnd = spec.tokenEnd;
+      out.splice(i, 1);
+      i -= 1;
+    }
+  }
+
+  if (out.length >= 2) {
+    const last = out[out.length - 1];
+    const lastWc = last.tokenEnd - last.tokenStart + 1;
+    if (lastWc === 1) {
+      const prev = out[out.length - 2];
+      const mergedLen = prev.tokenEnd - prev.tokenStart + 1 + 1;
+      const mergedText = words.slice(prev.tokenStart, last.tokenEnd + 1).join(' ');
+      if (mergedLen <= maxWords && visibleCharCount(mergedText) <= maxChars) {
+        prev.tokenEnd = last.tokenEnd;
+        out.pop();
+      }
+    }
+  }
+
   return out;
 }
 
@@ -208,7 +281,15 @@ export function segmentSegmentToMasterCues(segment, opts = {}) {
     }
   }
 
-  const partitionSpecs = enforceHardCaps(refined.length ? refined : specs, words, maxWords, maxChars);
+  const minWords = Math.max(1, Number(opts.minWords ?? 1));
+  const capped = enforceHardCaps(
+    refined.length ? refined : specs,
+    words,
+    maxWords,
+    maxChars,
+    minWords
+  );
+  const partitionSpecs = mergeOrphanSingleWordSpecs(capped, words, maxWords, maxChars);
   if (!partitionSpecs.length && words.length) {
     partitionSpecs.push({
       tokenStart: 0,
