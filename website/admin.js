@@ -2704,6 +2704,9 @@ function setupActions() {
   document.getElementById('healthRefreshBtn')?.addEventListener('click', () =>
     loadHealth().catch((e) => showBanner(e.message || 'Could not refresh system health.'))
   );
+  document.getElementById('healthExportCsvBtn')?.addEventListener('click', () => {
+    window.CutupAdminHealth?.exportCsv?.();
+  });
   document.getElementById('adminLogoutBtn')?.addEventListener('click', async () => {
     try {
       await fetch(`${API_BASE_URL}/api/admin/logout`, {

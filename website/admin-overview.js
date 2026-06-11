@@ -5,6 +5,7 @@
 window.CutupAdminOverview = (function () {
   let period = '30d';
   let healthCache = null;
+  let dashboardCache = null;
 
   function fmt() {
     return window.CutupDashFmt;
@@ -221,6 +222,21 @@ window.CutupAdminOverview = (function () {
     });
   }
 
+  function exportCsv() {
+    if (!dashboardCache) {
+      if (typeof showBanner === 'function') showBanner('Load overview data before exporting.');
+      return;
+    }
+    const ok = window.CutupAdminOverviewCsv?.exportCsv?.(dashboardCache, healthCache, period);
+    if (!ok && typeof showBanner === 'function') {
+      showBanner('Nothing to export for this period.');
+    }
+  }
+
+  function bindExport() {
+    document.getElementById('overviewExportCsvBtn')?.addEventListener('click', exportCsv);
+  }
+
   async function fetchHealth() {
     try {
       healthCache = await apiGet('health');
@@ -262,6 +278,7 @@ window.CutupAdminOverview = (function () {
         legacy.setAttribute('aria-hidden', 'true');
       }
 
+      dashboardCache = dash;
       root.innerHTML = renderDashboard(dash);
       requestAnimationFrame(() => window.CutupDashCharts?.renderAll?.(dash));
     } catch (e) {
@@ -272,6 +289,7 @@ window.CutupAdminOverview = (function () {
 
   function init() {
     bindTimeframe();
+    bindExport();
   }
 
   if (document.readyState === 'loading') {
@@ -280,5 +298,5 @@ window.CutupAdminOverview = (function () {
     init();
   }
 
-  return { load, getPeriod: () => period };
+  return { load, exportCsv, getPeriod: () => period };
 })();

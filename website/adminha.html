@@ -194,12 +194,15 @@
               <h2>Overview</h2>
               <p class="dash-subtitle">Business health, growth, revenue, and operations at a glance.</p>
             </div>
-            <div class="dash-timeframe" role="group" aria-label="Time range">
-              <button type="button" class="dash-tf-btn" data-period="today">Today</button>
-              <button type="button" class="dash-tf-btn" data-period="7d">7 days</button>
-              <button type="button" class="dash-tf-btn active" data-period="30d">30 days</button>
-              <button type="button" class="dash-tf-btn" data-period="90d">90 days</button>
-              <button type="button" class="dash-tf-btn" data-period="all">All time</button>
+            <div class="dash-header-actions" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px">
+              <button type="button" class="btn ghost" id="overviewExportCsvBtn">Export CSV</button>
+              <div class="dash-timeframe" role="group" aria-label="Time range">
+                <button type="button" class="dash-tf-btn" data-period="today">Today</button>
+                <button type="button" class="dash-tf-btn" data-period="7d">7 days</button>
+                <button type="button" class="dash-tf-btn active" data-period="30d">30 days</button>
+                <button type="button" class="dash-tf-btn" data-period="90d">90 days</button>
+                <button type="button" class="dash-tf-btn" data-period="all">All time</button>
+              </div>
             </div>
           </div>
           <div id="overviewDashboard" class="dash-root" aria-live="polite"></div>
@@ -509,7 +512,10 @@
               <h2 style="margin:0 0 6px">System health</h2>
               <p class="admin-muted" style="margin:0">Infrastructure monitoring — YekPay-first ops command center.</p>
             </div>
-            <button type="button" class="btn ghost" id="healthRefreshBtn">Refresh</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button type="button" class="btn ghost" id="healthExportCsvBtn">Export CSV</button>
+              <button type="button" class="btn ghost" id="healthRefreshBtn">Refresh</button>
+            </div>
           </div>
           <div id="healthWorkspace" class="health-root" aria-live="polite"></div>
           <div id="healthPanel" hidden aria-hidden="true"></div>
@@ -724,22 +730,24 @@
     <script src="admin-auth.js"></script>
     <script src="admin-creator-wall.js"></script>
     <script src="admin.js"></script>
+    <script src="admin-csv-export.js?v=20260611-csv"></script>
+    <script src="admin-csv-overview.js?v=20260611-csv"></script>
     <script src="admin-overview-utils.js?v=20260609-overview-v1"></script>
     <script src="admin-overview-charts.js?v=20260609-overview-v1"></script>
-    <script src="admin-overview.js?v=20260611-overview-data"></script>
+    <script src="admin-overview.js?v=20260611-csv"></script>
     <script src="admin-usage-charts.js"></script>
     <script src="admin-usage.js"></script>
     <script src="admin-outputs-charts.js"></script>
     <script src="admin-outputs.js"></script>
     <script src="admin-payments-charts.js"></script>
     <script src="admin-payments.js"></script>
-    <script src="admin-health.js"></script>
+    <script src="admin-health.js?v=20260611-csv"></script>
     <script src="admin-email-delivery-log.js?v=20260602-email-v1"></script>
     <script src="admin-email-preview.js?v=20260602-email-v1"></script>
     <script src="admin-notifications.js"></script>
     <script src="admin-support.js?v=20260609-feedback-v1"></script>
     <script src="admin-ai-state-charts.js"></script>
-    <script src="admin-ai-state.js"></script>
+    <script src="admin-ai-state.js?v=20260611-csv"></script>
     <script src="admin-audit-log-charts.js"></script>
     <script src="admin-audit-log.js"></script>
     <script src="admin-content-studio.js"></script>

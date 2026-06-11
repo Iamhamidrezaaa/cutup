@@ -60,6 +60,7 @@ window.CutupAdminAiState = (function () {
             <option value="7d"${state.preset === '7d' ? ' selected' : ''}>Last 7 days</option>
             <option value="30d"${state.preset === '30d' ? ' selected' : ''}>Last 30 days</option>
           </select>
+          <button type="button" class="btn ghost" id="aistExportCsvBtn">Export CSV</button>
           <button type="button" class="btn ghost" id="aistRefreshBtn">Refresh</button>
         </div>
       </header>`;
@@ -268,7 +269,121 @@ window.CutupAdminAiState = (function () {
       </div>`);
   }
 
+  function exportCsv() {
+    const Csv = window.CutupAdminCsv;
+    const data = state.data;
+    if (!Csv || !data) {
+      if (typeof showBanner === 'function') showBanner('Load AI operations data before exporting.');
+      return;
+    }
+    const FIELDS = ['key', 'value', 'value2', 'value3', 'value4', 'value5', 'value6', 'value7'];
+    const blocks = [];
+    const preset = data.preset || state.preset || '24h';
+
+    blocks.push({
+      section: 'meta',
+      rows: [['checked_at', data.checkedAt, preset, data.partial ? 'partial' : 'full', '', '', '', '']]
+    });
+
+    const k = data.kpis || {};
+    const kpiRows = [
+      ['active_ai_jobs', k.activeAiJobs, '', '', '', '', '', ''],
+      ['jobs_processed_today', k.jobsProcessedToday, '', '', '', '', '', ''],
+      ['queue_backlog', k.queueBacklog, '', '', '', '', '', ''],
+      ['avg_processing_min', k.avgProcessingTimeMin, '', '', '', '', '', ''],
+      ['success_rate_pct', k.successRate, '', '', '', '', '', ''],
+      ['failure_rate_pct', k.failureRate, '', '', '', '', '', ''],
+      ['ai_cost_today_eur', k.aiCostTodayEur, '', '', '', '', '', ''],
+      ['openai_request_count', k.openaiRequestCount, '', '', '', '', '', ''],
+      ['peak_concurrency', k.peakConcurrency, '', '', '', '', '', ''],
+      ['most_used_feature', k.mostUsedFeature, '', '', '', '', '', ''],
+      ['ai_load_level', k.aiLoadLevel, '', '', '', '', '', ''],
+      ['tokens_note', k.tokensNote, '', '', '', '', '', ''],
+      ['queue_wait_note', k.queueWaitNote, '', '', '', '', '', ''],
+      ['workers_note', k.workersNote, '', '', '', '', '', ''],
+      ['retry_note', k.retryNote, '', '', '', '', '', '']
+    ];
+    blocks.push({ section: 'kpis', rows: kpiRows });
+
+    const pipeRows = (data.pipelines || []).map((p) => [
+      p.id,
+      p.label,
+      p.status,
+      p.throughput24h,
+      p.successPct,
+      p.failures24h,
+      p.avgLatencyMin,
+      p.unavailable ? p.userMessage : p.lastActivityAt
+    ]);
+    if (pipeRows.length) blocks.push({ section: 'pipelines', rows: pipeRows });
+
+    const cost = data.cost || {};
+    const costRows = [
+      ['estimated_spend_eur', cost.estimatedSpendEur, '', '', '', '', '', ''],
+      ['cost_per_export_eur', cost.costPerExportEur, '', '', '', '', '', ''],
+      ['cost_per_minute_eur', cost.costPerMinuteEur, '', '', '', '', '', '']
+    ];
+    for (const pt of cost.timeline || []) {
+      costRows.push(['timeline_day', pt.day, pt.spendEur, pt.minutes, '', '', '', '']);
+    }
+    for (const f of cost.byFeature || []) {
+      costRows.push(['feature', f.feature, f.jobs, f.minutes, f.spendEur, '', '', '']);
+    }
+    for (const u of cost.topUsers || []) {
+      costRows.push(['top_user', u.email, u.minutes, u.spendEur, '', '', '', '']);
+    }
+    if (costRows.length) blocks.push({ section: 'cost', rows: costRows });
+
+    const q = data.queue || {};
+    blocks.push({
+      section: 'queue',
+      rows: [
+        ['available', q.available, q.message, q.pendingPayments, q.oldestPendingAt, '', '', '']
+      ]
+    });
+
+    const incRows = (data.incidents || []).map((i) => [
+      i.type,
+      i.subsystem,
+      i.severity,
+      i.impact,
+      i.at,
+      '',
+      '',
+      ''
+    ]);
+    if (incRows.length) blocks.push({ section: 'incidents', rows: incRows });
+
+    const cronRows = (data.cronJobs || []).map((j) => [
+      j.label,
+      j.status,
+      j.lastRunAt,
+      j.runs24h,
+      j.note,
+      '',
+      '',
+      ''
+    ]);
+    if (cronRows.length) blocks.push({ section: 'cron_jobs', rows: cronRows });
+
+    const insightRows = (data.insights || []).map((i) => [i.tone, i.text, '', '', '', '', '', '']);
+    if (insightRows.length) blocks.push({ section: 'insights', rows: insightRows });
+
+    const warnRows = (data.telemetryWarnings || []).map((w) => [w.id, w.message, '', '', '', '', '', '']);
+    if (warnRows.length) blocks.push({ section: 'telemetry_warnings', rows: warnRows });
+
+    const models = data.models || {};
+    const modelRows = (models.primary || []).map((m) => [m.label, m.role, '', '', '', '', '', '']);
+    if (models.errorPct != null) {
+      modelRows.push(['error_share_pct_24h', models.errorPct, models.note || '', '', '', '', '', '']);
+    }
+    if (modelRows.length) blocks.push({ section: 'models', rows: modelRows });
+
+    Csv.downloadSections(`cutup-ai-ops-${preset}-${Date.now()}.csv`, FIELDS, blocks);
+  }
+
   function bindEvents() {
+    document.getElementById('aistExportCsvBtn')?.addEventListener('click', exportCsv);
     document.getElementById('aistLiveToggle')?.addEventListener('click', () => {
       state.liveMode = !state.liveMode;
       if (state.liveMode) startLivePoll();
@@ -360,5 +475,5 @@ window.CutupAdminAiState = (function () {
     window.CutupAiStateCharts?.destroyAll?.();
   }
 
-  return { load, destroy, getState: () => ({ ...state }) };
+  return { load, destroy, exportCsv, getState: () => ({ ...state }) };
 })();

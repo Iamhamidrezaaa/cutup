@@ -2,6 +2,7 @@
  * Cutup Admin — System Health ops command center
  */
 window.CutupAdminHealth = (function () {
+  let lastData = null;
   function esc(s) {
     return typeof escapeHtml === 'function' ? escapeHtml(s) : String(s ?? '');
   }
@@ -180,19 +181,85 @@ window.CutupAdminHealth = (function () {
     root.innerHTML = '<div class="health-grid"><div class="health-card"></div><div class="health-card"></div><div class="health-card"></div></div>';
   }
 
+  function exportCsv() {
+    const Csv = window.CutupAdminCsv;
+    const data = lastData;
+    if (!Csv || !data) {
+      if (typeof showBanner === 'function') showBanner('Load system health before exporting.');
+      return;
+    }
+    const FIELDS = ['key', 'label', 'status', 'detail', 'extra'];
+    const blocks = [];
+
+    const summaryRows = [
+      ['overall_status', data.overall, '', '', ''],
+      ['checked_at', data.checkedAt, '', '', ''],
+      ['deployment_commit', data.deployment?.commit, data.deployment?.branch, data.deployment?.environment, ''],
+      ['database_ok', data.database?.ok, data.database?.latencyMs, '', ''],
+      ['database_error', data.database?.error, '', '', '']
+    ];
+    blocks.push({ section: 'summary', rows: summaryRows });
+
+    const metricRows = Object.entries(data.metrics || {}).map(([k, v]) => [k, v, '', '', '']);
+    if (metricRows.length) blocks.push({ section: 'metrics', rows: metricRows });
+
+    const componentRows = (data.components || []).map((c) => [
+      c.id,
+      c.label,
+      c.status,
+      String(c.detail || '').replace(/\n/g, ' · '),
+      (c.metrics || []).map((m) => `${m.label}=${m.value}`).join('; ')
+    ]);
+    if (componentRows.length) blocks.push({ section: 'components', rows: componentRows });
+
+    const infraRows = (data.primaryInfrastructure || []).map((i) => [
+      i.key,
+      i.label,
+      i.configured ? 'configured' : 'missing',
+      i.meta || '',
+      i.critical ? 'critical' : 'optional'
+    ]);
+    if (infraRows.length) blocks.push({ section: 'primary_infrastructure', rows: infraRows });
+
+    const optRows = (data.optionalIntegrations || []).map((i) => [
+      i.provider,
+      i.label,
+      i.configured ? 'configured' : 'not_set',
+      i.webhookConfigured == null ? '' : i.webhookConfigured ? 'webhook_ok' : 'webhook_missing',
+      i.note || ''
+    ]);
+    if (optRows.length) blocks.push({ section: 'optional_integrations', rows: optRows });
+
+    const incidentRows = (data.incidents || []).map((i) => [
+      i.type,
+      i.severity,
+      i.detail,
+      i.email,
+      i.at
+    ]);
+    if (incidentRows.length) blocks.push({ section: 'incidents', rows: incidentRows });
+
+    const warnRows = (data.warnings || []).map((w) => [w.tone, w.text, '', '', '']);
+    if (warnRows.length) blocks.push({ section: 'warnings', rows: warnRows });
+
+    Csv.downloadSections(`cutup-system-health-${Date.now()}.csv`, FIELDS, blocks);
+  }
+
   async function load() {
     const root = document.getElementById('healthWorkspace');
     if (!root) return;
     renderSkeleton();
     try {
       const data = await apiGet('health');
+      lastData = data;
       root.classList.remove('health-skeleton');
       render(data);
     } catch (e) {
+      lastData = null;
       root.classList.remove('health-skeleton');
       root.innerHTML = `<p class="health-empty">System health unavailable: ${esc(e.message || e)}</p>`;
     }
   }
 
-  return { load, render };
+  return { load, render, exportCsv };
 })();
