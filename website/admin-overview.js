@@ -44,18 +44,36 @@ window.CutupAdminOverview = (function () {
       .join('')}</div></section>`;
   }
 
+  function infraConfigured(key) {
+    const legacy = healthCache?.envReadiness?.[key];
+    if (legacy != null) return Boolean(legacy);
+    const row = (healthCache?.primaryInfrastructure || []).find((i) => i.key === key);
+    return Boolean(row?.configured);
+  }
+
   function renderLive(live) {
-    const env = healthCache?.envReadiness || {};
     const dbOk = healthCache?.database?.ok;
+    const yek = healthCache?.yekpay || {};
+    const yekReady = Boolean(yek.merchantConfigured && !yek.configError);
+    const openAiOk =
+      infraConfigured('OPENAI_API_KEY') ||
+      (healthCache?.components || []).some((c) => c.id === 'openai' && c.status === 'healthy');
+    const dbConfigured = infraConfigured('DATABASE_URL') || dbOk;
+    const yekDbLabel =
+      dbConfigured && yekReady ? 'Ready' : dbConfigured ? 'DB only' : yekReady ? 'YekPay only' : 'Missing';
+    const yekDbCls = dbConfigured && yekReady ? 'ok' : dbConfigured || yekReady ? 'warn' : 'warn';
+    const apiHealthy =
+      healthCache?.api === 'ok' ||
+      (healthCache?.components || []).some((c) => c.id === 'api' && c.status === 'healthy');
     const pills = [
       { lbl: 'Online users', val: live?.onlineUsers ?? '—', cls: '' },
       { lbl: 'Queue (pending pay)', val: live?.activeJobsInQueue ?? '—', cls: '' },
       { lbl: 'Failed / errors 24h', val: live?.failedJobs ?? '—', cls: Number(live?.failedJobs) > 0 ? 'warn' : 'ok' },
       { lbl: 'Avg response', val: live?.avgResponseTimeMs != null ? `${live.avgResponseTimeMs}ms` : 'N/A', cls: '' },
       { lbl: 'Database', val: dbOk ? 'OK' : 'Check', cls: dbOk ? 'ok' : 'err' },
-      { lbl: 'OpenAI API', val: env.OPENAI_API_KEY ? 'Configured' : 'Missing', cls: env.OPENAI_API_KEY ? 'ok' : 'warn' },
-      { lbl: 'YekPay / DB', val: env.DATABASE_URL ? 'Ready' : 'Missing', cls: env.DATABASE_URL ? 'ok' : 'warn' },
-      { lbl: 'Server API', val: healthCache?.api === 'ok' ? 'Healthy' : '—', cls: healthCache?.api === 'ok' ? 'ok' : 'warn' }
+      { lbl: 'OpenAI API', val: openAiOk ? 'Configured' : 'Missing', cls: openAiOk ? 'ok' : 'warn' },
+      { lbl: 'YekPay / DB', val: yekDbLabel, cls: yekDbCls },
+      { lbl: 'Server API', val: apiHealthy ? 'Healthy' : '—', cls: apiHealthy ? 'ok' : 'warn' }
     ];
     return `<section><h3 class="dash-section-title">Live monitoring</h3>
       <div class="dash-live-grid">${pills
