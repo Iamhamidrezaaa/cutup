@@ -11,9 +11,11 @@
     if (!Presets) return null;
 
     const preset = Presets.getPreset(presetId);
+    const aspect = Layout?.detectPreviewAspect?.() || 'horizontal';
+    const effectiveLayout = Layout?.applyAspectToLayout?.(preset.layout, aspect) || preset.layout;
     const cues = (Array.isArray(segments) ? segments : []).map((seg, index) => {
       const raw = String(seg.text || '').trim().replace(/\s+/g, ' ');
-      const lines = [raw];
+      const lines = Layout?.layoutLines?.(raw, effectiveLayout) || [raw];
       const lineTokens = lines.map((line) => Emphasis.analyzeText(line));
       return {
         index: index + 1,

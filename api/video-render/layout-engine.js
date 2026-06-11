@@ -5,8 +5,10 @@ import { resolveSubtitlePlacement } from './placement.js';
 import { buildCueLines } from './text-layout.js';
 import { cuesAreMostlyRtl, isRtlText, resolveCaptionTypography } from './rtl-text.js';
 
-/** Hard cap for burned LTR subtitles (single line per on-screen cue). */
+/** Hard cap for burned LTR subtitles on landscape. */
 export const BURN_SUBTITLE_MAX_LINES = 1;
+/** Vertical 9:16 — CapCut-style short lines (max two rows). */
+export const BURN_VERTICAL_LTR_MAX_LINES = 2;
 /** RTL burn: two balanced lines so 9:16 text stays inside frame. */
 export const BURN_RTL_MAX_LINES = 2;
 
@@ -15,19 +17,24 @@ export const BURN_RTL_MAX_LINES = 2;
  * @param {object} baseLayout from resolveRenderLayout().layout
  * @param {string} cueText
  */
-export function resolveCueLineLayout(baseLayout, cueText) {
+export function resolveCueLineLayout(baseLayout, cueText, isVertical = false) {
   const layout = { ...(baseLayout || {}) };
   const rtl = isRtlText(cueText);
   const cap = rtl
     ? BURN_RTL_MAX_LINES
-    : Math.min(BURN_SUBTITLE_MAX_LINES, Math.max(1, Number(baseLayout.maxLines) || BURN_SUBTITLE_MAX_LINES));
+    : isVertical
+      ? BURN_VERTICAL_LTR_MAX_LINES
+      : Math.min(BURN_SUBTITLE_MAX_LINES, Math.max(1, Number(baseLayout.maxLines) || BURN_SUBTITLE_MAX_LINES));
   layout.mode = cap === 1 ? 'single' : 'stack';
   layout.maxLines = cap;
   layout.wordsPerLineMin = Math.min(Number(layout.wordsPerLineMin) || 2, 2);
-  layout.wordsPerLineMax = Math.min(Number(layout.wordsPerLineMax) || 4, rtl ? 6 : 4);
+  layout.wordsPerLineMax = Math.min(
+    Number(layout.wordsPerLineMax) || 4,
+    rtl ? 6 : isVertical ? 4 : 5
+  );
   layout.maxCharsPerLine = Math.min(
     Number(layout.maxCharsPerLine) || 22,
-    rtl ? Number(baseLayout.rtlMaxCharsPerLine) || 26 : 20
+    rtl ? Number(baseLayout.rtlMaxCharsPerLine) || 26 : isVertical ? 18 : 20
   );
 
   if (rtl) {
@@ -148,10 +155,10 @@ export function resolveRenderLayout(dims, cues, preset) {
   if (isVertical) {
     layout.mode = 'stack';
     layout.wordsPerLineMin = 2;
-    layout.wordsPerLineMax = 5;
-    layout.maxCharsPerLine = 20;
+    layout.wordsPerLineMax = 4;
+    layout.maxCharsPerLine = 18;
     layout.rtlMaxCharsPerLine = 24;
-    layout.maxLines = BURN_SUBTITLE_MAX_LINES;
+    layout.maxLines = BURN_VERTICAL_LTR_MAX_LINES;
   } else if (isHorizontal) {
     layout.mode = 'stack';
     layout.wordsPerLineMin = 2;
@@ -171,10 +178,11 @@ export function resolveRenderLayout(dims, cues, preset) {
   if (presetLayout.wordsPerLineMin != null) layout.wordsPerLineMin = presetLayout.wordsPerLineMin;
   if (presetLayout.wordsPerLineMax != null) layout.wordsPerLineMax = presetLayout.wordsPerLineMax;
   if (presetLayout.maxCharsPerLine != null) layout.maxCharsPerLine = presetLayout.maxCharsPerLine;
+  const verticalLineCap = isVertical ? BURN_VERTICAL_LTR_MAX_LINES : BURN_SUBTITLE_MAX_LINES;
   if (presetLayout.maxLines != null) {
-    layout.maxLines = Math.min(BURN_SUBTITLE_MAX_LINES, Number(presetLayout.maxLines) || BURN_SUBTITLE_MAX_LINES);
+    layout.maxLines = Math.min(verticalLineCap, Number(presetLayout.maxLines) || verticalLineCap);
   }
-  layout.maxLines = Math.min(BURN_SUBTITLE_MAX_LINES, Math.max(1, Number(layout.maxLines) || BURN_SUBTITLE_MAX_LINES));
+  layout.maxLines = Math.min(verticalLineCap, Math.max(1, Number(layout.maxLines) || verticalLineCap));
 
   const rtlEarly = cuesAreMostlyRtl(cues);
   if (rtlEarly) {

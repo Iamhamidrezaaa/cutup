@@ -142,10 +142,17 @@
     const list = (Array.isArray(segments) ? segments : []).slice(0, 12);
     const rtl = list.some((s) => /[\u0600-\u06FF]/.test(String(s.text || '')));
 
+    const aspect = Layout()?.detectPreviewAspect?.() || 'horizontal';
+    const effectiveLayout = Layout()?.applyAspectToLayout?.(preset.layout, aspect) || preset.layout;
+
     container.classList.add('cutup-subtitle-stage--updating');
     container.setAttribute('data-preset', presetId);
     container.toggleAttribute('data-rtl', rtl);
-    container.style.cssText = cssVarsFromPreset(preset);
+    container.classList.toggle('cutup-subtitle-stage--vertical', aspect === 'vertical');
+    container.style.cssText = cssVarsFromPreset({
+      ...preset,
+      layout: { ...preset.layout, ...effectiveLayout }
+    });
     if (rtl) {
       container.style.setProperty('--cutup-font', "'Vazirmatn', 'Noto Sans Arabic', sans-serif");
       container.style.setProperty('--cutup-size', 'clamp(1.05rem, 4.2vw, 1.35rem)');
@@ -163,7 +170,7 @@
         }
         if (!raw) return '';
         const rtl = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/.test(raw);
-        const lines = [raw];
+        const lines = Layout()?.layoutLines?.(raw, effectiveLayout) || [raw];
         const linesHtml = lines
           .map(
             (line, li) =>

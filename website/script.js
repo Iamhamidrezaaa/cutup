@@ -5150,6 +5150,44 @@ function audioBlobSizeHint(dataUrl) {
 function rememberSourceVideoFile(file) {
   if (file instanceof File && String(file.type || '').toLowerCase().startsWith('video/')) {
     window.cutupLastSourceVideoFile = file;
+    void probeVideoAspectFromFile(file);
+  }
+}
+
+async function probeVideoAspectFromFile(file) {
+  if (!(file instanceof File) || !String(file.type || '').toLowerCase().startsWith('video/')) {
+    return null;
+  }
+  try {
+    const aspect = await new Promise((resolve) => {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      const url = URL.createObjectURL(file);
+      video.onloadedmetadata = () => {
+        const w = Number(video.videoWidth) || 0;
+        const h = Number(video.videoHeight) || 0;
+        URL.revokeObjectURL(url);
+        if (!w || !h) {
+          resolve(null);
+          return;
+        }
+        if (h > w * 1.05) resolve('vertical');
+        else if (w > h * 1.15) resolve('horizontal');
+        else resolve('square');
+      };
+      video.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(null);
+      };
+      video.src = url;
+    });
+    if (aspect) {
+      window.cutupVideoAspect = aspect;
+      window.CutupSubtitleStyles?.refreshPreview?.();
+    }
+    return aspect;
+  } catch {
+    return null;
   }
 }
 

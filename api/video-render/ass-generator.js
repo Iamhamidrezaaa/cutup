@@ -31,7 +31,8 @@ import {
 import {
   resolveRenderLayout,
   resolveCueLineLayout,
-  buildAssBottomAnchorTag
+  buildAssBottomAnchorTag,
+  BURN_VERTICAL_LTR_MAX_LINES
 } from './layout-engine.js';
 import {
   anchorRtlPunctuation,
@@ -201,7 +202,7 @@ function buildInlineEmphasis(token, preset, { wordIndex = 0, segmentIndex = 0 } 
 
   if (handler === 'hormozi' && token.spoken) {
     const color = preset.emphasis?.highlightColor || '&H0000E5FF&';
-    return `{\\c${color}\\b1}${text}{\\r}`;
+    return `{\\c${color}}${text}{\\r}`;
   }
 
   if (handler === 'neon' && token.spoken) {
@@ -252,8 +253,23 @@ function collapseToSingleAssLine(lines, fallbackText = '') {
   return [flat.join(' ').replace(/\s+/g, ' ').trim()];
 }
 
-function linesToAssText(lines, preset, { disableEmphasis = false, renderProfile, cue, segmentIndex = 0, rtl = false } = {}) {
-  const displayLines = collapseToSingleAssLine(lines, cue?.text);
+function resolveLtrAssDisplayLines(lines, fallbackText = '', isVertical = false) {
+  const flat = (Array.isArray(lines) ? lines : [])
+    .map((l) => String(l || '').trim())
+    .filter(Boolean);
+  if (!flat.length) return collapseToSingleAssLine(lines, fallbackText);
+  if (!isVertical || flat.length === 1) return collapseToSingleAssLine(flat, fallbackText);
+  return flat.slice(0, BURN_VERTICAL_LTR_MAX_LINES);
+}
+
+function linesToAssText(
+  lines,
+  preset,
+  { disableEmphasis = false, renderProfile, cue, segmentIndex = 0, rtl = false, allowMultiline = false } = {}
+) {
+  const displayLines = allowMultiline
+    ? (Array.isArray(lines) ? lines : []).map((l) => String(l || '').trim()).filter(Boolean).slice(0, 2)
+    : collapseToSingleAssLine(lines, cue?.text);
   if (disableEmphasis) {
     const plain = displayLines.map((line) => escapeAssText(line)).join('\\N');
     return { text: rtl ? buildRtlDialogueText(plain) : plain, emphasisWords: [] };
@@ -789,20 +805,30 @@ export function generateAssContent(segments, presetId, dims = {}) {
       enrichedCue.text = cueText;
     }
     const layoutModeBefore = layout.layout?.mode;
-    const cueLineLayout = resolveCueLineLayout(layout.layout, cueText);
+    const cueLineLayout = resolveCueLineLayout(layout.layout, cueText, layout.isVertical);
     const useUppercase = layout.useUppercase && !cueRtl;
     const previewLines = enrichedCue.previewLines;
     const builtLines = buildCueLines(enrichedCue, cueLineLayout, useUppercase);
+    const previewLineCap = layout.isVertical && !cueRtl ? BURN_VERTICAL_LTR_MAX_LINES : 1;
+    const hasPreviewLines =
+      Array.isArray(previewLines) &&
+      previewLines.length >= 1 &&
+      previewLines.length <= previewLineCap;
+    const preferBuiltOverSinglePreview =
+      hasPreviewLines &&
+      previewLines.length === 1 &&
+      layout.isVertical &&
+      !cueRtl &&
+      builtLines.length > 1;
+    const lineSource =
+      hasPreviewLines && !preferBuiltOverSinglePreview
+        ? useUppercase
+          ? previewLines.map((l) => String(l).toUpperCase())
+          : previewLines.map((l) => String(l))
+        : builtLines;
     const lines = cueRtl
       ? resolveRtlAssDisplayLines(previewLines, builtLines, cueText, useUppercase)
-      : collapseToSingleAssLine(
-          Array.isArray(previewLines) && previewLines.length === 1
-            ? useUppercase
-              ? previewLines.map((l) => String(l).toUpperCase())
-              : previewLines.map((l) => String(l))
-            : builtLines,
-          cueText
-        );
+      : resolveLtrAssDisplayLines(lineSource, cueText, layout.isVertical);
     if (isDebugExportEnabled() && cueRtl && !rtlLayoutDebugLogged) {
       rtlLayoutDebugLogged = true;
       console.log('[rtl-layout-debug]', {
@@ -853,7 +879,8 @@ export function generateAssContent(segments, presetId, dims = {}) {
       renderProfile,
       cue: enrichedCue,
       segmentIndex,
-      rtl: cueRtl
+      rtl: cueRtl,
+      allowMultiline: layout.isVertical && !cueRtl && assLines.length > 1
     });
     if (forensicOn && segmentIndex < forensicCueCap) {
       forensicAfterLinesToAssText.push({ id: cueKey, text: bodyResult.text });
@@ -1085,7 +1112,9 @@ export function generateAssFromExportDoc(exportDoc, dims = {}) {
     end: Number(c.end),
     text: c.text || (c.lines || []).join(' '),
     previewLines:
-      Array.isArray(c.lines) && c.lines.length === 1 ? c.lines.map((l) => String(l)) : null
+      Array.isArray(c.lines) && c.lines.length >= 1 && c.lines.length <= 2
+        ? c.lines.map((l) => String(l))
+        : null
   }));
   return generateAssContent(segments, presetId, {
     ...dims,

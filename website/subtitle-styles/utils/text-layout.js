@@ -20,12 +20,34 @@
     return lines.length ? lines : [''];
   }
 
+  function detectPreviewAspect() {
+    const cached = global.cutupVideoAspect;
+    if (cached === 'vertical' || cached === 'horizontal' || cached === 'square') return cached;
+    const platform = String(global.cutupLastTranscription?.platform || '').toLowerCase();
+    if (platform === 'tiktok' || platform === 'instagram') return 'vertical';
+    const url = String(global.cutupLastTranscription?.sourceUrl || '');
+    if (/shorts|tiktok|instagram|reels/i.test(url)) return 'vertical';
+    return 'horizontal';
+  }
+
+  function applyAspectToLayout(layout, aspect) {
+    const out = { ...(layout || {}) };
+    if (aspect !== 'vertical') return out;
+    out.mode = 'stack';
+    out.wordsPerLineMin = Math.min(2, Number(out.wordsPerLineMin) || 2);
+    out.wordsPerLineMax = Math.min(4, Number(out.wordsPerLineMax) || 4);
+    out.maxCharsPerLine = Math.min(18, Number(out.maxCharsPerLine) || 18);
+    out.maxLines = 2;
+    out.maxWidth = '78%';
+    return out;
+  }
+
   function layoutLines(text, layout) {
     const w = words(text);
     if (!w.length) return [''];
     const min = layout.wordsPerLineMin || 2;
     const max = layout.wordsPerLineMax || 6;
-    const maxLines = Math.min(1, Math.max(0, Number(layout.maxLines) || 1));
+    const maxLines = Math.max(1, Math.min(3, Number(layout.maxLines) || 2));
     let lines;
     if (layout.mode === 'single') {
       lines = [w.join(' ')];
@@ -45,5 +67,5 @@
     return lines.length ? lines : [''];
   }
 
-  global.CutupTextLayout = { layoutLines, words };
+  global.CutupTextLayout = { layoutLines, words, detectPreviewAspect, applyAspectToLayout };
 })(typeof window !== 'undefined' ? window : globalThis);

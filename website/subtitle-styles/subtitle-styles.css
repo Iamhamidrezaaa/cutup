@@ -236,7 +236,23 @@
 [data-preset='hormozi'] .cutup-em--hormozi,
 [data-preset='hormozi'] .cutup-word--spoken {
   color: #ffe500;
-  -webkit-text-stroke: 2px #000;
+  -webkit-text-stroke: 0;
+  paint-order: normal;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  vertical-align: baseline;
+}
+
+.cutup-subtitle-stage--vertical .cutup-cue {
+  max-width: 78%;
+}
+
+.cutup-subtitle-stage--vertical .cutup-cue-line {
+  word-break: normal;
+  overflow-wrap: break-word;
+  hyphens: none;
 }
 
 [data-preset='hormozi'] .cutup-cue-line[data-motion='pop'] {
