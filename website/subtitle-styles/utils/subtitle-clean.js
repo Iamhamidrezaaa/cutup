@@ -367,10 +367,10 @@
           out.pop();
         } else if (prevWc >= 2) {
           const peelIdx = prev.tokenEnd;
-          const pairText = words.slice(peelIdx - 1, last.tokenEnd + 1).join(' ');
+          const pairText = words.slice(peelIdx, last.tokenEnd + 1).join(' ');
           if (visibleCharCount(pairText) <= maxChars && peelIdx > prev.tokenStart) {
             prev.tokenEnd = peelIdx - 1;
-            last.tokenStart = peelIdx - 1;
+            last.tokenStart = peelIdx;
             last.boundaryReason = 'orphan_peel_back';
           }
         }
@@ -568,13 +568,16 @@
 
   function readSourceSegmentsForBurn() {
     const decode = decodeSubtitleTextEntities;
-    const raw =
-      (global.CutupSubtitleVersions?.getActiveSegments?.() || []).length
-        ? global.CutupSubtitleVersions.getActiveSegments()
-        : global.cutupSourceSegments ||
-            global.originalSrtSegments ||
-            global.cutupLastTranscription?.segments ||
-            [];
+    const versionSegs = global.CutupSubtitleVersions?.getActiveSegments?.() || [];
+    const primary =
+      (global.cutupSourceSegments && global.cutupSourceSegments.length
+        ? global.cutupSourceSegments
+        : null) ||
+      (versionSegs.length ? versionSegs : null) ||
+      global.originalSrtSegments ||
+      global.cutupLastTranscription?.segments ||
+      [];
+    const raw = primary;
     return (raw || [])
       .map(function (s) {
         const text = decode ? decode(String(s.text || '')) : String(s.text || '').trim();
@@ -592,27 +595,42 @@
   }
 
   function getMasterBurnCues() {
-    const normalized = normalizePostProcessedForCleanSrtClient(readSourceSegmentsForBurn());
-    const aspect = global.CutupTextLayout?.detectPreviewAspect?.() || 'horizontal';
-    const segOpts =
-      aspect === 'vertical'
-        ? { maxWords: 5, maxChars: 18, minWords: 2 }
-        : { maxWords: SHORT_FORM_MAX_WORDS, maxChars: SHORT_FORM_MAX_CHARS, minWords: 1 };
-    let cues = segmentShortFormMasterCues(normalized, segOpts);
-    assertClientWordIntegrity(normalized, cues);
-    cues = polishMasterCueTimeline(cues);
-    if (aspect === 'vertical' && global.CutupTextLayout?.chunkSegmentsForVerticalShorts) {
-      cues = global.CutupTextLayout.chunkSegmentsForVerticalShorts(cues, segOpts) || cues;
+    try {
+      const normalized = normalizePostProcessedForCleanSrtClient(readSourceSegmentsForBurn());
+      if (!normalized.length) return [];
+      const aspect = global.CutupTextLayout?.detectPreviewAspect?.() || 'horizontal';
+      const segOpts =
+        aspect === 'vertical'
+          ? { maxWords: 5, maxChars: 18, minWords: 2 }
+          : { maxWords: SHORT_FORM_MAX_WORDS, maxChars: SHORT_FORM_MAX_CHARS, minWords: 1 };
+      let cues = segmentShortFormMasterCues(normalized, segOpts);
+      cues = polishMasterCueTimeline(cues);
+      if (aspect === 'vertical' && global.CutupTextLayout?.chunkSegmentsForVerticalShorts) {
+        cues = global.CutupTextLayout.chunkSegmentsForVerticalShorts(cues, segOpts) || cues;
+      }
+      assertClientWordIntegrity(normalized, cues);
+      return cues.map(function (c, i) {
+        return {
+          id: c.id || 'master-' + i,
+          start: c.start,
+          end: c.end,
+          text: c.text,
+          locked: true
+        };
+      });
+    } catch (err) {
+      console.warn('[master-burn-cues] fallback to source segments:', err?.message || err);
+      const normalized = normalizePostProcessedForCleanSrtClient(readSourceSegmentsForBurn());
+      return normalized.map(function (s, i) {
+        return {
+          id: 'master-' + i,
+          start: s.start,
+          end: s.end,
+          text: s.text,
+          locked: true
+        };
+      });
     }
-    return cues.map(function (c, i) {
-      return {
-        id: c.id || 'master-' + i,
-        start: c.start,
-        end: c.end,
-        text: c.text,
-        locked: true
-      };
-    });
   }
 
   function stripNonSpeechForCleanSrt(text) {

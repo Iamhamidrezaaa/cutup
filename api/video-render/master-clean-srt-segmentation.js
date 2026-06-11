@@ -190,10 +190,10 @@ function mergeOrphanSingleWordSpecs(specs, words, maxWords, maxChars) {
         out.pop();
       } else if (prevWc >= 2) {
         const peelIdx = prev.tokenEnd;
-        const pairText = words.slice(peelIdx - 1, last.tokenEnd + 1).join(' ');
+        const pairText = words.slice(peelIdx, last.tokenEnd + 1).join(' ');
         if (visibleCharCount(pairText) <= maxChars && peelIdx > prev.tokenStart) {
           prev.tokenEnd = peelIdx - 1;
-          last.tokenStart = peelIdx - 1;
+          last.tokenStart = peelIdx;
           last.boundaryReason = 'orphan_peel_back';
         }
       }

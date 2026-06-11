@@ -5,11 +5,17 @@
   'use strict';
 
   function cloneSegments(segments) {
-    return (segments || []).map((s) => ({
-      start: Number(s.start),
-      end: Number(s.end),
-      text: String(s.text || '').trim()
-    }));
+    return (segments || []).map((s) => {
+      const seg = {
+        start: Number(s.start),
+        end: Number(s.end),
+        text: String(s.text || '').trim()
+      };
+      if (Array.isArray(s.words) && s.words.length) {
+        seg.words = s.words.map((w) => ({ ...w }));
+      }
+      return seg;
+    });
   }
 
   function normKey(code) {

@@ -5903,7 +5903,7 @@ async function processFullText(url, sessionId, platform = 'youtube', activeTab =
       languageDetection: transcription.languageDetection || null,
       transcriptionRuntime: transcription.transcriptionRuntime || null,
       activeTab,
-      outputMode: activeTab === 'srt' ? 'srt' : 'fulltext',
+      outputMode: activeTab === 'srt' ? 'unified' : 'fulltext',
       previewMode: isPreviewMode,
       videoDurationSeconds: youtubeResult.duration || 0,
       title: youtubeResult.title || `${getPlatformName(platform)} video`,
@@ -6000,9 +6000,15 @@ function refreshCutupSubtitleStyles() {
 
 function syncSrtRawPanel() {
   const rawEl = document.getElementById('srtPreviewRaw');
-  const content =
-    buildCleanSrtFromSource() ||
-    stripSrtForTranslation(window.originalSrtContent || window.currentSrtContent || '');
+  let content = '';
+  try {
+    content = buildCleanSrtFromSource() || '';
+  } catch (err) {
+    console.warn('[syncSrtRawPanel] clean SRT build failed:', err?.message || err);
+  }
+  if (!content) {
+    content = stripSrtForTranslation(window.originalSrtContent || window.currentSrtContent || '');
+  }
   if (rawEl) rawEl.textContent = content;
   const hidden = document.getElementById('srtPreview');
   if (hidden) hidden.textContent = content;
@@ -6350,17 +6356,6 @@ function displayResults(summary, fullText, segments = null, options = {}) {
 
   mountCutupCinematicPreview(previewFullText, previewSegments || segments, options);
 
-  syncSrtRawPanel();
-  if (window.currentSrtContent && window.CutupSubtitleStyles) {
-    requestAnimationFrame(() => window.CutupSubtitleStyles.initAfterResults());
-  }
-  if (window.CutupViralExport) {
-    if (!options.cacheReplay) {
-      window.CutupViralExport.resetForNewTranscription?.();
-    }
-    requestAnimationFrame(() => window.CutupViralExport.initAfterResults());
-  }
-
   applyResultOutputMode(resultSection, outputMode);
 
   let targetTab = requestedTab;
@@ -6373,6 +6368,17 @@ function displayResults(summary, fullText, segments = null, options = {}) {
     targetTab = summary ? 'summary' : 'fulltext';
   }
   switchTab(targetTab);
+
+  syncSrtRawPanel();
+  if (window.currentSrtContent && window.CutupSubtitleStyles) {
+    requestAnimationFrame(() => window.CutupSubtitleStyles.initAfterResults());
+  }
+  if (window.CutupViralExport) {
+    if (!options.cacheReplay) {
+      window.CutupViralExport.resetForNewTranscription?.();
+    }
+    requestAnimationFrame(() => window.CutupViralExport.initAfterResults());
+  }
 
   setupTranslateButtons();
 
