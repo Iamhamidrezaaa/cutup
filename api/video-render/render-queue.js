@@ -999,7 +999,9 @@ async function runJob(job) {
           preset: job.presetId,
           quality: job.quality,
           durationSec: burnDurationSec,
-          trustPreviewTimings: Boolean(job.burnFromPreviewExportDoc),
+          trustPreviewTimings:
+            Boolean(job.burnFromPreviewExportDoc) ||
+            (Array.isArray(job.segments) && job.segments.length > 0 && job.segments.every((s) => s?.locked)),
           renderHints: {
             hqSafeguards,
             isVertical,
@@ -1032,7 +1034,9 @@ async function runJob(job) {
           renderGeometry,
           hqSafeguards,
           isVertical,
-          trustPreviewTimings: Boolean(job.burnFromPreviewExportDoc),
+          trustPreviewTimings:
+            Boolean(job.burnFromPreviewExportDoc) ||
+            (Array.isArray(job.segments) && job.segments.length > 0 && job.segments.every((s) => s?.locked)),
           burnFromPreviewExportDoc: Boolean(job.burnFromPreviewExportDoc),
           timelineTrace,
           signal: job.ffmpegAbort.signal,

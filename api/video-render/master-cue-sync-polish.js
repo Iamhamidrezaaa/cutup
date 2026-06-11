@@ -1,9 +1,9 @@
 /**
  * Tighten master cue on/off times for burn-in lip sync (word-level bounds when available).
  */
-export const BURN_ONSET_DELAY_SEC = 0.16;
-export const BURN_TAIL_PAD_SEC = 0.025;
-export const BURN_INTER_CUE_GAP_SEC = 0.04;
+export const BURN_LIP_LEAD_SEC = 0.03;
+export const BURN_TAIL_PAD_SEC = 0.02;
+export const BURN_INTER_CUE_GAP_SEC = 0.03;
 export const BURN_MIN_CUE_SEC = 0.06;
 
 function roundSec(value) {
@@ -48,12 +48,12 @@ export function polishMasterCueTimeline(cues) {
   for (let i = 0; i < sorted.length; i++) {
     const cue = sorted[i];
     const bounds = speechBoundsFromCue(cue);
-    let start = bounds.speechStart + BURN_ONSET_DELAY_SEC;
+    let start = Math.max(0, bounds.speechStart - BURN_LIP_LEAD_SEC);
     let end = bounds.speechEnd + BURN_TAIL_PAD_SEC;
 
     if (i + 1 < sorted.length) {
       const nextBounds = speechBoundsFromCue(sorted[i + 1]);
-      const nextVisibleStart = nextBounds.speechStart + BURN_ONSET_DELAY_SEC;
+      const nextVisibleStart = Math.max(0, nextBounds.speechStart - BURN_LIP_LEAD_SEC);
       end = Math.min(end, nextVisibleStart - BURN_INTER_CUE_GAP_SEC);
     }
 
@@ -61,7 +61,7 @@ export function polishMasterCueTimeline(cues) {
       end = start + BURN_MIN_CUE_SEC;
     }
 
-    cue.start = roundSec(Math.max(0, start));
+    cue.start = roundSec(start);
     cue.end = roundSec(end);
   }
 

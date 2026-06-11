@@ -3,16 +3,26 @@ import assert from 'node:assert/strict';
 import {
   polishMasterCueTimeline,
   speechBoundsFromCue,
-  BURN_ONSET_DELAY_SEC,
+  BURN_LIP_LEAD_SEC,
   BURN_INTER_CUE_GAP_SEC
 } from './master-cue-sync-polish.js';
+import { segmentSegmentToMasterCues } from './master-clean-srt-segmentation.js';
 
-test('polishMasterCueTimeline delays onset and clips before next cue', () => {
+test('polishMasterCueTimeline uses word start with lip lead, not segment delay', () => {
   const out = polishMasterCueTimeline([
-    { start: 1, end: 2.5, text: 'hello world' },
+    {
+      start: 1,
+      end: 2.8,
+      text: 'hello world',
+      words: [
+        { word: 'hello', start: 1.2, end: 1.5 },
+        { word: 'world', start: 1.55, end: 1.9 }
+      ]
+    },
     { start: 2.6, end: 4, text: 'next phrase' }
   ]);
-  assert.ok(out[0].start > 1, 'first cue starts after speech onset');
+  assert.ok(out[0].start <= 1.2, 'starts near first word, not after segment envelope');
+  assert.ok(out[0].start >= 1.2 - BURN_LIP_LEAD_SEC - 0.001);
   assert.ok(out[0].end < out[1].start, 'first cue ends before second appears');
 });
 
@@ -52,7 +62,22 @@ test('polishMasterCueTimeline clips at next word onset not loose segment start',
       ]
     }
   ]);
-  const nextVisible = 2.05 + BURN_ONSET_DELAY_SEC;
+  const nextVisible = 2.05 - BURN_LIP_LEAD_SEC;
   assert.ok(out[0].end <= nextVisible - BURN_INTER_CUE_GAP_SEC + 0.001);
-  assert.ok(out[0].start >= 1.0 + BURN_ONSET_DELAY_SEC - 0.001);
+});
+
+test('segmentSegmentToMasterCues preserves question mark on cue text', () => {
+  const cues = segmentSegmentToMasterCues({
+    start: 10,
+    end: 12,
+    text: 'May I sit here?',
+    words: [
+      { word: 'May', start: 10.1, end: 10.3 },
+      { word: 'I', start: 10.35, end: 10.45 },
+      { word: 'sit', start: 10.5, end: 10.7 },
+      { word: 'here', start: 10.75, end: 11.0 }
+    ]
+  });
+  assert.equal(cues.length, 1);
+  assert.match(cues[0].text, /\?$/);
 });

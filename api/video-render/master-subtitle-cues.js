@@ -178,7 +178,9 @@ export function normalizeLockedMasterCues(rawSegments) {
  */
 export function buildMasterCleanSrtFromSegments(rawSegments, opts = {}) {
   const shortForm = opts.shortForm !== false;
-  const prepared = normalizePostProcessedForCleanSrt(rawSegments);
+  const prepared = normalizePostProcessedForCleanSrt(rawSegments, {
+    providerWords: opts.providerWords
+  });
   const segmented = shortForm
     ? segmentPreparedSegmentsToMasterCues(prepared, {
         maxWords: opts.maxWords ?? SHORT_FORM_MAX_WORDS,

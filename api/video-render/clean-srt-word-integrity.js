@@ -42,11 +42,42 @@ export function joinedNormalizedWordText(segments) {
   return extractNormalizedWords(segments).join(' ');
 }
 
+function providerWordText(w) {
+  return String(w?.word ?? w?.text ?? '').trim();
+}
+
+/**
+ * Attach top-level ASR word timestamps to segments missing segment.words (Whisper often omits them).
+ */
+export function attachProviderWordsToSegments(segments, providerWords) {
+  const list = Array.isArray(providerWords) ? providerWords : [];
+  if (!list.length) return Array.isArray(segments) ? segments : [];
+
+  const words = list
+    .filter((w) => providerWordText(w) && Number.isFinite(Number(w?.start)) && Number.isFinite(Number(w?.end)))
+    .sort((a, b) => Number(a.start) - Number(b.start));
+
+  return (segments || []).map((seg) => {
+    if (Array.isArray(seg?.words) && seg.words.length) return seg;
+    const ss = Number(seg?.start);
+    const se = Number(seg?.end);
+    if (!Number.isFinite(ss) || !Number.isFinite(se)) return seg;
+    const attached = words.filter((w) => {
+      const ws = Number(w.start);
+      const we = Number(w.end);
+      const mid = (ws + we) / 2;
+      return mid >= ss - 0.08 && mid <= se + 0.08;
+    });
+    if (!attached.length) return seg;
+    return { ...seg, words: attached.map((w) => ({ ...w })) };
+  });
+}
+
 /**
  * Post-processed input for clean SRT: strip non-speech tags only — no merge, no drop.
  */
-export function normalizePostProcessedForCleanSrt(segments) {
-  return (Array.isArray(segments) ? segments : [])
+export function normalizePostProcessedForCleanSrt(segments, opts = {}) {
+  const base = (Array.isArray(segments) ? segments : [])
     .filter((s) => s && typeof s.start === 'number' && typeof s.end === 'number' && s.end > s.start)
     .map((s) => ({
       start: Number(s.start),
@@ -56,6 +87,7 @@ export function normalizePostProcessedForCleanSrt(segments) {
     }))
     .filter((s) => normalizeCueText(s.text))
     .sort((a, b) => a.start - b.start);
+  return attachProviderWordsToSegments(base, opts.providerWords);
 }
 
 /**

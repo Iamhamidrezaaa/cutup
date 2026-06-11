@@ -27,8 +27,8 @@ test('zero word loss: example sentence splits into three cues with all words pre
   const clean = segmentPreparedSegmentsToMasterCues(normalizePostProcessedForCleanSrt(postProcessed));
   assert.equal(clean.length, 3);
   assert.equal(clean[0].text, 'What kidding challenge with you');
-  assert.equal(clean[1].text, 'guys that lifting very nice');
-  assert.equal(clean[2].text, 'No just challenge');
+  assert.equal(clean[1].text, 'guys that lifting very nice.');
+  assert.equal(clean[2].text, 'No, just challenge');
 
   const report = buildCleanSrtWordLossReport(postProcessed, clean);
   assert.equal(report.ok, true);

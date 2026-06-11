@@ -31,6 +31,35 @@ function visibleCharCount(text) {
   return normalizeCueText(text).length;
 }
 
+function escapeRegExp(s) {
+  return String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Rebuild cue text from tokens while keeping ? ! . attached to the last word. */
+function extractCueTextWithPunctuation(sourceText, allTokens, tokenStart, tokenEnd) {
+  const tokens = allTokens.slice(tokenStart, tokenEnd + 1);
+  if (!tokens.length) return '';
+  const src = normalizeCueText(sourceText);
+  if (!src) return tokens.join(' ');
+
+  let pos = 0;
+  let spanStart = -1;
+  let spanEnd = -1;
+  for (const tok of tokens) {
+    const re = new RegExp(`\\b${escapeRegExp(tok)}\\b`, 'iu');
+    const slice = src.slice(pos);
+    const m = slice.match(re);
+    if (!m) return tokens.join(' ');
+    const absStart = pos + m.index;
+    if (spanStart < 0) spanStart = absStart;
+    spanEnd = absStart + m[0].length;
+    pos = spanEnd;
+  }
+  const trail = src.slice(spanEnd).match(/^[\s]*([.!?…]+["']?)/);
+  if (trail) spanEnd += trail[0].length;
+  return src.slice(spanStart, spanEnd).trim();
+}
+
 /** Title-case or digit/currency tokens must not be split across cues. */
 function isProtectedToken(word, prevWord) {
   const w = String(word || '');
@@ -362,7 +391,7 @@ export function segmentSegmentToMasterCues(segment, opts = {}) {
 
   const merged = partitionSpecs.map((spec) => ({
     ...spec,
-    text: words.slice(spec.tokenStart, spec.tokenEnd + 1).join(' ')
+    text: extractCueTextWithPunctuation(text, words, spec.tokenStart, spec.tokenEnd)
   }));
 
   return merged.map((spec) => {

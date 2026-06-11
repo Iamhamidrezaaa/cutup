@@ -216,9 +216,9 @@
   const SHORT_FORM_MAX_WORDS = 5;
   const SHORT_FORM_MAX_CHARS = 42;
   const PAUSE_GAP_SEC = 0.28;
-  const BURN_ONSET_DELAY_SEC = 0.16;
-  const BURN_TAIL_PAD_SEC = 0.025;
-  const BURN_INTER_CUE_GAP_SEC = 0.04;
+  const BURN_LIP_LEAD_SEC = 0.03;
+  const BURN_TAIL_PAD_SEC = 0.02;
+  const BURN_INTER_CUE_GAP_SEC = 0.03;
   const BURN_MIN_CUE_SEC = 0.06;
 
   function cueWords(text) {
@@ -227,6 +227,63 @@
 
   function visibleCharCount(text) {
     return normalizeCueText(text).length;
+  }
+
+  function escapeRegExp(s) {
+    return String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function extractCueTextWithPunctuation(sourceText, allTokens, tokenStart, tokenEnd) {
+    const tokens = allTokens.slice(tokenStart, tokenEnd + 1);
+    if (!tokens.length) return '';
+    const src = normalizeCueText(sourceText);
+    if (!src) return tokens.join(' ');
+    let pos = 0;
+    let spanStart = -1;
+    let spanEnd = -1;
+    for (const tok of tokens) {
+      const re = new RegExp('\\b' + escapeRegExp(tok) + '\\b', 'iu');
+      const slice = src.slice(pos);
+      const m = slice.match(re);
+      if (!m) return tokens.join(' ');
+      const absStart = pos + m.index;
+      if (spanStart < 0) spanStart = absStart;
+      spanEnd = absStart + m[0].length;
+      pos = spanEnd;
+    }
+    const trail = src.slice(spanEnd).match(/^[\s]*([.!?…]+["']?)/);
+    if (trail) spanEnd += trail[0].length;
+    return src.slice(spanStart, spanEnd).trim();
+  }
+
+  function providerWordText(w) {
+    return String((w && (w.word || w.text)) || '').trim();
+  }
+
+  function attachProviderWordsToSegments(segments, providerWords) {
+    const list = Array.isArray(providerWords) ? providerWords : [];
+    if (!list.length) return Array.isArray(segments) ? segments : [];
+    const words = list
+      .filter(function (w) {
+        return providerWordText(w) && isFinite(Number(w.start)) && isFinite(Number(w.end));
+      })
+      .sort(function (a, b) {
+        return Number(a.start) - Number(b.start);
+      });
+    return (segments || []).map(function (seg) {
+      if (Array.isArray(seg.words) && seg.words.length) return seg;
+      const ss = Number(seg.start);
+      const se = Number(seg.end);
+      if (!isFinite(ss) || !isFinite(se)) return seg;
+      const attached = words.filter(function (w) {
+        const mid = (Number(w.start) + Number(w.end)) / 2;
+        return mid >= ss - 0.08 && mid <= se + 0.08;
+      });
+      if (!attached.length) return seg;
+      return { ...seg, words: attached.map(function (w) {
+        return { ...w };
+      }) };
+    });
   }
 
   function normToken(s) {
@@ -461,11 +518,11 @@
     for (let i = 0; i < sorted.length; i++) {
       const cue = sorted[i];
       const bounds = speechBoundsFromCue(cue);
-      let start = bounds.speechStart + BURN_ONSET_DELAY_SEC;
+      let start = Math.max(0, bounds.speechStart - BURN_LIP_LEAD_SEC);
       let end = bounds.speechEnd + BURN_TAIL_PAD_SEC;
       if (i + 1 < sorted.length) {
         const nextBounds = speechBoundsFromCue(sorted[i + 1]);
-        const nextVisibleStart = nextBounds.speechStart + BURN_ONSET_DELAY_SEC;
+        const nextVisibleStart = Math.max(0, nextBounds.speechStart - BURN_LIP_LEAD_SEC);
         end = Math.min(end, nextVisibleStart - BURN_INTER_CUE_GAP_SEC);
       }
       if (end <= start) end = start + BURN_MIN_CUE_SEC;
@@ -598,7 +655,7 @@
       return {
         start: roundTimelineSec(start),
         end: roundTimelineSec(end),
-        text: words.slice(spec.tokenStart, spec.tokenEnd + 1).join(' '),
+        text: extractCueTextWithPunctuation(text, words, spec.tokenStart, spec.tokenEnd),
         words: slice.map(function (w) {
           return { word: w.word, start: w.start, end: w.end };
         })
@@ -725,7 +782,13 @@
   }
 
   function normalizePostProcessedForCleanSrtClient(segments) {
-    return (segments || [])
+    const providerWords =
+      (global.cutupProviderWords && global.cutupProviderWords.length
+        ? global.cutupProviderWords
+        : null) ||
+      (global.cutupLastTranscription?.words?.length ? global.cutupLastTranscription.words : null) ||
+      [];
+    const base = (segments || [])
       .filter(function (s) {
         return s && s.end > s.start;
       })
@@ -743,6 +806,7 @@
       .sort(function (a, b) {
         return a.start - b.start;
       });
+    return attachProviderWordsToSegments(base, providerWords);
   }
 
   function prepareAccurate(segments) {
