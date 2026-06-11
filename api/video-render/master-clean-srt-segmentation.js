@@ -54,11 +54,55 @@ function isProtectedBoundary(words, splitAfterIndex) {
   return false;
 }
 
+function normToken(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{M}\p{N}']/gu, '');
+}
+
+function providerWordText(w) {
+  return String(w?.word ?? w?.text ?? '').trim();
+}
+
+/** Greedy text match — ASR token count/order often differs from cueWords(). */
+function alignProviderWordsToTokens(raw, tokens) {
+  const timed = (raw || []).filter(
+    (w) => w && Number.isFinite(Number(w.start)) && Number.isFinite(Number(w.end))
+  );
+  if (!timed.length || !tokens.length) return null;
+
+  const out = [];
+  let ri = 0;
+  for (let ti = 0; ti < tokens.length; ti++) {
+    const want = normToken(tokens[ti]);
+    let found = null;
+    const searchEnd = Math.min(ri + 5, timed.length);
+    for (let j = ri; j < searchEnd; j++) {
+      if (normToken(providerWordText(timed[j])) === want) {
+        found = timed[j];
+        ri = j + 1;
+        break;
+      }
+    }
+    if (!found) return null;
+    out.push({
+      word: tokens[ti],
+      start: Number(found.start),
+      end: Number(found.end)
+    });
+  }
+  return out.length === tokens.length ? out : null;
+}
+
 function buildWordTimeline(segment, words) {
   const segStart = Number(segment.start);
   const segEnd = Number(segment.end);
   const raw = Array.isArray(segment.words) ? segment.words : [];
   const timed = raw.filter((w) => w && Number.isFinite(Number(w.start)) && Number.isFinite(Number(w.end)));
+
+  const aligned = alignProviderWordsToTokens(timed, words);
+  if (aligned) return aligned;
+
   if (timed.length >= words.length && words.length) {
     const out = [];
     for (let i = 0; i < words.length; i++) {
@@ -322,6 +366,7 @@ export function segmentSegmentToMasterCues(segment, opts = {}) {
   }));
 
   return merged.map((spec) => {
+    const slice = timeline.slice(spec.tokenStart, spec.tokenEnd + 1);
     const { start, end } = cueTimingFromWordRange(
       timeline,
       spec.tokenStart,
@@ -332,7 +377,8 @@ export function segmentSegmentToMasterCues(segment, opts = {}) {
     return {
       start: Number(start.toFixed(3)),
       end: Number(Math.max(start + 0.05, end).toFixed(3)),
-      text: spec.text
+      text: spec.text,
+      words: slice.map((w) => ({ word: w.word, start: w.start, end: w.end }))
     };
   });
 }

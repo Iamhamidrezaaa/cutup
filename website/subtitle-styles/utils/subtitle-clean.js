@@ -216,9 +216,9 @@
   const SHORT_FORM_MAX_WORDS = 5;
   const SHORT_FORM_MAX_CHARS = 42;
   const PAUSE_GAP_SEC = 0.28;
-  const BURN_ONSET_DELAY_SEC = 0.09;
-  const BURN_TAIL_PAD_SEC = 0.05;
-  const BURN_INTER_CUE_GAP_SEC = 0.03;
+  const BURN_ONSET_DELAY_SEC = 0.16;
+  const BURN_TAIL_PAD_SEC = 0.025;
+  const BURN_INTER_CUE_GAP_SEC = 0.04;
   const BURN_MIN_CUE_SEC = 0.06;
 
   function cueWords(text) {
@@ -229,6 +229,61 @@
     return normalizeCueText(text).length;
   }
 
+  function normToken(s) {
+    return String(s || '')
+      .toLowerCase()
+      .replace(/[^\p{L}\p{M}\p{N}']/gu, '');
+  }
+
+  function providerWordText(w) {
+    return String((w && (w.word || w.text)) || '').trim();
+  }
+
+  function alignProviderWordsToTokens(raw, tokens) {
+    const timed = (raw || []).filter(function (w) {
+      return w && Number.isFinite(Number(w.start)) && Number.isFinite(Number(w.end));
+    });
+    if (!timed.length || !tokens.length) return null;
+    const out = [];
+    let ri = 0;
+    for (let ti = 0; ti < tokens.length; ti++) {
+      const want = normToken(tokens[ti]);
+      let found = null;
+      const searchEnd = Math.min(ri + 5, timed.length);
+      for (let j = ri; j < searchEnd; j++) {
+        if (normToken(providerWordText(timed[j])) === want) {
+          found = timed[j];
+          ri = j + 1;
+          break;
+        }
+      }
+      if (!found) return null;
+      out.push({ word: tokens[ti], start: Number(found.start), end: Number(found.end) });
+    }
+    return out.length === tokens.length ? out : null;
+  }
+
+  function timedWordsFromCue(cue) {
+    const raw = Array.isArray(cue && cue.words) ? cue.words : [];
+    return raw.filter(function (w) {
+      return w && Number.isFinite(Number(w.start)) && Number.isFinite(Number(w.end));
+    });
+  }
+
+  function speechBoundsFromCue(cue) {
+    const timed = timedWordsFromCue(cue);
+    if (timed.length) {
+      return {
+        speechStart: Number(timed[0].start),
+        speechEnd: Number(timed[timed.length - 1].end)
+      };
+    }
+    return {
+      speechStart: Number(cue.start),
+      speechEnd: Number(cue.end)
+    };
+  }
+
   function buildWordTimeline(segment, words) {
     const segStart = Number(segment.start);
     const segEnd = Number(segment.end);
@@ -236,6 +291,8 @@
     const timed = raw.filter(function (w) {
       return w && Number.isFinite(Number(w.start)) && Number.isFinite(Number(w.end));
     });
+    const aligned = alignProviderWordsToTokens(timed, words);
+    if (aligned) return aligned;
     if (timed.length >= words.length && words.length) {
       const out = [];
       for (let i = 0; i < words.length; i++) {
@@ -403,13 +460,12 @@
 
     for (let i = 0; i < sorted.length; i++) {
       const cue = sorted[i];
-      const speechStart = Number(cue.start);
-      const speechEnd = Number(cue.end);
-      let start = speechStart + BURN_ONSET_DELAY_SEC;
-      let end = speechEnd + BURN_TAIL_PAD_SEC;
+      const bounds = speechBoundsFromCue(cue);
+      let start = bounds.speechStart + BURN_ONSET_DELAY_SEC;
+      let end = bounds.speechEnd + BURN_TAIL_PAD_SEC;
       if (i + 1 < sorted.length) {
-        const nextSpeechStart = Number(sorted[i + 1].start);
-        const nextVisibleStart = nextSpeechStart + BURN_ONSET_DELAY_SEC;
+        const nextBounds = speechBoundsFromCue(sorted[i + 1]);
+        const nextVisibleStart = nextBounds.speechStart + BURN_ONSET_DELAY_SEC;
         end = Math.min(end, nextVisibleStart - BURN_INTER_CUE_GAP_SEC);
       }
       if (end <= start) end = start + BURN_MIN_CUE_SEC;
@@ -529,6 +585,7 @@
     }
 
     return partitionSpecs.map(function (spec) {
+      const slice = timeline.slice(spec.tokenStart, spec.tokenEnd + 1);
       const timing = cueTimingFromWordRange(
         timeline,
         spec.tokenStart,
@@ -541,7 +598,10 @@
       return {
         start: roundTimelineSec(start),
         end: roundTimelineSec(end),
-        text: words.slice(spec.tokenStart, spec.tokenEnd + 1).join(' ')
+        text: words.slice(spec.tokenStart, spec.tokenEnd + 1).join(' '),
+        words: slice.map(function (w) {
+          return { word: w.word, start: w.start, end: w.end };
+        })
       };
     });
   }
@@ -553,13 +613,15 @@
       const pieces = segmentSegmentToMasterCues(seg, opts);
       for (const piece of pieces) {
         if (piece.text && piece.end > piece.start) {
-          out.push({
+          const row = {
             id: 'master-' + out.length,
             start: piece.start,
             end: piece.end,
             text: piece.text,
             locked: true
-          });
+          };
+          if (Array.isArray(piece.words) && piece.words.length) row.words = piece.words;
+          out.push(row);
         }
       }
     }
@@ -604,10 +666,10 @@
           ? { maxWords: 5, maxChars: 18, minWords: 2 }
           : { maxWords: SHORT_FORM_MAX_WORDS, maxChars: SHORT_FORM_MAX_CHARS, minWords: 1 };
       let cues = segmentShortFormMasterCues(normalized, segOpts);
-      cues = polishMasterCueTimeline(cues);
       if (aspect === 'vertical' && global.CutupTextLayout?.chunkSegmentsForVerticalShorts) {
         cues = global.CutupTextLayout.chunkSegmentsForVerticalShorts(cues, segOpts) || cues;
       }
+      cues = polishMasterCueTimeline(cues);
       assertClientWordIntegrity(normalized, cues);
       return cues.map(function (c, i) {
         return {
@@ -695,11 +757,11 @@
         ? { maxWords: 5, maxChars: 18, minWords: 2 }
         : { maxWords: SHORT_FORM_MAX_WORDS, maxChars: SHORT_FORM_MAX_CHARS, minWords: 1 };
     let cues = segmentShortFormMasterCues(normalized, segOpts);
-    assertClientWordIntegrity(normalized, cues);
-    cues = polishMasterCueTimeline(cues);
     if (aspect === 'vertical' && global.CutupTextLayout?.chunkSegmentsForVerticalShorts) {
       cues = global.CutupTextLayout.chunkSegmentsForVerticalShorts(cues, segOpts) || cues;
     }
+    cues = polishMasterCueTimeline(cues);
+    assertClientWordIntegrity(normalized, cues);
     return cues;
   }
 

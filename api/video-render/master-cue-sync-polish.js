@@ -1,9 +1,9 @@
 /**
- * Tighten master cue on/off times for burn-in lip sync (small nudge, no re-segmentation).
+ * Tighten master cue on/off times for burn-in lip sync (word-level bounds when available).
  */
-export const BURN_ONSET_DELAY_SEC = 0.09;
-export const BURN_TAIL_PAD_SEC = 0.05;
-export const BURN_INTER_CUE_GAP_SEC = 0.03;
+export const BURN_ONSET_DELAY_SEC = 0.16;
+export const BURN_TAIL_PAD_SEC = 0.025;
+export const BURN_INTER_CUE_GAP_SEC = 0.04;
 export const BURN_MIN_CUE_SEC = 0.06;
 
 function roundSec(value) {
@@ -12,8 +12,31 @@ function roundSec(value) {
   return Math.round(n * 1000) / 1000;
 }
 
+function timedWordsFromCue(cue) {
+  const raw = Array.isArray(cue?.words) ? cue.words : [];
+  return raw.filter((w) => w && Number.isFinite(Number(w.start)) && Number.isFinite(Number(w.end)));
+}
+
 /**
- * @param {{ start: number, end: number, text?: string }[]} cues
+ * Prefer first/last word timestamps over segment envelope (Whisper segment bounds are loose).
+ * @param {{ start: number, end: number, words?: object[] }} cue
+ */
+export function speechBoundsFromCue(cue) {
+  const timed = timedWordsFromCue(cue);
+  if (timed.length) {
+    return {
+      speechStart: Number(timed[0].start),
+      speechEnd: Number(timed[timed.length - 1].end)
+    };
+  }
+  return {
+    speechStart: Number(cue.start),
+    speechEnd: Number(cue.end)
+  };
+}
+
+/**
+ * @param {{ start: number, end: number, text?: string, words?: object[] }[]} cues
  * @returns {typeof cues}
  */
 export function polishMasterCueTimeline(cues) {
@@ -24,14 +47,13 @@ export function polishMasterCueTimeline(cues) {
 
   for (let i = 0; i < sorted.length; i++) {
     const cue = sorted[i];
-    const speechStart = Number(cue.start);
-    const speechEnd = Number(cue.end);
-    let start = speechStart + BURN_ONSET_DELAY_SEC;
-    let end = speechEnd + BURN_TAIL_PAD_SEC;
+    const bounds = speechBoundsFromCue(cue);
+    let start = bounds.speechStart + BURN_ONSET_DELAY_SEC;
+    let end = bounds.speechEnd + BURN_TAIL_PAD_SEC;
 
     if (i + 1 < sorted.length) {
-      const nextSpeechStart = Number(sorted[i + 1].start);
-      const nextVisibleStart = nextSpeechStart + BURN_ONSET_DELAY_SEC;
+      const nextBounds = speechBoundsFromCue(sorted[i + 1]);
+      const nextVisibleStart = nextBounds.speechStart + BURN_ONSET_DELAY_SEC;
       end = Math.min(end, nextVisibleStart - BURN_INTER_CUE_GAP_SEC);
     }
 

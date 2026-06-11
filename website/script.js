@@ -5535,56 +5535,6 @@ async function parseYouTubeSubtitles(vttContent, language) {
   });
 }
 
-function formatRuntimeDurationMs(ms) {
-  const n = Number(ms);
-  if (!Number.isFinite(n) || n < 0) return '—';
-  if (n < 1000) return `${Math.round(n)} ms`;
-  const sec = n / 1000;
-  if (sec < 60) return `${sec.toFixed(1)} s`;
-  const m = Math.floor(sec / 60);
-  const s = Math.round(sec % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
-
-function formatRuntimeAudioDuration(sec) {
-  const n = Number(sec);
-  if (!Number.isFinite(n) || n <= 0) return '—';
-  if (n < 60) return `${n.toFixed(1)} s`;
-  const m = Math.floor(n / 60);
-  const s = Math.round(n % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
-
-function renderTranscriptionRuntimeBar(runtime) {
-  const bar = document.getElementById('transcriptionRuntimeBar');
-  if (!bar) return;
-  if (!runtime || (!runtime.provider && !runtime.providerLabel)) {
-    bar.hidden = true;
-    bar.textContent = '';
-    return;
-  }
-  const provider = runtime.providerLabel || runtime.provider || '—';
-  const model = runtime.model || (runtime.fromCache ? 'cached' : '—');
-  const transcribeDur = runtime.fromCache
-    ? 'cached'
-    : formatRuntimeDurationMs(runtime.transcriptionDurationMs);
-  const audioDur = formatRuntimeAudioDuration(runtime.audioDurationSec);
-  bar.innerHTML = `
-    <span><strong>Provider</strong> ${escapeHtmlRuntime(provider)}</span>
-    <span><strong>Model</strong> ${escapeHtmlRuntime(model)}</span>
-    <span><strong>Transcription</strong> ${escapeHtmlRuntime(transcribeDur)}</span>
-    <span><strong>Audio</strong> ${escapeHtmlRuntime(audioDur)}</span>
-  `;
-  bar.hidden = false;
-}
-
-function escapeHtmlRuntime(s) {
-  return String(s || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
 // Convert VTT to SRT format
 function vttToSRT(vttContent) {
   // Remove VTT header and WEBVTT line
@@ -6349,10 +6299,6 @@ function displayResults(summary, fullText, segments = null, options = {}) {
 
   // Show result section
   resultSection.style.display = 'block';
-
-  renderTranscriptionRuntimeBar(
-    options.transcriptionRuntime || options.languageDetection?.transcriptionRuntime || null
-  );
 
   mountCutupCinematicPreview(previewFullText, previewSegments || segments, options);
 
