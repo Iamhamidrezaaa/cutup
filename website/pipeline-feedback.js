@@ -77,14 +77,14 @@
   }
 
   function renderThanks(el) {
-    el.innerHTML = '<p class="cutup-pipeline-feedback__thanks">تشکر از بازخوردتون</p>';
+    el.innerHTML = '<p class="cutup-pipeline-feedback__thanks">Thanks for your feedback!</p>';
     el.hidden = false;
   }
 
   function renderComment(el, action) {
     el.innerHTML = `
       <div class="cutup-pipeline-feedback__comment">
-        <textarea class="cutup-pipeline-feedback__textarea" rows="2" maxlength="500" placeholder="فیدبکتون رو بنویسید…"></textarea>
+        <textarea class="cutup-pipeline-feedback__textarea" rows="2" maxlength="500" placeholder="What could we improve? (optional)"></textarea>
         <div class="cutup-pipeline-feedback__comment-actions">
           <button type="button" class="cutup-pipeline-feedback__text-btn" data-cancel>Cancel</button>
           <button type="button" class="cutup-pipeline-feedback__text-btn cutup-pipeline-feedback__text-btn--submit" data-submit>Submit</button>
