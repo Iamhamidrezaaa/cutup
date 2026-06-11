@@ -35,6 +35,56 @@ function escapeRegExp(s) {
   return String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+export const SHORT_CLIP_MAX_SEC = 15;
+const SENTENCE_SPLIT_RE = /(?<=[.!?…]+["']?)\s+/u;
+
+function isTokenBoundaryChar(ch) {
+  return !ch || /[\s([{"'«»]/.test(ch);
+}
+
+function isTokenEndBoundaryChar(ch) {
+  return !ch || /[\s\])},.!?…:;"'»]/.test(ch);
+}
+
+function apostropheVariants(tok) {
+  const variants = [tok];
+  if (tok.includes("'")) variants.push(tok.replace(/'/g, '\u2019'));
+  if (tok.includes('\u2019')) variants.push(tok.replace(/\u2019/g, "'"));
+  return variants;
+}
+
+function findTokenSpanInSource(src, tok, fromPos) {
+  for (const variant of apostropheVariants(tok)) {
+    const re = new RegExp(escapeRegExp(variant), 'iu');
+    let pos = Math.max(0, fromPos);
+    while (pos < src.length) {
+      const slice = src.slice(pos);
+      const m = slice.match(re);
+      if (!m || m.index === undefined) break;
+      const abs = pos + m.index;
+      const end = abs + m[0].length;
+      if (isTokenBoundaryChar(src[abs - 1]) && isTokenEndBoundaryChar(src[end])) {
+        return { start: abs, end };
+      }
+      pos = abs + 1;
+    }
+  }
+  return null;
+}
+
+function charOffsetForTokenIndex(src, allTokens, tokenIndex) {
+  if (tokenIndex <= 0) return 0;
+  let pos = 0;
+  for (let i = 0; i < tokenIndex && i < allTokens.length; i++) {
+    const span = findTokenSpanInSource(src, allTokens[i], pos);
+    if (!span) break;
+    pos = span.end;
+    const skip = src.slice(pos).match(/^[\s,.!?…"']*/);
+    if (skip) pos += skip[0].length;
+  }
+  return pos;
+}
+
 /** Rebuild cue text from tokens while keeping ? ! . attached to the last word. */
 function extractCueTextWithPunctuation(sourceText, allTokens, tokenStart, tokenEnd) {
   const tokens = allTokens.slice(tokenStart, tokenEnd + 1);
@@ -42,22 +92,80 @@ function extractCueTextWithPunctuation(sourceText, allTokens, tokenStart, tokenE
   const src = normalizeCueText(sourceText);
   if (!src) return tokens.join(' ');
 
-  let pos = 0;
+  let pos = charOffsetForTokenIndex(src, allTokens, tokenStart);
   let spanStart = -1;
   let spanEnd = -1;
   for (const tok of tokens) {
-    const re = new RegExp(`\\b${escapeRegExp(tok)}\\b`, 'iu');
-    const slice = src.slice(pos);
-    const m = slice.match(re);
-    if (!m) return tokens.join(' ');
-    const absStart = pos + m.index;
-    if (spanStart < 0) spanStart = absStart;
-    spanEnd = absStart + m[0].length;
+    const span = findTokenSpanInSource(src, tok, pos);
+    if (!span) return tokens.join(' ');
+    if (spanStart < 0) spanStart = span.start;
+    spanEnd = span.end;
     pos = spanEnd;
   }
   const trail = src.slice(spanEnd).match(/^[\s]*([.!?…]+["']?)/);
   if (trail) spanEnd += trail[0].length;
   return src.slice(spanStart, spanEnd).trim();
+}
+
+export function clipDurationFromSegments(segments) {
+  let max = 0;
+  for (const s of segments || []) {
+    const end = Number(s?.end);
+    if (Number.isFinite(end) && end > max) max = end;
+  }
+  return max;
+}
+
+/** One timed cue per sentence for clips ≤15s. */
+export function expandPreparedSegmentsBySentences(preparedSegments) {
+  const out = [];
+  for (const seg of preparedSegments || []) {
+    if (!seg || Number(seg.end) <= Number(seg.start)) continue;
+    const text = normalizeCueText(seg.text);
+    if (!text) continue;
+    const sentences = text
+      .split(SENTENCE_SPLIT_RE)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (sentences.length <= 1) {
+      out.push({
+        start: Number(seg.start),
+        end: Number(seg.end),
+        text,
+        words: seg.words
+      });
+      continue;
+    }
+    const words = cueWords(text);
+    const timeline = buildWordTimeline({ ...seg, text }, words);
+    let charPos = 0;
+    let wordIdx = 0;
+    for (const sentence of sentences) {
+      const idx = text.indexOf(sentence, charPos);
+      if (idx < 0) continue;
+      charPos = idx + sentence.length;
+      const sentWords = cueWords(sentence);
+      if (!sentWords.length) continue;
+      const tokenStart = wordIdx;
+      const tokenEnd = Math.min(words.length - 1, wordIdx + sentWords.length - 1);
+      wordIdx = tokenEnd + 1;
+      const { start, end } = cueTimingFromWordRange(
+        timeline,
+        tokenStart,
+        tokenEnd,
+        Number(seg.start),
+        Number(seg.end)
+      );
+      const slice = timeline.slice(tokenStart, tokenEnd + 1);
+      out.push({
+        start: Number(start.toFixed(3)),
+        end: Number(Math.max(start + 0.05, end).toFixed(3)),
+        text: sentence,
+        words: slice.map((w) => ({ word: w.word, start: w.start, end: w.end }))
+      });
+    }
+  }
+  return out.length ? out : preparedSegments;
 }
 
 /** Title-case or digit/currency tokens must not be split across cues. */

@@ -8191,15 +8191,18 @@ function initUploadFileTab() {
 
   const openPicker = () => {
     if (currentPlatform !== 'audiofile') switchPlatform('audiofile');
-    audioFileInput.click();
+    requestAnimationFrame(() => {
+      try {
+        audioFileInput.click();
+      } catch (err) {
+        console.warn('[upload] file picker failed:', err?.message || err);
+      }
+    });
   };
 
   if (chooseBtn && chooseBtn.dataset.cutupBound !== '1') {
     chooseBtn.dataset.cutupBound = '1';
-    chooseBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      openPicker();
-    });
+    // Span sits inside <label for="audioFileInput"> — do not preventDefault on click (blocks native picker).
     chooseBtn.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();

@@ -59,6 +59,39 @@ test('assertCleanSrtWordIntegrity throws and reports missing words', () => {
   );
 });
 
+test('contractions (I\'m) preserve word integrity across master cues', () => {
+  const postProcessed = [
+    {
+      start: 0,
+      end: 13,
+      text: "I'm single! I'm just a little high maintenance. But I love you so much!"
+    }
+  ];
+  const clean = segmentPreparedSegmentsToMasterCues(normalizePostProcessedForCleanSrt(postProcessed), {
+    maxWords: VERTICAL_SHORT_FORM_MAX_WORDS,
+    maxChars: VERTICAL_SHORT_FORM_MAX_CHARS,
+    minWords: 2
+  });
+  assert.ok(clean.length >= 3);
+  const report = buildCleanSrtWordLossReport(postProcessed, clean);
+  assert.equal(report.ok, true, report.missingWords?.join(', '));
+});
+
+test('short clip uses one cue per sentence', () => {
+  const postProcessed = [
+    {
+      start: 0,
+      end: 13,
+      text: "I'm single! I'm just a little high maintenance. But I love you so much!"
+    }
+  ];
+  const locked = buildMasterCleanSrtFromSegments(postProcessed, { shortForm: true });
+  assert.equal(locked.length, 3);
+  assert.match(locked[0].text, /I'm single!/i);
+  assert.match(locked[1].text, /high maintenance/i);
+  assert.match(locked[2].text, /love you so much/i);
+});
+
 test('vertical short-form caps at three words and twelve chars per cue', () => {
   const postProcessed = [
     {

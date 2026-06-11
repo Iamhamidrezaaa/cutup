@@ -4,6 +4,9 @@
 import { stripBurnNonSpeechTags } from './subtitle-pipeline.js';
 import {
   segmentPreparedSegmentsToMasterCues,
+  expandPreparedSegmentsBySentences,
+  clipDurationFromSegments,
+  SHORT_CLIP_MAX_SEC,
   SHORT_FORM_MAX_CHARS,
   SHORT_FORM_MAX_WORDS
 } from './master-clean-srt-segmentation.js';
@@ -181,17 +184,21 @@ export function buildMasterCleanSrtFromSegments(rawSegments, opts = {}) {
   const prepared = normalizePostProcessedForCleanSrt(rawSegments, {
     providerWords: opts.providerWords
   });
-  const segmented = shortForm
-    ? segmentPreparedSegmentsToMasterCues(prepared, {
-        maxWords: opts.maxWords ?? SHORT_FORM_MAX_WORDS,
-        maxChars: opts.maxChars ?? SHORT_FORM_MAX_CHARS,
-        minWords: opts.minWords
-      })
-    : prepared.map((s) => ({
-        start: Number(s.start),
-        end: Number(s.end),
-        text: stripBurnNonSpeechTags(s.text)
-      }));
+  const duration = clipDurationFromSegments(prepared);
+  const shortClip = duration > 0 && duration <= SHORT_CLIP_MAX_SEC;
+  const segmented = shortClip
+    ? expandPreparedSegmentsBySentences(prepared)
+    : shortForm
+      ? segmentPreparedSegmentsToMasterCues(prepared, {
+          maxWords: opts.maxWords ?? SHORT_FORM_MAX_WORDS,
+          maxChars: opts.maxChars ?? SHORT_FORM_MAX_CHARS,
+          minWords: opts.minWords
+        })
+      : prepared.map((s) => ({
+          start: Number(s.start),
+          end: Number(s.end),
+          text: stripBurnNonSpeechTags(s.text)
+        }));
 
   const polished = polishMasterCueTimeline(segmented);
 

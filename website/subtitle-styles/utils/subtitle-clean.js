@@ -233,27 +233,183 @@
     return String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
+  const SHORT_CLIP_MAX_SEC = 15;
+  const SENTENCE_SPLIT_RE = /(?<=[.!?…]+["']?)\s+/u;
+
+  function isTokenBoundaryChar(ch) {
+    return !ch || /[\s([{"'«»]/.test(ch);
+  }
+
+  function isTokenEndBoundaryChar(ch) {
+    return !ch || /[\s\])},.!?…:;"'»]/.test(ch);
+  }
+
+  function apostropheVariants(tok) {
+    const variants = [tok];
+    if (tok.includes("'")) variants.push(tok.replace(/'/g, '\u2019'));
+    if (tok.includes('\u2019')) variants.push(tok.replace(/\u2019/g, "'"));
+    return variants;
+  }
+
+  /** Contractions like I'm break \\b — match with explicit boundaries instead. */
+  function findTokenSpanInSource(src, tok, fromPos) {
+    for (const variant of apostropheVariants(tok)) {
+      const re = new RegExp(escapeRegExp(variant), 'iu');
+      let pos = Math.max(0, fromPos);
+      while (pos < src.length) {
+        const slice = src.slice(pos);
+        const m = slice.match(re);
+        if (!m || m.index === undefined) break;
+        const abs = pos + m.index;
+        const end = abs + m[0].length;
+        if (isTokenBoundaryChar(src[abs - 1]) && isTokenEndBoundaryChar(src[end])) {
+          return { start: abs, end };
+        }
+        pos = abs + 1;
+      }
+    }
+    return null;
+  }
+
+  function charOffsetForTokenIndex(src, allTokens, tokenIndex) {
+    if (tokenIndex <= 0) return 0;
+    let pos = 0;
+    for (let i = 0; i < tokenIndex && i < allTokens.length; i++) {
+      const span = findTokenSpanInSource(src, allTokens[i], pos);
+      if (!span) break;
+      pos = span.end;
+      const skip = src.slice(pos).match(/^[\s,.!?…"']*/);
+      if (skip) pos += skip[0].length;
+    }
+    return pos;
+  }
+
   function extractCueTextWithPunctuation(sourceText, allTokens, tokenStart, tokenEnd) {
     const tokens = allTokens.slice(tokenStart, tokenEnd + 1);
     if (!tokens.length) return '';
     const src = normalizeCueText(sourceText);
     if (!src) return tokens.join(' ');
-    let pos = 0;
+    let pos = charOffsetForTokenIndex(src, allTokens, tokenStart);
     let spanStart = -1;
     let spanEnd = -1;
     for (const tok of tokens) {
-      const re = new RegExp('\\b' + escapeRegExp(tok) + '\\b', 'iu');
-      const slice = src.slice(pos);
-      const m = slice.match(re);
-      if (!m) return tokens.join(' ');
-      const absStart = pos + m.index;
-      if (spanStart < 0) spanStart = absStart;
-      spanEnd = absStart + m[0].length;
+      const span = findTokenSpanInSource(src, tok, pos);
+      if (!span) return tokens.join(' ');
+      if (spanStart < 0) spanStart = span.start;
+      spanEnd = span.end;
       pos = spanEnd;
     }
     const trail = src.slice(spanEnd).match(/^[\s]*([.!?…]+["']?)/);
     if (trail) spanEnd += trail[0].length;
     return src.slice(spanStart, spanEnd).trim();
+  }
+
+  function clipDurationFromSegments(segments) {
+    let max = 0;
+    for (const s of segments || []) {
+      const end = Number(s && s.end);
+      if (isFinite(end) && end > max) max = end;
+    }
+    return max;
+  }
+
+  /** One timed cue per sentence for clips ≤15s (TikTok/Reels length). */
+  function expandSegmentsBySentences(segments) {
+    const out = [];
+    for (const seg of segments || []) {
+      if (!seg || Number(seg.end) <= Number(seg.start)) continue;
+      const text = normalizeCueText(seg.text);
+      if (!text) continue;
+      const sentences = text
+        .split(SENTENCE_SPLIT_RE)
+        .map(function (s) {
+          return s.trim();
+        })
+        .filter(Boolean);
+      if (sentences.length <= 1) {
+        out.push({
+          start: Number(seg.start),
+          end: Number(seg.end),
+          text: text,
+          words: seg.words
+        });
+        continue;
+      }
+      const words = cueWords(text);
+      const timeline = buildWordTimeline({ start: seg.start, end: seg.end, text: text, words: seg.words }, words);
+      let charPos = 0;
+      let wordIdx = 0;
+      for (const sentence of sentences) {
+        const idx = text.indexOf(sentence, charPos);
+        if (idx < 0) continue;
+        charPos = idx + sentence.length;
+        const sentWords = cueWords(sentence);
+        if (!sentWords.length) continue;
+        const tokenStart = wordIdx;
+        const tokenEnd = Math.min(words.length - 1, wordIdx + sentWords.length - 1);
+        wordIdx = tokenEnd + 1;
+        const timing = cueTimingFromWordRange(
+          timeline,
+          tokenStart,
+          tokenEnd,
+          Number(seg.start),
+          Number(seg.end)
+        );
+        const start = roundTimelineSec(timing.start);
+        const end = roundTimelineSec(Math.max(start + MIN_CUE_DURATION_SEC, timing.end));
+        const slice = timeline.slice(tokenStart, tokenEnd + 1);
+        out.push({
+          start: start,
+          end: end,
+          text: sentence,
+          words: slice.map(function (w) {
+            return { word: w.word, start: w.start, end: w.end };
+          })
+        });
+      }
+    }
+    return out.length ? out : segments;
+  }
+
+  function mapLockedMasterCues(cues) {
+    return (cues || []).map(function (c, i) {
+      return {
+        id: c.id || 'master-' + i,
+        start: c.start,
+        end: c.end,
+        text: c.text,
+        locked: true
+      };
+    });
+  }
+
+  function buildMasterCuePipeline(normalized, segOpts, aspect) {
+    const duration = clipDurationFromSegments(normalized);
+    const shortClip = duration > 0 && duration <= SHORT_CLIP_MAX_SEC;
+
+    if (shortClip) {
+      let cues = expandSegmentsBySentences(normalized);
+      cues = polishMasterCueTimeline(cues);
+      assertClientWordIntegrity(normalized, cues);
+      return mapLockedMasterCues(cues);
+    }
+
+    let cues = segmentShortFormMasterCues(normalized, segOpts);
+    if (aspect === 'vertical' && global.CutupTextLayout?.chunkSegmentsForVerticalShorts) {
+      cues = global.CutupTextLayout.chunkSegmentsForVerticalShorts(cues, segOpts) || cues;
+    }
+    cues = polishMasterCueTimeline(cues);
+    assertClientWordIntegrity(normalized, cues);
+    return mapLockedMasterCues(cues);
+  }
+
+  function fallbackMasterBurnCues(normalized) {
+    const duration = clipDurationFromSegments(normalized);
+    if (duration > 0 && duration <= SHORT_CLIP_MAX_SEC) {
+      const cues = polishMasterCueTimeline(expandSegmentsBySentences(normalized));
+      if (cues.length) return mapLockedMasterCues(cues);
+    }
+    return mapLockedMasterCues(normalized);
   }
 
   function providerWordText(w) {
@@ -722,33 +878,11 @@
         aspect === 'vertical'
           ? { maxWords: 5, maxChars: 18, minWords: 2 }
           : { maxWords: SHORT_FORM_MAX_WORDS, maxChars: SHORT_FORM_MAX_CHARS, minWords: 1 };
-      let cues = segmentShortFormMasterCues(normalized, segOpts);
-      if (aspect === 'vertical' && global.CutupTextLayout?.chunkSegmentsForVerticalShorts) {
-        cues = global.CutupTextLayout.chunkSegmentsForVerticalShorts(cues, segOpts) || cues;
-      }
-      cues = polishMasterCueTimeline(cues);
-      assertClientWordIntegrity(normalized, cues);
-      return cues.map(function (c, i) {
-        return {
-          id: c.id || 'master-' + i,
-          start: c.start,
-          end: c.end,
-          text: c.text,
-          locked: true
-        };
-      });
+      return buildMasterCuePipeline(normalized, segOpts, aspect);
     } catch (err) {
-      console.warn('[master-burn-cues] fallback to source segments:', err?.message || err);
+      console.warn('[master-burn-cues] fallback:', err?.message || err);
       const normalized = normalizePostProcessedForCleanSrtClient(readSourceSegmentsForBurn());
-      return normalized.map(function (s, i) {
-        return {
-          id: 'master-' + i,
-          start: s.start,
-          end: s.end,
-          text: s.text,
-          locked: true
-        };
-      });
+      return fallbackMasterBurnCues(normalized);
     }
   }
 
@@ -820,13 +954,16 @@
       aspect === 'vertical'
         ? { maxWords: 5, maxChars: 18, minWords: 2 }
         : { maxWords: SHORT_FORM_MAX_WORDS, maxChars: SHORT_FORM_MAX_CHARS, minWords: 1 };
-    let cues = segmentShortFormMasterCues(normalized, segOpts);
-    if (aspect === 'vertical' && global.CutupTextLayout?.chunkSegmentsForVerticalShorts) {
-      cues = global.CutupTextLayout.chunkSegmentsForVerticalShorts(cues, segOpts) || cues;
+    try {
+      return buildMasterCuePipeline(normalized, segOpts, aspect).map(function (c) {
+        return { start: c.start, end: c.end, text: c.text, locked: c.locked };
+      });
+    } catch (err) {
+      console.warn('[master-burn-cues] segment fallback:', err?.message || err);
+      return fallbackMasterBurnCues(normalized).map(function (c) {
+        return { start: c.start, end: c.end, text: c.text, locked: c.locked };
+      });
     }
-    cues = polishMasterCueTimeline(cues);
-    assertClientWordIntegrity(normalized, cues);
-    return cues;
   }
 
   function prepareClean(segments) {
