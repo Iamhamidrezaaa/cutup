@@ -142,7 +142,8 @@
     const aspect = Layout()?.detectPreviewAspect?.() || 'horizontal';
     let list = Array.isArray(segments) ? segments : [];
     const rtl = list.some((s) => /[\u0600-\u06FF]/.test(String(s.text || '')));
-    if (aspect === 'vertical' && !rtl) {
+    const alreadyMasterChunked = list.length > 0 && list.every((s) => s && s.locked === true);
+    if (aspect === 'vertical' && !rtl && !alreadyMasterChunked) {
       list = Layout()?.chunkSegmentsForVerticalShorts?.(list) || list;
     }
     list = list.slice(0, 24);

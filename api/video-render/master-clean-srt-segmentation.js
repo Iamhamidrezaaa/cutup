@@ -174,11 +174,28 @@ function mergeOrphanSingleWordSpecs(specs, words, maxWords, maxChars) {
     const lastWc = last.tokenEnd - last.tokenStart + 1;
     if (lastWc === 1) {
       const prev = out[out.length - 2];
-      const mergedLen = prev.tokenEnd - prev.tokenStart + 1 + 1;
+      const prevWc = prev.tokenEnd - prev.tokenStart + 1;
+      const mergedLen = prevWc + 1;
       const mergedText = words.slice(prev.tokenStart, last.tokenEnd + 1).join(' ');
-      if (mergedLen <= maxWords && visibleCharCount(mergedText) <= maxChars) {
+      const mergedChars = visibleCharCount(mergedText);
+      if (mergedLen <= maxWords && mergedChars <= maxChars) {
         prev.tokenEnd = last.tokenEnd;
         out.pop();
+      } else if (
+        mergedLen === maxWords + 1 &&
+        mergedChars <= maxChars + 8 &&
+        /[.!?…]["']?$/i.test(words[last.tokenEnd] || '')
+      ) {
+        prev.tokenEnd = last.tokenEnd;
+        out.pop();
+      } else if (prevWc >= 2) {
+        const peelIdx = prev.tokenEnd;
+        const pairText = words.slice(peelIdx - 1, last.tokenEnd + 1).join(' ');
+        if (visibleCharCount(pairText) <= maxChars && peelIdx > prev.tokenStart) {
+          prev.tokenEnd = peelIdx - 1;
+          last.tokenStart = peelIdx - 1;
+          last.boundaryReason = 'orphan_peel_back';
+        }
       }
     }
   }

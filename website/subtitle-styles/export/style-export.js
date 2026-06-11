@@ -15,7 +15,9 @@
     const effectiveLayout = Layout?.applyAspectToLayout?.(preset.layout, aspect) || preset.layout;
     let segmentList = Array.isArray(segments) ? segments : [];
     const rtl = segmentList.some((s) => /[\u0600-\u06FF]/.test(String(s?.text || '')));
-    if (aspect === 'vertical' && !rtl) {
+    const alreadyMasterChunked =
+      segmentList.length > 0 && segmentList.every((s) => s && s.locked === true);
+    if (aspect === 'vertical' && !rtl && !alreadyMasterChunked) {
       segmentList = Layout?.chunkSegmentsForVerticalShorts?.(segmentList) || segmentList;
     }
     const cues = segmentList.map((seg, index) => {

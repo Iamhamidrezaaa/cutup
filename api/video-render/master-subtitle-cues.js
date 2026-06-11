@@ -11,6 +11,7 @@ import {
   assertCleanSrtWordIntegrity,
   normalizePostProcessedForCleanSrt
 } from './clean-srt-word-integrity.js';
+import { polishMasterCueTimeline } from './master-cue-sync-polish.js';
 
 const TIMING_TOLERANCE_MS = 1;
 
@@ -190,14 +191,16 @@ export function buildMasterCleanSrtFromSegments(rawSegments, opts = {}) {
         text: stripBurnNonSpeechTags(s.text)
       }));
 
+  const polished = polishMasterCueTimeline(segmented);
+
   if (opts.validateWordIntegrity !== false) {
-    assertCleanSrtWordIntegrity(prepared, segmented, {
+    assertCleanSrtWordIntegrity(prepared, polished, {
       stage: 'post_processed_to_clean_srt',
       traceId: opts.traceId || null
     });
   }
 
-  return lockMasterCues(segmented, opts);
+  return lockMasterCues(polished, opts);
 }
 
 /**

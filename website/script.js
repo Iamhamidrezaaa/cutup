@@ -6592,31 +6592,24 @@ function cloneSourceSegments(segments) {
       ? decodeSubtitleTextEntities
       : window.CutupSubtitleClean?.decodeSubtitleTextEntities;
   return (segments || [])
-    .map((s) => ({
-      start: Number(s.start),
-      end: Number(s.end),
-      text: decode ? decode(String(s.text || '')) : String(s.text || '').trim()
-    }))
+    .map((s) => {
+      const seg = {
+        start: Number(s.start),
+        end: Number(s.end),
+        text: decode ? decode(String(s.text || '')) : String(s.text || '').trim()
+      };
+      if (Array.isArray(s.words) && s.words.length) {
+        seg.words = s.words;
+      }
+      return seg;
+    })
     .filter((s) => s.text && Number.isFinite(s.start) && Number.isFinite(s.end) && s.end > s.start);
 }
 
 function buildCleanSrtFromSource() {
-  const raw = cloneSourceSegments(
-    (window.CutupSubtitleVersions?.getActiveSegments?.() || []).length
-      ? window.CutupSubtitleVersions.getActiveSegments()
-      : window.cutupSourceSegments ||
-          window.originalSrtSegments ||
-          window.cutupLastTranscription?.segments
-  );
-  if (!raw.length) return '';
-  if (isClientAsrV2()) {
-    return generateSRT(raw);
-  }
-  const prepared = window.CutupSubtitleClean?.prepareSegmentsForMode
-    ? window.CutupSubtitleClean.prepareSegmentsForMode(raw, 'accurate')
-    : raw;
-  if (!prepared.length) return '';
-  return generateSRT(prepared);
+  const cues = window.CutupSubtitleClean?.getMasterBurnCues?.();
+  if (!cues || !cues.length) return '';
+  return generateSRT(cues);
 }
 
 window.buildCleanSrtFromSource = buildCleanSrtFromSource;

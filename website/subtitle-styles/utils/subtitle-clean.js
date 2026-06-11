@@ -216,9 +216,207 @@
   const SHORT_FORM_MAX_WORDS = 5;
   const SHORT_FORM_MAX_CHARS = 42;
   const PAUSE_GAP_SEC = 0.28;
+  const BURN_ONSET_DELAY_SEC = 0.09;
+  const BURN_TAIL_PAD_SEC = 0.05;
+  const BURN_INTER_CUE_GAP_SEC = 0.03;
+  const BURN_MIN_CUE_SEC = 0.06;
 
   function cueWords(text) {
     return String(text || '').match(TOKEN_RE) || [];
+  }
+
+  function visibleCharCount(text) {
+    return normalizeCueText(text).length;
+  }
+
+  function buildWordTimeline(segment, words) {
+    const segStart = Number(segment.start);
+    const segEnd = Number(segment.end);
+    const raw = Array.isArray(segment.words) ? segment.words : [];
+    const timed = raw.filter(function (w) {
+      return w && Number.isFinite(Number(w.start)) && Number.isFinite(Number(w.end));
+    });
+    if (timed.length >= words.length && words.length) {
+      const out = [];
+      for (let i = 0; i < words.length; i++) {
+        const tw = timed[i] || timed[timed.length - 1];
+        out.push({
+          word: words[i],
+          start: Number(tw.start),
+          end: Number(tw.end)
+        });
+      }
+      return out;
+    }
+    const dur = Math.max(0.08 * words.length, segEnd - segStart);
+    const per = dur / Math.max(1, words.length);
+    return words.map(function (word, i) {
+      const start = segStart + i * per;
+      const end = Math.min(segEnd, Math.max(start + 0.06, segStart + (i + 1) * per));
+      return { word: word, start: start, end: end };
+    });
+  }
+
+  function cueTimingFromWordRange(timeline, tokenStart, tokenEnd, segStart, segEnd) {
+    const slice = timeline.slice(tokenStart, tokenEnd + 1);
+    if (!slice.length) {
+      return { start: segStart, end: segEnd };
+    }
+    return {
+      start: Number(slice[0].start),
+      end: Number(slice[slice.length - 1].end)
+    };
+  }
+
+  function enforceHardCaps(specs, words, maxWords, maxChars, minWords) {
+    const out = [];
+    const minW = Math.max(1, Math.min(maxWords, Number(minWords) || 1));
+    for (const spec of specs) {
+      let cursor = spec.tokenStart;
+      const end = spec.tokenEnd;
+      while (cursor <= end) {
+        let chunkEnd = Math.min(end, cursor + maxWords - 1);
+        while (chunkEnd > cursor && visibleCharCount(words.slice(cursor, chunkEnd + 1).join(' ')) > maxChars) {
+          chunkEnd -= 1;
+        }
+        if (chunkEnd < cursor) chunkEnd = cursor;
+        if (minW >= 2 && chunkEnd < end && chunkEnd - cursor + 1 < minW) {
+          const extended = Math.min(end, cursor + minW - 1, cursor + maxWords - 1);
+          const extText = words.slice(cursor, extended + 1).join(' ');
+          if (visibleCharCount(extText) <= maxChars) {
+            chunkEnd = extended;
+          }
+        }
+        out.push({
+          tokenStart: cursor,
+          tokenEnd: chunkEnd,
+          boundaryReason: spec.boundaryReason || 'hard_cap'
+        });
+        cursor = chunkEnd + 1;
+      }
+    }
+    return out;
+  }
+
+  function mergeOrphanSingleWordSpecs(specs, words, maxWords, maxChars) {
+    if (!Array.isArray(specs) || specs.length < 2) return specs;
+    const out = specs.map(function (s) {
+      return { ...s };
+    });
+
+    for (let i = 0; i < out.length - 1; i++) {
+      const spec = out[i];
+      const wc = spec.tokenEnd - spec.tokenStart + 1;
+      if (wc !== 1) continue;
+      const next = out[i + 1];
+      const nextWc = next.tokenEnd - next.tokenStart + 1;
+      const mergedLen = wc + nextWc;
+      const mergedText = words.slice(spec.tokenStart, next.tokenEnd + 1).join(' ');
+      if (mergedLen <= maxWords && visibleCharCount(mergedText) <= maxChars) {
+        next.tokenStart = spec.tokenStart;
+        out.splice(i, 1);
+        i -= 1;
+        continue;
+      }
+      if (nextWc >= 2) {
+        const peelEnd = next.tokenStart;
+        const pairText = words.slice(spec.tokenStart, peelEnd + 1).join(' ');
+        if (visibleCharCount(pairText) <= maxChars) {
+          out[i] = { ...spec, tokenEnd: peelEnd, boundaryReason: 'orphan_peel_forward' };
+          next.tokenStart = peelEnd + 1;
+          if (next.tokenStart > next.tokenEnd) {
+            out.splice(i + 1, 1);
+          }
+          i -= 1;
+        }
+      }
+    }
+
+    for (let i = 1; i < out.length; i++) {
+      const spec = out[i];
+      const wc = spec.tokenEnd - spec.tokenStart + 1;
+      if (wc !== 1) continue;
+      const prev = out[i - 1];
+      const mergedLen = prev.tokenEnd - prev.tokenStart + 1 + 1;
+      const mergedText = words.slice(prev.tokenStart, spec.tokenEnd + 1).join(' ');
+      if (mergedLen <= maxWords && visibleCharCount(mergedText) <= maxChars) {
+        prev.tokenEnd = spec.tokenEnd;
+        out.splice(i, 1);
+        i -= 1;
+      }
+    }
+
+    if (out.length >= 2) {
+      const last = out[out.length - 1];
+      const lastWc = last.tokenEnd - last.tokenStart + 1;
+      if (lastWc === 1) {
+        const prev = out[out.length - 2];
+        const prevWc = prev.tokenEnd - prev.tokenStart + 1;
+        const mergedLen = prevWc + 1;
+        const mergedText = words.slice(prev.tokenStart, last.tokenEnd + 1).join(' ');
+        const mergedChars = visibleCharCount(mergedText);
+        if (mergedLen <= maxWords && mergedChars <= maxChars) {
+          prev.tokenEnd = last.tokenEnd;
+          out.pop();
+        } else if (
+          mergedLen === maxWords + 1 &&
+          mergedChars <= maxChars + 8 &&
+          /[.!?…]["']?$/i.test(words[last.tokenEnd] || '')
+        ) {
+          prev.tokenEnd = last.tokenEnd;
+          out.pop();
+        } else if (prevWc >= 2) {
+          const peelIdx = prev.tokenEnd;
+          const pairText = words.slice(peelIdx - 1, last.tokenEnd + 1).join(' ');
+          if (visibleCharCount(pairText) <= maxChars && peelIdx > prev.tokenStart) {
+            prev.tokenEnd = peelIdx - 1;
+            last.tokenStart = peelIdx - 1;
+            last.boundaryReason = 'orphan_peel_back';
+          }
+        }
+      }
+    }
+
+    return out;
+  }
+
+  function findPauseSplitIndices(timeline) {
+    const indices = [];
+    for (let i = 0; i < timeline.length - 1; i++) {
+      const gap = Number(timeline[i + 1].start) - Number(timeline[i].end);
+      if (gap >= PAUSE_GAP_SEC) indices.push(i);
+    }
+    return indices;
+  }
+
+  function polishMasterCueTimeline(cues) {
+    const sorted = (cues || [])
+      .filter(function (c) {
+        return c && Number(c.end) > Number(c.start);
+      })
+      .map(function (c) {
+        return { ...c };
+      })
+      .sort(function (a, b) {
+        return Number(a.start) - Number(b.start);
+      });
+
+    for (let i = 0; i < sorted.length; i++) {
+      const cue = sorted[i];
+      const speechStart = Number(cue.start);
+      const speechEnd = Number(cue.end);
+      let start = speechStart + BURN_ONSET_DELAY_SEC;
+      let end = speechEnd + BURN_TAIL_PAD_SEC;
+      if (i + 1 < sorted.length) {
+        const nextSpeechStart = Number(sorted[i + 1].start);
+        const nextVisibleStart = nextSpeechStart + BURN_ONSET_DELAY_SEC;
+        end = Math.min(end, nextVisibleStart - BURN_INTER_CUE_GAP_SEC);
+      }
+      if (end <= start) end = start + BURN_MIN_CUE_SEC;
+      cue.start = roundTimelineSec(Math.max(0, start));
+      cue.end = roundTimelineSec(end);
+    }
+    return sorted;
   }
 
   function isProtectedToken(word, prevWord) {
@@ -241,64 +439,120 @@
     return false;
   }
 
-  function segmentSegmentToMasterCues(segment) {
+  function segmentSegmentToMasterCues(segment, opts) {
+    const maxWords = Math.max(1, Number((opts && opts.maxWords) || SHORT_FORM_MAX_WORDS));
+    const maxChars = Math.max(10, Number((opts && opts.maxChars) || SHORT_FORM_MAX_CHARS));
+    const minWords = Math.max(1, Number((opts && opts.minWords) || 1));
     const text = normalizeCueText(segment.text);
     if (!text) return [];
     const words = cueWords(text);
     if (!words.length) return [];
     const segStart = Number(segment.start);
     const segEnd = Number(segment.end);
-    const dur = Math.max(0.08 * words.length, segEnd - segStart);
-    const per = dur / words.length;
-    const timeline = words.map(function (word, i) {
-      const start = segStart + i * per;
-      const end = Math.min(segEnd, Math.max(start + 0.06, segStart + (i + 1) * per));
-      return { word: word, start: start, end: end };
-    });
+    const timeline = buildWordTimeline(segment, words);
 
     const specs = [];
-    var bucketStart = 0;
-    for (var i = 0; i < words.length; i++) {
-      var token = words[i];
-      var chunkLen = i - bucketStart + 1;
-      var chunkText = words.slice(bucketStart, i + 1).join(' ');
-      var hitPunctStrong = /[.!?…]["']?$/.test(token);
-      var hitPunctSoft = /[,;:]["']?$/.test(token) && chunkLen >= 2;
-      var hitMaxWords = chunkLen >= SHORT_FORM_MAX_WORDS;
-      var hitMaxChars = chunkText.length > SHORT_FORM_MAX_CHARS;
-      var atEnd = i === words.length - 1;
+    let bucketStart = 0;
+    for (let i = 0; i < words.length; i++) {
+      const token = words[i];
+      const chunkLen = i - bucketStart + 1;
+      const chunkText = words.slice(bucketStart, i + 1).join(' ');
+      const hitPunctStrong = /[.!?…]["']?$/.test(token);
+      const hitPunctSoft = /[,;:]["']?$/.test(token) && chunkLen >= 2;
+      const hitMaxWords = chunkLen >= maxWords;
+      const hitMaxChars = visibleCharCount(chunkText) >= maxChars;
+      const atEnd = i === words.length - 1;
       if (hitPunctStrong || hitPunctSoft || hitMaxWords || hitMaxChars || atEnd) {
-        var splitAt = i;
+        let splitAt = i;
         if ((hitMaxWords || hitMaxChars) && !hitPunctStrong && !hitPunctSoft && chunkLen > 1) {
           while (splitAt > bucketStart && isProtectedBoundary(words, splitAt - 1)) {
             splitAt -= 1;
           }
         }
-        specs.push({ tokenStart: bucketStart, tokenEnd: splitAt });
+        specs.push({
+          tokenStart: bucketStart,
+          tokenEnd: splitAt,
+          boundaryReason: hitPunctStrong
+            ? 'punctuation'
+            : hitPunctSoft
+              ? 'punctuation_soft'
+              : hitMaxWords
+                ? 'max_words'
+                : hitMaxChars
+                  ? 'max_chars'
+                  : 'segment_end'
+        });
         bucketStart = splitAt + 1;
         i = splitAt;
       }
     }
 
-    return specs.map(function (spec) {
-      var slice = timeline.slice(spec.tokenStart, spec.tokenEnd + 1);
-      var start = slice.length ? slice[0].start : segStart;
-      var end = slice.length ? slice[slice.length - 1].end : segEnd;
+    const pauseIndices = findPauseSplitIndices(timeline);
+    const refined = [];
+    for (const spec of specs) {
+      const internalPauses = pauseIndices.filter(function (idx) {
+        return idx >= spec.tokenStart && idx < spec.tokenEnd;
+      });
+      if (!internalPauses.length) {
+        refined.push(spec);
+        continue;
+      }
+      let curStart = spec.tokenStart;
+      for (const pauseIdx of internalPauses) {
+        if (pauseIdx < curStart) continue;
+        if (pauseIdx - curStart + 1 < 2) continue;
+        if (isProtectedBoundary(words, pauseIdx)) continue;
+        refined.push({
+          tokenStart: curStart,
+          tokenEnd: pauseIdx,
+          boundaryReason: 'speech_pause'
+        });
+        curStart = pauseIdx + 1;
+      }
+      if (curStart <= spec.tokenEnd) {
+        refined.push({
+          tokenStart: curStart,
+          tokenEnd: spec.tokenEnd,
+          boundaryReason: spec.boundaryReason
+        });
+      }
+    }
+
+    const capped = enforceHardCaps(refined.length ? refined : specs, words, maxWords, maxChars, minWords);
+    const partitionSpecs = mergeOrphanSingleWordSpecs(capped, words, maxWords, maxChars);
+    if (!partitionSpecs.length && words.length) {
+      partitionSpecs.push({
+        tokenStart: 0,
+        tokenEnd: words.length - 1,
+        boundaryReason: 'fallback_single_cue'
+      });
+    }
+
+    return partitionSpecs.map(function (spec) {
+      const timing = cueTimingFromWordRange(
+        timeline,
+        spec.tokenStart,
+        spec.tokenEnd,
+        segStart,
+        segEnd
+      );
+      const start = timing.start;
+      const end = Math.max(start + MIN_CUE_DURATION_SEC, timing.end);
       return {
         start: roundTimelineSec(start),
-        end: roundTimelineSec(Math.max(start + MIN_CUE_DURATION_SEC, end)),
+        end: roundTimelineSec(end),
         text: words.slice(spec.tokenStart, spec.tokenEnd + 1).join(' ')
       };
     });
   }
 
-  function segmentShortFormMasterCues(segments) {
+  function segmentShortFormMasterCues(segments, opts) {
     const out = [];
     for (const seg of segments || []) {
       if (!seg || seg.end <= seg.start) continue;
-      const pieces = segmentSegmentToMasterCues(seg);
+      const pieces = segmentSegmentToMasterCues(seg, opts);
       for (const piece of pieces) {
-        if (piece.text) {
+        if (piece.text && piece.end > piece.start) {
           out.push({
             id: 'master-' + out.length,
             start: piece.start,
@@ -310,6 +564,55 @@
       }
     }
     return out;
+  }
+
+  function readSourceSegmentsForBurn() {
+    const decode = decodeSubtitleTextEntities;
+    const raw =
+      (global.CutupSubtitleVersions?.getActiveSegments?.() || []).length
+        ? global.CutupSubtitleVersions.getActiveSegments()
+        : global.cutupSourceSegments ||
+            global.originalSrtSegments ||
+            global.cutupLastTranscription?.segments ||
+            [];
+    return (raw || [])
+      .map(function (s) {
+        const text = decode ? decode(String(s.text || '')) : String(s.text || '').trim();
+        const seg = {
+          start: Number(s.start),
+          end: Number(s.end),
+          text: text
+        };
+        if (Array.isArray(s.words)) seg.words = s.words;
+        return seg;
+      })
+      .filter(function (s) {
+        return s.text && Number.isFinite(s.start) && Number.isFinite(s.end) && s.end > s.start;
+      });
+  }
+
+  function getMasterBurnCues() {
+    const normalized = normalizePostProcessedForCleanSrtClient(readSourceSegmentsForBurn());
+    const aspect = global.CutupTextLayout?.detectPreviewAspect?.() || 'horizontal';
+    const segOpts =
+      aspect === 'vertical'
+        ? { maxWords: 5, maxChars: 18, minWords: 2 }
+        : { maxWords: SHORT_FORM_MAX_WORDS, maxChars: SHORT_FORM_MAX_CHARS, minWords: 1 };
+    let cues = segmentShortFormMasterCues(normalized, segOpts);
+    assertClientWordIntegrity(normalized, cues);
+    cues = polishMasterCueTimeline(cues);
+    if (aspect === 'vertical' && global.CutupTextLayout?.chunkSegmentsForVerticalShorts) {
+      cues = global.CutupTextLayout.chunkSegmentsForVerticalShorts(cues, segOpts) || cues;
+    }
+    return cues.map(function (c, i) {
+      return {
+        id: c.id || 'master-' + i,
+        start: c.start,
+        end: c.end,
+        text: c.text,
+        locked: true
+      };
+    });
   }
 
   function stripNonSpeechForCleanSrt(text) {
@@ -363,10 +666,23 @@
   }
 
   function prepareAccurate(segments) {
+    return getMasterBurnCuesFromSegments(segments);
+  }
+
+  function getMasterBurnCuesFromSegments(segments) {
     const normalized = normalizePostProcessedForCleanSrtClient(segments);
-    const split = segmentShortFormMasterCues(normalized);
-    assertClientWordIntegrity(normalized, split);
-    return split;
+    const aspect = global.CutupTextLayout?.detectPreviewAspect?.() || 'horizontal';
+    const segOpts =
+      aspect === 'vertical'
+        ? { maxWords: 5, maxChars: 18, minWords: 2 }
+        : { maxWords: SHORT_FORM_MAX_WORDS, maxChars: SHORT_FORM_MAX_CHARS, minWords: 1 };
+    let cues = segmentShortFormMasterCues(normalized, segOpts);
+    assertClientWordIntegrity(normalized, cues);
+    cues = polishMasterCueTimeline(cues);
+    if (aspect === 'vertical' && global.CutupTextLayout?.chunkSegmentsForVerticalShorts) {
+      cues = global.CutupTextLayout.chunkSegmentsForVerticalShorts(cues, segOpts) || cues;
+    }
+    return cues;
   }
 
   function prepareClean(segments) {
@@ -433,6 +749,8 @@
     prepareSegmentsForMode,
     prepareAccurate,
     segmentShortFormMasterCues,
+    getMasterBurnCues,
+    polishMasterCueTimeline,
     decodeSubtitleTextEntities,
     normalizeTimelineSegments,
     mergeRollingCaptionChains,

@@ -24,27 +24,25 @@
     global.cutupSelectedPresetId = presetId;
 
     let segments = [];
-    if (global.CutupSubtitleVersions?.getActiveSegments) {
+    if (global.CutupSubtitleClean?.getMasterBurnCues) {
+      try {
+        segments = global.CutupSubtitleClean.getMasterBurnCues();
+      } catch (err) {
+        console.warn('[subtitle-styles] master burn cues unavailable:', err?.message || err);
+      }
+    }
+    if (!segments.length && global.CutupSubtitleVersions?.getActiveSegments) {
       const active = global.CutupSubtitleVersions.getActiveSegments();
       if (active.length) segments = active;
     }
     if (!segments.length && Array.isArray(global.cutupSourceSegments) && global.cutupSourceSegments.length) {
       segments = global.cutupSourceSegments;
-    } else if (Array.isArray(global.cutupLastTranscription?.segments) && global.cutupLastTranscription.segments.length) {
+    } else if (!segments.length && Array.isArray(global.cutupLastTranscription?.segments) && global.cutupLastTranscription.segments.length) {
       segments = global.cutupLastTranscription.segments;
-    } else if (typeof global.getStoredSrtContent === 'function') {
+    } else if (!segments.length && typeof global.getStoredSrtContent === 'function') {
       segments = getSegmentsFromSrt(global.getStoredSrtContent());
-    } else if (global.currentSrtContent) {
+    } else if (!segments.length && global.currentSrtContent) {
       segments = getSegmentsFromSrt(global.currentSrtContent);
-    }
-
-    if (global.CutupSubtitleClean?.clean) {
-      segments = segments
-        .map((s) => ({
-          ...s,
-          text: global.CutupSubtitleClean.clean(String(s.text || ''))
-        }))
-        .filter((s) => s.text && s.end > s.start);
     }
 
     global.CutupStyleRenderer.render(stage, segments, presetId);

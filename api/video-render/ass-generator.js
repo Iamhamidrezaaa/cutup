@@ -215,7 +215,7 @@ function buildInlineEmphasis(token, preset, { wordIndex = 0, segmentIndex = 0 } 
   if (handler === 'neon' && token.spoken) {
     const palette = preset.emphasis?.neonColors || ['&H00FFFF00&', '&H00FF00FF&'];
     const color = palette[segmentIndex % palette.length];
-    return `{\\c${color}\\b1\\blur3\\3c${color}}${text}{\\r}`;
+    return `{\\3c&H00000000&\\bord2\\shad0\\c${color}\\b1\\blur3}${text}{\\r}`;
   }
 
   if (handler === 'minimal' || handler === 'luxury') {

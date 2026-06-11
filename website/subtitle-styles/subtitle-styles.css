@@ -326,7 +326,8 @@
 [data-preset='tiktok-neon'] .cutup-em--neon,
 [data-preset='tiktok-neon'] .cutup-word--spoken {
   color: var(--cutup-neon, #00ffff);
-  -webkit-text-stroke: 1px var(--cutup-neon, #00ffff);
+  -webkit-text-stroke: 1.5px #000;
+  paint-order: stroke fill;
   text-shadow:
     0 0 8px var(--cutup-neon, #00ffff),
     0 0 20px var(--cutup-neon, #00ffff),

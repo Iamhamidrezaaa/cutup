@@ -168,32 +168,12 @@
   }
 
   /**
-   * Export burn source: clean SRT the site generates (same as "View clean SRT" / download).
+   * Export burn source — same master cues as Clean SRT download (single pipeline).
    */
   function getCleanSrtSegmentsForExport() {
-    if (typeof global.buildCleanSrtFromSource !== 'function' || typeof global.parseSRTToSegments !== 'function') {
-      return { segments: [], source: 'none' };
-    }
-    const cleanSrt = global.buildCleanSrtFromSource();
-    if (!cleanSrt) return { segments: [], source: 'empty' };
-    const parsed = global.parseSRTToSegments(cleanSrt);
-    if (!parsed.length) return { segments: [], source: 'parse_failed' };
-    const stripTags = (text) =>
-      String(text || '')
-        .replace(/\[(?:music|applause|laughter|inaudible|crowd cheering)\]\s*/gi, ' ')
-        .replace(/\s{2,}/g, ' ')
-        .trim();
-
-    return {
-      segments: parsed.map((s, i) => ({
-        id: `master-${i}`,
-        start: Number(s.start),
-        end: Number(s.end),
-        text: stripTags(s.text),
-        locked: true
-      })),
-      source: 'clean-srt'
-    };
+    const segments = global.CutupSubtitleClean?.getMasterBurnCues?.() || [];
+    if (!segments.length) return { segments: [], source: 'empty' };
+    return { segments, source: 'master-burn-cues' };
   }
 
   function buildFreshExportDocument(presetId) {
@@ -221,23 +201,21 @@
     const exportDoc = buildFreshExportDocument(presetId);
     if (exportDoc?.format === 'cutup-style-v1' && exportDoc.cues?.length) {
       global.cutupStyleExportDoc = exportDoc;
-      const ordered = [...exportDoc.cues].sort((a, b) => Number(a.start) - Number(b.start));
-      const payload = {
-        exportDoc,
-        segments: segmentsFromExportDoc(exportDoc),
-        presetId,
-        exportMeta: {
-          segmentSource: source,
-          videoId: global.cutupLastTranscription?.videoId || null,
-          activeVersion: getSelectedVersionKey(),
-          cueCount: exportDoc.cues.length,
-          firstCueText: String(ordered[0]?.text || '').slice(0, 80),
-          firstCueStart: Number(ordered[0]?.start)
-        }
-      };
-      return payload;
     }
-    return { segments, presetId, exportMeta: { segmentSource: source } };
+    const ordered = [...segments].sort((a, b) => Number(a.start) - Number(b.start));
+    return {
+      exportDoc: exportDoc?.cues?.length ? exportDoc : null,
+      segments,
+      presetId,
+      exportMeta: {
+        segmentSource: source,
+        videoId: global.cutupLastTranscription?.videoId || null,
+        activeVersion: getSelectedVersionKey(),
+        cueCount: segments.length,
+        firstCueText: String(ordered[0]?.text || '').slice(0, 80),
+        firstCueStart: Number(ordered[0]?.start)
+      }
+    };
   }
 
   function resolveSourceUrl() {
