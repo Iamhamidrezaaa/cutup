@@ -4,6 +4,7 @@ import { expandCueVisualChunks } from './subtitle-pipeline.js';
 import { isRtlText } from './rtl-text.js';
 import {
   resolveFittedFontSize,
+  resolveFittedFontSizeForLines,
   splitWordsByCharBudget,
   cueNeedsVerticalSplit
 } from './subtitle-width-fit.js';
@@ -42,6 +43,17 @@ test('resolveFittedFontSize shrinks font when line is too wide', () => {
   const fs = resolveFittedFontSize('THIS KID WAS TAKING PART IN A CHALLENGE', 76, 520, 32);
   assert.ok(fs < 76);
   assert.ok(fs >= 32);
+});
+
+test('resolveFittedFontSizeForLines uses widest row not average', () => {
+  const shortLong = resolveFittedFontSizeForLines(
+    ['OK', 'CHALLENGE DEADLIFTING VIDEOS'],
+    76,
+    520,
+    32
+  );
+  const joined = resolveFittedFontSize('OK CHALLENGE DEADLIFTING VIDEOS', 76, 520, 32);
+  assert.ok(shortLong <= joined);
 });
 
 test('expandCueVisualChunks does not split RTL cues on vertical overflow', () => {

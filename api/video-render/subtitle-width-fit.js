@@ -39,6 +39,26 @@ export function resolveFittedFontSize(text, baseFontSize, maxWidthPx, minFontSiz
   return fs;
 }
 
+/** Fit font to the widest individual line (multiline cues must not overflow per row). */
+export function resolveFittedFontSizeForLines(lines, baseFontSize, maxWidthPx, minFontSize = 32) {
+  const list = (Array.isArray(lines) ? lines : [lines])
+    .map((l) => String(l || '').trim())
+    .filter(Boolean);
+  if (!list.length) return resolveFittedFontSize('', baseFontSize, maxWidthPx, minFontSize);
+  const baseFs = Math.round(Number(baseFontSize) || 48);
+  let widest = list[0];
+  let maxUnits = 0;
+  for (const line of list) {
+    let units = 0;
+    for (const ch of line) units += charWidthUnits(ch);
+    if (units > maxUnits) {
+      maxUnits = units;
+      widest = line;
+    }
+  }
+  return resolveFittedFontSize(widest, baseFontSize, maxWidthPx, minFontSize);
+}
+
 /**
  * Char budget for sequential visual chunks on 9:16 (one line per chunk).
  */

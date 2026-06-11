@@ -35,8 +35,8 @@
     if (aspect !== 'vertical') return out;
     out.mode = 'stack';
     out.wordsPerLineMin = Math.min(2, Number(out.wordsPerLineMin) || 2);
-    out.wordsPerLineMax = Math.min(4, Number(out.wordsPerLineMax) || 4);
-    out.maxCharsPerLine = Math.min(18, Number(out.maxCharsPerLine) || 18);
+    out.wordsPerLineMax = Math.min(3, Number(out.wordsPerLineMax) || 3);
+    out.maxCharsPerLine = Math.min(15, Number(out.maxCharsPerLine) || 15);
     out.maxLines = 2;
     out.maxWidth = '78%';
     return out;

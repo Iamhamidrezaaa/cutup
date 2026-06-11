@@ -49,6 +49,7 @@ import {
 import {
   maxSubtitleBandWidthPx,
   resolveFittedFontSize,
+  resolveFittedFontSizeForLines,
   resolveVerticalChunkCharBudget
 } from './subtitle-width-fit.js';
 import { isTimingForensicEnabled, logTimingForensics } from './timing-forensics.js';
@@ -202,7 +203,8 @@ function buildInlineEmphasis(token, preset, { wordIndex = 0, segmentIndex = 0 } 
 
   if (handler === 'hormozi' && token.spoken) {
     const color = preset.emphasis?.highlightColor || '&H0000E5FF&';
-    return `{\\c${color}}${text}{\\r}`;
+    const primary = preset.primaryColor || '&H00FFFFFF&';
+    return `{\\c${color}}${text}{\\c${primary}}`;
   }
 
   if (handler === 'neon' && token.spoken) {
@@ -251,6 +253,29 @@ function collapseToSingleAssLine(lines, fallbackText = '') {
   }
   if (flat.length === 1) return flat;
   return [flat.join(' ').replace(/\s+/g, ' ').trim()];
+}
+
+function applyVerticalVisualChunking(visibleCues, layout, playResX) {
+  if (!layout?.isVertical || !Array.isArray(visibleCues) || !visibleCues.length) {
+    return visibleCues;
+  }
+  const verticalChunkChars = resolveVerticalChunkCharBudget(
+    playResX,
+    layout.marginL,
+    layout.marginR,
+    layout.fontSize
+  );
+  return clipOverlappingCueRenderEnds(
+    expandCueVisualChunks(visibleCues, {
+      isVertical: true,
+      maxWordsPerChunk: 3,
+      minWordsToSplit: 3,
+      minChunkSec: 0.34,
+      minDurToSplitSec: 0.42,
+      maxCharsPerChunk: verticalChunkChars,
+      forceSplitOverflow: true
+    })
+  );
 }
 
 function resolveLtrAssDisplayLines(lines, fallbackText = '', isVertical = false) {
@@ -485,7 +510,11 @@ export function generateAssContent(segments, presetId, dims = {}) {
       }))
     );
   } else {
-    masterCues = buildMasterCleanSrtFromSegments(finalOnlySegments, { shortForm: true });
+    masterCues = buildMasterCleanSrtFromSegments(finalOnlySegments, {
+      shortForm: true,
+      maxWords: requestedIsVertical ? 4 : undefined,
+      maxChars: requestedIsVertical ? 20 : undefined
+    });
   }
 
   const useMasterLockedPipeline = true;
@@ -612,20 +641,20 @@ export function generateAssContent(segments, presetId, dims = {}) {
               videoDurationSec: durationSec || 0
             });
 
-    const verticalChunkChars = layout.isVertical
-      ? resolveVerticalChunkCharBudget(playResX, layout.marginL, layout.marginR, layout.fontSize)
-      : 0;
     if (strictCleanSrtTimings || burnFromPreviewCues) {
-      visibleCues = expandCueVisualChunks(visibleCues, {
-        isVertical: layout.isVertical,
-        maxWordsPerChunk: layout.isVertical ? 4 : 5,
-        minWordsToSplit: layout.isVertical ? 4 : 6,
-        minChunkSec: 0.38,
-        minDurToSplitSec: layout.isVertical ? 0.5 : 2.2,
-        maxCharsPerChunk: verticalChunkChars,
-        forceSplitOverflow: layout.isVertical
-      });
-      visibleCues = clipOverlappingCueRenderEnds(visibleCues);
+      visibleCues = layout.isVertical
+        ? applyVerticalVisualChunking(visibleCues, layout, playResX)
+        : clipOverlappingCueRenderEnds(
+            expandCueVisualChunks(visibleCues, {
+              isVertical: false,
+              maxWordsPerChunk: 5,
+              minWordsToSplit: 6,
+              minChunkSec: 0.38,
+              minDurToSplitSec: 2.2,
+              maxCharsPerChunk: 0,
+              forceSplitOverflow: false
+            })
+          );
     }
   }
 
@@ -886,10 +915,9 @@ export function generateAssContent(segments, presetId, dims = {}) {
       forensicAfterLinesToAssText.push({ id: cueKey, text: bodyResult.text });
     }
 
-    const linePlain = assLines.join(' ');
     const maxBand = maxSubtitleBandWidthPx(playResX, layout.marginL, layout.marginR);
     const minFs = layout.isVertical ? Math.max(28, Math.round(34 * (playResY / 1920))) : layout.fontSize;
-    const fittedFs = resolveFittedFontSize(linePlain, layout.fontSize, maxBand, minFs);
+    const fittedFs = resolveFittedFontSizeForLines(assLines, layout.fontSize, maxBand, minFs);
     const fsPrefix =
       !cueRtl && fittedFs < layout.fontSize ? `{\\fs${fittedFs}}` : '';
 
