@@ -6,6 +6,7 @@ import { getPool, isBillingDbConfigured } from './db/pool.js';
 import { getPlanDef, resolvePlanKey } from './plans-config.js';
 import { getAdminOverviewDb, ensureSubscriptionsSchema } from './billing-repository.js';
 import { ensureAuditEventsTable } from './audit-repository.js';
+import { tableExists } from './admin-db-safe.js';
 
 const CACHE_TTL_MS = 60_000;
 const OPENAI_EUR_PER_MINUTE = 0.0055;
@@ -79,6 +80,15 @@ function dateWhere(col, from, to, params) {
     parts.push(`${col} <= $${params.length}::timestamptz`);
   }
   return parts.length ? parts.join(' AND ') : 'TRUE';
+}
+
+async function queryLifetimeRevenue(pool) {
+  const r = await pool.query(
+    `SELECT COALESCE(SUM(${PAYMENT_AMOUNT_EXPR}), 0)::numeric AS revenue
+     FROM payments p
+     WHERE p.status = 'success'`
+  );
+  return Number(r.rows[0]?.revenue || 0);
 }
 
 async function queryRevenueMetrics(pool, from, to) {
@@ -354,18 +364,34 @@ async function queryAiUsage(pool, from, to) {
   );
   const activeUsers = Number(usersRes.rows[0]?.c || 0);
   const lenParams = [];
-  const wLen = dateWhere('created_at', from, to, lenParams);
+  const wLen = dateWhere('h.created_at', from, to, lenParams);
   const lenRes = await pool.query(
-    `SELECT COALESCE(AVG(LENGTH(content)), 0)::float AS avg_len
-     FROM saved_outputs
-     WHERE ${wLen}`,
+    `SELECT COALESCE(
+       AVG(NULLIF((h.metadata->>'textLength')::int, 0)),
+       AVG(NULLIF((h.metadata->>'charCount')::int, 0)),
+       0
+     )::float AS avg_len
+     FROM usage_history h
+     WHERE h.type = 'transcription' AND ${wLen}`,
     lenParams
   );
+  let avgTranscriptLength = Math.round(Number(lenRes.rows[0]?.avg_len || 0));
+  if (!avgTranscriptLength) {
+    const savedLenParams = [];
+    const wSavedLen = dateWhere('created_at', from, to, savedLenParams);
+    const savedLenRes = await pool.query(
+      `SELECT COALESCE(AVG(LENGTH(content)), 0)::float AS avg_len
+       FROM saved_outputs
+       WHERE LOWER(type) IN ('transcript', 'transcription', 'text') AND ${wSavedLen}`,
+      savedLenParams
+    );
+    avgTranscriptLength = Math.round(Number(savedLenRes.rows[0]?.avg_len || 0));
+  }
   return {
     totalMinutes,
     estimatedCostEur: Math.round(totalMinutes * OPENAI_EUR_PER_MINUTE * 100) / 100,
     avgProcessingMinutes: Math.round(Number(row.avg_duration || 0) * 10) / 10,
-    avgTranscriptLength: Math.round(Number(lenRes.rows[0]?.avg_len || 0)),
+    avgTranscriptLength,
     translationUsage: Number(row.translations || 0),
     summaryUsage: Number(row.summaries || 0),
     costPerUser:
@@ -383,12 +409,29 @@ async function queryStorage(pool, from, to) {
     params
   );
   const byType = Object.fromEntries(countsRes.rows.map((r) => [r.type, Number(r.count || 0)]));
-  const downloadsRes = await pool.query(
-    `SELECT
-       COALESCE(SUM(audio_downloads), 0)::int AS audio,
-       COALESCE(SUM(video_downloads), 0)::int AS video
-     FROM usage`
+  const usageParams = [];
+  const wUsage = dateWhere('created_at', from, to, usageParams);
+  const usageTypeRes = await pool.query(
+    `SELECT type, COUNT(*)::int AS count
+     FROM usage_history
+     WHERE ${wUsage} AND type IN ('srt', 'mp4_export')
+     GROUP BY type`,
+    usageParams
   );
+  const usageByType = Object.fromEntries(usageTypeRes.rows.map((r) => [r.type, Number(r.count || 0)]));
+  let mp4Exports =
+    Number(byType.mp4 || 0) + Number(usageByType.mp4_export || 0);
+  if (await tableExists(pool, 'project_exports')) {
+    const mp4Params = [];
+    const wMp4 = dateWhere('COALESCE(e.completed_at, e.created_at)', from, to, mp4Params);
+    const mp4Res = await pool.query(
+      `SELECT COUNT(*)::int AS c
+       FROM project_exports e
+       WHERE e.status = 'completed' AND ${wMp4}`,
+      mp4Params
+    );
+    mp4Exports = Math.max(mp4Exports, Number(mp4Res.rows[0]?.c || 0));
+  }
   const sizeParams = [];
   const wSize = dateWhere('created_at', from, to, sizeParams);
   const sizeRes = await pool.query(
@@ -398,12 +441,11 @@ async function queryStorage(pool, from, to) {
   return {
     savedTranscripts: Number(byType.transcript || byType.transcription || 0) + Number(byType.text || 0),
     summaries: Number(byType.summary || byType.summarization || 0),
-    srtExports: Number(byType.srt || 0),
+    srtExports: Number(byType.srt || 0) + Number(usageByType.srt || 0),
+    mp4Exports,
     docxExports: Number(byType.docx || 0),
     txtExports: Number(byType.txt || 0),
-    totalSaved: countsRes.rows.reduce((s, r) => s + Number(r.count || 0), 0),
-    audioDownloads: Number(downloadsRes.rows[0]?.audio || 0),
-    videoDownloads: Number(downloadsRes.rows[0]?.video || 0),
+    totalSaved: countsRes.rows.reduce((s, r) => s + Number(r.count || 0), 0) + mp4Exports,
     storageBytes: Number(sizeRes.rows[0]?.bytes || 0)
   };
 }
@@ -494,7 +536,7 @@ async function queryCostVsRevenueTimeline(pool, from, to) {
 
 async function queryLiveMetrics(pool) {
   let onlineUsers = 0;
-  let failedJobs = 0;
+  let errors24h = 0;
   try {
     await ensureAuditEventsTable();
     const online = await pool.query(
@@ -506,20 +548,29 @@ async function queryLiveMetrics(pool) {
       `SELECT COUNT(*)::int AS c FROM audit_events
        WHERE created_at >= NOW() - INTERVAL '24 hours' AND event_type = 'error'`
     );
-    failedJobs = Number(err.rows[0]?.c || 0);
+    errors24h = Number(err.rows[0]?.c || 0);
   } catch (_e) {
     /* audit optional */
   }
-  const pendingPay = await pool.query(
-    `SELECT COUNT(*)::int AS c FROM payments WHERE status IN ('pending', 'failed') AND created_at >= NOW() - INTERVAL '24 hours'`
-  );
-  const queueRes = await pool.query(
+  const pendingAllRes = await pool.query(
     `SELECT COUNT(*)::int AS c FROM payments WHERE status = 'pending'`
+  );
+  const pending24hRes = await pool.query(
+    `SELECT COUNT(*)::int AS c FROM payments
+     WHERE status = 'pending' AND created_at >= NOW() - INTERVAL '24 hours'`
+  );
+  const failedPay24hRes = await pool.query(
+    `SELECT COUNT(*)::int AS c FROM payments
+     WHERE status = 'failed' AND created_at >= NOW() - INTERVAL '24 hours'`
   );
   return {
     onlineUsers,
-    activeJobsInQueue: Number(queueRes.rows[0]?.c || 0),
-    failedJobs: failedJobs + Number(pendingPay.rows[0]?.c || 0),
+    pendingPayments: Number(pendingAllRes.rows[0]?.c || 0),
+    pendingPayments24h: Number(pending24hRes.rows[0]?.c || 0),
+    failedPayments24h: Number(failedPay24hRes.rows[0]?.c || 0),
+    errors24h,
+    activeJobsInQueue: Number(pendingAllRes.rows[0]?.c || 0),
+    failedJobs: errors24h,
     avgResponseTimeMs: null
   };
 }
@@ -716,6 +767,21 @@ function buildInsights(data) {
       text: 'Average AI cost per active user is elevated — review usage patterns.'
     });
   }
+  if (
+    Number(data.revenue?.total || 0) === 0 &&
+    Number(data.revenue?.lifetime || 0) > 0 &&
+    Number(data.revenue?.mrr || 0) > 0
+  ) {
+    insights.push({
+      tone: 'neutral',
+      text: `No payments in this period, but lifetime revenue is €${Number(data.revenue.lifetime).toFixed(2)} and MRR reflects ${data.subscriptions?.active || 0} active paid plan(s).`
+    });
+  } else if (Number(data.revenue?.total || 0) === 0 && Number(data.revenue?.mrr || 0) > 0) {
+    insights.push({
+      tone: 'neutral',
+      text: 'MRR is an estimate from active plan prices — period revenue only counts successful payments in the selected window.'
+    });
+  }
   if (!insights.length) {
     insights.push({
       tone: 'neutral',
@@ -730,7 +796,7 @@ async function computeDashboard(periodKey) {
   const empty = {
     period: period.key,
     range: { from: period.from?.toISOString() || null, to: period.to.toISOString() },
-    revenue: { total: 0, mrr: 0, growthPct: null, byPlan: [], timeline: [] },
+    revenue: { total: 0, lifetime: 0, mrr: 0, growthPct: null, byPlan: [], timeline: [] },
     subscriptions: { active: 0, trial: 0, expired: 0, churnRate: 0, upgradeDowngradeRatio: 0 },
     users: { newUsers: 0, dau: 0, wau: 0, mau: 0, returningPct: null, countries: [], mostActive: [] },
     ai: {},
@@ -752,6 +818,7 @@ async function computeDashboard(periodKey) {
   const [
     legacy,
     currentRev,
+    lifetimeRev,
     prevRev,
     revenueByPlan,
     revenueTimeline,
@@ -770,6 +837,7 @@ async function computeDashboard(periodKey) {
   ] = await Promise.all([
     getAdminOverviewDb(),
     queryRevenueMetrics(pool, period.from, period.to),
+    queryLifetimeRevenue(pool),
     queryRevenueMetrics(pool, period.prevFrom, period.prevTo),
     queryRevenueByPlan(pool, period.from, period.to),
     queryRevenueTimeline(pool, chartFrom, period.to),
@@ -795,6 +863,7 @@ async function computeDashboard(periodKey) {
     legacy,
     revenue: {
       total: currentRev.revenue,
+      lifetime: lifetimeRev,
       mrr: subscriptions.mrr,
       growthPct,
       byPlan: revenueByPlan,

@@ -65,10 +65,12 @@ window.CutupAdminOverview = (function () {
     const apiHealthy =
       healthCache?.api === 'ok' ||
       (healthCache?.components || []).some((c) => c.id === 'api' && c.status === 'healthy');
+    const errCount = live?.errors24h ?? live?.failedJobs ?? 0;
+    const pendingCount = live?.pendingPayments ?? live?.activeJobsInQueue ?? 0;
     const pills = [
       { lbl: 'Online users', val: live?.onlineUsers ?? '—', cls: '' },
-      { lbl: 'Queue (pending pay)', val: live?.activeJobsInQueue ?? '—', cls: '' },
-      { lbl: 'Failed / errors 24h', val: live?.failedJobs ?? '—', cls: Number(live?.failedJobs) > 0 ? 'warn' : 'ok' },
+      { lbl: 'Pending payments', val: pendingCount, cls: Number(pendingCount) > 0 ? 'warn' : '' },
+      { lbl: 'Errors 24h', val: errCount, cls: Number(errCount) > 0 ? 'warn' : 'ok' },
       { lbl: 'Avg response', val: live?.avgResponseTimeMs != null ? `${live.avgResponseTimeMs}ms` : 'N/A', cls: '' },
       { lbl: 'Database', val: dbOk ? 'OK' : 'Check', cls: dbOk ? 'ok' : 'err' },
       { lbl: 'OpenAI API', val: openAiOk ? 'Configured' : 'Missing', cls: openAiOk ? 'ok' : 'warn' },
@@ -136,11 +138,12 @@ window.CutupAdminOverview = (function () {
     return `
       ${renderPeriodBanner(d)}
       ${renderInsights(d.insights)}
-      <section><h3 class="dash-section-title">Revenue <span class="dash-section-tag">period</span></h3><div class="dash-kpi-grid">${[
-        kpiCard('Total revenue', f.eur(rev.total), 'Successful payments in period', rev.growthPct),
-        kpiCard('MRR (estimate)', f.eur(rev.mrr), 'Current snapshot · active paid plans'),
-        kpiCard('Successful payments', f.num(rev.payments), 'In selected period'),
-        kpiCard('Revenue growth', rev.growthPct != null ? `${rev.growthPct}%` : '—', 'Vs previous period')
+      <section><h3 class="dash-section-title">Revenue</h3><div class="dash-kpi-grid">${[
+        kpiCard('Revenue (period)', f.eur(rev.total), 'Successful payments in selected window', rev.growthPct),
+        kpiCard('Lifetime revenue', f.eur(rev.lifetime), 'All-time successful payments'),
+        kpiCard('MRR (estimate)', f.eur(rev.mrr), 'Catalog price × active subs · not cash collected'),
+        kpiCard('Payments (period)', f.num(rev.payments), 'Successful checkouts in window'),
+        kpiCard('Revenue growth', rev.growthPct != null ? `${rev.growthPct}%` : '—', 'Period vs previous window')
       ].join('')}</div></section>
       <section><h3 class="dash-section-title">Subscriptions <span class="dash-section-tag">live</span></h3><div class="dash-kpi-grid">${[
         kpiCard('Active subscriptions', f.num(sub.active), 'Current snapshot'),
@@ -159,9 +162,9 @@ window.CutupAdminOverview = (function () {
       ].join('')}</div></section>
       <section><h3 class="dash-section-title">AI usage</h3><div class="dash-kpi-grid">${[
         kpiCard('Processed minutes', f.num(ai.totalMinutes, 1), 'Usage in period'),
-        kpiCard('OpenAI est. cost', f.eur(ai.estimatedCostEur), '~€0.0055/min estimate'),
+        kpiCard('Est. AI cost', f.eur(ai.estimatedCostEur), '~€0.0055/min · transcription minutes'),
         kpiCard('Avg processing', `${f.num(ai.avgProcessingMinutes, 1)} min`, 'Per transcription'),
-        kpiCard('Avg transcript length', f.num(ai.avgTranscriptLength, 0), 'Characters'),
+        kpiCard('Avg transcript length', f.num(ai.avgTranscriptLength, 0), 'Chars · usage_history metadata'),
         kpiCard('Translations', f.num(ai.translationUsage), 'translationOnly events'),
         kpiCard('Summaries', f.num(ai.summaryUsage), 'Summarization runs'),
         kpiCard('Cost per user', ai.costPerUser != null ? f.eur(ai.costPerUser) : '—', 'Active in period')
@@ -169,14 +172,15 @@ window.CutupAdminOverview = (function () {
       <section><h3 class="dash-section-title">Storage &amp; outputs <span class="dash-section-tag">period</span></h3><div class="dash-kpi-grid">${[
         kpiCard('Saved transcripts', f.num(storage.savedTranscripts), 'Created in period'),
         kpiCard('Summaries saved', f.num(storage.summaries), 'Created in period'),
-        kpiCard('SRT exports', f.num(storage.srtExports), 'Created in period'),
-        kpiCard('DOCX exports', f.num(storage.docxExports), 'Created in period'),
+        kpiCard('SRT exports', f.num(storage.srtExports), 'Saved outputs + SRT usage events'),
+        kpiCard('MP4 exports', f.num(storage.mp4Exports), 'Completed renders + mp4_export usage'),
+        kpiCard('DOCX exports', f.num(storage.docxExports), 'Saved outputs in period'),
         kpiCard('TXT exports', f.num(storage.txtExports), 'Created in period'),
         kpiCard('Storage estimate', f.bytes(storage.storageBytes), 'Output bytes in period')
       ].join('')}</div></section>
       <section><h3 class="dash-section-title">Offers &amp; conversion <span class="dash-section-tag">period</span></h3><div class="dash-kpi-grid">${[
-        kpiCard('Conversion rate', `${conv.conversionRate ?? 0}%`, 'Success / pricing views'),
-        kpiCard('Checkout completion', `${conv.checkoutCompletionPct ?? 0}%`, 'Success / started'),
+        kpiCard('Conversion rate', `${conv.conversionRate ?? 0}%`, 'analytics_events · pricing views'),
+        kpiCard('Checkout completion', `${conv.checkoutCompletionPct ?? 0}%`, 'analytics_events · started checkouts'),
         kpiCard('Abandoned checkouts', f.num(conv.abandonedCheckouts), 'Started − success'),
         kpiCard('Coupon usage', f.num(conv.couponUsage), `${conv.activeOffers ?? 0} active offers (live)`)
       ].join('')}</div></section>
@@ -198,7 +202,7 @@ window.CutupAdminOverview = (function () {
           ${renderActivity(d.activity)}
         </section>
         <section style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;">
-          <h3 class="dash-section-title">Top customers <span class="dash-section-tag">usage period · revenue lifetime</span></h3>
+          <h3 class="dash-section-title">Top customers <span class="dash-section-tag">usage in period · revenue all-time</span></h3>
           ${renderTopCustomers(d.topCustomers)}
         </section>
       </div>
