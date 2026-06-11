@@ -823,7 +823,9 @@ function normalizeTranscriptionResult(result) {
       wordCount: window.cutupProviderWords.length,
       segmentSource: result.segmentSource || null,
       wordGapFill: result.wordGapFill || null,
-      largestGapSec: computeClientSegmentGapSec(rawSegments)
+      gapRetranscribe: result.gapRetranscribe || null,
+      largestGapSec: computeClientSegmentGapSec(rawSegments),
+      segmentStarts: rawSegments.slice(0, 12).map((s) => Number(s.start).toFixed(2))
     });
   } else if (result.asrPipeline === 'v1') {
     window.cutupAsrPipeline = 'v1';

@@ -11,6 +11,7 @@ import {
 } from './provider-ids.js';
 import { transcribeLargeFile } from '../chunk-processor.js';
 import { isFailoverEligibleError } from './errors.js';
+import { fillTimelineGapsWithRetranscription } from './asr-gap-fill.js';
 
 const V2_PROVIDER_ORDER = [GROQ_PROVIDER_ID, OPENAI_PROVIDER_ID];
 
@@ -329,20 +330,28 @@ export async function transcribeAsrV2(ctx) {
         traceId
       });
       const preserved = preserveProviderOutput(result, providerId);
+      const gapFilled = await fillTimelineGapsWithRetranscription(
+        { fetch, audioBuffer, mimeType, extension, languageHint, traceId },
+        preserved.segments
+      );
+      const finalSegments = gapFilled.segments;
       console.log('[asr-v2]', {
         traceId,
         phase: 'provider_ok',
         providerId,
-        segmentCount: preserved.segments.length,
+        segmentCount: finalSegments.length,
         wordCount: preserved.words.length,
         segmentSource: preserved.segmentSource,
-        wordGapFill: preserved.wordGapFill
+        wordGapFill: preserved.wordGapFill,
+        gapRetranscribe: gapFilled.gapRetranscribe
       });
       return {
         ...preserved,
+        segments: finalSegments,
         success: true,
         asrPipeline: 'v2',
-        cleanSrt: segmentsToCleanSrt(preserved.segments)
+        gapRetranscribe: gapFilled.gapRetranscribe,
+        cleanSrt: segmentsToCleanSrt(finalSegments)
       };
     } catch (err) {
       const summary = summarizeProviderFailure(err);
@@ -414,7 +423,8 @@ export function finalizeV2Transcript(transcript) {
         provider: transcript.provider,
         model: transcript.model,
         wordGapFill: transcript.wordGapFill || null,
-        segmentSource: transcript.segmentSource || null
+        segmentSource: transcript.segmentSource || null,
+        gapRetranscribe: transcript.gapRetranscribe || null
       }
     : preserveProviderOutput(transcript, transcript?.provider || GROQ_PROVIDER_ID);
 
@@ -430,6 +440,7 @@ export function finalizeV2Transcript(transcript) {
     language: preserved.language,
     provider: preserved.provider,
     model: preserved.model,
+    gapRetranscribe: reconciled.gapRetranscribe || preserved.gapRetranscribe || null,
     wordGapFill: reconciled.wordGapFill,
     segmentSource: preserved.segmentSource || reconciled.segmentSource || null,
     cleanSrt: segmentsToCleanSrt(reconciled.segments),

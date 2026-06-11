@@ -45,6 +45,7 @@ export async function finalizeAsrPipelineOutput(opts = {}) {
       asrPipeline: 'v2',
       cleanSrt: v2.cleanSrt,
       segmentSource: v2.segmentSource || transcript.segmentSource || null,
+      gapRetranscribe: v2.gapRetranscribe || transcript.gapRetranscribe || null,
       wordGapFill: v2.wordGapFill || null,
       whisperLeadingOffsetSec: 0,
       languageDetection: null,
