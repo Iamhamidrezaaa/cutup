@@ -533,6 +533,7 @@ function beginPipelineRun() {
   }
   cutupPipelineInFlight = true;
   clearPipelineRetryUi();
+  window.CutupViralExport?.resetForNewTranscription?.();
   return true;
 }
 
@@ -6354,6 +6355,9 @@ function displayResults(summary, fullText, segments = null, options = {}) {
     requestAnimationFrame(() => window.CutupSubtitleStyles.initAfterResults());
   }
   if (window.CutupViralExport) {
+    if (!options.cacheReplay) {
+      window.CutupViralExport.resetForNewTranscription?.();
+    }
     requestAnimationFrame(() => window.CutupViralExport.initAfterResults());
   }
 

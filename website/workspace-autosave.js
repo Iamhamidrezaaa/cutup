@@ -77,7 +77,11 @@
       activeTab: readActiveTab(),
       exportQuality,
       exportStyleId: exportMount?.querySelector('#cutupExportStyleSelect')?.value || null,
-      readyExportJobId: exportMount?.dataset?.readyJobId || null,
+      readyExportJobId:
+        exportMount?.dataset?.readyJobId &&
+        exportMount?.dataset?.readyExportCacheKey === last.cacheKey
+          ? exportMount.dataset.readyJobId
+          : null,
       srtLanguage: document.getElementById('srtLanguage')?.value || 'original'
     };
   }
@@ -215,8 +219,14 @@
       const styleSel = exportMount.querySelector('#cutupExportStyleSelect');
       if (styleSel) styleSel.value = state.exportStyleId;
     }
-    if (exportMount && state.readyExportJobId) {
+    if (
+      exportMount &&
+      state.readyExportJobId &&
+      state.lastTranscription?.cacheKey &&
+      state.lastTranscription.cacheKey === last.cacheKey
+    ) {
       exportMount.dataset.readyJobId = state.readyExportJobId;
+      exportMount.dataset.readyExportCacheKey = last.cacheKey;
       if (global.CutupViralExport?.restoreReadyExport) {
         global.CutupViralExport.restoreReadyExport(exportMount, state.readyExportJobId);
       }

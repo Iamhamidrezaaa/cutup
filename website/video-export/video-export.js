@@ -592,6 +592,7 @@
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !isExportReady(data)) return false;
       container.dataset.readyJobId = jobId;
+      container.dataset.readyExportCacheKey = global.cutupLastTranscription?.cacheKey || '';
       showReadyInstant(container, sessionId, jobId, data);
       const btn = container.querySelector('#cutupExportMp4Btn');
       if (btn) {
@@ -767,7 +768,8 @@
 
     banner?.setAttribute('hidden', '');
     btn.classList.remove('cutup-viral-export__btn--upgrade');
-    btn.textContent = btn.textContent === 'Export again' ? 'Export again' : 'Export MP4';
+    const mount = document.getElementById('cutupViralExportMount');
+    btn.textContent = mount?.dataset?.readyJobId ? 'Export again' : 'Export MP4';
     btn.disabled = !check.ok;
     btn.title = check.ok ? 'Render MP4 with burned-in subtitles' : check.reason;
   }
@@ -863,6 +865,7 @@
       showNotice(container, '');
       showReadyInstant(container, sessionId, jobIdForDownload, data);
       container.dataset.readyJobId = jobIdForDownload;
+      container.dataset.readyExportCacheKey = global.cutupLastTranscription?.cacheKey || '';
       global.CutupWorkspaceAutosave?.scheduleSave?.();
       const btn = container.querySelector('#cutupExportMp4Btn');
       if (btn) {
@@ -1029,6 +1032,7 @@
     delete container.dataset.hqFastSuggestion;
     hideDownloadReady(container);
     delete container.dataset.readyJobId;
+    delete container.dataset.readyExportCacheKey;
     completedHandled = false;
     if (btn) btn.disabled = true;
     stopStream();
@@ -1127,6 +1131,50 @@
     }
   }
 
+  function resetForNewTranscription() {
+    const container = document.getElementById('cutupViralExportMount');
+    if (!container) return;
+
+    stopStream();
+    activeJobId = null;
+    completedHandled = false;
+    exportStartedAt = 0;
+    lastProgressVal = 0;
+    lastProgressAt = 0;
+
+    hideDownloadReady(container);
+    delete container.dataset.readyJobId;
+    delete container.dataset.readyExportCacheKey;
+    delete container.dataset.cwExportJobId;
+    delete container.dataset.cwPresetId;
+    delete container.dataset.cwProcessingSec;
+    delete container.dataset.cwResolution;
+    delete container.dataset.hqFastSuggestion;
+    delete container.dataset.exportQuality;
+
+    hideProgress(container);
+    showError(container, '');
+    showNotice(container, '');
+
+    const pipeline = container.querySelector('#cutupExportPipeline');
+    if (pipeline) {
+      pipeline.innerHTML = '';
+      pipeline.hidden = true;
+    }
+    const queuePanel = container.querySelector('#cutupExportQueuePanel');
+    if (queuePanel) queuePanel.hidden = true;
+
+    const btn = container.querySelector('#cutupExportMp4Btn');
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Export MP4';
+    }
+
+    global.CutupPipelineFeedback?.cancelPending?.();
+    global.CutupPipelineFeedback?.dismiss?.();
+    refreshExportButton();
+  }
+
   function initAfterResults() {
     const container = document.getElementById('cutupViralExportMount');
     if (!container) return;
@@ -1153,6 +1201,7 @@
   global.CutupViralExport = {
     mount,
     initAfterResults,
+    resetForNewTranscription,
     refreshExportButton,
     restoreReadyExport,
     destroy,
