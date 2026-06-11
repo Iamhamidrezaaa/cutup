@@ -13,7 +13,12 @@
     const preset = Presets.getPreset(presetId);
     const aspect = Layout?.detectPreviewAspect?.() || 'horizontal';
     const effectiveLayout = Layout?.applyAspectToLayout?.(preset.layout, aspect) || preset.layout;
-    const cues = (Array.isArray(segments) ? segments : []).map((seg, index) => {
+    let segmentList = Array.isArray(segments) ? segments : [];
+    const rtl = segmentList.some((s) => /[\u0600-\u06FF]/.test(String(s?.text || '')));
+    if (aspect === 'vertical' && !rtl) {
+      segmentList = Layout?.chunkSegmentsForVerticalShorts?.(segmentList) || segmentList;
+    }
+    const cues = segmentList.map((seg, index) => {
       const raw = String(seg.text || '').trim().replace(/\s+/g, ' ');
       const lines = Layout?.layoutLines?.(raw, effectiveLayout) || [raw];
       const lineTokens = lines.map((line) => Emphasis.analyzeText(line));

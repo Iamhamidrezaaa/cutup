@@ -10,6 +10,9 @@ const TOKEN_RE = /[\p{L}\p{M}\p{N}]+(?:[''\-][\p{L}\p{M}\p{N}]+)*/gu;
 
 export const SHORT_FORM_MAX_WORDS = 5;
 export const SHORT_FORM_MAX_CHARS = 42;
+/** Vertical 9:16 — Captions-app style: few words, fast turnover. */
+export const VERTICAL_SHORT_FORM_MAX_WORDS = 3;
+export const VERTICAL_SHORT_FORM_MAX_CHARS = 12;
 export const PAUSE_GAP_SEC = 0.28;
 
 function cueWords(text) {
@@ -87,6 +90,29 @@ function cueTimingFromWordRange(timeline, tokenStart, tokenEnd, segStart, segEnd
   };
 }
 
+/** Never exceed maxWords/maxChars even when protected-token logic delayed a split. */
+function enforceHardCaps(specs, words, maxWords, maxChars) {
+  const out = [];
+  for (const spec of specs) {
+    let cursor = spec.tokenStart;
+    const end = spec.tokenEnd;
+    while (cursor <= end) {
+      let chunkEnd = Math.min(end, cursor + maxWords - 1);
+      while (chunkEnd > cursor && visibleCharCount(words.slice(cursor, chunkEnd + 1).join(' ')) > maxChars) {
+        chunkEnd -= 1;
+      }
+      if (chunkEnd < cursor) chunkEnd = cursor;
+      out.push({
+        tokenStart: cursor,
+        tokenEnd: chunkEnd,
+        boundaryReason: spec.boundaryReason || 'hard_cap'
+      });
+      cursor = chunkEnd + 1;
+    }
+  }
+  return out;
+}
+
 function findPauseSplitIndices(timeline) {
   const indices = [];
   for (let i = 0; i < timeline.length - 1; i++) {
@@ -125,7 +151,7 @@ export function segmentSegmentToMasterCues(segment, opts = {}) {
     const hitPunctStrong = /[.!?…]["']?$/.test(token);
     const hitPunctSoft = /[,;:]["']?$/.test(token) && chunkLen >= 2;
     const hitMaxWords = chunkLen >= maxWords;
-    const hitMaxChars = visibleCharCount(chunkText) > maxChars;
+    const hitMaxChars = visibleCharCount(chunkText) >= maxChars;
     const atEnd = i === words.length - 1;
 
     if (hitPunctStrong || hitPunctSoft || hitMaxWords || hitMaxChars || atEnd) {
@@ -182,7 +208,7 @@ export function segmentSegmentToMasterCues(segment, opts = {}) {
     }
   }
 
-  const partitionSpecs = refined.length ? refined : specs;
+  const partitionSpecs = enforceHardCaps(refined.length ? refined : specs, words, maxWords, maxChars);
   if (!partitionSpecs.length && words.length) {
     partitionSpecs.push({
       tokenStart: 0,

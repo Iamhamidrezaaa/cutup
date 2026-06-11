@@ -66,6 +66,10 @@ import {
   normalizeLockedMasterCues
 } from './master-subtitle-cues.js';
 import {
+  VERTICAL_SHORT_FORM_MAX_CHARS,
+  VERTICAL_SHORT_FORM_MAX_WORDS
+} from './master-clean-srt-segmentation.js';
+import {
   isSubtitleTextForensicEnabled,
   logSubtitleTextForensicStage,
   forensicMaxCues
@@ -512,8 +516,8 @@ export function generateAssContent(segments, presetId, dims = {}) {
   } else {
     masterCues = buildMasterCleanSrtFromSegments(finalOnlySegments, {
       shortForm: true,
-      maxWords: requestedIsVertical ? 4 : undefined,
-      maxChars: requestedIsVertical ? 20 : undefined
+      maxWords: requestedIsVertical ? VERTICAL_SHORT_FORM_MAX_WORDS : undefined,
+      maxChars: requestedIsVertical ? VERTICAL_SHORT_FORM_MAX_CHARS : undefined
     });
   }
 
@@ -917,9 +921,11 @@ export function generateAssContent(segments, presetId, dims = {}) {
 
     const maxBand = maxSubtitleBandWidthPx(playResX, layout.marginL, layout.marginR);
     const minFs = layout.isVertical ? Math.max(28, Math.round(34 * (playResY / 1920))) : layout.fontSize;
-    const fittedFs = resolveFittedFontSizeForLines(assLines, layout.fontSize, maxBand, minFs);
+    const fittedFs = layout.isVertical
+      ? layout.fontSize
+      : resolveFittedFontSizeForLines(assLines, layout.fontSize, maxBand, minFs);
     const fsPrefix =
-      !cueRtl && fittedFs < layout.fontSize ? `{\\fs${fittedFs}}` : '';
+      !cueRtl && !layout.isVertical && fittedFs < layout.fontSize ? `{\\fs${fittedFs}}` : '';
 
     let text;
     let styleName = 'Default';

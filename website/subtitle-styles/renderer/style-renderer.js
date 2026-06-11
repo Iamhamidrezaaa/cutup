@@ -139,10 +139,13 @@
   function render(container, segments, presetId) {
     if (!container) return;
     const preset = Presets().getPreset(presetId);
-    const list = (Array.isArray(segments) ? segments : []).slice(0, 12);
-    const rtl = list.some((s) => /[\u0600-\u06FF]/.test(String(s.text || '')));
-
     const aspect = Layout()?.detectPreviewAspect?.() || 'horizontal';
+    let list = Array.isArray(segments) ? segments : [];
+    const rtl = list.some((s) => /[\u0600-\u06FF]/.test(String(s.text || '')));
+    if (aspect === 'vertical' && !rtl) {
+      list = Layout()?.chunkSegmentsForVerticalShorts?.(list) || list;
+    }
+    list = list.slice(0, 24);
     const effectiveLayout = Layout()?.applyAspectToLayout?.(preset.layout, aspect) || preset.layout;
 
     container.classList.add('cutup-subtitle-stage--updating');

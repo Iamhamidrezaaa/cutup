@@ -7,7 +7,11 @@ import {
   normalizePostProcessedForCleanSrt
 } from './clean-srt-word-integrity.js';
 import { buildMasterCleanSrtFromSegments } from './master-subtitle-cues.js';
-import { segmentPreparedSegmentsToMasterCues } from './master-clean-srt-segmentation.js';
+import {
+  segmentPreparedSegmentsToMasterCues,
+  VERTICAL_SHORT_FORM_MAX_CHARS,
+  VERTICAL_SHORT_FORM_MAX_WORDS
+} from './master-clean-srt-segmentation.js';
 
 const EXAMPLE_TEXT =
   'What kidding challenge with you guys that lifting very nice. No, just challenge';
@@ -53,6 +57,28 @@ test('assertCleanSrtWordIntegrity throws and reports missing words', () => {
     () => assertCleanSrtWordIntegrity(postProcessed, cleanSrt),
     (err) => err.code === 'SUBTITLE_WORD_LOSS' && err.report.missingWords.length > 0
   );
+});
+
+test('vertical short-form caps at three words and twelve chars per cue', () => {
+  const postProcessed = [
+    {
+      start: 0,
+      end: 6,
+      text: 'THIS IS MY STICK FOR CLEANING YOU CAN TRY IT'
+    }
+  ];
+  const clean = segmentPreparedSegmentsToMasterCues(normalizePostProcessedForCleanSrt(postProcessed), {
+    maxWords: VERTICAL_SHORT_FORM_MAX_WORDS,
+    maxChars: VERTICAL_SHORT_FORM_MAX_CHARS
+  });
+  assert.ok(clean.length >= 4);
+  for (const cue of clean) {
+    const wc = cue.text.split(/\s+/).filter(Boolean).length;
+    assert.ok(wc <= VERTICAL_SHORT_FORM_MAX_WORDS);
+    assert.ok(cue.text.length <= VERTICAL_SHORT_FORM_MAX_CHARS + 4);
+  }
+  const report = buildCleanSrtWordLossReport(postProcessed, clean);
+  assert.equal(report.ok, true);
 });
 
 test('normalizePostProcessedForCleanSrt does not merge rolling segments', () => {
