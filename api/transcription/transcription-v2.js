@@ -12,6 +12,7 @@ import {
 import { transcribeLargeFile } from '../chunk-processor.js';
 import { isFailoverEligibleError } from './errors.js';
 import { fillTimelineGapsWithRetranscription } from './asr-gap-fill.js';
+import { sanitizeTranscriptSegments } from '../video-render/non-speech-tags.js';
 
 const V2_PROVIDER_ORDER = [GROQ_PROVIDER_ID, OPENAI_PROVIDER_ID];
 
@@ -334,7 +335,7 @@ export async function transcribeAsrV2(ctx) {
         { fetch, audioBuffer, mimeType, extension, languageHint, traceId },
         preserved.segments
       );
-      const finalSegments = gapFilled.segments;
+      const finalSegments = sanitizeTranscriptSegments(gapFilled.segments);
       console.log('[asr-v2]', {
         traceId,
         phase: 'provider_ok',
@@ -345,8 +346,10 @@ export async function transcribeAsrV2(ctx) {
         wordGapFill: preserved.wordGapFill,
         gapRetranscribe: gapFilled.gapRetranscribe
       });
+      const text = finalSegments.map((s) => String(s.text || '').trim()).filter(Boolean).join(' ');
       return {
         ...preserved,
+        text,
         segments: finalSegments,
         success: true,
         asrPipeline: 'v2',
@@ -433,9 +436,12 @@ export function finalizeV2Transcript(transcript) {
       ? { segments: preserved.segments, wordGapFill: preserved.wordGapFill }
       : reconcileSegmentsWithProviderWords(preserved.segments, preserved.words);
 
+  const segments = sanitizeTranscriptSegments(reconciled.segments);
+  const text = segments.map((s) => String(s.text || '').trim()).filter(Boolean).join(' ');
+
   return {
-    text: preserved.text,
-    segments: reconciled.segments,
+    text,
+    segments,
     words: preserved.words,
     language: preserved.language,
     provider: preserved.provider,
@@ -443,7 +449,7 @@ export function finalizeV2Transcript(transcript) {
     gapRetranscribe: reconciled.gapRetranscribe || preserved.gapRetranscribe || null,
     wordGapFill: reconciled.wordGapFill,
     segmentSource: preserved.segmentSource || reconciled.segmentSource || null,
-    cleanSrt: segmentsToCleanSrt(reconciled.segments),
+    cleanSrt: segmentsToCleanSrt(segments),
     asrPipeline: 'v2'
   };
 }

@@ -8,6 +8,7 @@ import { layoutLines } from './text-layout.js';
 import { splitWordsByCharBudget } from './subtitle-width-fit.js';
 import { isRtlText } from './rtl-text.js';
 import { isDebugExportEnabled } from './export-debug.js';
+import { stripNonSpeechDescriptiveTags } from './non-speech-tags.js';
 
 export const CAPTION_QUALITY_MODES = Object.freeze({
   ACCURATE: 'accurate',
@@ -1281,12 +1282,12 @@ export function ensureBurnCueDurations(cues, minDurSec = MIN_BURN_CUE_VISIBLE_SE
 /** YouTube rolling captions often include 0.01s blink cues — skip for ASS burn. */
 export const PREVIEW_EXPORT_MIN_CUE_SEC = 0.08;
 
-const BURN_STRIP_TAG_RE = /\[[^\]]*\]\s*/gi;
-
-/** Remove [music] and similar tags from burned viral captions (not SRT download). */
+/** Remove [music], (applause), موزیک, etc. — spoken dialogue only. */
 export function stripBurnNonSpeechTags(text) {
-  return normalizeCueText(String(text || '').replace(BURN_STRIP_TAG_RE, ' '));
+  return normalizeCueText(stripNonSpeechDescriptiveTags(text));
 }
+
+export { stripNonSpeechDescriptiveTags, sanitizeTranscriptSegments } from './non-speech-tags.js';
 
 /**
  * Clean SRT → burn-ready: merge rolling chains, strip tags, keep first sentence visible.

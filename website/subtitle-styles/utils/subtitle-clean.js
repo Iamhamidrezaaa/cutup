@@ -6,8 +6,7 @@
 
   const MODES = { ACCURATE: 'accurate', CLEAN: 'clean', VIRAL: 'viral' };
 
-  const BRACKET = /\[[^\]]*\]/g;
-  const PAREN_NOISE = /\((applause|laughter|music|inaudible|crowd cheering|cheering|clapping)\)/gi;
+  const NonSpeech = () => global.CutupNonSpeechTags;
   const NOTES = /♪+/g;
   const HALLUCINATION = /[@#$%^&*]{2,}/;
   const NOISE = /^(applause|laughter|music|inaudible|crowd|cheering|clapping)\b/i;
@@ -32,9 +31,10 @@
     if (opts.stripTranslationLeakage) {
       t = stripTranslationLeakage(t);
     }
-    if (opts.stripNoiseTags !== false) {
-      t = t.replace(BRACKET, ' ');
-      t = t.replace(PAREN_NOISE, ' ');
+    if (opts.stripNoiseTags !== false && NonSpeech()?.stripNonSpeechDescriptiveTags) {
+      t = NonSpeech().stripNonSpeechDescriptiveTags(t);
+    } else if (opts.stripNoiseTags !== false) {
+      t = t.replace(/\[[^\]]*]/g, ' ');
     }
     t = t.replace(NOTES, ' ');
     t = t.replace(HALLUCINATION, ' ');
@@ -43,12 +43,10 @@
     return t;
   }
 
-  function normalizeNonSpeech(text, mode) {
-    let t = String(text || '');
-    const tag = (label) => (mode === 'accurate' ? `[${label}]` : '');
-    t = t.replace(/\[(applause|laughter|crowd cheering|music|inaudible)\]/gi, (_, w) => tag(w.toLowerCase()));
-    t = t.replace(PAREN_NOISE, (_, w) => tag(String(w).toLowerCase()));
-    return t.replace(/\s{2,}/g, ' ').trim();
+  function normalizeNonSpeech(text) {
+    return NonSpeech()?.stripNonSpeechDescriptiveTags
+      ? NonSpeech().stripNonSpeechDescriptiveTags(text)
+      : String(text || '').replace(/\[[^\]]*]/g, ' ').replace(/\s{2,}/g, ' ').trim();
   }
 
   function isGarbage(text, strict) {
@@ -315,10 +313,7 @@
   }
 
   function stripNonSpeechForCleanSrt(text) {
-    return String(text || '')
-      .replace(/\[(?:music|applause|laughter|inaudible|crowd cheering)\]\s*/gi, ' ')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
+    return normalizeNonSpeech(text);
   }
 
   function assertClientWordIntegrity(postProcessed, cleanCues) {
@@ -379,7 +374,7 @@
     for (const s of segments || []) {
       if (!s || s.end <= s.start) continue;
       let text = clean(s.text);
-      if (!text || isGarbage(text, true)) continue;
+      if (!text || isGarbage(text, true) || NonSpeech()?.isOnlyNonSpeechContent?.(text)) continue;
       out.push({ start: s.start, end: s.end, text });
     }
     return normalizeTimelineSegments(out);
@@ -390,7 +385,7 @@
     for (const s of segments || []) {
       if (!s || s.end <= s.start) continue;
       const text = clean(s.text, { stripTranslationLeakage: true });
-      if (!text || isGarbage(text, true)) continue;
+      if (!text || isGarbage(text, true) || NonSpeech()?.isOnlyNonSpeechContent?.(text)) continue;
       out.push({ start: s.start, end: s.end, text });
     }
     return normalizeTimelineSegments(out);

@@ -57,15 +57,12 @@
       .replace(/[^\p{L}\p{N}]/gu, '');
   }
 
-  const NON_SPEECH_TOKEN_RE = /^\[[^\]]*\]$/;
-  const NON_SPEECH_CLEAN_RE = /^(music|applause|laughter|inaudible|موسیقی|صدای موسیقی)$/i;
-
   function isNonSpeechToken(token) {
     const raw = String(token?.text || '').trim();
-    if (NON_SPEECH_TOKEN_RE.test(raw)) return true;
+    if (/^\[[^\]]*]$/i.test(raw) || /^【[^】]*】$/.test(raw)) return true;
     const clean = String(token?.clean || '').trim();
     if (!clean) return true;
-    return NON_SPEECH_CLEAN_RE.test(clean);
+    return global.CutupNonSpeechTags?.isNonSpeechDescriptorWord?.(clean) || false;
   }
 
   function pickSpokenWordKeyRtl(words, fallbackTokens, lineText) {

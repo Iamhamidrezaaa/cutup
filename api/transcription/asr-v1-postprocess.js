@@ -6,6 +6,7 @@ import { applyWhisperLeadingOffsetIfNeeded } from '../whisper-leading-offset.js'
 import { mergeRollingCaptionChains } from '../video-render/subtitle-pipeline.js';
 import { refineTranscriptTimings } from '../refine-transcript-timings.js';
 import { logSubtitleTextForensicStage } from '../video-render/subtitle-text-forensics.js';
+import { sanitizeTranscriptSegments } from '../video-render/non-speech-tags.js';
 
 /**
  * Persian-only GPT correction (legacy V1).
@@ -150,7 +151,7 @@ export async function applyV1PostProcessing(opts = {}) {
   const wordSyncedSegments = refineTranscriptTimings(validSegments);
   const { segments: offsetSegments, offsetSec: whisperLeadingOffsetSec } =
     applyWhisperLeadingOffsetIfNeeded(wordSyncedSegments);
-  const timelineSegments = mergeRollingCaptionChains(offsetSegments);
+  const timelineSegments = sanitizeTranscriptSegments(mergeRollingCaptionChains(offsetSegments));
 
   logSubtitleTextForensicStage(
     'whisper_final',
@@ -161,8 +162,10 @@ export async function applyV1PostProcessing(opts = {}) {
     { traceId, note: 'after_v1_postprocess' }
   );
 
+  const text = timelineSegments.map((s) => String(s.text || '').trim()).filter(Boolean).join(' ');
+
   return {
-    text: correctedText,
+    text,
     segments: timelineSegments,
     rawSegments,
     validSegments,
