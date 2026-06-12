@@ -117,20 +117,47 @@ export const CURATED_CREATOR_WALL_POSTS = [
   }
 ];
 
-export function getCuratedPublicStats() {
+/** Baseline social-proof counters — time-based bumps are added on top (see computeSimulatedPublicStats). */
+export const PUBLIC_STATS_ANCHOR = {
+  atMs: Date.UTC(2026, 5, 12, 0, 0, 0),
+  videosThisWeek: 12_584,
+  subtitlesGenerated: 284_921,
+  creatorsOnboarded: 18_432,
+  exportMinutesRendered: 92_418
+};
+
+/** Slow, believable growth between real user activity. */
+export const SIMULATION_INTERVAL_MS = {
+  videos: 4 * 60 * 1000,
+  subs: 5 * 60 * 1000,
+  creators: 12 * 60 * 1000,
+  highlights: 10 * 60 * 1000
+};
+
+export function computeSimulatedPublicStats(now = Date.now()) {
+  const elapsed = Math.max(0, now - PUBLIC_STATS_ANCHOR.atMs);
   return {
-    videosThisWeek: 12_584,
-    subtitlesGenerated: 284_921,
-    creatorsOnboarded: 18_432,
-    exportMinutesRendered: 92_418,
-    source: 'hybrid',
-    phase: 1,
-    serverTime: Date.now(),
-    incrementRates: {
-      exportsPerSec: 0.42,
-      subtitlesPerSec: 2.8,
-      creatorsPerSec: 0.06,
-      highlightsPerSec: 0.95
-    }
+    videosThisWeek:
+      PUBLIC_STATS_ANCHOR.videosThisWeek + Math.floor(elapsed / SIMULATION_INTERVAL_MS.videos),
+    subtitlesGenerated:
+      PUBLIC_STATS_ANCHOR.subtitlesGenerated + Math.floor(elapsed / SIMULATION_INTERVAL_MS.subs),
+    creatorsOnboarded:
+      PUBLIC_STATS_ANCHOR.creatorsOnboarded + Math.floor(elapsed / SIMULATION_INTERVAL_MS.creators),
+    exportMinutesRendered:
+      PUBLIC_STATS_ANCHOR.exportMinutesRendered +
+      Math.floor(elapsed / SIMULATION_INTERVAL_MS.highlights),
+    incrementIntervals: {
+      exportsMs: SIMULATION_INTERVAL_MS.videos,
+      subtitlesMs: SIMULATION_INTERVAL_MS.subs,
+      creatorsMs: SIMULATION_INTERVAL_MS.creators,
+      highlightsMs: SIMULATION_INTERVAL_MS.highlights
+    },
+    serverTime: now,
+    source: 'simulated',
+    phase: 2
   };
+}
+
+export function getCuratedPublicStats() {
+  return computeSimulatedPublicStats();
 }

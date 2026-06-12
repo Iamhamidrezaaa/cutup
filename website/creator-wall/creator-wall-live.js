@@ -1,25 +1,19 @@
 /**
- * Live metrics (hybrid base + micro-increments) + activity ticker.
- * Phase 2: resync base from DB aggregates via /api/creator-wall?action=stats
+ * Live metrics: server totals (slow simulated floor + real DB usage). Resyncs on a timer.
  */
 (function (global) {
   'use strict';
 
   const METRIC_KEYS = [
-    { key: 'videos', attr: 'data-cw-stat-videos', label: 'EXPORTS GENERATED', rate: 'exportsPerSec' },
-    { key: 'subs', attr: 'data-cw-stat-subs', label: 'SUBTITLE LINES', rate: 'subtitlesPerSec' },
-    { key: 'creators', attr: 'data-cw-stat-creators', label: 'CREATORS', rate: 'creatorsPerSec' },
-    { key: 'highlights', attr: 'data-cw-stat-highlights', label: 'AI HIGHLIGHTS', rate: 'highlightsPerSec' }
+    { key: 'videos', attr: 'data-cw-stat-videos' },
+    { key: 'subs', attr: 'data-cw-stat-subs' },
+    { key: 'creators', attr: 'data-cw-stat-creators' },
+    { key: 'highlights', attr: 'data-cw-stat-highlights' }
   ];
 
   const state = {
     display: {},
-    target: {},
-    rates: {},
-    raf: null,
-    tickTimer: null,
-    resyncTimer: null,
-    lastTs: 0
+    resyncTimer: null
   };
 
   function formatFull(n) {
@@ -32,16 +26,6 @@
       subs: stats.subtitlesGenerated,
       creators: stats.creatorsOnboarded,
       highlights: stats.exportMinutesRendered
-    };
-  }
-
-  function mapRates(stats) {
-    const r = stats.incrementRates || {};
-    return {
-      videos: r.exportsPerSec ?? 0.35,
-      subs: r.subtitlesPerSec ?? 2.2,
-      creators: r.creatorsPerSec ?? 0.05,
-      highlights: r.highlightsPerSec ?? 0.85
     };
   }
 
@@ -59,36 +43,15 @@
     });
   }
 
-  function tick() {
-    const now = performance.now();
-    const dt = Math.min(4, (now - state.lastTs) / 1000);
-    state.lastTs = now;
-
-    METRIC_KEYS.forEach(({ key }) => {
-      const rate = state.rates[key] || 0;
-      const jitter = 0.65 + Math.random() * 0.7;
-      state.display[key] += rate * dt * jitter;
-      if (state.display[key] > state.target[key] + rate * 12) {
-        state.target[key] = state.display[key];
-      }
-    });
-
-    renderMetrics(false);
-    state.raf = requestAnimationFrame(tick);
-  }
-
-  function initMetrics(stats) {
+  function applyServerStats(stats) {
     const mapped = mapStatsFromApi(stats);
-    state.rates = mapRates(stats);
+    let changed = false;
     METRIC_KEYS.forEach(({ key }) => {
-      state.display[key] = mapped[key];
-      state.target[key] = mapped[key];
+      const next = Number(mapped[key]) || 0;
+      if (next !== state.display[key]) changed = true;
+      state.display[key] = next;
     });
-    state.lastTs = performance.now();
-    renderMetrics(true);
-
-    if (state.raf) cancelAnimationFrame(state.raf);
-    state.raf = requestAnimationFrame(tick);
+    renderMetrics(changed);
   }
 
   async function resyncMetrics() {
@@ -96,14 +59,7 @@
       const r = await fetch('/api/creator-wall?action=stats');
       const data = await r.json();
       if (!data.ok || !data.stats) return;
-      const mapped = mapStatsFromApi(data.stats);
-      METRIC_KEYS.forEach(({ key }) => {
-        if (mapped[key] > state.display[key]) {
-          state.display[key] = mapped[key];
-          state.target[key] = mapped[key];
-        }
-      });
-      state.rates = mapRates(data.stats);
+      applyServerStats(data.stats);
     } catch {
       /* noop */
     }
@@ -152,19 +108,17 @@
 
   function startLiveLayer(stats) {
     if (!layerStarted) {
-      initMetrics(stats);
+      applyServerStats(stats);
       initTicker();
       layerStarted = true;
     }
     if (state.resyncTimer) clearInterval(state.resyncTimer);
-    state.resyncTimer = setInterval(resyncMetrics, 60000);
+    state.resyncTimer = setInterval(resyncMetrics, 30000);
   }
 
   function stopLiveLayer() {
-    if (state.raf) cancelAnimationFrame(state.raf);
     if (tickerTimer) clearInterval(tickerTimer);
     if (state.resyncTimer) clearInterval(state.resyncTimer);
-    state.raf = null;
     tickerTimer = null;
     state.resyncTimer = null;
     layerStarted = false;

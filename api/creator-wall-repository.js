@@ -1,6 +1,11 @@
 import { getPool } from './db/pool.js';
 import { ensureCreatorWallSchema } from './creator-wall-bootstrap.js';
-import { CURATED_CREATOR_WALL_POSTS, getCuratedPublicStats } from './creator-wall-seed-data.js';
+import {
+  CURATED_CREATOR_WALL_POSTS,
+  computeSimulatedPublicStats,
+  getCuratedPublicStats
+} from './creator-wall-seed-data.js';
+import { tableExists } from './admin-db-safe.js';
 import { getStylePreset, listStylePresets } from './video-render/style-presets.js';
 
 const PRESET_LABELS = Object.fromEntries(
@@ -92,37 +97,94 @@ export async function listPublicCreatorWallPosts({ limit = 24 } = {}) {
   return { posts: r.rows.map(rowToPublic), source: 'database' };
 }
 
-export async function getCreatorWallPublicStats() {
-  const schema = await ensureCreatorWallSchema();
-  const curated = getCuratedPublicStats();
+async function queryRealPlatformStats(pool) {
+  const real = { videos: 0, subs: 0, creators: 0, highlights: 0 };
+  if (!pool) return real;
 
-  if (!schema.ok) return curated;
-
-  const pool = getPool();
   try {
-    const weekR = await pool.query(
-      `SELECT COUNT(*)::int AS c FROM creator_wall_posts
-       WHERE approved = true AND created_at >= NOW() - INTERVAL '7 days'`
-    );
-    const allR = await pool.query(
-      `SELECT COUNT(*)::int AS total FROM creator_wall_posts WHERE approved = true`
-    );
-    const weekCount = Number(weekR.rows[0]?.c || 0);
-    const total = Number(allR.rows[0]?.total || 0);
-    const boost = curated.videosThisWeek + total * 3 + weekCount * 12;
+    if (await tableExists(pool, 'usage_history')) {
+      const r = await pool.query(
+        `SELECT
+           COUNT(*) FILTER (WHERE h.type IN ('mp4_export', 'render_export'))::int AS mp4_exports,
+           COUNT(*) FILTER (
+             WHERE h.type = 'download' AND COALESCE(h.metadata->>'kind', '') = 'video'
+           )::int AS video_downloads,
+           COALESCE(SUM(
+             CASE
+               WHEN h.type = 'transcription' THEN GREATEST(
+                 COALESCE(NULLIF((h.metadata->>'lineCount')::int, 0), 0),
+                 COALESCE(NULLIF((h.metadata->>'cueCount')::int, 0), 0),
+                 COALESCE(NULLIF((h.metadata->>'subtitleLines')::int, 0), 0),
+                 32
+               )
+               WHEN h.type IN ('srt', 'subtitle') THEN GREATEST(
+                 COALESCE(NULLIF((h.metadata->>'lineCount')::int, 0), 0),
+                 24
+               )
+               ELSE 0
+             END
+           ), 0)::bigint AS subtitle_lines,
+           COUNT(DISTINCT h.user_id)::int AS usage_creators,
+           COALESCE(SUM(CASE WHEN h.minutes > 0 THEN h.minutes ELSE 0 END), 0)::bigint AS ai_minutes
+         FROM usage_history h`
+      );
+      const row = r.rows[0] || {};
+      real.videos = Number(row.mp4_exports || 0) + Number(row.video_downloads || 0);
+      real.subs = Number(row.subtitle_lines || 0);
+      real.creators = Number(row.usage_creators || 0);
+      real.highlights = Number(row.ai_minutes || 0);
+    }
 
+    if (await tableExists(pool, 'project_exports')) {
+      const pe = await pool.query(
+        `SELECT COUNT(*)::int AS c FROM project_exports WHERE status = 'completed'`
+      );
+      real.videos += Number(pe.rows[0]?.c || 0);
+    }
+
+    if (await tableExists(pool, 'creator_wall_posts')) {
+      const cw = await pool.query(
+        `SELECT COUNT(*)::int AS c FROM creator_wall_posts WHERE approved = true`
+      );
+      real.videos += Number(cw.rows[0]?.c || 0);
+    }
+
+    if (await tableExists(pool, 'users')) {
+      const u = await pool.query(`SELECT COUNT(*)::int AS c FROM users`);
+      real.creators = Math.max(real.creators, Number(u.rows[0]?.c || 0));
+    }
+  } catch (err) {
+    console.warn('[creator-wall] real stats query failed', err?.message || err);
+  }
+
+  return real;
+}
+
+export async function getCreatorWallPublicStats() {
+  const now = Date.now();
+  const simulated = computeSimulatedPublicStats(now);
+  const schema = await ensureCreatorWallSchema();
+
+  if (!schema.ok) {
+    return { ...simulated, realStats: { videos: 0, subs: 0, creators: 0, highlights: 0 } };
+  }
+
+  try {
+    const pool = getPool();
+    const real = await queryRealPlatformStats(pool);
     return {
-      videosThisWeek: Math.max(boost, curated.videosThisWeek),
-      subtitlesGenerated: curated.subtitlesGenerated + total * 120,
-      creatorsOnboarded: curated.creatorsOnboarded + Math.floor(total * 2.5),
-      exportMinutesRendered: curated.exportMinutesRendered + total * 18,
-      source: total > 0 ? 'hybrid' : curated.source,
-      phase: 1,
-      serverTime: Date.now(),
-      incrementRates: curated.incrementRates
+      videosThisWeek: simulated.videosThisWeek + real.videos,
+      subtitlesGenerated: simulated.subtitlesGenerated + real.subs,
+      creatorsOnboarded: simulated.creatorsOnboarded + real.creators,
+      exportMinutesRendered: simulated.exportMinutesRendered + real.highlights,
+      realStats: real,
+      incrementIntervals: simulated.incrementIntervals,
+      serverTime: now,
+      source: real.videos + real.subs + real.creators + real.highlights > 0 ? 'hybrid' : simulated.source,
+      phase: 2
     };
   } catch {
-    return curated;
+    return { ...getCuratedPublicStats(), realStats: { videos: 0, subs: 0, creators: 0, highlights: 0 } };
   }
 }
 
