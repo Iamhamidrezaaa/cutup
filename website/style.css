@@ -1678,6 +1678,12 @@ main {
   cursor: pointer;
   transition: all 0.2s;
   text-align: center;
+  box-sizing: border-box;
+}
+
+button.file-input-btn-full {
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .file-input-btn-full:hover {

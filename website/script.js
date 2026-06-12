@@ -151,13 +151,18 @@ function cutupMarkSessionVerified(verified, source) {
 function setCutupSession(sessionId, source) {
   const sid = sessionId && String(sessionId).trim() ? String(sessionId).trim() : '';
   if (!sid) return;
+  const prevSid = getCutupSessionId();
+  const sessionChanged = prevSid !== sid;
   try {
     localStorage.setItem('cutup_session', sid);
   } catch (_e) {
     /* ignore */
   }
   currentSession = sid;
-  cutupMarkSessionVerified(false, source ? `${source}_pending_verify` : 'pending_verify');
+  // Re-affirming the same session (e.g. after translate) must not clear verified — profile stays visible but upload would silently no-op.
+  if (sessionChanged) {
+    cutupMarkSessionVerified(false, source ? `${source}_pending_verify` : 'pending_verify');
+  }
   try {
     window.CutupApp.authState = 'authenticated';
   } catch (_e2) {
@@ -4904,7 +4909,16 @@ async function processSummarizeFile(file, sessionId) {
 
 /** One upload pass: transcribe once, show SRT + transcript tabs; summary fills in when ready. */
 async function startUploadFilePipeline(file) {
-  if (!(file instanceof File) || !cutupIsLoggedIn()) return;
+  if (!(file instanceof File)) return;
+  if (!cutupIsLoggedIn()) {
+    if (getCutupSessionId() && !cutupSessionIsVerified()) {
+      await loadUserProfile();
+    }
+    if (!cutupIsLoggedIn()) {
+      showMessage('Sign in to transcribe uploads.', 'info');
+      return;
+    }
+  }
   if (!beginPipelineRun()) return;
   cutupPipelineContext = 'upload';
   try {
@@ -5357,6 +5371,69 @@ async function resolveTranscriptionFromExtract(extractResult, {
   return { transcription, usedManualSubtitles: false };
 }
 
+function uploadJobPhaseLabel(phase) {
+  switch (String(phase || '').toLowerCase()) {
+    case 'queued':
+      return 'Queued for transcription…';
+    case 'transcribing':
+      return 'Transcribing your file…';
+    case 'finalizing':
+      return 'Building subtitles…';
+    case 'billing':
+      return 'Almost done…';
+    default:
+      return 'Processing your upload…';
+  }
+}
+
+async function pollUploadTranscriptionJob(jobId, traceId, sessionId, totalTimeoutMs, onProgress) {
+  const started = Date.now();
+  let delay = 2000;
+  let activeTraceId = traceId;
+
+  while (Date.now() - started < totalTimeoutMs) {
+    const pollUrl = `${API_BASE_URL}/api/upload?action=status&jobId=${encodeURIComponent(jobId)}`;
+    const headers = {
+      'X-Trace-Id': activeTraceId,
+      ...(sessionId ? { 'X-Session-Id': sessionId } : {})
+    };
+    const res = await fetch(pollUrl, {
+      method: 'GET',
+      headers,
+      signal: AbortSignal.timeout(45000)
+    });
+    const data = await res.json().catch(() => ({}));
+    activeTraceId = data.traceId || activeTraceId;
+
+    if (!res.ok) {
+      throw buildPipelineErrorFromApi(data, res, activeTraceId);
+    }
+
+    if (typeof onProgress === 'function') {
+      const pct = Number(data.progress);
+      onProgress(Number.isFinite(pct) ? pct : null, uploadJobPhaseLabel(data.phase));
+    }
+
+    if (data.status === 'completed' && data.result?.text) {
+      return { ...data.result, success: true, traceId: activeTraceId };
+    }
+
+    if (data.status === 'failed' || (data.success === false && data.errorCode)) {
+      throw buildPipelineErrorFromApi(data, res, activeTraceId);
+    }
+
+    await new Promise((r) => setTimeout(r, delay));
+    delay = Math.min(8000, Math.round(delay * 1.12));
+  }
+
+  const e = new Error(mapErrorCodeToUserMessage('TRANSCRIPTION_TIMEOUT'));
+  e.errorCode = 'TRANSCRIPTION_TIMEOUT';
+  e.pipelineCode = 'TRANSCRIPTION_TIMEOUT';
+  e.traceId = activeTraceId;
+  e.retryable = true;
+  throw e;
+}
+
 async function transcribeAudio(audioUrlOrFile, languageHint = null, sessionId = null, contextMeta = {}) {
   window.CutupWhisperTimingTrace?.resetWhisperTimingTrace?.();
   let transcribePayload = audioUrlOrFile;
@@ -5412,18 +5489,49 @@ async function transcribeAudio(audioUrlOrFile, languageHint = null, sessionId = 
         formData.append('user_id', sessionId);
       }
       
-      console.log('TRANSCRIBE: Sending file to upload endpoint, size:', transcribePayload.size, 'bytes');
-      
+      console.log('TRANSCRIBE: Sending file to async upload endpoint, size:', transcribePayload.size, 'bytes');
+
+      const uploadPostTimeoutMs = Math.min(timeoutMs, 12 * 60 * 1000);
       response = await fetchWithRetry(
-        `${API_BASE_URL}/api/upload`,
+        `${API_BASE_URL}/api/upload?async=1`,
         {
           method: 'POST',
-          headers: commonHeaders,
+          headers: {
+            ...commonHeaders,
+            'X-Cutup-Async': '1'
+          },
           body: formData,
-          signal: AbortSignal.timeout(timeoutMs)
+          signal: AbortSignal.timeout(uploadPostTimeoutMs)
         },
-        { maxAttempts: 2, retryStatuses: [502, 503] }
+        { maxAttempts: 2, retryStatuses: [502, 503, 504] }
       );
+
+      if (response.status === 202) {
+        const kickoff = await response.json().catch(() => ({}));
+        if (!kickoff?.jobId) {
+          throw new Error('Upload accepted but no job id returned. Please retry.');
+        }
+        console.log('[upload-async-started]', { traceId, jobId: kickoff.jobId });
+        const asyncResult = await pollUploadTranscriptionJob(
+          kickoff.jobId,
+          kickoff.traceId || traceId,
+          sessionId,
+          timeoutMs,
+          (pct, label) => {
+            if (!label) return;
+            const nextPct =
+              typeof pct === 'number' && pct > 0
+                ? Math.min(96, Math.max(progressCurrentPercent || 12, pct))
+                : progressCurrentPercent || 12;
+            updateProgressBar(0, 0, nextPct, label);
+          }
+        );
+        const normalizedAsync = normalizeTranscriptionResult(asyncResult);
+        if (asyncResult?.whisperTimingForensics) {
+          window.cutupTranscribeApiForensics = asyncResult.whisperTimingForensics;
+        }
+        return normalizedAsync;
+      }
     } else {
       console.log('TRANSCRIBE: Sending request to', `${API_BASE_URL}/api/transcribe`);
       
@@ -8314,17 +8422,27 @@ function initUploadFileTab() {
   const openPicker = () => {
     if (currentPlatform !== 'audiofile') switchPlatform('audiofile');
     requestAnimationFrame(() => {
+      if (!audioFileInput) return;
+      try {
+        audioFileInput.value = '';
+      } catch (_clearErr) {
+        /* ignore */
+      }
       try {
         audioFileInput.click();
       } catch (err) {
         console.warn('[upload] file picker failed:', err?.message || err);
+        showMessage('Could not open the file picker. Try again or drag a file onto the upload area.', 'error');
       }
     });
   };
 
   if (chooseBtn && chooseBtn.dataset.cutupBound !== '1') {
     chooseBtn.dataset.cutupBound = '1';
-    // Span sits inside <label for="audioFileInput"> — do not preventDefault on click (blocks native picker).
+    chooseBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      openPicker();
+    });
     chooseBtn.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
@@ -8403,10 +8521,15 @@ async function confirmSelectedUploadFile(file, meta = {}) {
     ...meta
   };
   if (!cutupIsLoggedIn()) {
-    await cutupGateUploadAuth(file, pendingMeta);
-    return;
+    if (getCutupSessionId() && !cutupSessionIsVerified()) {
+      await loadUserProfile();
+    }
+    if (!cutupIsLoggedIn()) {
+      await cutupGateUploadAuth(file, pendingMeta);
+      return;
+    }
   }
-  await startUploadFilePipeline(file);
+  await handleSrtSubtitles();
 }
 
 async function handleFileSelect(e) {

@@ -418,6 +418,13 @@ app.post('/api/upload', rateLimit('/api/upload'), async (req, res) => {
   return uploadHandler(req, res);
 });
 
+app.get('/api/upload', rateLimit('/api/upload'), async (req, res) => {
+  if (!uploadHandler) {
+    return res.status(500).json({ error: 'Upload handler not loaded' });
+  }
+  return uploadHandler(req, res);
+});
+
 app.post('/api/transcribe', rateLimit('/api/transcribe'), async (req, res) => {
   if (!transcribeHandler) {
     return res.status(500).json({ error: 'Transcribe handler not loaded' });

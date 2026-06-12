@@ -269,10 +269,10 @@
           <div class="tab-content" id="audiofile-tab">
             <h2 class="download-title">Upload audio or video</h2>
             <div class="download-input-group download-input-group--upload">
-              <label for="audioFileInput" class="file-input-label-full" id="audioFileDropZone">
+              <div class="file-input-label-full" id="audioFileDropZone">
                 <input type="file" id="audioFileInput" accept="audio/*,video/*,.mp3,.wav,.m4a,.ogg,.webm,.mp4,.mov,.mkv,.aac,.flac" style="display:none;">
-                <span class="file-input-btn-full" id="audioFileChooseBtn" role="button" tabindex="0">📁 Choose file</span>
-              </label>
+                <button type="button" class="file-input-btn-full" id="audioFileChooseBtn">📁 Choose file</button>
+              </div>
               <p class="audio-file-selected-name" id="audioFileSelectedName" hidden aria-live="polite"></p>
               <p class="audio-file-upload-hint">MP3, WAV, M4A, MP4, MOV — we extract speech like social links.</p>
             </div>
@@ -748,7 +748,7 @@ Here's the fastest path from link to publish-ready captions.
   <script src="creator-wall/creator-wall-live.js?v=20260520-live"></script>
   <script src="creator-wall/creator-wall.js?v=20260520-live"></script>
   <script src="demo-live-micro.js?v=20260520-live"></script>
-  <script src="script.js?v=20260612-upload-pipeline"></script>
+  <script src="script.js?v=20260612-upload-async"></script>
   <script src="landing-page.js?v=20260603-restore" defer></script>
   <script>
     document.addEventListener('DOMContentLoaded', async function () {
