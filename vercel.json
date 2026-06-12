@@ -9,6 +9,12 @@
     },
     "api/payment-callback.js": {
       "maxDuration": 60
+    },
+    "api/upload.js": {
+      "maxDuration": 300
+    },
+    "api/transcribe.js": {
+      "maxDuration": 300
     }
   },
   "redirects": [

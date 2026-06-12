@@ -21,6 +21,11 @@ function isVideoMime(mimeType, filename) {
   return VIDEO_EXT.has(extFromName(filename, ''));
 }
 
+const FFMPEG_EXTRACT_TIMEOUT_MS = Math.max(
+  60000,
+  Number(process.env.UPLOAD_FFMPEG_TIMEOUT_MS || 180000)
+);
+
 function runFfmpegExtractAudio(inputPath, outputPath) {
   return new Promise((resolve, reject) => {
     const args = [
@@ -45,14 +50,32 @@ function runFfmpegExtractAudio(inputPath, outputPath) {
     const trackId = trackFfmpegStart(null, purpose, 'ffmpeg', args);
     const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let err = '';
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try {
+        proc.kill('SIGKILL');
+      } catch {
+        /* ignore */
+      }
+      trackFfmpegEnd(null, trackId, purpose);
+      reject(new Error(`ffmpeg audio extract timed out after ${FFMPEG_EXTRACT_TIMEOUT_MS}ms`));
+    }, FFMPEG_EXTRACT_TIMEOUT_MS);
     proc.stderr.on('data', (d) => {
       err += d.toString();
     });
     proc.on('error', (spawnErr) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       trackFfmpegEnd(null, trackId, purpose);
       reject(spawnErr);
     });
     proc.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       trackFfmpegEnd(null, trackId, purpose);
       if (code === 0) resolve();
       else reject(new Error(err.trim() || `ffmpeg exited ${code}`));

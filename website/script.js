@@ -367,15 +367,83 @@ function isMobileBrowser() {
   return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 }
 
-function getPipelineFetchTimeoutMs(kind) {
+function getPipelineFetchTimeoutMs(kind, file = null, mediaDurationSec = null) {
   const mobile = isMobileBrowser();
+  if (kind === 'upload' && file instanceof File) {
+    return getUploadFetchTimeoutMs(file, mediaDurationSec);
+  }
   if (kind === 'extract') return mobile ? 420000 : 300000;
   if (kind === 'transcribe') return mobile ? 1080000 : 900000;
   return mobile ? 600000 : 480000;
 }
 
+function isUploadVideoFile(file) {
+  if (!(file instanceof File)) return false;
+  const mt = String(file.type || '').toLowerCase();
+  if (mt.startsWith('video/')) return true;
+  return /\.(mp4|mov|mkv|webm|m4v|avi)$/i.test(String(file.name || ''));
+}
+
+function estimateUploadPipelineDurationSec(file, mediaDurationSec = null) {
+  if (!(file instanceof File)) return 180;
+  const sizeMb = file.size / 1024 / 1024;
+  const isVideo = isUploadVideoFile(file);
+  const audioMinutes = mediaDurationSec
+    ? Math.max(0.25, mediaDurationSec / 60)
+    : Math.max(0.5, sizeMb * 0.85);
+  const transcribeSec = Math.max(60, audioMinutes * 60 * 2.4);
+  const extractSec = isVideo ? Math.max(25, sizeMb * 6) : 0;
+  const uploadSec = Math.max(20, sizeMb * 4);
+  const queueSec = 75;
+  return transcribeSec + extractSec + uploadSec + queueSec;
+}
+
+function getUploadFetchTimeoutMs(file, mediaDurationSec = null) {
+  const estSec = estimateUploadPipelineDurationSec(file, mediaDurationSec);
+  const mobile = isMobileBrowser();
+  const minMs = mobile ? 14 * 60 * 1000 : 12 * 60 * 1000;
+  const maxMs = mobile ? 50 * 60 * 1000 : 45 * 60 * 1000;
+  return Math.min(maxMs, Math.max(minMs, Math.round(estSec * 1.4 * 1000)));
+}
+
+function probeLocalMediaDurationSec(file) {
+  if (!(file instanceof File) || typeof document === 'undefined') return Promise.resolve(null);
+  const url = URL.createObjectURL(file);
+  const isVideo = isUploadVideoFile(file);
+  const el = document.createElement(isVideo ? 'video' : 'audio');
+  el.preload = 'metadata';
+  el.muted = true;
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (value) => {
+      if (done) return;
+      done = true;
+      URL.revokeObjectURL(url);
+      resolve(value);
+    };
+    const timer = setTimeout(() => finish(null), 12000);
+    el.onloadedmetadata = () => {
+      clearTimeout(timer);
+      const d = Number(el.duration);
+      finish(Number.isFinite(d) && d > 0 ? d : null);
+    };
+    el.onerror = () => {
+      clearTimeout(timer);
+      finish(null);
+    };
+    el.src = url;
+  });
+}
+
+function pipelineFailureLabel(context = cutupPipelineContext) {
+  if (context === 'upload') return 'Upload processing failed';
+  return 'Download failed';
+}
+
 let cutupPipelineInFlight = false;
 let cutupLastPipelineRetry = null;
+/** @type {'link'|'upload'} */
+let cutupPipelineContext = 'link';
 
 function mapErrorCodeToUserMessage(errorCode) {
   switch (String(errorCode || '').toUpperCase()) {
@@ -457,12 +525,12 @@ function isRetryableErrorCode(errorCode) {
   ].includes(c);
 }
 
-async function fetchWithRetry(url, options = {}, { maxAttempts = 2 } = {}) {
+async function fetchWithRetry(url, options = {}, { maxAttempts = 2, retryStatuses = [502, 503, 504] } = {}) {
   let lastErr;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const res = await fetch(url, options);
-      if (attempt < maxAttempts && res.status >= 502 && res.status <= 504) {
+      if (attempt < maxAttempts && retryStatuses.includes(res.status)) {
         console.warn('[fetch-retry]', { attempt, status: res.status, url });
         await new Promise((r) => setTimeout(r, 1200));
         continue;
@@ -508,7 +576,9 @@ function buildPipelineErrorFromApi(data, response, traceId) {
     e.errorCode = 'TRANSCRIPTION_TIMEOUT';
     e.retryable = true;
     e.message =
-      'Video download took too long and the server timed out. Please retry in a minute — shorter clips work best.';
+      cutupPipelineContext === 'upload'
+        ? 'Processing your upload took longer than the connection allowed. Please retry — clips under 3 minutes work best. If this keeps happening, try a shorter file or MP3/WAV audio.'
+        : 'Video download took too long and the server timed out. Please retry in a minute — shorter clips work best.';
   } else if (response?.status === 401) e.errorCode = 'SESSION_EXPIRED';
   else if (response?.status === 403 && legacy.includes('LIMIT')) e.errorCode = 'QUOTA_EXCEEDED';
   else if (legacy.includes('TIMEOUT')) e.errorCode = 'TRANSCRIPTION_TIMEOUT';
@@ -571,13 +641,13 @@ function markProgressBarFailed(shortLabel = 'Could not finish') {
   }
 }
 
-function showPipelineError(error, retryFn) {
+function showPipelineError(error, retryFn, context = cutupPipelineContext) {
   const errorCode = error?.errorCode || error?.pipelineCode;
   const retryable = error?.retryable === true || (error?.retryable !== false && isRetryableErrorCode(errorCode));
   const traceId = error?.traceId || error?.requestId;
   if (traceId) console.warn('[transcript-trace]', traceId, { errorCode, retryable, stage: error?.pipelineStage || error?.phase });
   const text = formatPipelineErrorForUi(error);
-  markProgressBarFailed('Download failed');
+  markProgressBarFailed(pipelineFailureLabel(context));
   showMessage(text, 'error', { persistMs: 30000 });
   if (downloadMessage?.scrollIntoView) {
     downloadMessage.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -4737,14 +4807,26 @@ async function processSummarizeFile(file, sessionId) {
     }
     
     updateProgressBar(0, 0, 10, 'Preparing transcription…');
-    
-    // Transcribe using transcribeAudio (like extension)
-    const estimatedTranscriptionTime = estimateTranscriptionDuration(file.size, null);
-    startProgressTracking(10, 70, estimatedTranscriptionTime, 'Reading your file…', 'Transcribing…');
+
+    const probedDurationSec = await probeLocalMediaDurationSec(file);
+    const estimatedTranscriptionTime = estimateUploadPipelineDurationSec(file, probedDurationSec);
+    cutupLastPipelineRetry = () => {
+      const retryFile = window.selectedFile instanceof File ? window.selectedFile : file;
+      void processSummarizeFile(retryFile, sessionId);
+    };
+
+    startProgressTracking(
+      10,
+      70,
+      estimatedTranscriptionTime,
+      'Uploading & extracting audio…',
+      'Transcribing your file…'
+    );
     const transcription = await transcribeAudio(file, null, sessionId, {
       platform: 'upload',
       filename: file.name || 'uploaded-file',
-      sourceUrl: 'upload://local-file'
+      sourceUrl: 'upload://local-file',
+      mediaDurationSec: probedDurationSec
     });
     stopProgressTracking(70, 'Transcription complete');
     
@@ -4810,8 +4892,13 @@ async function processSummarizeFile(file, sessionId) {
   } catch (error) {
     console.error('[PIPELINE ERROR][processSummarizeFile]', error);
     reportClientError('process', error);
-    showPipelineError(error, cutupLastPipelineRetry);
-    hideProgressBar();
+    if (error?.name === 'AbortError') {
+      error.errorCode = error.errorCode || 'TRANSCRIPTION_TIMEOUT';
+      error.retryable = true;
+      error.message =
+        'Upload processing timed out before the server finished. Please retry — shorter clips (under 3 minutes) are fastest.';
+    }
+    showPipelineError(error, cutupLastPipelineRetry, 'upload');
   }
 }
 
@@ -4819,9 +4906,11 @@ async function processSummarizeFile(file, sessionId) {
 async function startUploadFilePipeline(file) {
   if (!(file instanceof File) || !cutupIsLoggedIn()) return;
   if (!beginPipelineRun()) return;
+  cutupPipelineContext = 'upload';
   try {
     await processFullTextFile(file, getCutupSessionId(), 'srt');
   } finally {
+    cutupPipelineContext = 'link';
     endPipelineRun();
   }
 }
@@ -4861,14 +4950,26 @@ async function processFullTextFile(file, sessionId, activeTab = 'fulltext') {
     }
     
     updateProgressBar(0, 0, 10, 'Preparing transcription…');
-    
-    // Transcribe using transcribeAudio (like extension)
-    const estimatedTranscriptionTime = estimateTranscriptionDuration(file.size, null);
-    startProgressTracking(10, 99, estimatedTranscriptionTime, 'Reading your file…', 'Transcribing…');
+
+    const probedDurationSec = await probeLocalMediaDurationSec(file);
+    const estimatedTranscriptionTime = estimateUploadPipelineDurationSec(file, probedDurationSec);
+    cutupLastPipelineRetry = () => {
+      const retryFile = window.selectedFile instanceof File ? window.selectedFile : file;
+      void startUploadFilePipeline(retryFile);
+    };
+
+    startProgressTracking(
+      10,
+      94,
+      estimatedTranscriptionTime,
+      'Uploading & extracting audio…',
+      'Transcribing your file…'
+    );
     const transcription = await transcribeAudio(file, null, sessionId, {
       platform: 'upload',
       filename: file.name || 'uploaded-file',
-      sourceUrl: 'upload://local-file'
+      sourceUrl: 'upload://local-file',
+      mediaDurationSec: probedDurationSec
     });
     stopProgressTracking(99, 'Transcription complete');
 
@@ -4890,7 +4991,7 @@ async function processFullTextFile(file, sessionId, activeTab = 'fulltext') {
       activeTab: resultActiveTab,
       outputMode: resultOutputMode,
       previewMode: isPreviewMode,
-      videoDurationSeconds: estimatedDurationMinutes * 60,
+      videoDurationSeconds: probedDurationSec || estimatedDurationMinutes * 60,
       title: file.name || 'Uploaded file',
       platform: 'upload',
       sourceUrl: 'upload://local-file'
@@ -4944,8 +5045,13 @@ async function processFullTextFile(file, sessionId, activeTab = 'fulltext') {
   } catch (error) {
     console.error('[PIPELINE ERROR][processFullTextFile]', error);
     reportClientError('process', error);
-    showPipelineError(error, cutupLastPipelineRetry);
-    hideProgressBar();
+    if (error?.name === 'AbortError') {
+      error.errorCode = error.errorCode || 'TRANSCRIPTION_TIMEOUT';
+      error.retryable = true;
+      error.message =
+        'Upload processing timed out before the server finished. Please retry — shorter clips (under 3 minutes) are fastest.';
+    }
+    showPipelineError(error, cutupLastPipelineRetry, 'upload');
   }
 }
 
@@ -5272,11 +5378,13 @@ async function transcribeAudio(audioUrlOrFile, languageHint = null, sessionId = 
     hasSession: Boolean(sessionId),
     platform: contextMeta?.platform || null
   });
-  const orchestrationTimers = [
-    setTimeout(() => cutupPulseTranscriptionOrchestration(0), 22000),
-    setTimeout(() => cutupPulseTranscriptionOrchestration(1), 38000),
-    setTimeout(() => cutupPulseTranscriptionOrchestration(2), 52000)
-  ];
+  const isUpload = transcribePayload instanceof File;
+  const uploadPulseDelays = [45000, 95000, 150000];
+  const linkPulseDelays = [22000, 38000, 52000];
+  const pulseDelays = isUpload ? uploadPulseDelays : linkPulseDelays;
+  const orchestrationTimers = pulseDelays.map((ms, i) =>
+    setTimeout(() => cutupPulseTranscriptionOrchestration(i), ms)
+  );
   console.log('[frontend-before-transcribe]', {
     traceId,
     requestId,
@@ -5286,7 +5394,10 @@ async function transcribeAudio(audioUrlOrFile, languageHint = null, sessionId = 
   });
   try {
     let response;
-    const timeoutMs = getPipelineFetchTimeoutMs('transcribe');
+    const timeoutMs =
+      transcribePayload instanceof File
+        ? getPipelineFetchTimeoutMs('upload', transcribePayload, contextMeta?.mediaDurationSec ?? null)
+        : getPipelineFetchTimeoutMs('transcribe');
     const commonHeaders = {
       'X-Trace-Id': traceId,
       'X-Request-Id': requestId,
@@ -5303,12 +5414,16 @@ async function transcribeAudio(audioUrlOrFile, languageHint = null, sessionId = 
       
       console.log('TRANSCRIBE: Sending file to upload endpoint, size:', transcribePayload.size, 'bytes');
       
-      response = await fetchWithRetry(`${API_BASE_URL}/api/upload`, {
-        method: 'POST',
-        headers: commonHeaders,
-        body: formData,
-        signal: AbortSignal.timeout(timeoutMs)
-      });
+      response = await fetchWithRetry(
+        `${API_BASE_URL}/api/upload`,
+        {
+          method: 'POST',
+          headers: commonHeaders,
+          body: formData,
+          signal: AbortSignal.timeout(timeoutMs)
+        },
+        { maxAttempts: 2, retryStatuses: [502, 503] }
+      );
     } else {
       console.log('TRANSCRIBE: Sending request to', `${API_BASE_URL}/api/transcribe`);
       
@@ -7576,8 +7691,15 @@ function startProgressTracking(startPercent, endPercent, estimatedDurationSecond
       const increment = Math.min(2, (targetProgress - progressCurrentPercent) * 0.3);
       progressCurrentPercent = Math.min(targetProgress, progressCurrentPercent + increment);
     } else if (elapsed >= progressEstimatedDuration && progressCurrentPercent < progressTargetPercent - 1) {
-      // Extraction/transcription still running after estimate — creep instead of freezing
-      progressCurrentPercent = Math.min(progressTargetPercent - 1, progressCurrentPercent + 0.12);
+      const creepCap =
+        cutupPipelineContext === 'upload'
+          ? Math.min(progressTargetPercent - 1, 93)
+          : progressTargetPercent - 1;
+      progressCurrentPercent = Math.min(creepCap, progressCurrentPercent + 0.08);
+      if (cutupPipelineContext === 'upload' && progressTitle && elapsed > progressEstimatedDuration * 1.15) {
+        const waitMsg = USER_TRANSCRIPTION_STILL_WORKING_MSG;
+        if (progressTitle.textContent !== waitMsg) progressTitle.textContent = waitMsg;
+      }
     }
 
     if (progressStatusTextAt50 && progressTitle && progressCurrentPercent >= midPoint) {
