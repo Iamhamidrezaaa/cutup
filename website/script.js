@@ -5304,9 +5304,14 @@ function audioBlobSizeHint(dataUrl) {
 
 // Transcribe audio (like extension)
 function rememberSourceVideoFile(file) {
-  if (file instanceof File && String(file.type || '').toLowerCase().startsWith('video/')) {
+  if (!(file instanceof File)) return;
+  const isVideo = isUploadVideoFile(file);
+  window.cutupUploadHasVideo = isVideo;
+  if (isVideo) {
     window.cutupLastSourceVideoFile = file;
     void probeVideoAspectFromFile(file);
+  } else {
+    window.cutupLastSourceVideoFile = null;
   }
 }
 
@@ -5423,8 +5428,9 @@ function uploadJobPhaseLabel(phase) {
 
 async function pollUploadTranscriptionJob(jobId, traceId, sessionId, totalTimeoutMs, onProgress) {
   const started = Date.now();
-  let delay = 2000;
+  let delay = 4000;
   let activeTraceId = traceId;
+  let rateLimitStreak = 0;
 
   while (Date.now() - started < totalTimeoutMs) {
     const pollUrl = `${API_BASE_URL}/api/upload?action=status&jobId=${encodeURIComponent(jobId)}`;
@@ -5432,13 +5438,38 @@ async function pollUploadTranscriptionJob(jobId, traceId, sessionId, totalTimeou
       'X-Trace-Id': activeTraceId,
       ...(sessionId ? { 'X-Session-Id': sessionId } : {})
     };
-    const res = await fetch(pollUrl, {
-      method: 'GET',
-      headers,
-      signal: AbortSignal.timeout(45000)
-    });
-    const data = await res.json().catch(() => ({}));
+    let res;
+    let data = {};
+    try {
+      res = await fetch(pollUrl, {
+        method: 'GET',
+        headers,
+        signal: AbortSignal.timeout(45000)
+      });
+      data = await res.json().catch(() => ({}));
+    } catch (netErr) {
+      if (Date.now() - started < totalTimeoutMs - 5000) {
+        console.warn('[upload-poll-retry]', netErr?.message || netErr);
+        await new Promise((r) => setTimeout(r, delay));
+        delay = Math.min(12000, Math.round(delay * 1.15));
+        continue;
+      }
+      throw netErr;
+    }
     activeTraceId = data.traceId || activeTraceId;
+
+    if (res.status === 429 || data.code === 'RATE_LIMITED') {
+      rateLimitStreak += 1;
+      const retryAfterSec = Number(res.headers?.get?.('Retry-After') || data.retryAfter || 15);
+      const waitMs = Math.min(60000, Math.max(retryAfterSec, 8 + rateLimitStreak * 4) * 1000);
+      if (typeof onProgress === 'function') {
+        onProgress(null, 'Server busy — still transcribing…');
+      }
+      await new Promise((r) => setTimeout(r, waitMs));
+      delay = Math.min(15000, Math.max(delay, waitMs));
+      continue;
+    }
+    rateLimitStreak = 0;
 
     if (!res.ok) {
       throw buildPipelineErrorFromApi(data, res, activeTraceId);
@@ -5458,7 +5489,7 @@ async function pollUploadTranscriptionJob(jobId, traceId, sessionId, totalTimeou
     }
 
     await new Promise((r) => setTimeout(r, delay));
-    delay = Math.min(8000, Math.round(delay * 1.12));
+    delay = Math.min(12000, Math.round(delay * 1.1));
   }
 
   const e = new Error(mapErrorCodeToUserMessage('TRANSCRIPTION_TIMEOUT'));
@@ -5538,7 +5569,7 @@ async function transcribeAudio(audioUrlOrFile, languageHint = null, sessionId = 
           body: formData,
           signal: AbortSignal.timeout(uploadPostTimeoutMs)
         },
-        { maxAttempts: 2, retryStatuses: [502, 503, 504] }
+        { maxAttempts: 3, retryStatuses: [502, 503, 504] }
       );
 
       if (response.status === 202) {

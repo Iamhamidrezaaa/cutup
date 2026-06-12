@@ -66,6 +66,8 @@ export function extractionRateLimitMiddleware(routeName) {
     const method = (req.method || 'GET').toUpperCase();
     if (method === 'OPTIONS') return next();
     if (method === 'GET' && String(routeName).includes('export-video')) return next();
+    // Upload job status polling — do not count against extraction burst limits.
+    if (method === 'GET' && String(routeName).includes('upload')) return next();
     const blocked = await enforceRateLimit(req, res, { route: routeName || req.path });
     if (blocked) return;
     return next();

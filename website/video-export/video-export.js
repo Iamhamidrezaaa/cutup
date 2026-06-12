@@ -225,6 +225,18 @@
     return url;
   }
 
+  /** MP4 export needs a video source — not audio-only uploads. */
+  function hasVideoSourceForExport() {
+    if (resolveSourceUrl()) return true;
+    if (global.cutupLastSourceVideoFile instanceof File) return true;
+    if (global.cutupUploadHasVideo === true) return true;
+    const platform = String(global.cutupLastTranscription?.platform || '').toLowerCase();
+    if (platform && platform !== 'upload' && platform !== 'audiofile' && platform !== 'file') {
+      return true;
+    }
+    return false;
+  }
+
   function getCurrentPlanKey() {
     const plan = global.userSubscription?.plan || 'free';
     return global.CutupPlanPermissions?.resolvePlanKey
@@ -267,6 +279,9 @@
   }
 
   function canExport() {
+    if (!hasVideoSourceForExport()) {
+      return { ok: false, lock: 'source', reason: 'MP4 export needs a video file or social link.' };
+    }
     if (isPlanLockedForMp4()) {
       const msg = global.CutupPlanPermissions?.getUpgradeMessage
         ? global.CutupPlanPermissions.getUpgradeMessage('canExportMp4')
@@ -709,6 +724,7 @@
   }
 
   function refreshExportButton() {
+    const mount = document.getElementById('cutupViralExportMount');
     const btn = document.getElementById('cutupExportMp4Btn');
     const banner = document.getElementById('cutupExportUpgradeBanner');
     const proBadge = document.getElementById('cutupExportProBadge');
@@ -716,6 +732,14 @@
     const foot = document.getElementById('cutupExportUpgradeFoot');
     const viralCard = document.querySelector('.cutup-export-options__card--viral');
     if (!btn) return;
+
+    if (!hasVideoSourceForExport()) {
+      mount?.setAttribute('hidden', '');
+      viralCard?.setAttribute('hidden', '');
+      return;
+    }
+    mount?.removeAttribute('hidden');
+    viralCard?.removeAttribute('hidden');
 
     const planLocked = isPlanLockedForMp4();
     const check = canExport();
@@ -746,7 +770,6 @@
 
     banner?.setAttribute('hidden', '');
     btn.classList.remove('cutup-viral-export__btn--upgrade');
-    const mount = document.getElementById('cutupViralExportMount');
     btn.textContent = mount?.dataset?.readyJobId ? 'Export again' : 'Export MP4';
     btn.disabled = !check.ok;
     btn.title = check.ok ? 'Render MP4 with burned-in subtitles' : check.reason;
@@ -1155,7 +1178,14 @@
 
   function initAfterResults() {
     const container = document.getElementById('cutupViralExportMount');
+    const viralCard = document.querySelector('.cutup-export-options__card--viral');
     if (!container) return;
+    if (!hasVideoSourceForExport()) {
+      container.hidden = true;
+      viralCard?.setAttribute('hidden', '');
+      return;
+    }
+    viralCard?.removeAttribute('hidden');
     container.hidden = false;
     if (!container.dataset.mounted) {
       mount(container);
