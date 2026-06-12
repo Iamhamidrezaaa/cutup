@@ -1,10 +1,13 @@
 User-agent: *
 Allow: /
 
-# Key pages
+# Key landing & tool pages
 Allow: /blog.html
 Allow: /faq.html
+Allow: /about.html
+Allow: /contact.html
 Allow: /video-to-text.html
 Allow: /translate-video.html
+Allow: /tools/
 
 Sitemap: https://cutup.shop/sitemap.xml

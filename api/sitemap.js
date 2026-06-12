@@ -5,9 +5,13 @@ const BASE_URL = 'https://cutup.shop';
 const STATIC_PATHS = [
   '/',
   '/blog.html',
+  '/faq.html',
+  '/about.html',
+  '/contact.html',
+  '/privacy.html',
+  '/terms.html',
   '/video-to-text.html',
   '/translate-video.html',
-  '/faq.html',
   ...SEO_GUIDE_TYPES.map((t) => `/tools/${t}-guide.html`),
 ];
 
