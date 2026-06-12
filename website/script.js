@@ -1558,11 +1558,14 @@ function inferCutupPaymentProvider() {
 }
 
 async function cutupTriggerGoogleLogin() {
+  if (cutupLoginClickInFlight) return;
   if (cutupSessionIsVerified()) {
     console.log('[script] Already authenticated; skipping Google OAuth redirect');
+    hideAuthTransition();
     resetGoogleButtonState();
     return;
   }
+  cutupLoginClickInFlight = true;
   window.CutupApp.authState = 'redirecting';
   const btn = document.getElementById('loginBtn');
   if (btn) {
@@ -1593,6 +1596,7 @@ async function cutupTriggerGoogleLogin() {
     console.error('[script] Google login failed:', error);
     resetGoogleButtonState();
     hideAuthTransition();
+    cutupLoginClickInFlight = false;
     const st = Number(error?.httpStatus || 0);
     if (st === 502 || st === 503 || st === 504) {
       showMessage(
@@ -1603,6 +1607,10 @@ async function cutupTriggerGoogleLogin() {
       showMessage('Google sign-in failed. Please try again.', 'error');
     }
     throw error;
+  } finally {
+    if (window.CutupApp?.authState !== 'redirecting') {
+      cutupLoginClickInFlight = false;
+    }
   }
 }
 
@@ -3423,7 +3431,34 @@ function generateAvatar(text) {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&background=${color}&color=fff&size=128&bold=true&font-size=0.5`;
 }
 
-// Login button click - setup in DOMContentLoaded
+let cutupLoginClickInFlight = false;
+
+async function handleCutupLoginButtonClick(e) {
+  const btn = e?.target?.closest?.('#loginBtn');
+  if (!btn || btn.disabled || cutupLoginClickInFlight) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  if (cutupSessionIsVerified()) {
+    hideAuthTransition();
+    resetGoogleButtonState();
+    return;
+  }
+
+  console.log('[script] Login button clicked, fetching auth URL from /api/oauth/google/start...');
+  try {
+    await cutupTriggerGoogleLogin();
+  } catch (_err) {
+    /* cutupTriggerGoogleLogin already surfaced error */
+  }
+}
+
+function wireCutupLoginButton() {
+  if (window.__cutupLoginWired) return;
+  window.__cutupLoginWired = true;
+  document.addEventListener('click', handleCutupLoginButtonClick, true);
+}
 
 function resetGoogleButtonState() {
   const btn = document.querySelector('.google-btn');
@@ -3434,8 +3469,12 @@ function resetGoogleButtonState() {
   if (label) label.textContent = 'Continue with Google';
 }
 
+wireCutupLoginButton();
+window.cutupSignInWithGoogle = () => cutupTriggerGoogleLogin();
+
 window.addEventListener('pageshow', () => {
   resetGoogleButtonState();
+  hideAuthTransition();
   try {
     const ls = localStorage.getItem('cutup_session');
     if (ls && String(ls).trim() && String(ls).trim() !== String(currentSession || '').trim()) {
@@ -3457,13 +3496,7 @@ document.addEventListener('visibilitychange', () => {
 let youtubeUrlInput, audioFileInput, downloadVideoBtnMain, downloadAudioBtnMain;
 let downloadSubtitleBtnMain, summarizeBtnMain, fullTextBtnMain, downloadMessage;
 
-document.addEventListener('DOMContentLoaded', async () => {
-  if (window.CutupRtlLanguages?.ensureReady) {
-    await window.CutupRtlLanguages.ensureReady();
-  }
-  populateLanguageSelects();
-  window.CutupRtlLanguages?.applyMarketingVisibility?.();
-  window.CutupRtlLanguages?.stripRtlOptionsFromDocument?.();
+function initCutupHomeToolDomRefs() {
   youtubeUrlInput = document.getElementById('youtubeUrlInput');
   audioFileInput = document.getElementById('audioFileInput');
   downloadVideoBtnMain = document.getElementById('downloadVideoBtnMain');
@@ -3472,31 +3505,83 @@ document.addEventListener('DOMContentLoaded', async () => {
   downloadMessage = document.getElementById('downloadMessage');
   summarizeBtnMain = document.getElementById('summarizeBtnMain');
   fullTextBtnMain = document.getElementById('fullTextBtnMain');
-  
-  // Setup login button event listener using event delegation (simple and reliable)
-  document.addEventListener('click', async function (e) {
-    const btn = e.target.closest('#loginBtn');
-    if (!btn) return;
+}
 
-    e.preventDefault();
-    e.stopPropagation();
+function wireCutupHomeToolControls() {
+  initCutupHomeToolDomRefs();
+  initUploadFileTab();
 
-    if (cutupSessionIsVerified()) {
-      console.log('[script] Login click ignored — session verified');
-      return;
-    }
+  if (downloadVideoBtnMain && downloadVideoBtnMain.dataset.cutupBound !== '1') {
+    downloadVideoBtnMain.dataset.cutupBound = '1';
+    downloadVideoBtnMain.addEventListener('click', async () => {
+      await handleVideoDownload();
+    });
+  }
 
-    if (getCutupSessionId() && !cutupSessionIsVerified()) {
-      console.log('[script] Re-auth: stored session could not be verified (API may be down)');
-    }
+  if (downloadAudioBtnMain && downloadAudioBtnMain.dataset.cutupBound !== '1') {
+    downloadAudioBtnMain.dataset.cutupBound = '1';
+    downloadAudioBtnMain.addEventListener('click', async () => {
+      await handleAudioDownload();
+    });
+  }
 
-    console.log('[script] Login button clicked, fetching auth URL from /api/oauth/google/start...');
-    try {
-      await cutupTriggerGoogleLogin();
-    } catch (_err) {
-      /* cutupTriggerGoogleLogin already surfaced error */
-    }
-  });
+  if (fullTextBtnMain && fullTextBtnMain.dataset.cutupBound !== '1') {
+    fullTextBtnMain.dataset.cutupBound = '1';
+    fullTextBtnMain.addEventListener('click', async () => {
+      await handleFullText('fulltext');
+    });
+  }
+
+  if (downloadSubtitleBtnMain && downloadSubtitleBtnMain.dataset.cutupBound !== '1') {
+    downloadSubtitleBtnMain.dataset.cutupBound = '1';
+    downloadSubtitleBtnMain.addEventListener('click', async () => {
+      await handleSrtSubtitles();
+    });
+  }
+
+  if (youtubeUrlInput && youtubeUrlInput.dataset.cutupBound !== '1') {
+    youtubeUrlInput.dataset.cutupBound = '1';
+    youtubeUrlInput.addEventListener('input', () => {
+      checkInput();
+    });
+  }
+
+  const instagramUrlInput = document.getElementById('instagramUrlInput');
+  if (instagramUrlInput && instagramUrlInput.dataset.cutupBound !== '1') {
+    instagramUrlInput.dataset.cutupBound = '1';
+    instagramUrlInput.addEventListener('input', () => {
+      checkInput();
+    });
+  }
+
+  const tiktokUrlInput = document.getElementById('tiktokUrlInput');
+  if (tiktokUrlInput && tiktokUrlInput.dataset.cutupBound !== '1') {
+    tiktokUrlInput.dataset.cutupBound = '1';
+    tiktokUrlInput.addEventListener('input', () => {
+      checkInput();
+    });
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  wireCutupHomeToolControls();
+  resetGoogleButtonState();
+});
+
+document.addEventListener('cutup:header-ready', () => {
+  if (!getCutupSessionId() || !cutupSessionIsVerified()) {
+    showLoginButton();
+  }
+  resetGoogleButtonState();
+});
+
+document.addEventListener('DOMContentLoaded', async () => {
+  if (window.CutupRtlLanguages?.ensureReady) {
+    await window.CutupRtlLanguages.ensureReady();
+  }
+  populateLanguageSelects();
+  window.CutupRtlLanguages?.applyMarketingVisibility?.();
+  window.CutupRtlLanguages?.stripRtlOptionsFromDocument?.();
 
   if (
     document.getElementById('cutupPricingMatrixMount') &&
@@ -3507,56 +3592,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   setupLandingPricingCheckoutIntercept();
   initCutupFaqAccordion();
-  
-  console.log('[script] Login button event listener attached (event delegation)');
-  
-  // Setup event listeners for YouTube buttons
-  if (downloadVideoBtnMain) {
-    downloadVideoBtnMain.addEventListener('click', async () => {
-      await handleVideoDownload();
-    });
-  }
-  
-  if (downloadAudioBtnMain) {
-    downloadAudioBtnMain.addEventListener('click', async () => {
-      await handleAudioDownload();
-    });
-  }
-  
-  if (fullTextBtnMain) {
-    fullTextBtnMain.addEventListener('click', async () => {
-      await handleFullText('fulltext');
-    });
-  }
-  
-  if (downloadSubtitleBtnMain) {
-    downloadSubtitleBtnMain.addEventListener('click', async () => {
-      await handleSrtSubtitles();
-    });
-  }
-  
-  // Setup input event listeners
-  if (youtubeUrlInput) {
-    youtubeUrlInput.addEventListener('input', () => {
-      checkInput();
-    });
-  }
-
-  const instagramUrlInput = document.getElementById('instagramUrlInput');
-  if (instagramUrlInput) {
-    instagramUrlInput.addEventListener('input', () => {
-      checkInput();
-    });
-  }
-
-  const tiktokUrlInput = document.getElementById('tiktokUrlInput');
-  if (tiktokUrlInput) {
-    tiktokUrlInput.addEventListener('input', () => {
-      checkInput();
-    });
-  }
-
-  initUploadFileTab();
 });
 
 // Check if YouTube URL is valid — after normalization (Shorts, live, youtu.be, watch?v=)
@@ -8389,10 +8424,11 @@ async function cutupGateUploadAuth(file = null, meta = {}) {
       mode: meta.mode || 'fulltext',
       activeTab
     });
-  } catch (_e) {
+  } catch (err) {
     cutupClearPendingAction();
     hideAuthTransition();
-    showMessage('Sign in to transcribe uploads.', 'error');
+    console.warn('[upload] auth gate failed:', err?.message || err);
+    showMessage('Sign in to transcribe uploads. Use Continue with Google above.', 'error');
   }
   return false;
 }
@@ -8421,26 +8457,29 @@ function initUploadFileTab() {
 
   const openPicker = () => {
     if (currentPlatform !== 'audiofile') switchPlatform('audiofile');
-    requestAnimationFrame(() => {
-      if (!audioFileInput) return;
-      try {
-        audioFileInput.value = '';
-      } catch (_clearErr) {
-        /* ignore */
-      }
-      try {
-        audioFileInput.click();
-      } catch (err) {
-        console.warn('[upload] file picker failed:', err?.message || err);
-        showMessage('Could not open the file picker. Try again or drag a file onto the upload area.', 'error');
-      }
-    });
+    const input = audioFileInput || document.getElementById('audioFileInput');
+    if (!input) {
+      showMessage('Upload control is still loading. Please try again in a moment.', 'info');
+      return;
+    }
+    audioFileInput = input;
+    try {
+      input.value = '';
+    } catch (_clearErr) {
+      /* ignore */
+    }
+    try {
+      input.click();
+    } catch (err) {
+      console.warn('[upload] file picker failed:', err?.message || err);
+      showMessage('Could not open the file picker. Try again or drag a file onto the upload area.', 'error');
+    }
   };
 
   if (chooseBtn && chooseBtn.dataset.cutupBound !== '1') {
     chooseBtn.dataset.cutupBound = '1';
-    chooseBtn.addEventListener('click', (e) => {
-      e.preventDefault();
+    // Keep user activation: no preventDefault — programmatic input.click() must run in the same gesture.
+    chooseBtn.addEventListener('click', () => {
       openPicker();
     });
     chooseBtn.addEventListener('keydown', (e) => {

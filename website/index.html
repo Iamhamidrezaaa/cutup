@@ -703,6 +703,7 @@ Here's the fastest path from link to publish-ready captions.
     else document.body.insertAdjacentHTML('afterbegin', renderMarketingHeader());
     initSiteHeaderNav(document.querySelector('header.main-header'));
     document.body.insertAdjacentHTML('beforeend', renderFooter());
+    document.dispatchEvent(new CustomEvent('cutup:header-ready'));
   </script>
 
   <link rel="stylesheet" href="customer-role-guard.css">
@@ -748,7 +749,7 @@ Here's the fastest path from link to publish-ready captions.
   <script src="creator-wall/creator-wall-live.js?v=20260520-live"></script>
   <script src="creator-wall/creator-wall.js?v=20260520-live"></script>
   <script src="demo-live-micro.js?v=20260520-live"></script>
-  <script src="script.js?v=20260612-upload-async"></script>
+  <script src="script.js?v=20260612-guest-upload-auth"></script>
   <script src="landing-page.js?v=20260603-restore" defer></script>
   <script>
     document.addEventListener('DOMContentLoaded', async function () {

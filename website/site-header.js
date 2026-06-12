@@ -101,10 +101,23 @@ export function initSiteHeaderNav(scope) {
   });
 
   links.querySelectorAll('a, button').forEach(function (item) {
+    if (item.id === 'loginBtn') return;
     item.addEventListener('click', function () {
       if (window.innerWidth < 640) closeMenu();
     });
   });
+
+  var loginBtn = root.querySelector('#loginBtn');
+  if (loginBtn && loginBtn.dataset.cutupDirectAuth !== '1') {
+    loginBtn.dataset.cutupDirectAuth = '1';
+    loginBtn.addEventListener('click', function (e) {
+      if (typeof window.cutupSignInWithGoogle === 'function') {
+        e.preventDefault();
+        e.stopPropagation();
+        void window.cutupSignInWithGoogle();
+      }
+    });
+  }
 
   window.addEventListener('resize', function () {
     if (window.innerWidth >= 640) closeMenu();
