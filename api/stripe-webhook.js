@@ -218,6 +218,15 @@ export default async function handler(req, res) {
         const email = sub.metadata?.userEmail;
         if (email) {
           await downgradeStripeSubscription(email);
+          void import('./founder-bot/alerts.js').then((m) =>
+            m.founderAlertSubscriptionPlanChange({
+              email,
+              fromPlan: planKeyFromStripeMetadata(sub.metadata?.plan),
+              toPlan: 'free',
+              changeType: 'downgrade',
+              source: 'stripe_subscription_deleted'
+            })
+          ).catch(() => {});
           console.log('[stripe-webhook] customer.subscription.deleted -> free', email);
         } else {
           console.warn('[stripe-webhook] subscription.deleted without userEmail', sub.id);

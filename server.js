@@ -1366,6 +1366,9 @@ loadRoutes().then(async () => {
 
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server running on http://0.0.0.0:${PORT} (PID: ${process.pid})`);
+    void import('./api/founder-bot/telegram.js')
+      .then((m) => m.startFounderBot())
+      .catch((err) => console.warn('[founder-bot] init skipped:', err?.message || err));
     console.log(`📡 API endpoints:`);
     console.log(`   POST /api/upload`);
     console.log(`   POST /api/transcribe`);

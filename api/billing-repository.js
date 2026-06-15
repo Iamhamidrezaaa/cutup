@@ -260,6 +260,14 @@ export async function applyStripeSubscriptionDbFromCheckout(email, planKey, stri
   if (String(prevPlan).toLowerCase() !== String(planKey).toLowerCase()) {
     const { recordPlanUpgraded } = await import('./activity-feed-repository.js');
     void recordPlanUpgraded(email, prevPlan, planKey, { source: 'stripe_checkout' });
+    void import('./founder-bot/alerts.js').then((m) =>
+      m.founderAlertSubscriptionPlanChange({
+        email,
+        fromPlan: prevPlan,
+        toPlan: planKey,
+        source: 'stripe_checkout'
+      })
+    ).catch(() => {});
   }
 }
 

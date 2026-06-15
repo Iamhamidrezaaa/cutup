@@ -572,6 +572,14 @@ export async function updateExportFromJobDb(job) {
         [job.id, userId]
       );
     }
+    void import('./founder-bot/alerts.js').then((m) =>
+      m.founderAlertExportFailed({
+        email: job.userEmail,
+        jobId: job.id,
+        projectName: job.projectTitle || job.presetDisplayName || job.presetId || null,
+        error: job.error || null
+      })
+    ).catch(() => {});
   }
 }
 

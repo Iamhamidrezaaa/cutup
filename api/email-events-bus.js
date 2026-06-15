@@ -187,7 +187,14 @@ export async function listEmailTemplates() {
 
 // ——— Domain event helpers (business logic calls these) ———
 
+function notifyFounderBot(alertFn, payload) {
+  void import('./founder-bot/alerts.js')
+    .then((m) => m[alertFn]?.(payload))
+    .catch(() => {});
+}
+
 export function emitUserRegistered(payload) {
+  notifyFounderBot('founderAlertUserRegistered', payload);
   return emitEmailEvent('user_registered', payload);
 }
 
@@ -196,6 +203,7 @@ export function emitExportCompleted(payload) {
 }
 
 export function emitPaymentSuccessful(payload) {
+  notifyFounderBot('founderAlertPaymentSuccessful', payload);
   return emitEmailEvent('payment_successful', payload);
 }
 

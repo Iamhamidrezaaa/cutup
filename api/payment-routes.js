@@ -379,8 +379,25 @@ async function processSuccessfulPayment({ payment, authority, verifyResult, req,
     source: 'yekpay',
     paymentId: String(fresh.id)
   });
+  void import('./founder-bot/alerts.js').then((m) =>
+    m.founderAlertPaymentSuccessful({
+      email,
+      planName: planKeyResolved,
+      amountEur: payAmount,
+      amount: `${payCurrency?.toUpperCase() === 'EUR' ? '€' : ''}${payAmount}`,
+      source: 'yekpay'
+    })
+  ).catch(() => {});
   if (prevPlanKey !== planKeyResolved) {
     void recordPlanUpgraded(email, prevPlanKey, planKeyResolved, { source: 'yekpay' });
+    void import('./founder-bot/alerts.js').then((m) =>
+      m.founderAlertSubscriptionPlanChange({
+        email,
+        fromPlan: prevPlanKey,
+        toPlan: planKeyResolved,
+        source: 'yekpay'
+      })
+    ).catch(() => {});
   } else if (sub.extended) {
     void recordSubscriptionRenewed(email, planKeyResolved, { source: 'yekpay' });
   }
