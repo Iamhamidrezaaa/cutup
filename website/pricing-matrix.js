@@ -181,8 +181,156 @@
     );
   }
 
+  function planCardFeaturesList(plan) {
+    var lines = [];
+    var maxIncluded = 6;
+    var included = 0;
+    (P().MATRIX_FEATURES || []).forEach(function (row) {
+      if (row.type === 'credits') {
+        lines.unshift(
+          '<li class="pricing-mobile__feat-line pricing-mobile__feat-line--credits">' +
+            '<span data-cutup-plan-exports="' +
+            plan +
+            '">' +
+            creditsCell(plan) +
+            '</span></li>'
+        );
+        return;
+      }
+      if (included >= maxIncluded) return;
+      if (P().hasPermission && P().hasPermission(plan, row.id)) {
+        included += 1;
+        lines.push(
+          '<li class="pricing-mobile__feat-line">' +
+            '<span class="pricing-mobile__feat-check" aria-hidden="true">✓</span>' +
+            esc(row.label) +
+            '</li>'
+        );
+      }
+    });
+    return '<ul class="pricing-mobile__feat-list">' + lines.join('') + '</ul>';
+  }
+
+  function buildMobilePlanCard(plan, context, currentPlan, subscriptionExpired) {
+    var labels = P().PLAN_LABELS || {};
+    var prices = P().PLAN_PRICES || {};
+    var meta = labels[plan] || {};
+    var price = (prices[plan] && prices[plan].display) || '';
+    var isPro = plan === 'pro';
+    var isCurrent = plan === resolveCurrentPlan(currentPlan);
+    var cardClass = 'pricing-mobile__card';
+    if (isPro) cardClass += ' pricing-mobile__card--pro';
+    if (isCurrent) cardClass += ' pricing-mobile__card--current';
+
+    var badge = isPro ? '<span class="pricing-compare__badge">MOST POPULAR</span>' : '';
+    var currentLabel = isCurrent
+      ? '<span class="pricing-mobile__current-pill">Current plan</span>'
+      : '';
+
+    return (
+      '<article class="' +
+      cardClass +
+      '" data-cutup-mobile-plan="' +
+      plan +
+      '">' +
+      badge +
+      currentLabel +
+      '<h3 class="pricing-mobile__plan-name">' +
+      esc(meta.name || plan) +
+      '</h3>' +
+      '<p class="pricing-mobile__plan-tag">' +
+      esc(meta.tagline || '') +
+      '</p>' +
+      '<p class="pricing-mobile__price">' +
+      esc(price) +
+      '</p>' +
+      planCardFeaturesList(plan) +
+      '<div class="pricing-mobile__cta">' +
+      ctaForPlan(plan, context, currentPlan, subscriptionExpired) +
+      '</div></article>'
+    );
+  }
+
+  function buildMobileFeatureCompare() {
+    var order = P().PLAN_ORDER || ['free', 'starter', 'pro', 'business'];
+    var labels = P().PLAN_LABELS || {};
+    var rows = (P().MATRIX_FEATURES || [])
+      .map(function (row) {
+        var planCells = order
+          .map(function (plan) {
+            var shortName = (labels[plan] && labels[plan].name) || plan;
+            var val;
+            if (row.type === 'credits') {
+              val =
+                '<span data-cutup-plan-exports="' +
+                plan +
+                '">' +
+                creditsCell(plan) +
+                '</span>';
+            } else {
+              val = yesNoCell(P().hasPermission && P().hasPermission(plan, row.id));
+            }
+            var cellClass = 'pricing-mobile__compare-cell';
+            if (plan === 'pro') cellClass += ' pricing-mobile__compare-cell--pro';
+            return (
+              '<div class="' +
+              cellClass +
+              '">' +
+              '<span class="pricing-mobile__compare-plan">' +
+              esc(shortName) +
+              '</span>' +
+              '<span class="pricing-mobile__compare-val">' +
+              val +
+              '</span></div>'
+            );
+          })
+          .join('');
+        var rowClass = 'pricing-mobile__compare-row';
+        if (row.highlight) rowClass += ' pricing-mobile__compare-row--highlight';
+        if (row.upgradeTrigger) rowClass += ' pricing-mobile__compare-row--upgrade';
+        return (
+          '<div class="' +
+          rowClass +
+          '">' +
+          '<div class="pricing-mobile__compare-label">' +
+          esc(row.label) +
+          '</div>' +
+          '<div class="pricing-mobile__compare-grid">' +
+          planCells +
+          '</div></div>'
+        );
+      })
+      .join('');
+    return (
+      '<details class="pricing-mobile__details">' +
+      '<summary class="pricing-mobile__details-summary">Compare all features</summary>' +
+      '<div class="pricing-mobile__compare">' +
+      rows +
+      '</div></details>'
+    );
+  }
+
+  function buildMobileHtml(context, currentPlan, subscriptionExpired) {
+    var order = P().PLAN_ORDER || ['free', 'starter', 'pro', 'business'];
+    var cards = order
+      .map(function (plan) {
+        return buildMobilePlanCard(plan, context, currentPlan, subscriptionExpired);
+      })
+      .join('');
+    return (
+      '<div class="pricing-compare-mobile" role="region" aria-label="Plan comparison (mobile)">' +
+      '<div class="pricing-mobile__cards">' +
+      cards +
+      '</div>' +
+      buildMobileFeatureCompare() +
+      '</div>'
+    );
+  }
+
   function buildMatrixHtml(context, currentPlan, subscriptionExpired) {
     return (
+      '<div class="pricing-matrix-root">' +
+      '<div class="pricing-compare-desktop">' +
       '<div class="pricing-compare-wrap" role="region" aria-label="Plan comparison">' +
       '<table class="pricing-compare">' +
       '<thead><tr><th class="pricing-compare__feature-col" scope="col">Feature</th>' +
@@ -192,8 +340,9 @@
       buildBodyRows(currentPlan) +
       '</tbody>' +
       buildFoot(context || 'landing', currentPlan, subscriptionExpired) +
-      '</table></div>' +
-      '<p class="pricing-compare__footnote">Plans renew monthly in EUR. You will always see the exact total on the checkout page before you confirm.</p>'
+      '</table></div></div>' +
+      buildMobileHtml(context, currentPlan, subscriptionExpired) +
+      '<p class="pricing-compare__footnote">Plans renew monthly in EUR. You will always see the exact total on the checkout page before you confirm.</p></div>'
     );
   }
 
