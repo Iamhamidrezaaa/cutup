@@ -30,6 +30,10 @@
     display: flex;
     justify-content: space-between;
   }
+
+  .dashboard-header-welcome {
+    display: none;
+  }
 }
 
 @media (max-width: 1024px) {
@@ -142,10 +146,6 @@
   border-radius: 8px;
   flex-shrink: 0;
   display: block;
-}
-
-.dashboard-header-welcome {
-  display: none;
 }
 
 @media (max-width: 639px) {
@@ -3385,6 +3385,8 @@
   font-weight: 600;
   font-size: 17px;
   color: var(--text-primary, #0f172a);
+  max-width: 100%;
+  word-break: break-word;
 }
 
 .profile-settings-avatar-hint {
@@ -3411,6 +3413,7 @@
   font-size: 13px;
   font-weight: 500;
   color: var(--text-secondary, #64748b);
+  min-width: 0;
 }
 
 .profile-settings-field--wide {
@@ -3429,6 +3432,9 @@
   padding: 10px 12px;
   background: #fafafe;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .profile-settings-field input:focus,
@@ -3632,6 +3638,106 @@
 
 .profile-settings-status--ok {
   color: #166534;
+}
+
+/* Profile & dashboard — mobile overflow fixes */
+@media (max-width: 768px) {
+  .dashboard-container {
+    overflow-x: hidden;
+    max-width: 100%;
+  }
+
+  .dashboard-main {
+    padding: 12px;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .dashboard-content {
+    padding: 16px 12px;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
+    box-sizing: border-box;
+  }
+
+  #profile-section .section-title {
+    font-size: clamp(1.25rem, 5.5vw, 1.5rem);
+    margin-bottom: 16px;
+    word-break: break-word;
+  }
+
+  .profile-settings-root,
+  .profile-settings-layout,
+  .profile-settings-grid,
+  .profile-settings-card,
+  .profile-settings-save-bar {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .profile-settings-card {
+    padding: 16px 14px;
+  }
+
+  .profile-settings-avatar-stack {
+    max-width: 100%;
+  }
+
+  .profile-settings-fields {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .profile-settings-field input,
+  .profile-settings-field select,
+  .profile-settings-field textarea {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .profile-settings-danger-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .profile-settings-danger-row .profile-settings-btn {
+    width: 100%;
+  }
+
+  .profile-settings-actions-row {
+    flex-direction: column;
+  }
+
+  .profile-settings-actions-row .profile-settings-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .profile-settings-save-bar {
+    padding: 12px 14px;
+    bottom: max(8px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .profile-settings-save-row {
+    justify-content: stretch;
+  }
+
+  .profile-settings-save-row .profile-settings-btn--primary {
+    width: 100%;
+  }
+
+  .profile-settings-footer {
+    width: 100%;
+  }
+}
+
+@media (max-width: 380px) {
+  .dashboard-header-welcome__text {
+    font-size: 13px;
+  }
 }
 
 .profile-settings-card--error {
