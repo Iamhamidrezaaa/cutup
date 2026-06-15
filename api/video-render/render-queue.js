@@ -1219,3 +1219,32 @@ export function getQueueStats() {
     avgRenderSecHq: Math.round(averageRenderSec('hq'))
   };
 }
+
+/** Founder Bot V1.2 — in-memory render queue snapshot (this process). */
+export function getFounderBotQueueSnapshot() {
+  let failed = 0;
+  let queueWaitSum = 0;
+  let queueWaitCount = 0;
+
+  for (const job of jobs.values()) {
+    if (job.stageKey === 'failed') failed += 1;
+    const started = job.processingStartedAt || job.renderStartedAt;
+    if (started && job.createdAt) {
+      const waitSec = Math.max(0, (Number(started) - Number(job.createdAt)) / 1000);
+      if (waitSec > 0) {
+        queueWaitSum += waitSec;
+        queueWaitCount += 1;
+      }
+    } else if (Number(job.queueWaitSec) > 0) {
+      queueWaitSum += Number(job.queueWaitSec);
+      queueWaitCount += 1;
+    }
+  }
+
+  return {
+    pending: waitQueue.length,
+    running: activeCount,
+    failed,
+    avgQueueSec: queueWaitCount > 0 ? Math.round(queueWaitSum / queueWaitCount) : 0
+  };
+}

@@ -208,6 +208,18 @@ export default async function handler(req, res) {
           firstName: profile?.first_name || 'there',
           agentName: agent.display_name,
         });
+        if (result.escalated) {
+          void import('./founder-bot/support-bridge-v13.js')
+            .then((m) =>
+              m.notifyFounderBotTicketEscalated({
+                ticket: result.ticket,
+                userEmail: result.userEmail,
+                firstName: profile?.first_name || 'there',
+                reason: 'Urgent ticket assigned to agent'
+              })
+            )
+            .catch(() => {});
+        }
         return res.json({ ok: true, ticket: result.ticket });
       }
 

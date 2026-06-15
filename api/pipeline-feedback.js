@@ -103,6 +103,9 @@ export default async function handler(req, res) {
       void notifyAdminsNegativePipelineFeedback(result.feedback).catch((notifyErr) => {
         console.warn('[pipeline-feedback-notify-error]', notifyErr?.message || notifyErr);
       });
+      void import('./founder-bot/support-bridge-v13.js')
+        .then((m) => m.notifyFounderBotNegativeFeedback(result.feedback))
+        .catch(() => {});
     }
 
     return res.status(200).json({ ok: true });

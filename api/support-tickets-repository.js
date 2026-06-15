@@ -689,6 +689,8 @@ export async function assignSupportTicket({ ticketNumber, adminId, assigneeAdmin
   if (!Number.isFinite(assignee) || assignee <= 0) {
     return { ok: false, reason: 'assignee_required' };
   }
+  const wasUnassigned = !detail.ticket.assigned_admin_id;
+  const isUrgent = String(detail.ticket.priority || '').toUpperCase() === 'URGENT';
   const pool = getPool();
   let assigneeEmail = null;
   if (assignee) {
@@ -710,6 +712,7 @@ export async function assignSupportTicket({ ticketNumber, adminId, assigneeAdmin
     ticket: { ...detail.ticket, assigned_admin_id: assignee },
     userId: detail.ticket.user_id,
     userEmail: detail.ticket.user_email,
+    escalated: wasUnassigned && isUrgent,
   };
 }
 

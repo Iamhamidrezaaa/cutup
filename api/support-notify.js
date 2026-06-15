@@ -77,6 +77,10 @@ export async function notifyTicketCreated({ ticket, userEmail, firstName }) {
     }),
   ]);
 
+  void import('./founder-bot/support-bridge-v13.js')
+    .then((m) => m.notifyFounderBotTicketCreated({ ticket, userEmail, firstName }))
+    .catch(() => {});
+
   return userResult;
 }
 
