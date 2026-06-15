@@ -503,6 +503,10 @@ function setupDashboardMobileNav() {
     });
   });
 
+  document.getElementById('logoutBtnSidebar')?.addEventListener('click', () => {
+    if (mq.matches) close();
+  });
+
   mq.addEventListener('change', (e) => {
     if (!e.matches) close();
   });
@@ -560,8 +564,8 @@ function setupNavigation() {
   setupDashboardMobileNav();
 }
 
-function setupEventListeners() {
-  document.getElementById('logoutBtnHeader')?.addEventListener('click', async () => {
+function handleDashboardLogout() {
+  const run = async () => {
     if (currentSession) {
       try {
         await fetch(`${API_BASE_URL}/api/auth?action=logout`, {
@@ -578,7 +582,13 @@ function setupEventListeners() {
     }
     localStorage.removeItem('cutup_session');
     window.location.href = '/';
-  });
+  };
+  void run();
+}
+
+function setupEventListeners() {
+  document.getElementById('logoutBtnHeader')?.addEventListener('click', handleDashboardLogout);
+  document.getElementById('logoutBtnSidebar')?.addEventListener('click', handleDashboardLogout);
 }
 
 let dashboardCountriesPromise = null;

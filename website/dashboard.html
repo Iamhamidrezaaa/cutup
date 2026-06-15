@@ -21,7 +21,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css?v=CLEAN_BUILD_2026_04">
   <link rel="stylesheet" href="landing-page.css?v=20260609-cro-pricing">
-  <link rel="stylesheet" href="dashboard.css?v=20260609-renewal-date">
+  <link rel="stylesheet" href="dashboard.css?v=20260615-mobile-header">
   <link rel="stylesheet" href="dashboard-notifications.css?v=20260608-notif-nav">
   <link rel="stylesheet" href="dashboard-support.css?v=20260609-agent-v2">
   <link rel="stylesheet" href="dashboard-help.css?v=20260608-help-v5">
@@ -51,11 +51,19 @@
           aria-controls="cutupDashboardSidebar"
           aria-label="Open navigation menu"
         >
+          <img
+            src="dashboard-logo-mono.svg"
+            alt=""
+            class="dashboard-nav-logo"
+            width="32"
+            height="32"
+            decoding="async"
+          >
           <span class="dashboard-nav-toggle-bars" aria-hidden="true"></span>
         </button>
         <a href="https://cutup.shop" class="dashboard-brand-link logo" aria-label="Cutup home">
-          <img src="logo.svg" alt="Cutup" class="dashboard-brand-logo logo-icon" width="32" height="32" decoding="async">
-          <span>Cutup</span>
+          <img src="logo.svg" alt="" class="dashboard-brand-logo logo-icon" width="32" height="32" decoding="async">
+          <span class="dashboard-brand-text">Cutup</span>
         </a>
         <div class="header-actions">
           <div class="user-profile-header" id="userProfileHeader">
@@ -66,7 +74,7 @@
                 <span class="user-email-header" id="userEmailHeader"></span>
               </div>
             </a>
-            <button class="logout-btn-header" id="logoutBtnHeader">Log out</button>
+            <button class="logout-btn-header" id="logoutBtnHeader" type="button">Log out</button>
           </div>
         </div>
       </div>
@@ -113,6 +121,12 @@
             <span class="nav-text">Support</span>
           </a>
         </nav>
+        <div class="dashboard-sidebar-footer">
+          <button type="button" class="nav-item nav-item--logout" id="logoutBtnSidebar">
+            <span class="nav-icon" aria-hidden="true">↪</span>
+            <span class="nav-text">Log out</span>
+          </button>
+        </div>
       </aside>
 
       <!-- Content Area -->
