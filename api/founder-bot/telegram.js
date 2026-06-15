@@ -2,6 +2,7 @@
  * Founder Bot — Telegram transport with retries. Never throws to callers.
  */
 import { tryAcquireFounderBotPollingLock } from './polling-lock.js';
+import { startDailyBriefingScheduler, stopDailyBriefingScheduler } from './briefing-scheduler.js';
 
 const TELEGRAM_API = 'https://api.telegram.org';
 const MAX_RETRIES = 3;
@@ -124,7 +125,10 @@ export function queueTelegramMessage(text, options = {}) {
 function registerShutdownHooks() {
   if (shutdownHooksRegistered) return;
   shutdownHooksRegistered = true;
-  const onStop = () => stopFounderBotPolling();
+  const onStop = () => {
+    stopFounderBotPolling();
+    stopDailyBriefingScheduler();
+  };
   process.once('SIGTERM', onStop);
   process.once('SIGINT', onStop);
   process.once('beforeExit', onStop);
@@ -184,6 +188,7 @@ export async function startFounderBotPolling(onUpdate) {
     releasePollingLock = lock.release;
     registerShutdownHooks();
     console.log('[founder-bot] polling started');
+    startDailyBriefingScheduler();
     void pollOnce(onUpdate);
     return true;
   } finally {
@@ -194,6 +199,7 @@ export async function startFounderBotPolling(onUpdate) {
 export function stopFounderBotPolling() {
   if (!polling && !releasePollingLock) return;
   polling = false;
+  stopDailyBriefingScheduler();
   if (pollTimer) {
     clearTimeout(pollTimer);
     pollTimer = null;

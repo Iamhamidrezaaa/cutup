@@ -4,10 +4,11 @@
  */
 import { getPool, isBillingDbConfigured } from '../db/pool.js';
 
-/** Stable advisory lock key (session-scoped while connection is held). */
-const ADVISORY_LOCK_KEY = 1748291034;
+/** Stable advisory lock keys (session-scoped while connection is held). */
+const POLLING_LOCK_KEY = 1748291034;
+const BRIEFING_LOCK_KEY = 1748291035;
 
-let heldClient = null;
+const heldClients = new Map();
 
 function isNonLeaderClusterInstance() {
   const raw = process.env.NODE_APP_INSTANCE;
@@ -15,29 +16,24 @@ function isNonLeaderClusterInstance() {
   return Number(raw) !== 0;
 }
 
-/**
- * @returns {Promise<{ acquired: boolean, release: () => Promise<void> }>}
- */
-export async function tryAcquireFounderBotPollingLock() {
+async function tryAcquireAdvisoryLock(lockKey) {
   if (isBillingDbConfigured()) {
     try {
       const client = await getPool().connect();
-      const r = await client.query('SELECT pg_try_advisory_lock($1::bigint) AS ok', [
-        ADVISORY_LOCK_KEY
-      ]);
+      const r = await client.query('SELECT pg_try_advisory_lock($1::bigint) AS ok', [lockKey]);
       if (!r.rows[0]?.ok) {
         client.release();
         return { acquired: false, release: async () => {} };
       }
-      heldClient = client;
+      heldClients.set(lockKey, client);
       return {
         acquired: true,
         release: async () => {
-          if (!heldClient) return;
-          const c = heldClient;
-          heldClient = null;
+          const c = heldClients.get(lockKey);
+          if (!c) return;
+          heldClients.delete(lockKey);
           try {
-            await c.query('SELECT pg_advisory_unlock($1::bigint)', [ADVISORY_LOCK_KEY]);
+            await c.query('SELECT pg_advisory_unlock($1::bigint)', [lockKey]);
           } catch (err) {
             console.warn('[founder-bot] lock release failed', err?.message || err);
           } finally {
@@ -56,4 +52,19 @@ export async function tryAcquireFounderBotPollingLock() {
   }
 
   return { acquired: true, release: async () => {} };
+}
+
+/**
+ * @returns {Promise<{ acquired: boolean, release: () => Promise<void> }>}
+ */
+export async function tryAcquireFounderBotPollingLock() {
+  return tryAcquireAdvisoryLock(POLLING_LOCK_KEY);
+}
+
+/**
+ * Short-lived lock for daily briefing execution (PM2 cluster singleton).
+ * @returns {Promise<{ acquired: boolean, release: () => Promise<void> }>}
+ */
+export async function tryAcquireFounderBotBriefingLock() {
+  return tryAcquireAdvisoryLock(BRIEFING_LOCK_KEY);
 }

@@ -30,10 +30,15 @@ export async function resolveFounderBotCommand(command) {
     const { dispatchCommandV13 } = await import('./commands-v13.js');
     reply = await dispatchCommandV13(cmd);
   }
+  if (!reply) {
+    const { dispatchCommandV14 } = await import('./commands-v14.js');
+    reply = await dispatchCommandV14(cmd);
+  }
   if (reply && cmd === '/help') {
     const { founderBotHelpExtension } = await import('./commands-v12.js');
     const { founderBotHelpExtensionV13 } = await import('./commands-v13.js');
-    reply = `${reply}\n\n${founderBotHelpExtension}\n${founderBotHelpExtensionV13}\n/dashboard — executive summary`;
+    const { founderBotHelpExtensionV14 } = await import('./commands-v14.js');
+    reply = `${reply}\n\n${founderBotHelpExtension}\n${founderBotHelpExtensionV13}\n${founderBotHelpExtensionV14}\n/dashboard — executive summary`;
   }
   return reply;
 }
