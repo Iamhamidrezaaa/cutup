@@ -83,10 +83,38 @@ export function sendTelegramMessage(text, options = {}) {
     disable_web_page_preview: true,
     ...(options.parseMode ? { parse_mode: options.parseMode } : {})
   };
+  if (options.replyMarkup) {
+    body.reply_markup = options.replyMarkup;
+  }
   return callTelegramApi('sendMessage', body).catch((err) => {
     console.warn('[founder-bot] sendMessage unexpected', err?.message || err);
     return { ok: false, error: err?.message || String(err) };
   });
+}
+
+export function editTelegramMessage(chatId, messageId, text, options = {}) {
+  if (!chatId || !messageId || !envToken()) {
+    return Promise.resolve({ ok: false, skipped: true });
+  }
+  const body = {
+    chat_id: chatId,
+    message_id: messageId,
+    text: String(text || '').slice(0, 4096),
+    disable_web_page_preview: true
+  };
+  if (options.replyMarkup) body.reply_markup = options.replyMarkup;
+  return callTelegramApi('editMessageText', body).catch(() => ({ ok: false }));
+}
+
+export function answerCallbackQuery(callbackQueryId, options = {}) {
+  if (!callbackQueryId || !envToken()) {
+    return Promise.resolve({ ok: false, skipped: true });
+  }
+  return callTelegramApi('answerCallbackQuery', {
+    callback_query_id: callbackQueryId,
+    ...(options.text ? { text: String(options.text).slice(0, 200) } : {}),
+    show_alert: Boolean(options.showAlert)
+  }).catch(() => ({ ok: false }));
 }
 
 export function queueTelegramMessage(text, options = {}) {
@@ -108,7 +136,7 @@ async function pollOnce(onUpdate) {
   const result = await callTelegramApi('getUpdates', {
     offset: pollOffset,
     timeout: 25,
-    allowed_updates: ['message']
+    allowed_updates: ['message', 'callback_query']
   });
 
   if (!polling) return;
@@ -178,6 +206,6 @@ export function stopFounderBotPolling() {
 }
 
 export async function startFounderBot() {
-  const { handleTelegramUpdate } = await import('./commands.js');
-  return startFounderBotPolling(handleTelegramUpdate);
+  const { handleFounderBotUiUpdate } = await import('./ui-handler.js');
+  return startFounderBotPolling(handleFounderBotUiUpdate);
 }

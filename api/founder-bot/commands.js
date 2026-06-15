@@ -169,7 +169,7 @@ function formatTopCountries(m) {
   ].join('\n');
 }
 
-async function dispatchCommand(command) {
+export async function dispatchCommand(command) {
   switch (command) {
     case '/users':
       return formatUsers(await getUsersMetrics());
@@ -187,7 +187,6 @@ async function dispatchCommand(command) {
       return formatSubscriptions(await getSubscriptionsMetrics());
     case '/topcountries':
       return formatTopCountries(await getTopCountriesMetrics());
-    case '/start':
     case '/help':
       return [
         'CutUp Founder Bot',
@@ -199,42 +198,19 @@ async function dispatchCommand(command) {
         '/revenue — revenue breakdown',
         '/conversions — signup → paid',
         '/subscriptions — active & churn',
-        '/topcountries — geo leaderboard'
+        '/topcountries — geo leaderboard',
+        '/dashboard — executive summary'
       ].join('\n');
+    case '/start':
+      return null;
     default:
       return null;
   }
 }
 
-export async function handleTelegramUpdate(update) {
-  const message = update?.message;
-  if (!message?.text) return;
-
-  const chatId = message.chat?.id;
-  if (!isAuthorizedChat(chatId)) {
-    return;
-  }
-
-  const command = extractCommand(message.text);
-  if (!command) return;
-
-  let reply = await dispatchCommand(command);
-  if (!reply) {
-    const { dispatchCommandV12 } = await import('./commands-v12.js');
-    reply = await dispatchCommandV12(command);
-  }
-  if (!reply) {
-    const { dispatchCommandV13 } = await import('./commands-v13.js');
-    reply = await dispatchCommandV13(command);
-  }
-  if (reply && (command === '/help' || command === '/start')) {
-    const { founderBotHelpExtension } = await import('./commands-v12.js');
-    const { founderBotHelpExtensionV13 } = await import('./commands-v13.js');
-    reply = `${reply}\n\n${founderBotHelpExtension}\n${founderBotHelpExtensionV13}`;
-  }
-  if (!reply) return;
-
-  queueTelegramMessage(reply, { chatId });
-}
-
 export { planLabel };
+
+export async function handleTelegramUpdate(update) {
+  const { handleFounderBotUiUpdate } = await import('./ui-handler.js');
+  return handleFounderBotUiUpdate(update);
+}
