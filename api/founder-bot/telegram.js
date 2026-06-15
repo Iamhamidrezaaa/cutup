@@ -1,14 +1,18 @@
 /**
  * Founder Bot — Telegram transport with retries. Never throws to callers.
  */
+import { tryAcquireFounderBotPollingLock } from './polling-lock.js';
 
 const TELEGRAM_API = 'https://api.telegram.org';
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 800;
 
 let polling = false;
+let startingPolling = false;
 let pollOffset = 0;
 let pollTimer = null;
+let releasePollingLock = null;
+let shutdownHooksRegistered = false;
 
 function envToken() {
   return String(process.env.TELEGRAM_BOT_TOKEN || '').trim();
@@ -89,6 +93,15 @@ export function queueTelegramMessage(text, options = {}) {
   void sendTelegramMessage(text, options);
 }
 
+function registerShutdownHooks() {
+  if (shutdownHooksRegistered) return;
+  shutdownHooksRegistered = true;
+  const onStop = () => stopFounderBotPolling();
+  process.once('SIGTERM', onStop);
+  process.once('SIGINT', onStop);
+  process.once('beforeExit', onStop);
+}
+
 async function pollOnce(onUpdate) {
   if (!polling || !isFounderBotConfigured()) return;
 
@@ -125,20 +138,42 @@ export async function startFounderBotPolling(onUpdate) {
     console.log('[founder-bot] skipped — TELEGRAM_BOT_TOKEN or TELEGRAM_ADMIN_CHAT_ID not set');
     return false;
   }
-  if (polling) return true;
+  if (polling || startingPolling) {
+    console.log('[founder-bot] polling skipped (already running)');
+    return false;
+  }
 
-  polling = true;
-  pollOffset = 0;
-  console.log('[founder-bot] polling started for admin chat', envAdminChatId().slice(0, 4) + '…');
-  void pollOnce(onUpdate);
-  return true;
+  startingPolling = true;
+  try {
+    const lock = await tryAcquireFounderBotPollingLock();
+    if (!lock.acquired) {
+      console.log('[founder-bot] polling skipped (already running)');
+      return false;
+    }
+
+    polling = true;
+    pollOffset = 0;
+    releasePollingLock = lock.release;
+    registerShutdownHooks();
+    console.log('[founder-bot] polling started');
+    void pollOnce(onUpdate);
+    return true;
+  } finally {
+    startingPolling = false;
+  }
 }
 
 export function stopFounderBotPolling() {
+  if (!polling && !releasePollingLock) return;
   polling = false;
   if (pollTimer) {
     clearTimeout(pollTimer);
     pollTimer = null;
+  }
+  const release = releasePollingLock;
+  releasePollingLock = null;
+  if (release) {
+    void release().catch(() => {});
   }
 }
 
