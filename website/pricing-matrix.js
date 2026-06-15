@@ -8,6 +8,155 @@
   var PAID_PLANS = ['starter', 'pro', 'business'];
   var modalEl = null;
 
+  /** Visual-only CRO highlights — maps to existing permission keys, no logic changes */
+  var KEY_FEATURE_BADGES = [
+    { id: 'canTranslate', icon: '⭐', label: 'AI Translation' },
+    { id: 'canExportMp4', icon: '🎬', label: 'MP4 Export' },
+    { id: 'canUsePremiumStyles', icon: '✨', label: 'Premium Caption Styles' },
+    { id: 'canUseTeams', icon: '👥', label: 'Team Workflow' },
+    { id: 'canUsePriorityQueue', icon: '🚀', label: 'Priority Processing' }
+  ];
+
+  var CRO_COMPARE_ROW_IDS = {
+    canTranslate: true,
+    canExportMp4: true,
+    canUsePremiumStyles: true,
+    canUseCreatorStyles: true,
+    canUseTeams: true,
+    canUsePriorityQueue: true
+  };
+
+  var KEY_SECTION_EXCLUDE = {
+    canTranslate: true,
+    canExportMp4: true,
+    canUsePremiumStyles: true,
+    canUseCreatorStyles: true,
+    canUseTeams: true,
+    canUsePriorityQueue: true
+  };
+
+  var GENERIC_SECONDARY_IDS = {
+    canUseAiCaptions: true,
+    canUseSummary: true,
+    canUseBasicTranscript: true
+  };
+
+  function planKeyFeatureIds(plan) {
+    if (plan === 'pro') return ['canTranslate', 'canExportMp4', 'canUsePremiumStyles'];
+    if (plan === 'business') {
+      return ['canTranslate', 'canExportMp4', 'canUsePremiumStyles', 'canUseTeams', 'canUsePriorityQueue'];
+    }
+    if (plan === 'starter') return ['canTranslate'];
+    return [];
+  }
+
+  function keyBadgeDef(id) {
+    for (var i = 0; i < KEY_FEATURE_BADGES.length; i++) {
+      if (KEY_FEATURE_BADGES[i].id === id) return KEY_FEATURE_BADGES[i];
+    }
+    return null;
+  }
+
+  function hasKeyFeature(plan, badgeId) {
+    if (badgeId === 'canUsePremiumStyles') {
+      return (
+        (P().hasPermission && P().hasPermission(plan, 'canUsePremiumStyles')) ||
+        (P().hasPermission && P().hasPermission(plan, 'canUseCreatorStyles'))
+      );
+    }
+    return P().hasPermission && P().hasPermission(plan, badgeId);
+  }
+
+  function buildKeyBadgeHtml(plan, badgeId, compact) {
+    var def = keyBadgeDef(badgeId);
+    if (!def) return '';
+    var on = hasKeyFeature(plan, badgeId);
+    var cls = 'pricing-key-badge';
+    if (compact) cls += ' pricing-key-badge--compact';
+    if (!on) cls += ' pricing-key-badge--locked';
+    return (
+      '<span class="' +
+      cls +
+      '">' +
+      '<span class="pricing-key-badge__icon" aria-hidden="true">' +
+      def.icon +
+      '</span>' +
+      '<span class="pricing-key-badge__text">' +
+      esc(def.label) +
+      '</span></span>'
+    );
+  }
+
+  function buildKeyBadgesRow(plan, compact) {
+    var ids = planKeyFeatureIds(plan);
+    if (!ids.length) return '';
+    return (
+      '<div class="pricing-key-badges' +
+      (compact ? ' pricing-key-badges--compact' : '') +
+      '">' +
+      ids
+        .map(function (id) {
+          return buildKeyBadgeHtml(plan, id, compact);
+        })
+        .join('') +
+      '</div>'
+    );
+  }
+
+  function buildKeyFeaturesSection(plan, compact) {
+    var ids = planKeyFeatureIds(plan);
+    if (!ids.length) return '';
+    if (plan !== 'pro' && plan !== 'business' && plan !== 'starter') return '';
+    var heading = plan === 'starter' ? 'Highlights' : 'Key features';
+    var audience =
+      plan === 'business'
+        ? '<p class="pricing-key__audience">For agencies and teams</p>'
+        : '';
+    return (
+      '<div class="pricing-key">' +
+      '<h4 class="pricing-key__heading">' +
+      heading +
+      '</h4>' +
+      buildKeyBadgesRow(plan, compact) +
+      audience +
+      '</div>'
+    );
+  }
+
+  function buildPlanTrustLine(plan) {
+    if (plan === 'pro') {
+      return '<p class="pricing-key__trust">Best for TikTok &amp; YouTube creators</p>';
+    }
+    return '';
+  }
+
+  function buildHeadExtras(plan) {
+    var parts = [];
+    if (plan === 'pro') {
+      parts.push('<span class="pricing-compare__trust-line">Best for TikTok &amp; YouTube creators</span>');
+    }
+    if (plan === 'business') {
+      parts.push('<span class="pricing-compare__audience-line">For agencies and teams</span>');
+    }
+    if (plan === 'pro' || plan === 'business') {
+      parts.push(buildKeyBadgesRow(plan, true));
+    }
+    return parts.join('');
+  }
+
+  function isCroCompareRow(row) {
+    if (!row || !row.id) return false;
+    return Boolean(CRO_COMPARE_ROW_IDS[row.id]);
+  }
+
+  function rowClassForFeature(row) {
+    var classes = [];
+    if (row.highlight) classes.push('pricing-compare__highlight-row');
+    if (row.upgradeTrigger) classes.push('pricing-compare__upgrade-trigger');
+    if (isCroCompareRow(row)) classes.push('pricing-compare__cro-row');
+    return classes.length ? ' class="' + classes.join(' ') + '"' : '';
+  }
+
   function P() {
     return global.CutupPlanPermissions || {};
   }
@@ -20,10 +169,12 @@
       .replace(/"/g, '&quot;');
   }
 
-  function yesNoCell(on) {
+  function yesNoCell(on, cro) {
+    var cls = on ? 'pricing-compare__yes' : 'pricing-compare__no';
+    if (cro && on) cls += ' pricing-compare__yes--cro';
     return on
-      ? '<span class="pricing-compare__yes" aria-label="Included">✅</span>'
-      : '<span class="pricing-compare__no" aria-label="Not included">❌</span>';
+      ? '<span class="' + cls + '" aria-label="Included">✅</span>'
+      : '<span class="' + cls + '" aria-label="Not included">❌</span>';
   }
 
   function creditsCell(planKey) {
@@ -83,7 +234,9 @@
           '</span>' +
           '<span class="pricing-compare__price">' +
           esc(price) +
-          '</span></th>'
+          '</span>' +
+          buildHeadExtras(plan) +
+          '</th>'
         );
       })
       .join('');
@@ -94,9 +247,8 @@
     var rows = P().MATRIX_FEATURES || [];
     return rows
       .map(function (row) {
-        var trClass = '';
-        if (row.highlight) trClass = ' class="pricing-compare__highlight-row"';
-        else if (row.upgradeTrigger) trClass = ' class="pricing-compare__upgrade-trigger"';
+        var trClass = rowClassForFeature(row);
+        var cro = isCroCompareRow(row);
         var cells = order
           .map(function (plan) {
             var tdAttr = tdColAttr(plan, currentPlan);
@@ -104,7 +256,7 @@
               return '<td' + tdAttr + ' data-cutup-plan-exports="' + plan + '">' + creditsCell(plan) + '</td>';
             }
             var on = P().hasPermission && P().hasPermission(plan, row.id);
-            return '<td' + tdAttr + '>' + yesNoCell(on) + '</td>';
+            return '<td' + tdAttr + '>' + yesNoCell(on, cro) + '</td>';
           })
           .join('');
         return '<tr' + trClass + '><th scope="row">' + esc(row.label) + '</th>' + cells + '</tr>';
@@ -181,34 +333,45 @@
     );
   }
 
-  function planCardFeaturesList(plan) {
+  function planCardCreditsBlock(plan) {
+    return (
+      '<div class="pricing-mobile__credits">' +
+      '<span data-cutup-plan-exports="' +
+      plan +
+      '">' +
+      creditsCell(plan) +
+      '</span></div>'
+    );
+  }
+
+  function planCardSecondaryFeatures(plan) {
     var lines = [];
-    var maxIncluded = 6;
-    var included = 0;
     (P().MATRIX_FEATURES || []).forEach(function (row) {
-      if (row.type === 'credits') {
-        lines.unshift(
-          '<li class="pricing-mobile__feat-line pricing-mobile__feat-line--credits">' +
-            '<span data-cutup-plan-exports="' +
-            plan +
-            '">' +
-            creditsCell(plan) +
-            '</span></li>'
-        );
-        return;
-      }
-      if (included >= maxIncluded) return;
-      if (P().hasPermission && P().hasPermission(plan, row.id)) {
-        included += 1;
-        lines.push(
-          '<li class="pricing-mobile__feat-line">' +
-            '<span class="pricing-mobile__feat-check" aria-hidden="true">✓</span>' +
-            esc(row.label) +
-            '</li>'
-        );
-      }
+      if (row.type === 'credits') return;
+      if (KEY_SECTION_EXCLUDE[row.id]) return;
+      if (!(P().hasPermission && P().hasPermission(plan, row.id))) return;
+      var secondary = GENERIC_SECONDARY_IDS[row.id];
+      lines.push(
+        '<li class="pricing-mobile__feat-line' +
+          (secondary ? ' pricing-mobile__feat-line--secondary' : '') +
+          '">' +
+          '<span class="pricing-mobile__feat-check" aria-hidden="true">✓</span>' +
+          esc(row.label) +
+          '</li>'
+      );
     });
-    return '<ul class="pricing-mobile__feat-list">' + lines.join('') + '</ul>';
+    if (!lines.length) return '';
+    return (
+      '<div class="pricing-mobile__also">' +
+      '<p class="pricing-mobile__also-label">Also includes</p>' +
+      '<ul class="pricing-mobile__feat-list pricing-mobile__feat-list--secondary">' +
+      lines.join('') +
+      '</ul></div>'
+    );
+  }
+
+  function planCardFeaturesList(plan) {
+    return planCardCreditsBlock(plan) + buildKeyFeaturesSection(plan, false) + planCardSecondaryFeatures(plan);
   }
 
   function buildMobilePlanCard(plan, context, currentPlan, subscriptionExpired) {
@@ -220,6 +383,7 @@
     var isCurrent = plan === resolveCurrentPlan(currentPlan);
     var cardClass = 'pricing-mobile__card';
     if (isPro) cardClass += ' pricing-mobile__card--pro';
+    if (plan === 'business') cardClass += ' pricing-mobile__card--business';
     if (isCurrent) cardClass += ' pricing-mobile__card--current';
 
     var badge = isPro ? '<span class="pricing-compare__badge">MOST POPULAR</span>' : '';
@@ -244,6 +408,7 @@
       '<p class="pricing-mobile__price">' +
       esc(price) +
       '</p>' +
+      buildPlanTrustLine(plan) +
       planCardFeaturesList(plan) +
       '<div class="pricing-mobile__cta">' +
       ctaForPlan(plan, context, currentPlan, subscriptionExpired) +
@@ -256,6 +421,7 @@
     var labels = P().PLAN_LABELS || {};
     var rows = (P().MATRIX_FEATURES || [])
       .map(function (row) {
+        var cro = isCroCompareRow(row);
         var planCells = order
           .map(function (plan) {
             var shortName = (labels[plan] && labels[plan].name) || plan;
@@ -268,7 +434,7 @@
                 creditsCell(plan) +
                 '</span>';
             } else {
-              val = yesNoCell(P().hasPermission && P().hasPermission(plan, row.id));
+              val = yesNoCell(P().hasPermission && P().hasPermission(plan, row.id), cro);
             }
             var cellClass = 'pricing-mobile__compare-cell';
             if (plan === 'pro') cellClass += ' pricing-mobile__compare-cell--pro';
@@ -288,6 +454,7 @@
         var rowClass = 'pricing-mobile__compare-row';
         if (row.highlight) rowClass += ' pricing-mobile__compare-row--highlight';
         if (row.upgradeTrigger) rowClass += ' pricing-mobile__compare-row--upgrade';
+        if (cro) rowClass += ' pricing-mobile__compare-row--cro';
         return (
           '<div class="' +
           rowClass +
