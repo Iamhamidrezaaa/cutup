@@ -36,40 +36,57 @@
   .header-content {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'menu welcome actions';
     align-items: center;
     gap: 10px;
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
   }
 
-  .dashboard-brand-link.logo {
-    display: none !important;
+  .dashboard-nav-toggle {
+    grid-area: menu;
+    justify-self: start;
   }
 
   .dashboard-header-welcome {
+    grid-area: welcome;
     display: flex;
     align-items: center;
     justify-content: center;
     min-width: 0;
-    padding: 0 4px;
+    padding: 0 6px;
     text-align: center;
   }
 
   .dashboard-header-welcome__text {
     margin: 0;
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 600;
     line-height: 1.25;
-    color: #0f172a;
+    color: var(--primary, #6366f1);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 100%;
   }
 
+  .dashboard-brand-link.logo {
+    display: none !important;
+  }
+
   .header-actions {
+    grid-area: actions;
+    justify-self: end;
     flex-shrink: 0;
     margin-left: 0;
+  }
+
+  .user-profile-header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
   }
 
   .user-identity-copy {
@@ -80,21 +97,14 @@
     display: none;
   }
 
-  .user-profile-header {
-    gap: 8px;
-  }
-
   .user-profile-link {
+    order: 2;
     max-width: none;
     padding: 0;
   }
 
   .cutup-notif-bell-wrap {
     order: 1;
-  }
-
-  .user-profile-link {
-    order: 2;
   }
 
   .user-avatar-header {
@@ -2777,12 +2787,12 @@
     justify-content: center;
     border: 1px solid #e5e7eb;
     background: #fff;
-    border-radius: 10px;
-    width: 44px;
-    height: 44px;
-    min-width: 44px;
-    min-height: 44px;
-    padding: 0;
+    border-radius: 12px;
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
+    min-height: 48px;
+    padding: 4px;
     box-sizing: border-box;
     transition: border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
   }
@@ -2798,8 +2808,11 @@
 
   .dashboard-nav-logo {
     display: block;
-    width: 28px;
-    height: 28px;
+    width: 100%;
+    height: 100%;
+    max-width: 38px;
+    max-height: 38px;
+    object-fit: contain;
   }
 
   .dashboard-nav-toggle-bars {

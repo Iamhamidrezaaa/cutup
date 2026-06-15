@@ -156,11 +156,9 @@ function dashboardGreetingName(user) {
   return dashboardDisplayName(user);
 }
 
-function updateDashboardHeaderWelcome(user) {
+function updateDashboardHeaderWelcome(_user) {
   const el = document.getElementById('dashboardHeaderWelcomeText');
-  if (!el) return;
-  const disp = dashboardDisplayName(user);
-  el.textContent = disp && disp !== 'User' ? `Welcome, ${disp}` : 'Welcome';
+  if (el) el.textContent = 'Welcome to Cutup';
 }
 
 function escapeHtml(value) {

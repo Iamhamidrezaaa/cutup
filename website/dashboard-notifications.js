@@ -287,9 +287,7 @@
         '<div class="cutup-notif-dropdown__list" id="cutupNotifDropdownList"></div>' +
       '</div>';
 
-    var logout = document.getElementById('logoutBtnHeader');
-    if (logout) profile.insertBefore(wrap, logout);
-    else profile.appendChild(wrap);
+    profile.insertBefore(wrap, profile.firstChild);
 
     document.getElementById('cutupNotifBell')?.addEventListener('click', function (e) {
       e.stopPropagation();
