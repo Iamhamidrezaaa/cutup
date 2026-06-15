@@ -34,8 +34,8 @@
 
 @media (max-width: 1024px) {
   .header-content {
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     gap: 10px;
     padding-left: max(16px, env(safe-area-inset-left, 0px));
@@ -43,7 +43,28 @@
   }
 
   .dashboard-brand-link.logo {
-    display: none;
+    display: none !important;
+  }
+
+  .dashboard-header-welcome {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    padding: 0 4px;
+    text-align: center;
+  }
+
+  .dashboard-header-welcome__text {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.25;
+    color: #0f172a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
   }
 
   .header-actions {
@@ -111,6 +132,10 @@
   border-radius: 8px;
   flex-shrink: 0;
   display: block;
+}
+
+.dashboard-header-welcome {
+  display: none;
 }
 
 @media (max-width: 639px) {
@@ -2748,18 +2773,23 @@
 @media (max-width: 1024px) {
   .dashboard-nav-toggle {
     display: inline-flex;
-    border: none;
-    background: transparent;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #e5e7eb;
+    background: #fff;
     border-radius: 10px;
     width: 44px;
     height: 44px;
     min-width: 44px;
     min-height: 44px;
-    transition: background 0.15s ease, opacity 0.15s ease;
+    padding: 0;
+    box-sizing: border-box;
+    transition: border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
   }
 
   .dashboard-nav-toggle:hover {
-    background: var(--bg-gray);
+    border-color: #c7d2fe;
+    background: #fafaff;
   }
 
   .dashboard-nav-toggle:active {
@@ -2768,6 +2798,8 @@
 
   .dashboard-nav-logo {
     display: block;
+    width: 28px;
+    height: 28px;
   }
 
   .dashboard-nav-toggle-bars {

@@ -156,6 +156,13 @@ function dashboardGreetingName(user) {
   return dashboardDisplayName(user);
 }
 
+function updateDashboardHeaderWelcome(user) {
+  const el = document.getElementById('dashboardHeaderWelcomeText');
+  if (!el) return;
+  const disp = dashboardDisplayName(user);
+  el.textContent = disp && disp !== 'User' ? `Welcome, ${disp}` : 'Welcome';
+}
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -816,6 +823,7 @@ function applyProfileToDashboardUi(profile) {
   const emailEl = document.getElementById('userEmailHeader');
   if (nameEl) nameEl.textContent = disp;
   if (emailEl) emailEl.textContent = safeText(profile.email || currentUser?.email, '');
+  updateDashboardHeaderWelcome({ ...currentUser, ...profile, email: profile.email || currentUser?.email });
   const wm = document.getElementById('welcomeMessage');
   if (wm && !window.__ONBOARDING_ACTIVE__) {
     wm.textContent = `Welcome back, ${greet}.`;
@@ -2074,6 +2082,7 @@ async function loadDashboardHeavy({ silent = false, skipUserProfile = false } = 
     if (!silent) {
       const wm = document.getElementById('welcomeMessage');
       if (wm) wm.textContent = `Welcome back, ${dashboardGreetingName(currentUser)}.`;
+      updateDashboardHeaderWelcome(currentUser);
     }
     return;
   }
@@ -2087,6 +2096,7 @@ async function loadDashboardHeavy({ silent = false, skipUserProfile = false } = 
   if (!silent) {
     const wm = document.getElementById('welcomeMessage');
     if (wm) wm.textContent = `Welcome back, ${dashboardGreetingName(currentUser)}.`;
+    updateDashboardHeaderWelcome(currentUser);
   }
 }
 
