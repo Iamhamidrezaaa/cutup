@@ -1,19 +1,27 @@
 /**
- * Founder Bot — Telegram transport with retries. Never throws to callers.
+ * Founder Bot — Telegram transport with exponential backoff and auto-recovery.
+ * Never throws to callers; polling survives DNS/TLS/timeout/network outages.
  */
 import { tryAcquireFounderBotPollingLock } from './polling-lock.js';
 import { startDailyBriefingScheduler, stopDailyBriefingScheduler } from './briefing-scheduler.js';
+import { recordTelegramSuccess, recordTelegramFailure } from './telegram-health.js';
 
 const TELEGRAM_API = 'https://api.telegram.org';
-const MAX_RETRIES = 3;
-const RETRY_BASE_MS = 800;
+const BACKOFF_MS = [5000, 10000, 20000, 40000, 60000];
+const DEFAULT_FETCH_TIMEOUT_MS = 15000;
+const GET_UPDATES_TIMEOUT_MS = 35000;
+const WATCHDOG_INTERVAL_MS = 5 * 60 * 1000;
+const POLL_SUCCESS_DELAY_MS = 200;
 
 let polling = false;
 let startingPolling = false;
 let pollOffset = 0;
 let pollTimer = null;
+let pollBackoffIndex = 0;
+let pollOnUpdate = null;
 let releasePollingLock = null;
 let shutdownHooksRegistered = false;
+let watchdogTimer = null;
 
 function envToken() {
   return String(process.env.TELEGRAM_BOT_TOKEN || '').trim();
@@ -35,39 +43,195 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function callTelegramApi(method, body = {}, attempt = 1) {
+function isNetworkError(err) {
+  if (!err) return false;
+  const name = String(err.name || '');
+  const msg = String(err.message || err).toLowerCase();
+  return (
+    name === 'AbortError' ||
+    name === 'TimeoutError' ||
+    /fetch failed|network|econnreset|econnrefused|enotfound|etimedout|tls|dns|socket/i.test(
+      msg
+    )
+  );
+}
+
+/**
+ * Single Telegram API attempt (no retry loop).
+ */
+async function callTelegramApiOnce(method, body = {}, options = {}) {
   const token = envToken();
   if (!token) {
     return { ok: false, skipped: true, reason: 'missing_token' };
   }
 
+  const timeoutMs = options.timeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS;
   const url = `${TELEGRAM_API}/bot${token}/${method}`;
+
   try {
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(15000)
+      signal: AbortSignal.timeout(timeoutMs)
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.ok === false) {
       const err = data?.description || `HTTP ${res.status}`;
-      if (attempt < MAX_RETRIES) {
-        await sleep(RETRY_BASE_MS * attempt);
-        return callTelegramApi(method, body, attempt + 1);
-      }
-      console.warn('[founder-bot] telegram api failed', method, err);
-      return { ok: false, error: err };
+      return { ok: false, error: err, networkError: false };
     }
     return { ok: true, result: data.result };
   } catch (err) {
-    if (attempt < MAX_RETRIES) {
-      await sleep(RETRY_BASE_MS * attempt);
-      return callTelegramApi(method, body, attempt + 1);
-    }
-    console.warn('[founder-bot] telegram request error', method, err?.message || err);
-    return { ok: false, error: err?.message || String(err) };
+    console.error('[founder-bot] telegram request error', method, err);
+    return {
+      ok: false,
+      error: err?.message || String(err),
+      networkError: isNetworkError(err)
+    };
   }
+}
+
+/**
+ * Telegram API call with exponential backoff on network failures.
+ */
+async function callTelegramApi(method, body = {}, options = {}) {
+  const maxAttempts = options.maxAttempts ?? BACKOFF_MS.length + 1;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS;
+
+  let lastResult = { ok: false, error: 'unknown' };
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    lastResult = await callTelegramApiOnce(method, body, { timeoutMs });
+
+    if (lastResult.ok) {
+      recordTelegramSuccess();
+      return lastResult;
+    }
+
+    if (lastResult.skipped) return lastResult;
+
+    const canRetry = lastResult.networkError && attempt < maxAttempts - 1;
+    if (canRetry) {
+      const delay = BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)];
+      await sleep(delay);
+      continue;
+    }
+
+    break;
+  }
+
+  if (lastResult.networkError) {
+    recordTelegramFailure();
+  }
+  return lastResult;
+}
+
+function schedulePoll(delayMs) {
+  if (!polling) return;
+  if (pollTimer) {
+    clearTimeout(pollTimer);
+    pollTimer = null;
+  }
+  pollTimer = setTimeout(() => {
+    void pollOnce();
+  }, delayMs);
+  if (typeof pollTimer.unref === 'function') {
+    pollTimer.unref();
+  }
+}
+
+async function pollOnce() {
+  if (!polling || !isFounderBotConfigured() || !pollOnUpdate) return;
+
+  let result;
+  try {
+    result = await callTelegramApiOnce(
+      'getUpdates',
+      {
+        offset: pollOffset,
+        timeout: 25,
+        allowed_updates: ['message', 'callback_query']
+      },
+      { timeoutMs: GET_UPDATES_TIMEOUT_MS }
+    );
+  } catch (err) {
+    console.error('[founder-bot] telegram request error', 'getUpdates', err);
+    result = { ok: false, networkError: true, error: err?.message || String(err) };
+  }
+
+  if (!polling) return;
+
+  try {
+    if (result.ok && Array.isArray(result.result)) {
+      pollBackoffIndex = 0;
+      recordTelegramSuccess();
+
+      for (const update of result.result) {
+        if (update.update_id != null) {
+          pollOffset = Math.max(pollOffset, Number(update.update_id) + 1);
+        }
+        try {
+          await pollOnUpdate(update);
+        } catch (err) {
+          console.warn('[founder-bot] update handler error', err?.message || err);
+        }
+      }
+
+      schedulePoll(POLL_SUCCESS_DELAY_MS);
+      return;
+    }
+
+    if (result.networkError) {
+      recordTelegramFailure();
+    } else if (!result.ok) {
+      console.warn('[founder-bot] telegram api failed', 'getUpdates', result.error);
+    }
+
+    const delay = BACKOFF_MS[Math.min(pollBackoffIndex, BACKOFF_MS.length - 1)];
+    pollBackoffIndex = Math.min(pollBackoffIndex + 1, BACKOFF_MS.length - 1);
+    schedulePoll(delay);
+  } catch (err) {
+    console.error('[founder-bot] poll loop error', err);
+    recordTelegramFailure();
+    const delay = BACKOFF_MS[Math.min(pollBackoffIndex, BACKOFF_MS.length - 1)];
+    pollBackoffIndex = Math.min(pollBackoffIndex + 1, BACKOFF_MS.length - 1);
+    schedulePoll(delay);
+  }
+}
+
+async function runTelegramWatchdog() {
+  if (!isFounderBotConfigured()) return;
+
+  try {
+    const result = await callTelegramApiOnce('getMe', {}, { timeoutMs: DEFAULT_FETCH_TIMEOUT_MS });
+    if (result.ok) {
+      recordTelegramSuccess();
+      return;
+    }
+    if (result.networkError) {
+      recordTelegramFailure();
+    }
+    console.warn('[founder-bot] telegram watchdog getMe failed', result.error || 'unknown');
+  } catch (err) {
+    recordTelegramFailure();
+    console.warn('[founder-bot] telegram watchdog getMe failed', err);
+  }
+}
+
+function startTelegramWatchdog() {
+  if (watchdogTimer) return;
+  watchdogTimer = setInterval(() => {
+    void runTelegramWatchdog();
+  }, WATCHDOG_INTERVAL_MS);
+  if (typeof watchdogTimer.unref === 'function') {
+    watchdogTimer.unref();
+  }
+}
+
+function stopTelegramWatchdog() {
+  if (!watchdogTimer) return;
+  clearInterval(watchdogTimer);
+  watchdogTimer = null;
 }
 
 /**
@@ -134,37 +298,6 @@ function registerShutdownHooks() {
   process.once('beforeExit', onStop);
 }
 
-async function pollOnce(onUpdate) {
-  if (!polling || !isFounderBotConfigured()) return;
-
-  const result = await callTelegramApi('getUpdates', {
-    offset: pollOffset,
-    timeout: 25,
-    allowed_updates: ['message', 'callback_query']
-  });
-
-  if (!polling) return;
-
-  if (result.ok && Array.isArray(result.result)) {
-    for (const update of result.result) {
-      if (update.update_id != null) {
-        pollOffset = Math.max(pollOffset, Number(update.update_id) + 1);
-      }
-      try {
-        await onUpdate(update);
-      } catch (err) {
-        console.warn('[founder-bot] update handler error', err?.message || err);
-      }
-    }
-  }
-
-  if (polling) {
-    pollTimer = setTimeout(() => {
-      void pollOnce(onUpdate);
-    }, result.ok ? 200 : 3000);
-  }
-}
-
 export async function startFounderBotPolling(onUpdate) {
   if (!isFounderBotConfigured()) {
     console.log('[founder-bot] skipped — TELEGRAM_BOT_TOKEN or TELEGRAM_ADMIN_CHAT_ID not set');
@@ -185,11 +318,15 @@ export async function startFounderBotPolling(onUpdate) {
 
     polling = true;
     pollOffset = 0;
+    pollBackoffIndex = 0;
+    pollOnUpdate = onUpdate;
     releasePollingLock = lock.release;
     registerShutdownHooks();
     console.log('[founder-bot] polling started');
     startDailyBriefingScheduler();
-    void pollOnce(onUpdate);
+    startTelegramWatchdog();
+    void runTelegramWatchdog();
+    void pollOnce();
     return true;
   } finally {
     startingPolling = false;
@@ -199,7 +336,9 @@ export async function startFounderBotPolling(onUpdate) {
 export function stopFounderBotPolling() {
   if (!polling && !releasePollingLock) return;
   polling = false;
+  pollOnUpdate = null;
   stopDailyBriefingScheduler();
+  stopTelegramWatchdog();
   if (pollTimer) {
     clearTimeout(pollTimer);
     pollTimer = null;

@@ -22,7 +22,8 @@ export const BTN = {
   HEALTH: '🖥 Health',
   REFRESH: '🔄 Refresh',
   ABOUT: 'ℹ About',
-  BRIEFING: '📈 Daily Briefing'
+  BRIEFING: '📈 Daily Briefing',
+  TELEGRAM: '🤖 Telegram'
 };
 
 export const CB = {
@@ -43,6 +44,7 @@ export const CB = {
   HEALTH: 'c:health',
   DASHBOARD: 'c:dashboard',
   BRIEFING: 'c:briefing',
+  TELEGRAM: 'c:telegram',
   REFRESH: 'a:refresh',
   ABOUT: 'a:about',
   MENU_MAIN: 'm:main',
@@ -114,6 +116,7 @@ export const INLINE_MENUS = {
       { text: BTN.REFRESH, callback_data: CB.REFRESH }
     ],
     [{ text: BTN.BRIEFING, callback_data: CB.BRIEFING }],
+    [{ text: BTN.TELEGRAM, callback_data: CB.TELEGRAM }],
     [
       { text: BTN.ABOUT, callback_data: CB.ABOUT },
       { text: BTN.BACK, callback_data: CB.MENU_MAIN }
@@ -145,5 +148,6 @@ export const CALLBACK_COMMAND_MAP = {
   [CB.FEEDBACK]: '/feedback',
   [CB.HEALTH]: '/health',
   [CB.DASHBOARD]: '/dashboard',
-  [CB.BRIEFING]: '/briefing'
+  [CB.BRIEFING]: '/briefing',
+  [CB.TELEGRAM]: '/telegram'
 };

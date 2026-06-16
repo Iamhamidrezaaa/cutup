@@ -20,6 +20,11 @@ export async function resolveFounderBotCommand(command) {
     return buildAboutText();
   }
 
+  if (cmd === '/telegram') {
+    const { buildTelegramStatusText } = await import('./telegram-health.js');
+    return buildTelegramStatusText();
+  }
+
   const { dispatchCommand } = await import('./commands.js');
   let reply = await dispatchCommand(cmd);
   if (!reply) {
@@ -38,7 +43,7 @@ export async function resolveFounderBotCommand(command) {
     const { founderBotHelpExtension } = await import('./commands-v12.js');
     const { founderBotHelpExtensionV13 } = await import('./commands-v13.js');
     const { founderBotHelpExtensionV14 } = await import('./commands-v14.js');
-    reply = `${reply}\n\n${founderBotHelpExtension}\n${founderBotHelpExtensionV13}\n${founderBotHelpExtensionV14}\n/dashboard — executive summary`;
+    reply = `${reply}\n\n${founderBotHelpExtension}\n${founderBotHelpExtensionV13}\n${founderBotHelpExtensionV14}\n/telegram — Telegram connection status\n/dashboard — executive summary`;
   }
   return reply;
 }
