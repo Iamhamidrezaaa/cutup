@@ -16,8 +16,18 @@ import {
   logUserOffersTableSnapshot,
   normalizePlanName
 } from './offers-repository.js';
-import { isEmailTransportConfigured, sendEmail } from './email.js';
+import { isEmailTransportConfigured } from './email.js';
+import { sendTemplatedEmail } from './email-events-bus.js';
 import { ensureOffersSchema } from './offers-bootstrap.js';
+import {
+  buildOfferCheckoutUrl,
+  formatDiscountLabel,
+  formatExpiresLabel,
+  formatPlanLabel,
+  getPlanUpgradeHighlights,
+  inferFirstNameFromEmail,
+} from './offer-email-content.js';
+import { getPool } from './db/pool.js';
 
 const offerJobs = new Map();
 
@@ -50,34 +60,69 @@ function enqueueOfferJob(jobName, runner) {
   return jobId;
 }
 
-async function sendOfferEmailAsync({ email, code, title, targetPlan, discountType, discountValue, expiresAt }) {
-  const discountLabel = discountType === 'percentage' ? `${Number(discountValue)}%` : `€${Number(discountValue).toFixed(2)}`;
+async function lookupOfferRecipientProfile(email) {
+  try {
+    const pool = getPool();
+    const r = await pool.query(
+      `SELECT first_name, email FROM users WHERE lower(email) = lower($1) LIMIT 1`,
+      [String(email || '').trim()]
+    );
+    const row = r.rows?.[0];
+    if (!row) {
+      return { firstName: inferFirstNameFromEmail(email), email: String(email || '').trim().toLowerCase() };
+    }
+    const firstName = String(row.first_name || '').trim() || inferFirstNameFromEmail(row.email || email);
+    return { firstName, email: String(row.email || email).trim().toLowerCase() };
+  } catch (_e) {
+    return { firstName: inferFirstNameFromEmail(email), email: String(email || '').trim().toLowerCase() };
+  }
+}
+
+async function sendOfferEmailAsync({
+  email,
+  code,
+  title,
+  sourcePlan,
+  targetPlan,
+  discountType,
+  discountValue,
+  expiresAt,
+}) {
   const normalizedTargetPlan = normalizePlanName(targetPlan) || 'pro';
-  const checkoutLink = `https://cutup.shop/checkout.html?plan=${encodeURIComponent(normalizedTargetPlan)}&coupon=${encodeURIComponent(code)}`;
-  const html = `
-    <div style="font-family:Inter,Arial,sans-serif;line-height:1.6;color:#111">
-      <h2>Your Cutup offer is ready</h2>
-      <p>Hello,</p>
-      <p><strong>${title || 'Special offer'}</strong></p>
-      <p>Discount: <strong>${discountLabel}</strong></p>
-      <p>Coupon code: <strong>${code}</strong></p>
-      <p>Target plan: <strong>${normalizedTargetPlan}</strong></p>
-      <p>Expires: <strong>${expiresAt ? new Date(expiresAt).toUTCString() : 'No expiry'}</strong></p>
-      <p><a href="${checkoutLink}" style="background:#4f46e5;color:#fff;padding:10px 14px;border-radius:8px;text-decoration:none;">Apply offer</a></p>
-    </div>
-  `;
-  const out = await sendEmail({
-    to: email,
-    subject: '[Cutup] Your promotion is ready',
-    html
+  const normalizedSourcePlan = normalizePlanName(sourcePlan) || 'free';
+  const profile = await lookupOfferRecipientProfile(email);
+  const discountLabel = formatDiscountLabel(discountType, discountValue);
+  const checkoutUrl = buildOfferCheckoutUrl({ plan: normalizedTargetPlan, coupon: code, source: 'offer_email' });
+  const templateData = {
+    firstName: profile.firstName,
+    email: profile.email,
+    campaignTitle: title || 'Special upgrade offer',
+    sourcePlanName: formatPlanLabel(normalizedSourcePlan),
+    targetPlanName: formatPlanLabel(normalizedTargetPlan),
+    discountLabel,
+    couponCode: String(code || '').trim().toUpperCase(),
+    expiresLabel: formatExpiresLabel(expiresAt),
+    checkoutUrl,
+    upgradeHighlights: getPlanUpgradeHighlights(normalizedSourcePlan, normalizedTargetPlan),
+  };
+
+  const out = await sendTemplatedEmail({
+    template: 'OFFER_PROMOTION',
+    recipient: profile.email,
+    data: templateData,
+    senderRole: 'billing',
+    tags: ['offer', 'promotion'],
   });
+
   console.log('[offers-distribution][email]', {
-    email,
+    email: profile.email,
     offerCode: code,
+    sourcePlan: normalizedSourcePlan,
     targetPlan: normalizedTargetPlan,
+    checkoutUrl,
     status: out?.sent ? 'sent' : (out?.skipped ? 'skipped' : 'failed'),
-    error: out?.error || null,
-    providerResponse: out?.providerResponse || null
+    error: out?.error || out?.reason || null,
+    template: 'OFFER_PROMOTION',
   });
   return out;
 }
@@ -180,6 +225,7 @@ export default async function handler(req, res) {
             email: entry.email,
             code: entry.code,
             title: body.title,
+            sourcePlan: normalizePlanName(body.sourcePlan),
             targetPlan: entry.targetPlan,
             discountType: String(body.discountType || 'percentage'),
             discountValue: Number(body.discountValue || 0),
@@ -232,6 +278,7 @@ export default async function handler(req, res) {
           email,
           code: offer.code,
           title: offer.title,
+          sourcePlan: offer.sourcePlan || 'free',
           targetPlan: offer.targetPlan || offer.applicablePlans?.[0] || 'pro',
           discountType: offer.discountType,
           discountValue: offer.discountValue,

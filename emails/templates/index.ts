@@ -13,3 +13,4 @@ export { SupportTicketClosed, type SupportTicketClosedData } from './SupportTick
 export { SupportTicketResolved } from './SupportTicketResolved';
 export { SecurityNotification, type SecurityNotificationData } from './SecurityNotification';
 export { SystemNotification, type SystemNotificationData } from './SystemNotification';
+export { OfferPromotionEmail, type OfferPromotionEmailData, type OfferUpgradeHighlight } from './OfferPromotionEmail';

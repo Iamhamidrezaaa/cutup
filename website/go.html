@@ -31,6 +31,31 @@
       var ticket = String(params.get('ticket') || '').trim();
       var slug = String(params.get('slug') || '').trim();
       var hash = String(params.get('hash') || '').trim();
+      var plan = String(params.get('plan') || 'pro').trim().toLowerCase();
+      var coupon = String(params.get('coupon') || '').trim();
+      var source = String(params.get('source') || 'offer_email').trim();
+
+      if (dest === 'checkout') {
+        var checkoutPath = '/checkout.html?plan=' + encodeURIComponent(plan) + '&source=' + encodeURIComponent(source);
+        if (coupon) checkoutPath += '&coupon=' + encodeURIComponent(coupon);
+
+        var sidCheckout = null;
+        try { sidCheckout = localStorage.getItem('cutup_session'); } catch (_e0) {}
+
+        if (sidCheckout) {
+          window.location.replace(checkoutPath);
+          return;
+        }
+
+        try {
+          sessionStorage.setItem('cutup_pending_plan_after_auth', plan);
+          sessionStorage.setItem('cutup_pending_checkout_source', source);
+          sessionStorage.setItem('cutup_pending_redirect_after_auth', 'checkout');
+          if (coupon) sessionStorage.setItem('cutup_pending_coupon_after_auth', coupon);
+        } catch (_e1) {}
+        window.location.replace('/?signin=1');
+        return;
+      }
 
       var targetHash = '';
       if (dest === 'support' && ticket) targetHash = 'support/' + encodeURIComponent(ticket);

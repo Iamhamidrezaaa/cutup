@@ -222,6 +222,37 @@ export const EMAIL_REGISTRY: Record<EmailTemplateId, EmailRegistryEntry> = {
       message: 'Cutup will undergo brief maintenance on Sunday at 02:00 UTC.',
     },
   },
+  [EMAIL_TEMPLATES.OFFER_PROMOTION]: {
+    template: EMAIL_TEMPLATES.OFFER_PROMOTION,
+    subject: (d) => {
+      const discount = String(d.discountLabel || '20% off');
+      const target = String(d.targetPlanName || 'Pro');
+      return `Your ${discount} upgrade to ${target} is ready`;
+    },
+    preview: (d) => {
+      const discount = String(d.discountLabel || '20% off');
+      const target = String(d.targetPlanName || 'Pro');
+      return `${discount} to upgrade to ${target} — limited-time offer`;
+    },
+    senderRole: 'billing',
+    sampleData: {
+      firstName: sample.firstName,
+      sourcePlanName: 'Free',
+      targetPlanName: 'Pro',
+      discountLabel: '20% off',
+      couponCode: 'CUTUPXHWDJ',
+      expiresLabel: '26 Jun 2026',
+      campaignTitle: 'New Users upgrade push',
+      checkoutUrl: goLink({ dest: 'checkout', plan: 'pro', coupon: 'CUTUPXHWDJ', source: 'offer_email' }),
+      upgradeHighlights: [
+        { bold: '35 videos per month', rest: ' — up from 3 on Free' },
+        { bold: 'AI Translation', rest: ' for multilingual captions' },
+        { bold: 'MP4 export', rest: ' with burned-in captions' },
+        { bold: 'Premium caption styles', rest: ' built for TikTok & YouTube' },
+        { bold: 'Priority export queue', rest: '' },
+      ],
+    },
+  },
 };
 
 export function getRegistryEntry(template: EmailTemplateId): EmailRegistryEntry {

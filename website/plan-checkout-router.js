@@ -6,6 +6,7 @@
   const PENDING_PLAN_KEY = 'cutup_pending_plan_after_auth';
   const PENDING_SOURCE_KEY = 'cutup_pending_checkout_source';
   const PENDING_REDIRECT_KEY = 'cutup_pending_redirect_after_auth';
+  const PENDING_COUPON_KEY = 'cutup_pending_coupon_after_auth';
 
   function apiBase() {
     return typeof global.CUTUP_API_BASE !== 'undefined' ? global.CUTUP_API_BASE : '';
@@ -64,6 +65,26 @@
     const plan = normalizePlanKey(planKey);
     if (!plan) return '/login.html?redirect=checkout';
     return `/login.html?redirect=checkout&plan=${encodeURIComponent(plan)}`;
+  }
+
+  function stashPendingCouponAfterAuth(coupon) {
+    const code = String(coupon || '').trim();
+    if (!code) return;
+    try {
+      global.sessionStorage.setItem(PENDING_COUPON_KEY, code);
+    } catch (_e) {
+      /* noop */
+    }
+  }
+
+  function consumePendingCouponAfterAuth() {
+    try {
+      const raw = global.sessionStorage.getItem(PENDING_COUPON_KEY);
+      global.sessionStorage.removeItem(PENDING_COUPON_KEY);
+      return String(raw || '').trim();
+    } catch (_e) {
+      return '';
+    }
   }
 
   function stashPendingPlanAfterAuth(planKey, source = 'pricing') {
@@ -143,7 +164,8 @@
 
     stashPendingPlanAfterAuth(plan, source);
     stashPendingRedirectAfterAuth(redirectMode);
-    console.log('[oauth-direct-start]', { plan, source, redirectMode });
+    if (options.coupon) stashPendingCouponAfterAuth(options.coupon);
+    console.log('[oauth-direct-start]', { plan, source, redirectMode, coupon: options.coupon || null });
 
     try {
       const response = await fetch(`${apiBase()}/api/oauth/google/start`, {
@@ -200,11 +222,12 @@
   function resolvePostLoginRedirect() {
     const pending = consumePendingPlanAfterAuth();
     const redirectMode = consumePendingRedirectAfterAuth() || 'plans';
+    const pendingCoupon = consumePendingCouponAfterAuth();
 
     if (pending) {
       if (redirectMode === 'checkout') {
-        const url = buildCheckoutUrl(pending, { source: 'checkout' });
-        console.log('[oauth-return]', { plan: pending, mode: 'checkout' });
+        const url = buildCheckoutUrl(pending, { source: 'checkout', coupon: pendingCoupon });
+        console.log('[oauth-return]', { plan: pending, mode: 'checkout', coupon: pendingCoupon || null });
         console.log('[checkout-after-oauth]', { url });
         return url;
       }
@@ -219,7 +242,7 @@
       if (params.get('redirect') === 'checkout') {
         const p = normalizePlanKey(params.get('plan'));
         if (p) {
-          const url = buildCheckoutUrl(p, { source: 'checkout' });
+          const url = buildCheckoutUrl(p, { source: 'checkout', coupon: params.get('coupon') || '' });
           console.log('[oauth-return]', { plan: p, reason: 'query_params_checkout' });
           console.log('[checkout-after-oauth]', { url });
           return url;
@@ -243,6 +266,7 @@
     PENDING_PLAN_KEY,
     PENDING_SOURCE_KEY,
     PENDING_REDIRECT_KEY,
+    PENDING_COUPON_KEY,
     normalizePlanKey,
     isLoggedIn,
     isProfileGateIncomplete,
@@ -252,8 +276,10 @@
     buildLoginCheckoutUrl,
     stashPendingPlanAfterAuth,
     stashPendingRedirectAfterAuth,
+    stashPendingCouponAfterAuth,
     consumePendingPlanAfterAuth,
     consumePendingRedirectAfterAuth,
+    consumePendingCouponAfterAuth,
     peekPendingRedirectAfterAuth,
     startGoogleOAuthCheckout,
     handlePlanSelection,

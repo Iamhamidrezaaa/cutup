@@ -91,4 +91,10 @@ export const SITE = {
     goLink({ dest: 'support', ticket: String(ticketNumber || '').trim() }),
   billingUrl: goLink({ dest: 'billing' }),
   subscriptionUrl: goLink({ dest: 'subscription' }),
+  offerCheckoutUrl: (plan: string, coupon: string, source = 'offer_email') => {
+    const params: Record<string, string> = { dest: 'checkout', plan: String(plan || 'pro').trim().toLowerCase(), source };
+    const code = String(coupon || '').trim();
+    if (code) params.coupon = code;
+    return goLink(params);
+  },
 } as const;

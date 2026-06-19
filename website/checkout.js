@@ -436,7 +436,11 @@
       if (plan && window.CutupPlanCheckout?.startGoogleOAuthCheckout) {
         console.log('[checkout-route]', { plan, reason: 'oauth_direct_no_session' });
         try {
-          await window.CutupPlanCheckout.startGoogleOAuthCheckout(plan, { source: 'checkout' });
+          await window.CutupPlanCheckout.startGoogleOAuthCheckout(plan, {
+            source: params.get('source') || 'checkout',
+            redirectMode: 'checkout',
+            coupon: getCouponFromUrl(),
+          });
         } catch (_e) {
           showError('Sign-in failed. Please try again from the pricing page.');
         }

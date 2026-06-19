@@ -27,6 +27,7 @@ export const TEMPLATE_SOURCE_PATHS = {
   SUPPORT_TICKET_CLOSED: 'emails/templates/SupportTicketClosed.tsx',
   SECURITY_NOTIFICATION: 'emails/templates/SecurityNotification.tsx',
   SYSTEM_NOTIFICATION: 'emails/templates/SystemNotification.tsx',
+  OFFER_PROMOTION: 'emails/templates/OfferPromotionEmail.tsx',
 };
 
 function readBuildStamp() {

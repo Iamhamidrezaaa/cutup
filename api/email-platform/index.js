@@ -192,7 +192,8 @@ var EMAIL_TEMPLATES = {
   SUPPORT_TICKET_RESOLVED: "SUPPORT_TICKET_RESOLVED",
   SUPPORT_TICKET_CLOSED: "SUPPORT_TICKET_CLOSED",
   SECURITY_NOTIFICATION: "SECURITY_NOTIFICATION",
-  SYSTEM_NOTIFICATION: "SYSTEM_NOTIFICATION"
+  SYSTEM_NOTIFICATION: "SYSTEM_NOTIFICATION",
+  OFFER_PROMOTION: "OFFER_PROMOTION"
 };
 var EMAIL_EVENTS = {
   USER_REGISTERED: "user_registered",
@@ -426,6 +427,37 @@ var EMAIL_REGISTRY = {
       firstName: sample.firstName,
       title: "Scheduled maintenance",
       message: "Cutup will undergo brief maintenance on Sunday at 02:00 UTC."
+    }
+  },
+  [EMAIL_TEMPLATES.OFFER_PROMOTION]: {
+    template: EMAIL_TEMPLATES.OFFER_PROMOTION,
+    subject: (d) => {
+      const discount = String(d.discountLabel || "20% off");
+      const target = String(d.targetPlanName || "Pro");
+      return `Your ${discount} upgrade to ${target} is ready`;
+    },
+    preview: (d) => {
+      const discount = String(d.discountLabel || "20% off");
+      const target = String(d.targetPlanName || "Pro");
+      return `${discount} to upgrade to ${target} \u2014 limited-time offer`;
+    },
+    senderRole: "billing",
+    sampleData: {
+      firstName: sample.firstName,
+      sourcePlanName: "Free",
+      targetPlanName: "Pro",
+      discountLabel: "20% off",
+      couponCode: "CUTUPXHWDJ",
+      expiresLabel: "26 Jun 2026",
+      campaignTitle: "New Users upgrade push",
+      checkoutUrl: goLink({ dest: "checkout", plan: "pro", coupon: "CUTUPXHWDJ", source: "offer_email" }),
+      upgradeHighlights: [
+        { bold: "35 videos per month", rest: " \u2014 up from 3 on Free" },
+        { bold: "AI Translation", rest: " for multilingual captions" },
+        { bold: "MP4 export", rest: " with burned-in captions" },
+        { bold: "Premium caption styles", rest: " built for TikTok & YouTube" },
+        { bold: "Priority export queue", rest: "" }
+      ]
     }
   }
 };
@@ -11926,7 +11958,13 @@ var SITE = {
   logoUrl: `${SITE_ORIGIN}/logo.svg`,
   supportTicketUrl: (ticketNumber) => goLink2({ dest: "support", ticket: String(ticketNumber || "").trim() }),
   billingUrl: goLink2({ dest: "billing" }),
-  subscriptionUrl: goLink2({ dest: "subscription" })
+  subscriptionUrl: goLink2({ dest: "subscription" }),
+  offerCheckoutUrl: (plan, coupon, source = "offer_email") => {
+    const params = { dest: "checkout", plan: String(plan || "pro").trim().toLowerCase(), source };
+    const code = String(coupon || "").trim();
+    if (code) params.coupon = code;
+    return goLink2(params);
+  }
 };
 
 // emails/components/EmailBlock.tsx
@@ -13166,6 +13204,94 @@ function SystemNotification({
   ] });
 }
 
+// emails/templates/OfferPromotionEmail.tsx
+import { Fragment as Fragment2, jsx as jsx51, jsxs as jsxs27 } from "react/jsx-runtime";
+function UpgradeHighlights({ items }) {
+  if (!items?.length) return null;
+  return /* @__PURE__ */ jsxs27(Fragment2, { children: [
+    /* @__PURE__ */ jsx51(
+      Text3,
+      {
+        style: {
+          margin: "0 0 10px",
+          fontSize: "12px",
+          fontWeight: 600,
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+          color: BRAND.textMuted
+        },
+        children: "What you'll unlock"
+      }
+    ),
+    items.map((item) => /* @__PURE__ */ jsxs27(
+      Text3,
+      {
+        className: "email-word-break",
+        style: {
+          margin: "0 0 8px",
+          fontSize: "14px",
+          lineHeight: "1.5",
+          color: BRAND.text
+        },
+        children: [
+          /* @__PURE__ */ jsx51("span", { style: { color: BRAND.primary, marginRight: "6px" }, children: "\u2726" }),
+          /* @__PURE__ */ jsx51("strong", { style: { fontWeight: 700, color: BRAND.text }, children: item.bold }),
+          item.rest || ""
+        ]
+      },
+      `${item.bold}-${item.rest || ""}`
+    ))
+  ] });
+}
+function OfferPromotionEmail({
+  firstName = "there",
+  sourcePlanName = "Free",
+  targetPlanName = "Pro",
+  discountLabel = "20% off",
+  couponCode = "CUTUPOFFER",
+  expiresLabel = "No expiry date",
+  campaignTitle = "Special upgrade offer",
+  checkoutUrl = "",
+  upgradeHighlights = []
+}) {
+  const name2 = String(firstName).trim() || "there";
+  const highlights = upgradeHighlights?.length ? upgradeHighlights : [
+    { bold: "35 videos per month", rest: " \u2014 up from 3 on Free" },
+    { bold: "AI Translation", rest: " for multilingual captions" },
+    { bold: "MP4 export", rest: " with burned-in captions" },
+    { bold: "Premium caption styles", rest: " built for short-form creators" }
+  ];
+  return /* @__PURE__ */ jsxs27(CutupLayout, { preview: `${discountLabel} to upgrade to ${targetPlanName}`, children: [
+    /* @__PURE__ */ jsx51(StatusBadge, { variant: "success", children: "Special offer" }),
+    /* @__PURE__ */ jsx51(
+      HeroSection,
+      {
+        title: `A ${discountLabel} upgrade is waiting for you`,
+        subtitle: `Hi ${name2}, we reserved a limited-time offer so you can move from ${sourcePlanName} to ${targetPlanName} and unlock more creative power.`
+      }
+    ),
+    /* @__PURE__ */ jsxs27(EmailCard, { children: [
+      /* @__PURE__ */ jsx51(PlanBadge, { plan: targetPlanName }),
+      /* @__PURE__ */ jsx51(EmailText, { muted: true, small: true, style: { margin: "0 0 12px", fontSize: "13px" }, children: campaignTitle }),
+      /* @__PURE__ */ jsxs27(DetailTable, { children: [
+        /* @__PURE__ */ jsx51(DetailRow, { label: "Your current plan", value: sourcePlanName }),
+        /* @__PURE__ */ jsx51(DetailRow, { label: "Upgrade to", value: targetPlanName }),
+        /* @__PURE__ */ jsx51(DetailRow, { label: "Your discount", value: discountLabel }),
+        /* @__PURE__ */ jsx51(DetailRow, { label: "Coupon code", value: couponCode }),
+        /* @__PURE__ */ jsx51(DetailRow, { label: "Offer expires", value: expiresLabel, last: true })
+      ] }),
+      /* @__PURE__ */ jsx51(UpgradeHighlights, { items: highlights })
+    ] }),
+    checkoutUrl ? /* @__PURE__ */ jsxs27(EmailButton, { href: checkoutUrl, fullWidth: true, children: [
+      "Upgrade to ",
+      targetPlanName,
+      " \u2014 ",
+      discountLabel
+    ] }) : null,
+    /* @__PURE__ */ jsx51(EmailText, { inset: true, muted: true, small: true, children: "Sign in with the same email address that received this message. Your coupon will be applied automatically at checkout. Questions? Reply or contact billing@cutup.shop" })
+  ] });
+}
+
 // services/email/render.ts
 var TEMPLATE_COMPONENTS = {
   [EMAIL_TEMPLATES.WELCOME_EMAIL]: WelcomeEmail,
@@ -13182,7 +13308,8 @@ var TEMPLATE_COMPONENTS = {
   [EMAIL_TEMPLATES.SUPPORT_TICKET_RESOLVED]: SupportTicketResolved,
   [EMAIL_TEMPLATES.SUPPORT_TICKET_CLOSED]: SupportTicketClosed,
   [EMAIL_TEMPLATES.SECURITY_NOTIFICATION]: SecurityNotification,
-  [EMAIL_TEMPLATES.SYSTEM_NOTIFICATION]: SystemNotification
+  [EMAIL_TEMPLATES.SYSTEM_NOTIFICATION]: SystemNotification,
+  [EMAIL_TEMPLATES.OFFER_PROMOTION]: OfferPromotionEmail
 };
 function stripHtml(html) {
   return String(html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
