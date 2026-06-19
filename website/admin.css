@@ -1312,6 +1312,21 @@ th { font-size: 12px; color: var(--muted); background: #f8fafc; position: sticky
   display: block;
 }
 
+.offers-distribution-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px 0 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted, #6b7280);
+  cursor: pointer;
+}
+
+.offers-distribution-option input {
+  margin-top: 2px;
+}
+
 .offers-status-host {
   display: grid;
   gap: 10px;

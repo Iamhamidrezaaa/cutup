@@ -1954,18 +1954,44 @@ function renderOfferDeliveryDebug(result) {
   const inserted = Number(result?.insertedAssignments || 0);
   const skipped = Number(result?.skippedAssignments || 0);
   const email = result?.email || {};
+  const excludeNote = result?.excludeAlreadyAssigned === false
+    ? '<div>Duplicate policy: re-assign existing recipients</div>'
+    : '<div>Duplicate policy: skip users who already received this campaign</div>';
   host.innerHTML = `
     <div class="offers-job-status">
       <strong>Campaign delivery result</strong>
+      ${excludeNote}
       <div>Matched users: ${escapeHtml(matched)}</div>
-      <div>Inserted assignments: ${escapeHtml(inserted)}</div>
-      <div>Skipped duplicates: ${escapeHtml(skipped)}</div>
+      <div>New assignments: ${escapeHtml(inserted)}</div>
+      <div>Skipped (already had campaign): ${escapeHtml(skipped)}</div>
       <div>Email sent: ${escapeHtml(Number(email.sent || 0))}</div>
       <div>Failed emails: ${escapeHtml(Number(email.failed || 0))}</div>
       ${email?.skipped ? `<div>Email skipped: ${escapeHtml(Number(email.skipped || 0))}</div>` : ''}
       ${result?.emailConfigured === false ? '<div style="color:#b45309">Email provider is not configured. Delivery skipped.</div>' : ''}
     </div>
   `;
+}
+
+function renderOfferDistributionStatus(distribution) {
+  const matched = Number(distribution?.matchedUsers || 0);
+  const inserted = Number(distribution?.insertedAssignments || 0);
+  const skipped = Number(distribution?.skippedAssignments || 0);
+  if (inserted > 0) {
+    const extra = skipped > 0
+      ? `${inserted} new users received this campaign. ${skipped} already had it and were skipped.`
+      : `${inserted} users received this campaign.`;
+    renderOfferActionStatus('Campaign distributed', 'success', extra);
+    return;
+  }
+  if (matched > 0 && skipped > 0) {
+    renderOfferActionStatus(
+      'No new assignments',
+      'warn',
+      `All ${matched} matched users already received this campaign. Uncheck "Skip users who already received this campaign" to send again.`
+    );
+    return;
+  }
+  renderOfferActionStatus('No users received this campaign', 'warn', '0 eligible users matched this campaign.');
 }
 
 function renderOffersLoading() {
@@ -2907,16 +2933,12 @@ function setupActions() {
       const data = await apiOffers('POST', {
         action: 'assign_plan',
         offerId: await resolveSelectedOfferId(),
-        plan: document.getElementById('offerAssignPlan')?.value || ''
+        plan: document.getElementById('offerAssignPlan')?.value || '',
+        excludeAlreadyAssigned: document.getElementById('offerExcludeAlreadyAssignedPlan')?.checked !== false
       });
       const distribution = data?.distribution || {};
       renderOfferDeliveryDebug(distribution);
-      const inserted = Number(distribution.insertedAssignments || 0);
-      if (inserted > 0) {
-        renderOfferActionStatus('Campaign distributed', 'success', `${inserted} users received this campaign.`);
-      } else {
-        renderOfferActionStatus('No users received this campaign', 'warn', '0 eligible users matched this campaign.');
-      }
+      renderOfferDistributionStatus(distribution);
     } catch (e) {
       showBanner(e.message || 'Could not assign offer.');
     }
@@ -2932,17 +2954,13 @@ function setupActions() {
       }
       const data = await apiOffers('POST', {
         action: 'assign_all',
-        offerId: selectedId
+        offerId: selectedId,
+        excludeAlreadyAssigned: document.getElementById('offerExcludeAlreadyAssignedAll')?.checked !== false
       });
       offersDangerArmed.delete(key);
       const distribution = data?.distribution || {};
       renderOfferDeliveryDebug(distribution);
-      const inserted = Number(distribution.insertedAssignments || 0);
-      if (inserted > 0) {
-        renderOfferActionStatus('Campaign distributed', 'success', `${inserted} users received this campaign.`);
-      } else {
-        renderOfferActionStatus('No users received this campaign', 'warn', 'No eligible users matched this broadcast.');
-      }
+      renderOfferDistributionStatus(distribution);
     } catch (e) {
       showBanner(e.message || 'Could not assign offer.');
     }

@@ -36,7 +36,15 @@ function normalizePlans(plans) {
   if (!Array.isArray(plans)) return [];
   return plans
     .map((p) => normalizePlanName(p))
-    .filter((p) => ['starter', 'pro', 'business'].includes(p));
+    .filter((p) => ['starter', 'pro', 'business', 'free'].includes(p));
+}
+
+function bulkAssignConflictSql(excludeAlreadyAssigned) {
+  if (excludeAlreadyAssigned !== false) {
+    return 'ON CONFLICT (user_id, offer_id) DO NOTHING';
+  }
+  return `ON CONFLICT (user_id, offer_id)
+     DO UPDATE SET status = 'active', assigned_at = NOW(), used_at = NULL`;
 }
 
 function computeDiscountAmountEur({ discountType, discountValue, amountEur }) {
@@ -183,29 +191,32 @@ export async function assignOfferToEmail(offerId, email) {
   };
 }
 
-export async function assignOfferToAllUsers(offerId) {
+export async function assignOfferToAllUsers(offerId, options = {}) {
   const pool = getPool();
+  const excludeAlreadyAssigned = options.excludeAlreadyAssigned !== false;
   const matchedR = await pool.query(`SELECT COUNT(*)::int AS c FROM users`);
   const matchedUsers = Number(matchedR.rows?.[0]?.c || 0);
   const insertedR = await pool.query(
     `INSERT INTO user_offers (user_id, offer_id, status)
      SELECT u.id, $1::uuid, 'active' FROM users u
-     ON CONFLICT (user_id, offer_id)
-     DO NOTHING
+     ${bulkAssignConflictSql(excludeAlreadyAssigned)}
      RETURNING user_id`,
     [offerId]
   );
+  const insertedAssignments = Number(insertedR.rowCount || 0);
   return {
     ok: true,
     mode: 'all',
+    excludeAlreadyAssigned,
     matchedUsers,
-    insertedAssignments: Number(insertedR.rowCount || 0),
-    skippedAssignments: Math.max(0, matchedUsers - Number(insertedR.rowCount || 0))
+    insertedAssignments,
+    skippedAssignments: excludeAlreadyAssigned ? Math.max(0, matchedUsers - insertedAssignments) : 0
   };
 }
 
-export async function assignOfferToPlanUsers(offerId, plan) {
+export async function assignOfferToPlanUsers(offerId, plan, options = {}) {
   const pool = getPool();
+  const excludeAlreadyAssigned = options.excludeAlreadyAssigned !== false;
   const normalizedPlan = normalizePlanName(plan) || 'free';
   const matchedR = await pool.query(
     `SELECT COUNT(DISTINCT s.user_id)::int AS c
@@ -219,18 +230,19 @@ export async function assignOfferToPlanUsers(offerId, plan) {
      SELECT s.user_id, $1::uuid, 'active'
      FROM subscriptions s
      WHERE lower(coalesce(s.plan, 'free')) = $2
-     ON CONFLICT (user_id, offer_id)
-     DO NOTHING
+     ${bulkAssignConflictSql(excludeAlreadyAssigned)}
      RETURNING user_id`,
     [offerId, normalizedPlan]
   );
+  const insertedAssignments = Number(insertedR.rowCount || 0);
   return {
     ok: true,
     mode: 'plan',
     plan: normalizedPlan,
+    excludeAlreadyAssigned,
     matchedUsers,
-    insertedAssignments: Number(insertedR.rowCount || 0),
-    skippedAssignments: Math.max(0, matchedUsers - Number(insertedR.rowCount || 0))
+    insertedAssignments,
+    skippedAssignments: excludeAlreadyAssigned ? Math.max(0, matchedUsers - insertedAssignments) : 0
   };
 }
 

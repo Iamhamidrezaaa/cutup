@@ -136,7 +136,9 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, distribution: result, assignmentStats, diagnostics });
     }
     if (action === 'assign_all') {
-      const result = await assignOfferToAllUsers(body.offerId);
+      const result = await assignOfferToAllUsers(body.offerId, {
+        excludeAlreadyAssigned: body.excludeAlreadyAssigned !== false
+      });
       const assignmentStats = await getOfferAssignmentStats(body.offerId);
       const diagnostics = await getOfferDeliveryDiagnostics(body.offerId);
       console.log('[offers-distribution]', { offerId: body.offerId, ...result, assignmentStats, diagnostics, errors: null });
@@ -144,7 +146,9 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, distribution: result, assignmentStats, diagnostics });
     }
     if (action === 'assign_plan') {
-      const result = await assignOfferToPlanUsers(body.offerId, body.plan);
+      const result = await assignOfferToPlanUsers(body.offerId, body.plan, {
+        excludeAlreadyAssigned: body.excludeAlreadyAssigned !== false
+      });
       const assignmentStats = await getOfferAssignmentStats(body.offerId);
       const diagnostics = await getOfferDeliveryDiagnostics(body.offerId);
       console.log('[offers-distribution]', { offerId: body.offerId, ...result, assignmentStats, diagnostics, errors: null });

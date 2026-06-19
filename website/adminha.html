@@ -396,7 +396,8 @@
                 <label>Max redemptions<input id="offerMaxUses" type="number" min="1" step="1" placeholder="optional"></label>
                 <label>Expiration<input id="offerExpiresAt" type="datetime-local"></label>
                 <label>Target plans
-                  <select id="offerTargetPlans" multiple size="4">
+                  <select id="offerTargetPlans" multiple size="5">
+                    <option value="free">Free</option>
                     <option value="starter">Starter</option>
                     <option value="pro">Pro</option>
                     <option value="business">Business</option>
@@ -436,16 +437,25 @@
                     <label>Plan
                       <select id="offerAssignPlan">
                         <option value="">Select plan</option>
+                        <option value="free">Free</option>
                         <option value="starter">Starter</option>
                         <option value="pro">Pro</option>
                         <option value="business">Business</option>
                       </select>
                     </label>
                   </div>
+                  <label class="offers-distribution-option">
+                    <input type="checkbox" id="offerExcludeAlreadyAssignedPlan" checked>
+                    Skip users who already received this campaign
+                  </label>
                   <button type="button" class="btn" id="offerAssignPlanBtn">Send Promotion</button>
                 </div>
                 <div class="offers-tab-panel" data-offer-panel="assign-all">
                   <p class="admin-muted">This will assign the selected campaign to every eligible user.</p>
+                  <label class="offers-distribution-option">
+                    <input type="checkbox" id="offerExcludeAlreadyAssignedAll" checked>
+                    Skip users who already received this campaign
+                  </label>
                   <button type="button" class="btn" id="offerAssignAllBtn">Broadcast Campaign</button>
                 </div>
               </div>
@@ -465,6 +475,7 @@
                 <label>From
                   <select id="promoSourcePlan">
                     <option value="">Source plan</option>
+                    <option value="free">Free</option>
                     <option value="starter">Starter</option>
                     <option value="pro">Pro</option>
                     <option value="business">Business</option>
@@ -473,6 +484,7 @@
                 <label>To
                   <select id="promoTargetPlan">
                     <option value="">Target plan</option>
+                    <option value="free">Free</option>
                     <option value="starter">Starter</option>
                     <option value="pro">Pro</option>
                     <option value="business">Business</option>
