@@ -902,7 +902,8 @@
 
   async function refreshAndRender(root) {
     await refreshList();
-    if (state.queue === 'user_feedback') {
+    // Full re-render when entering or leaving the feedback layout (ticket inbox uses a different DOM tree).
+    if (state.queue === 'user_feedback' || root.querySelector('#scFeedbackMain')) {
       root.innerHTML = renderInbox();
       bindRootEvents(root);
       return;
