@@ -2560,7 +2560,11 @@ window.addEventListener('DOMContentLoaded', () => {
         if (rpCheckout.get('redirect') === 'checkout') {
           const pk = window.CutupPlanCheckout.normalizePlanKey(rpCheckout.get('plan'));
           if (pk) {
-            const target = window.CutupPlanCheckout.buildCheckoutUrl(pk, { source: 'checkout' });
+            const pendingCoupon = window.CutupPlanCheckout.consumePendingCouponAfterAuth?.() || '';
+            const target = window.CutupPlanCheckout.buildCheckoutUrl(pk, {
+              source: 'checkout',
+              coupon: rpCheckout.get('coupon') || pendingCoupon,
+            });
             console.log('[post-login-redirect]', { target, reason: 'homepage_query_checkout' });
             window.location.replace(target);
             return;

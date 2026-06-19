@@ -161,7 +161,12 @@
         return;
       }
       if (redirect === 'checkout' && plan) {
-        const checkoutTarget = window.CutupPlanCheckout.buildCheckoutUrl(plan, { source: 'checkout' });
+        const pendingCoupon = window.CutupPlanCheckout.consumePendingCouponAfterAuth?.() || '';
+        const queryCoupon = new URLSearchParams(window.location.search).get('coupon') || '';
+        const checkoutTarget = window.CutupPlanCheckout.buildCheckoutUrl(plan, {
+          source: 'checkout',
+          coupon: queryCoupon || pendingCoupon,
+        });
         console.log('[checkout-after-oauth]', { target: checkoutTarget, from: 'login_page_logged_in_checkout' });
         window.location.replace(checkoutTarget);
         return;

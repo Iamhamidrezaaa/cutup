@@ -111,6 +111,20 @@
     return String(p.get('coupon') || '').trim().toUpperCase();
   }
 
+  function consumePendingCouponAfterAuth() {
+    try {
+      const pending = String(sessionStorage.getItem('cutup_pending_coupon_after_auth') || '').trim().toUpperCase();
+      if (pending) sessionStorage.removeItem('cutup_pending_coupon_after_auth');
+      return pending;
+    } catch (_e) {
+      return '';
+    }
+  }
+
+  function getCouponForCheckout() {
+    return getCouponFromUrl() || consumePendingCouponAfterAuth();
+  }
+
   async function getRecommendedCoupon(sessionId, plan) {
     try {
       if (window.CutupOffersResolver && typeof window.CutupOffersResolver.resolveActiveUserOffers === 'function') {
@@ -439,7 +453,7 @@
           await window.CutupPlanCheckout.startGoogleOAuthCheckout(plan, {
             source: params.get('source') || 'checkout',
             redirectMode: 'checkout',
-            coupon: getCouponFromUrl(),
+            coupon: getCouponForCheckout(),
           });
         } catch (_e) {
           showError('Sign-in failed. Please try again from the pricing page.');
@@ -672,7 +686,7 @@
       });
     });
 
-    const couponFromUrl = getCouponFromUrl();
+    const couponFromUrl = getCouponForCheckout();
     if (couponFromUrl) {
       void applyCouponCode(couponFromUrl);
     } else {
