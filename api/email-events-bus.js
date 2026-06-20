@@ -185,6 +185,18 @@ export async function listEmailTemplates() {
   }
 }
 
+export async function getEmailTransportDiagnostics(fromHeader) {
+  const platform = await loadPlatform();
+  if (platform?.getEmailTransportDiagnostics) {
+    return platform.getEmailTransportDiagnostics(fromHeader);
+  }
+  return {
+    resendConfigured: Boolean(process.env.RESEND_API_KEY?.trim()),
+    smtpConfigured: false,
+    recommendation: 'email platform bundle unavailable',
+  };
+}
+
 // ——— Domain event helpers (business logic calls these) ———
 
 function notifyFounderBot(alertFn, payload) {

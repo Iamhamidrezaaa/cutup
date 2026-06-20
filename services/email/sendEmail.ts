@@ -1,4 +1,11 @@
-import { resolveSender, isEmailPlatformConfigured, isResendConfigured } from './config';
+import {
+  resolveSender,
+  isEmailPlatformConfigured,
+  isResendConfigured,
+  isSmtpConfigured,
+  canSmtpSendAs,
+  EMAIL_CONFIG,
+} from './config';
 import { getRegistryEntry } from './emailRegistry';
 import { renderEmailTemplate } from './render';
 import { sendViaResend } from './providers/resend';
@@ -40,6 +47,7 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
     subject: rendered.subject,
     html: rendered.html,
     text: rendered.text,
+    replyTo: EMAIL_CONFIG.replyTo,
     tags: tags?.map((t) => ({ name: 'cutup', value: t })),
   };
 
@@ -58,12 +66,34 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
     provider = 'resend';
     result = await sendViaResend(providerInput);
     if (!result.sent && !result.skipped) {
-      console.warn('[email-platform] Resend failed, trying SMTP fallback', result.error);
+      if (canSmtpSendAs(from)) {
+        console.warn('[email-platform] Resend failed, trying SMTP fallback', result.error);
+        result = await sendViaSmtp(providerInput);
+        provider = 'smtp';
+      } else {
+        console.error('[email-platform] Resend failed; SMTP fallback would change From address', {
+          from,
+          smtpUser: process.env.SMTP_USER,
+          resendError: result.error,
+        });
+      }
+    }
+  } else if (isSmtpConfigured()) {
+    if (canSmtpSendAs(from)) {
       result = await sendViaSmtp(providerInput);
-      provider = 'smtp';
+    } else {
+      console.error('[email-platform] SMTP cannot send as branded From address', {
+        from,
+        smtpUser: process.env.SMTP_USER,
+      });
+      result = {
+        sent: false,
+        error:
+          'smtp_from_mismatch: Gmail/personal SMTP sends as the login address, not @cutup.shop. Configure RESEND_API_KEY with a verified cutup.shop domain.',
+      };
     }
   } else {
-    result = await sendViaSmtp(providerInput);
+    result = { sent: false, skipped: true };
   }
 
   if (result.sent) {

@@ -172,6 +172,74 @@ function isSmtpConfigured() {
     return v3 != null && String(v3).trim() !== "";
   });
 }
+var PERSONAL_SMTP_DOMAINS = /* @__PURE__ */ new Set([
+  "gmail.com",
+  "googlemail.com",
+  "yahoo.com",
+  "hotmail.com",
+  "outlook.com",
+  "live.com",
+  "icloud.com"
+]);
+function extractEmailAddress(value) {
+  const raw = String(value || "").trim();
+  const match = raw.match(/<([^>]+)>/);
+  return (match?.[1] || raw).trim().toLowerCase();
+}
+function getSmtpAuthEmail() {
+  const user = process.env.SMTP_USER;
+  if (user == null || !String(user).trim()) return null;
+  return extractEmailAddress(String(user));
+}
+function canSmtpSendAs(fromHeader) {
+  if (!isSmtpConfigured()) return false;
+  const fromEmail = extractEmailAddress(fromHeader);
+  const authEmail = getSmtpAuthEmail();
+  if (!fromEmail || !authEmail) return false;
+  const fromDomain = fromEmail.split("@")[1] || "";
+  const authDomain = authEmail.split("@")[1] || "";
+  if (fromDomain === "cutup.shop") {
+    return authDomain === "cutup.shop";
+  }
+  if (PERSONAL_SMTP_DOMAINS.has(authDomain)) {
+    return fromEmail === authEmail;
+  }
+  return fromDomain === authDomain || fromEmail === authEmail;
+}
+function getEmailTransportDiagnostics(fromHeader = EMAIL_CONFIG.senders.hello) {
+  const from = fromHeader;
+  const fromEmail = extractEmailAddress(from);
+  const authEmail = getSmtpAuthEmail();
+  const resendConfigured = isResendConfigured();
+  const smtpConfigured = isSmtpConfigured();
+  const smtpCanSendAs = canSmtpSendAs(from);
+  const authDomain = authEmail?.split("@")[1] || "";
+  const likelyPersonalGmailMisconfiguration = Boolean(authEmail) && PERSONAL_SMTP_DOMAINS.has(authDomain) && fromEmail.endsWith("@cutup.shop");
+  let recommendation = "";
+  if (likelyPersonalGmailMisconfiguration && !resendConfigured) {
+    recommendation = "Gmail SMTP sends as the authenticated account, not hello@cutup.shop. Set RESEND_API_KEY and verify cutup.shop in Resend.";
+  } else if (resendConfigured) {
+    recommendation = "Use Resend for branded @cutup.shop senders.";
+  } else if (smtpCanSendAs) {
+    recommendation = "SMTP can send as the template From address.";
+  } else if (smtpConfigured) {
+    recommendation = "SMTP is configured but cannot send as @cutup.shop. Use Resend or Google Workspace for cutup.shop.";
+  } else {
+    recommendation = "Configure RESEND_API_KEY (preferred) or SMTP with a @cutup.shop mailbox.";
+  }
+  return {
+    from,
+    fromEmail,
+    resendConfigured,
+    smtpConfigured,
+    smtpAuthEmail: authEmail,
+    smtpFromEnv: process.env.SMTP_FROM ? extractEmailAddress(String(process.env.SMTP_FROM)) : null,
+    smtpCanSendAs,
+    likelyPersonalGmailMisconfiguration,
+    recommendedProvider: resendConfigured ? "resend" : smtpCanSendAs ? "smtp" : null,
+    recommendation
+  };
+}
 function isEmailPlatformConfigured() {
   return isResendConfigured() || isSmtpConfigured();
 }
@@ -13535,6 +13603,7 @@ async function sendEmail(input) {
     subject: rendered.subject,
     html: rendered.html,
     text: rendered.text,
+    replyTo: EMAIL_CONFIG.replyTo,
     tags: tags?.map((t2) => ({ name: "cutup", value: t2 }))
   };
   console.log("[email-platform] send attempt", {
@@ -13550,12 +13619,33 @@ async function sendEmail(input) {
     provider = "resend";
     result = await sendViaResend(providerInput);
     if (!result.sent && !result.skipped) {
-      console.warn("[email-platform] Resend failed, trying SMTP fallback", result.error);
+      if (canSmtpSendAs(from)) {
+        console.warn("[email-platform] Resend failed, trying SMTP fallback", result.error);
+        result = await sendViaSmtp(providerInput);
+        provider = "smtp";
+      } else {
+        console.error("[email-platform] Resend failed; SMTP fallback would change From address", {
+          from,
+          smtpUser: process.env.SMTP_USER,
+          resendError: result.error
+        });
+      }
+    }
+  } else if (isSmtpConfigured()) {
+    if (canSmtpSendAs(from)) {
       result = await sendViaSmtp(providerInput);
-      provider = "smtp";
+    } else {
+      console.error("[email-platform] SMTP cannot send as branded From address", {
+        from,
+        smtpUser: process.env.SMTP_USER
+      });
+      result = {
+        sent: false,
+        error: "smtp_from_mismatch: Gmail/personal SMTP sends as the login address, not @cutup.shop. Configure RESEND_API_KEY with a verified cutup.shop domain."
+      };
     }
   } else {
-    result = await sendViaSmtp(providerInput);
+    result = { sent: false, skipped: true };
   }
   if (result.sent) {
     console.log("[email-platform] sent", {
@@ -13651,7 +13741,9 @@ export {
   EMAIL_EVENTS,
   EMAIL_REGISTRY,
   EMAIL_TEMPLATES,
+  canSmtpSendAs,
   emitEmailEvent,
+  getEmailTransportDiagnostics,
   getRegistryEntry,
   isEmailPlatformConfigured,
   isResendConfigured,

@@ -11,6 +11,7 @@ import {
   previewEmailTemplate,
   sendTemplatedEmail,
   getPlatformLoadError,
+  getEmailTransportDiagnostics,
 } from './email-events-bus.js';
 import { getLastRenderError, getLastSendResult } from './email-debug-state.js';
 import { listRegistryMeta } from './email-registry-meta.js';
@@ -57,7 +58,7 @@ export default async function handler(req, res) {
 
   const resendKey = process.env.RESEND_API_KEY;
   const resendKeyPresent = resendKey != null && String(resendKey).trim() !== '';
-  const emailFrom = 'Cutup <noreply@cutup.shop>';
+  const transportDiagnostics = await getEmailTransportDiagnostics('Cutup <hello@cutup.shop>');
 
   try {
     if (req.method === 'GET') {
@@ -69,7 +70,8 @@ export default async function handler(req, res) {
         ok: true,
         resendConfigured: resendKeyPresent,
         resendKeyPresent,
-        emailFrom,
+        emailFrom: transportDiagnostics.from || 'Cutup <hello@cutup.shop>',
+        transportDiagnostics,
         templatesLoaded,
         renderWorking: renderProbe.working,
         renderProbe,
