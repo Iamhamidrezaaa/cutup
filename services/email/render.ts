@@ -23,6 +23,7 @@ import {
   SecurityNotification,
   SystemNotification,
   OfferPromotionEmail,
+  FirstProjectFollowUpEmail,
 } from '../../emails/templates';
 
 type TemplateComponent = React.ComponentType<Record<string, unknown>>;
@@ -44,6 +45,7 @@ const TEMPLATE_COMPONENTS: Record<EmailTemplateId, TemplateComponent> = {
   [EMAIL_TEMPLATES.SECURITY_NOTIFICATION]: SecurityNotification as TemplateComponent,
   [EMAIL_TEMPLATES.SYSTEM_NOTIFICATION]: SystemNotification as TemplateComponent,
   [EMAIL_TEMPLATES.OFFER_PROMOTION]: OfferPromotionEmail as TemplateComponent,
+  [EMAIL_TEMPLATES.FIRST_PROJECT_FOLLOW_UP]: FirstProjectFollowUpEmail as TemplateComponent,
 };
 
 function stripHtml(html: string): string {

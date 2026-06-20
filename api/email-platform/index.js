@@ -193,7 +193,8 @@ var EMAIL_TEMPLATES = {
   SUPPORT_TICKET_CLOSED: "SUPPORT_TICKET_CLOSED",
   SECURITY_NOTIFICATION: "SECURITY_NOTIFICATION",
   SYSTEM_NOTIFICATION: "SYSTEM_NOTIFICATION",
-  OFFER_PROMOTION: "OFFER_PROMOTION"
+  OFFER_PROMOTION: "OFFER_PROMOTION",
+  FIRST_PROJECT_FOLLOW_UP: "FIRST_PROJECT_FOLLOW_UP"
 };
 var EMAIL_EVENTS = {
   USER_REGISTERED: "user_registered",
@@ -458,6 +459,16 @@ var EMAIL_REGISTRY = {
         { bold: "Premium caption styles", rest: " built for TikTok & YouTube" },
         { bold: "Priority export queue", rest: "" }
       ]
+    }
+  },
+  [EMAIL_TEMPLATES.FIRST_PROJECT_FOLLOW_UP]: {
+    template: EMAIL_TEMPLATES.FIRST_PROJECT_FOLLOW_UP,
+    subject: () => "Nice work on your first transcript",
+    preview: () => "Thanks for trying CutUp \u2014 explore what's next with your free credits",
+    senderRole: "hello",
+    sampleData: {
+      firstName: sample.firstName,
+      dashboardUrl: goLink({ dest: "dashboard" })
     }
   }
 };
@@ -13292,6 +13303,58 @@ function OfferPromotionEmail({
   ] });
 }
 
+// emails/templates/FirstProjectFollowUpEmail.tsx
+import { jsx as jsx52, jsxs as jsxs28 } from "react/jsx-runtime";
+var DEFAULT_FEATURES = [
+  "AI-powered transcription",
+  "Automatic captions",
+  "Video translation",
+  "Summary generation",
+  "Multiple export formats"
+];
+function FirstProjectFollowUpEmail({
+  firstName = "there",
+  dashboardUrl
+}) {
+  const name2 = String(firstName).trim() || "there";
+  const launchUrl = dashboardUrl || SITE.dashboardUrl;
+  return /* @__PURE__ */ jsxs28(CutupLayout, { preview: "Thanks for trying CutUp \u2014 explore what's next", children: [
+    /* @__PURE__ */ jsx52(StatusBadge, { variant: "success", children: "Keep creating" }),
+    /* @__PURE__ */ jsx52(
+      HeroSection,
+      {
+        title: "Thanks for trying CutUp",
+        subtitle: `Hi ${name2},`
+      }
+    ),
+    /* @__PURE__ */ jsx52(EmailText, { children: "We noticed that you successfully completed your first project and generated your first transcript." }),
+    /* @__PURE__ */ jsx52(EmailText, { children: "With your free account, you still have credits available to explore more features, including:" }),
+    /* @__PURE__ */ jsx52(EmailCard, { children: /* @__PURE__ */ jsx52(FeatureList, { items: DEFAULT_FEATURES }) }),
+    /* @__PURE__ */ jsx52(EmailText, { children: "Many creators use CutUp to save hours of manual transcription and caption work while making their content more accessible to a global audience." }),
+    /* @__PURE__ */ jsx52(EmailText, { children: "If you haven't explored all the features yet, now is a great time to upload another video and see what's possible." }),
+    /* @__PURE__ */ jsxs28(EmailBlock, { padding: BRAND.ctaPad, children: [
+      /* @__PURE__ */ jsx52(
+        Text3,
+        {
+          style: {
+            margin: "0 0 14px",
+            fontSize: "14px",
+            fontWeight: 600,
+            color: BRAND.text
+          },
+          children: "Start your next project:"
+        }
+      ),
+      /* @__PURE__ */ jsx52(EmailButton, { href: launchUrl, fullWidth: true, children: "Launch CutUp" })
+    ] }),
+    /* @__PURE__ */ jsxs28(EmailText, { inset: true, muted: true, small: true, children: [
+      "Thank you for being part of the CutUp community.",
+      /* @__PURE__ */ jsx52("br", {}),
+      /* @__PURE__ */ jsx52("span", { style: { color: BRAND.text, fontWeight: 600 }, children: "\u2014 The CutUp Team" })
+    ] })
+  ] });
+}
+
 // services/email/render.ts
 var TEMPLATE_COMPONENTS = {
   [EMAIL_TEMPLATES.WELCOME_EMAIL]: WelcomeEmail,
@@ -13309,7 +13372,8 @@ var TEMPLATE_COMPONENTS = {
   [EMAIL_TEMPLATES.SUPPORT_TICKET_CLOSED]: SupportTicketClosed,
   [EMAIL_TEMPLATES.SECURITY_NOTIFICATION]: SecurityNotification,
   [EMAIL_TEMPLATES.SYSTEM_NOTIFICATION]: SystemNotification,
-  [EMAIL_TEMPLATES.OFFER_PROMOTION]: OfferPromotionEmail
+  [EMAIL_TEMPLATES.OFFER_PROMOTION]: OfferPromotionEmail,
+  [EMAIL_TEMPLATES.FIRST_PROJECT_FOLLOW_UP]: FirstProjectFollowUpEmail
 };
 function stripHtml(html) {
   return String(html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();

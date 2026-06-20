@@ -14,3 +14,4 @@ export { SupportTicketResolved } from './SupportTicketResolved';
 export { SecurityNotification, type SecurityNotificationData } from './SecurityNotification';
 export { SystemNotification, type SystemNotificationData } from './SystemNotification';
 export { OfferPromotionEmail, type OfferPromotionEmailData, type OfferUpgradeHighlight } from './OfferPromotionEmail';
+export { FirstProjectFollowUpEmail, type FirstProjectFollowUpEmailData } from './FirstProjectFollowUpEmail';

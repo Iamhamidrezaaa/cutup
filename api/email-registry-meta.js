@@ -19,6 +19,7 @@ export const TEMPLATE_DISPLAY_NAMES = {
   SECURITY_NOTIFICATION: 'Security Notification',
   SYSTEM_NOTIFICATION: 'System Notification',
   OFFER_PROMOTION: 'Offer Promotion',
+  FIRST_PROJECT_FOLLOW_UP: 'First Project Follow-Up',
 };
 
 function goLink(params) {
@@ -252,6 +253,16 @@ const EMAIL_REGISTRY_META = {
         { bold: 'Premium caption styles', rest: ' built for TikTok & YouTube' },
         { bold: 'Priority export queue', rest: '' },
       ],
+    },
+  },
+  FIRST_PROJECT_FOLLOW_UP: {
+    template: 'FIRST_PROJECT_FOLLOW_UP',
+    subject: () => 'Nice work on your first transcript',
+    preview: () => "Thanks for trying CutUp — explore what's next with your free credits",
+    senderRole: 'hello',
+    sampleData: {
+      firstName: sample.firstName,
+      dashboardUrl: goLink({ dest: 'dashboard' }),
     },
   },
 };

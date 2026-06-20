@@ -253,6 +253,16 @@ export const EMAIL_REGISTRY: Record<EmailTemplateId, EmailRegistryEntry> = {
       ],
     },
   },
+  [EMAIL_TEMPLATES.FIRST_PROJECT_FOLLOW_UP]: {
+    template: EMAIL_TEMPLATES.FIRST_PROJECT_FOLLOW_UP,
+    subject: () => 'Nice work on your first transcript',
+    preview: () => 'Thanks for trying CutUp — explore what\'s next with your free credits',
+    senderRole: 'hello',
+    sampleData: {
+      firstName: sample.firstName,
+      dashboardUrl: goLink({ dest: 'dashboard' }),
+    },
+  },
 };
 
 export function getRegistryEntry(template: EmailTemplateId): EmailRegistryEntry {
