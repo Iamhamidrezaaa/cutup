@@ -1,4 +1,4 @@
-import { Section, Text } from '@react-email/components';
+import { Text } from '@react-email/components';
 import * as React from 'react';
 import { BRAND } from '../brand';
 import { EmailBlock } from './EmailBlock';
@@ -31,5 +31,5 @@ export function EmailText({ children, muted, small, style, inset }: Props) {
     return <EmailBlock padding={BRAND.insetPad}>{content}</EmailBlock>;
   }
 
-  return <Section style={{ margin: '0 0 16px' }}>{content}</Section>;
+  return <EmailBlock padding={`0 ${BRAND.padX} 16px`}>{content}</EmailBlock>;
 }

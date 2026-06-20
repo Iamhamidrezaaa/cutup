@@ -12363,7 +12363,7 @@ function EmailText({ children, muted, small, style, inset }) {
   if (inset) {
     return /* @__PURE__ */ jsx28(EmailBlock, { padding: BRAND.insetPad, children: content });
   }
-  return /* @__PURE__ */ jsx28(Section, { style: { margin: "0 0 16px" }, children: content });
+  return /* @__PURE__ */ jsx28(EmailBlock, { padding: `0 ${BRAND.padX} 16px`, children: content });
 }
 
 // emails/components/FeatureList.tsx
