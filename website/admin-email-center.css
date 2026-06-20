@@ -309,7 +309,7 @@
 
 .ec-vars-grid {
   display: grid;
-  grid-template-columns: 1fr 280px;
+  grid-template-columns: 1fr;
   gap: 16px;
   align-items: start;
 }
@@ -374,6 +374,117 @@
 }
 .ec-recipient-card .ec-input {
   width: 100%;
+}
+.ec-recipient-help {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ec-muted);
+}
+.ec-code-editor__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+  letter-spacing: 0.03em;
+}
+.ec-code-editor__hint {
+  font-size: 11px;
+  color: #64748b;
+}
+.ec-send-card {
+  margin-top: 16px;
+  background: #fff;
+  border: 1px solid var(--ec-border);
+  border-radius: var(--ec-radius);
+  padding: 16px;
+  box-shadow: var(--ec-shadow);
+}
+.ec-send-card__title {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+.ec-send-card__lead {
+  margin: 0 0 14px;
+  font-size: 13px;
+}
+.ec-send-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.ec-send-tab {
+  border: 1px solid var(--ec-border);
+  background: #fff;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ec-send-tab.is-active {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #4338ca;
+  font-weight: 600;
+}
+.ec-send-panel {
+  display: none;
+}
+.ec-send-panel.is-active {
+  display: block;
+}
+.ec-distribution-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ec-muted);
+  cursor: pointer;
+}
+.ec-distribution-option input {
+  margin-top: 2px;
+}
+.ec-audience-stats {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid var(--ec-border);
+  font-size: 13px;
+  color: var(--ec-text);
+}
+.ec-bulk-job {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--ec-border);
+  border-radius: 10px;
+  font-size: 13px;
+}
+.ec-bulk-job__bar {
+  margin-top: 10px;
+  height: 8px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+.ec-bulk-job__bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1, #4f46e5);
+  border-radius: 999px;
+}
+.ec-recipient-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.ec-recipient-status {
+  margin: 10px 0 0;
+  min-height: 18px;
+  font-size: 12px;
 }
 .ec-status-line {
   min-height: 20px;

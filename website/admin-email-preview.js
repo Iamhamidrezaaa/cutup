@@ -37,6 +37,11 @@
     lastRenderedAt: null,
     renderDurationMs: null,
     buildVersion: null,
+    sendTab: 'single',
+    bulkPlan: 'free',
+    excludeAlreadySent: true,
+    audienceStats: null,
+    bulkJob: null,
   };
 
   function esc(v) {
@@ -207,6 +212,70 @@
     }).join('');
   }
 
+  function renderSendDistribution() {
+    var excludeChecked = state.excludeAlreadySent ? ' checked' : '';
+    var singleActive = state.sendTab === 'single' ? ' is-active' : '';
+    var planActive = state.sendTab === 'plan' ? ' is-active' : '';
+    var allActive = state.sendTab === 'all' ? ' is-active' : '';
+    var stats = state.audienceStats;
+    var statsHtml = '';
+    if (stats && (state.sendTab === 'plan' || state.sendTab === 'all')) {
+      statsHtml =
+        '<p class="ec-audience-stats">' +
+          esc(String(stats.matchedUsers || 0)) + ' will receive · ' +
+          esc(String(stats.skippedAlreadySent || 0)) + ' already sent · ' +
+          esc(String(stats.totalInScope || 0)) + ' in audience' +
+        '</p>';
+    }
+    return (
+      '<article class="ec-send-card">' +
+        '<h3 class="ec-send-card__title">Send to audience</h3>' +
+        '<p class="ec-muted ec-send-card__lead">Send the selected template to one user, a plan group, or everyone.</p>' +
+        '<div class="ec-send-tabs" role="tablist">' +
+          '<button type="button" class="ec-send-tab' + singleActive + '" data-email-send-tab="single">Single user</button>' +
+          '<button type="button" class="ec-send-tab' + planActive + '" data-email-send-tab="plan">By plan</button>' +
+          '<button type="button" class="ec-send-tab' + allActive + '" data-email-send-tab="all">Broadcast all</button>' +
+        '</div>' +
+        '<div class="ec-send-panel' + (state.sendTab === 'single' ? ' is-active' : '') + '" data-email-send-panel="single">' +
+          '<label class="ec-field-label" for="emailTestRecipient">Recipient email</label>' +
+          '<input type="email" id="emailTestRecipient" class="ec-input" placeholder="user@example.com" />' +
+          '<p class="ec-recipient-help">Profile name replaces sample values like Alex when sending.</p>' +
+          '<div class="ec-recipient-actions">' +
+            '<button type="button" class="ec-btn" id="emailLoadProfileBtn">Load profile into preview</button>' +
+            '<button type="button" class="ec-btn ec-btn--primary" id="emailSendSingleBtn">Send Email</button>' +
+          '</div>' +
+          '<p id="emailRecipientStatus" class="ec-recipient-status ec-muted"></p>' +
+        '</div>' +
+        '<div class="ec-send-panel' + (state.sendTab === 'plan' ? ' is-active' : '') + '" data-email-send-panel="plan">' +
+          '<label class="ec-field-label" for="emailBulkPlan">Plan</label>' +
+          '<select id="emailBulkPlan" class="ec-input">' +
+            ['free', 'starter', 'pro', 'business'].map(function (p) {
+              var sel = state.bulkPlan === p ? ' selected' : '';
+              var label = p.charAt(0).toUpperCase() + p.slice(1);
+              return '<option value="' + esc(p) + '"' + sel + '>' + esc(label) + '</option>';
+            }).join('') +
+          '</select>' +
+          '<label class="ec-distribution-option">' +
+            '<input type="checkbox" id="emailExcludeAlreadySentPlan"' + excludeChecked + '>' +
+            'Skip users who already received this template' +
+          '</label>' +
+          statsHtml +
+          '<button type="button" class="ec-btn ec-btn--primary" id="emailSendPlanBtn">Send to plan</button>' +
+        '</div>' +
+        '<div class="ec-send-panel' + (state.sendTab === 'all' ? ' is-active' : '') + '" data-email-send-panel="all">' +
+          '<p class="ec-muted">Send this template to every user with an email address.</p>' +
+          '<label class="ec-distribution-option">' +
+            '<input type="checkbox" id="emailExcludeAlreadySentAll"' + excludeChecked + '>' +
+            'Skip users who already received this template' +
+          '</label>' +
+          statsHtml +
+          '<button type="button" class="ec-btn ec-btn--primary" id="emailSendAllBtn">Broadcast email</button>' +
+        '</div>' +
+        '<div id="emailBulkJobHost"></div>' +
+      '</article>'
+    );
+  }
+
   function renderPreviewPanel() {
     var desktopActive = state.viewMode === 'desktop' ? ' is-active' : '';
     var mobileActive = state.viewMode === 'mobile' ? ' is-active' : '';
@@ -226,7 +295,6 @@
           '<div class="ec-toolbar">' +
             '<div class="ec-toolbar__actions">' +
               '<button type="button" class="ec-btn" id="emailPreviewBtn">Refresh Preview</button>' +
-              '<button type="button" class="ec-btn ec-btn--primary" id="emailSendTestBtn">Send Test</button>' +
               '<button type="button" class="ec-btn" id="emailCopyHtmlBtn">Copy HTML</button>' +
             '</div>' +
             '<div class="ec-segment" role="group" aria-label="Preview size">' +
@@ -236,14 +304,14 @@
           '</div>' +
           '<div class="ec-vars-grid">' +
             '<div class="ec-code-editor">' +
-              '<div class="ec-code-editor__head"><span class="ec-code-editor__title">Variables JSON</span></div>' +
+              '<div class="ec-code-editor__head">' +
+                '<span class="ec-code-editor__title">Variables JSON</span>' +
+                '<span class="ec-code-editor__hint">Preview only — sends use each user&apos;s profile</span>' +
+              '</div>' +
               '<textarea id="emailDataJson" class="ec-code-editor__textarea" spellcheck="false" rows="10"></textarea>' +
             '</div>' +
-            '<div class="ec-recipient-card">' +
-              '<label class="ec-field-label" for="emailTestRecipient">Test Recipient</label>' +
-              '<input type="email" id="emailTestRecipient" class="ec-input" placeholder="you@company.com" />' +
-            '</div>' +
           '</div>' +
+          renderSendDistribution() +
           '<p id="emailPreviewStatus" class="ec-status-line ec-muted"></p>' +
           '<div class="ec-meta" id="emailPreviewMeta">' + renderMetaPills() + '</div>' +
           '<div class="ec-preview-card">' +
@@ -259,7 +327,7 @@
       '<div class="ec-root admin-email-preview">' +
         '<header class="ec-page-head">' +
           '<h2>Emails</h2>' +
-          '<p class="ec-muted">Preview templates, send tests, and review delivery logs.</p>' +
+          '<p class="ec-muted">Preview templates, send emails to users, and review delivery logs.</p>' +
         '</header>' +
         renderTabs() +
         '<div id="emailTabPreview"' + (state.tab === 'preview' ? '' : ' hidden') + '>' +
@@ -300,6 +368,7 @@
         if (ta) ta.value = state.dataJson;
         refreshSidebarDom();
         void loadPreview();
+        if (state.sendTab !== 'single') void refreshAudienceStats();
       });
     });
   }
@@ -416,11 +485,227 @@
     if (status) status.textContent = 'Preview updated.';
   }
 
+  var bulkDangerArmed = null;
+
+  function armBulkBroadcast() {
+    bulkDangerArmed = Date.now() + 4000;
+  }
+
+  function isBulkBroadcastArmed() {
+    return bulkDangerArmed && bulkDangerArmed > Date.now();
+  }
+
+  function parseVariablesJson() {
+    try {
+      return JSON.parse(document.getElementById('emailDataJson')?.value || state.dataJson || '{}');
+    } catch (_e) {
+      return null;
+    }
+  }
+
+  function syncExcludeAlreadySent() {
+    var planBox = document.getElementById('emailExcludeAlreadySentPlan');
+    var allBox = document.getElementById('emailExcludeAlreadySentAll');
+    if (planBox) state.excludeAlreadySent = planBox.checked;
+    if (allBox) allBox.checked = state.excludeAlreadySent;
+    if (planBox) planBox.checked = state.excludeAlreadySent;
+  }
+
+  async function refreshAudienceStats() {
+    if (!state.selected || state.sendTab === 'single') return;
+    var mode = state.sendTab === 'plan' ? 'plan' : 'all';
+    syncExcludeAlreadySent();
+    var plan = document.getElementById('emailBulkPlan')?.value || state.bulkPlan || 'free';
+    state.bulkPlan = plan;
+    var q = new URLSearchParams({
+      action: 'audience-stats',
+      template: state.selected,
+      mode: mode,
+      plan: plan,
+      excludeAlreadySent: state.excludeAlreadySent ? 'true' : 'false',
+    });
+    var res = await api('/api/admin/email-preview?' + q.toString());
+    if (res.ok && res.data?.audience) {
+      state.audienceStats = res.data.audience;
+      refreshSendDistributionDom();
+    }
+  }
+
+  function refreshSendDistributionDom() {
+    var host = document.querySelector('.ec-send-card');
+    if (!host) return;
+    var parent = host.parentNode;
+    var next = host.nextSibling;
+    host.remove();
+    var wrap = document.createElement('div');
+    wrap.innerHTML = renderSendDistribution();
+    var newCard = wrap.firstElementChild;
+    if (parent) parent.insertBefore(newCard, next);
+    bindSendDistributionEvents();
+  }
+
+  function renderBulkJobStatus(job) {
+    var host = document.getElementById('emailBulkJobHost');
+    if (!host) return;
+    if (!job) {
+      host.innerHTML = '';
+      return;
+    }
+    var pct = job.status === 'queued' ? 15 : job.status === 'running' ? 55 : 100;
+    host.innerHTML =
+      '<div class="ec-bulk-job">' +
+        '<strong>Bulk send:</strong> ' + esc(job.status) +
+        (job.error ? '<div>' + esc(job.error) + '</div>' : '') +
+        (job.result
+          ? '<div>Sent: ' + esc(String(job.result.sent || 0)) +
+            ' · Failed: ' + esc(String(job.result.failed || 0)) +
+            ' · Skipped (transport): ' + esc(String(job.result.skipped || 0)) +
+            '</div>'
+          : '') +
+        '<div class="ec-bulk-job__bar"><i style="width:' + pct + '%"></i></div>' +
+      '</div>';
+  }
+
+  async function waitForEmailJob(jobId, timeoutMs) {
+    var started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      var res = await api('/api/admin/email-preview?action=job&jobId=' + encodeURIComponent(jobId));
+      if (!res.ok) throw new Error(res.data?.error || 'job_not_found');
+      var job = res.data.job;
+      renderBulkJobStatus(job);
+      if (job.status === 'completed' || job.status === 'failed') return job;
+      await new Promise(function (r) { setTimeout(r, 800); });
+    }
+    throw new Error('Bulk send timed out');
+  }
+
+  async function sendBulk(mode) {
+    var status = document.getElementById('emailPreviewStatus');
+    if (!state.selected) {
+      if (status) status.textContent = 'Select a template first.';
+      return;
+    }
+    var data = parseVariablesJson();
+    if (!data) {
+      if (status) status.textContent = 'Invalid JSON in variables field.';
+      return;
+    }
+    syncExcludeAlreadySent();
+    var plan = document.getElementById('emailBulkPlan')?.value || state.bulkPlan || 'free';
+    if (mode === 'all' && !isBulkBroadcastArmed()) {
+      armBulkBroadcast();
+      if (status) status.textContent = 'Click Broadcast email again within 4 seconds to confirm.';
+      return;
+    }
+    bulkDangerArmed = null;
+    if (status) status.textContent = 'Starting bulk send…';
+    var res = await api('/api/admin/email-preview?action=send-bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        template: state.selected,
+        mode: mode,
+        plan: plan,
+        excludeAlreadySent: state.excludeAlreadySent,
+        data: data,
+      }),
+    });
+    if (!res.ok || !res.data?.jobId) {
+      if (status) status.textContent = 'Bulk send failed: ' + (res.data?.error || 'error');
+      return;
+    }
+    try {
+      var job = await waitForEmailJob(res.data.jobId, 600000);
+      if (job.status === 'completed') {
+        var sent = Number(job.result?.sent || 0);
+        if (status) {
+          status.textContent = sent > 0
+            ? 'Bulk send complete — ' + sent + ' emails sent.'
+            : 'Bulk send complete — no new recipients matched.';
+        }
+        toast(sent > 0 ? 'Bulk send complete' : 'No recipients matched');
+        void refreshAudienceStats();
+        if (window.CutupAdminEmailDeliveryLog?.reload) window.CutupAdminEmailDeliveryLog.reload();
+      } else {
+        if (status) status.textContent = 'Bulk send failed: ' + (job.error || 'unknown');
+      }
+    } catch (err) {
+      if (status) status.textContent = err.message || 'Bulk send failed';
+    }
+  }
+
+  function bindSendDistributionEvents() {
+    document.querySelectorAll('[data-email-send-tab]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        state.sendTab = btn.getAttribute('data-email-send-tab') || 'single';
+        refreshSendDistributionDom();
+        if (state.sendTab !== 'single') void refreshAudienceStats();
+      });
+    });
+    document.getElementById('emailBulkPlan')?.addEventListener('change', function () {
+      state.bulkPlan = document.getElementById('emailBulkPlan')?.value || 'free';
+      void refreshAudienceStats();
+    });
+    document.getElementById('emailExcludeAlreadySentPlan')?.addEventListener('change', function () {
+      state.excludeAlreadySent = document.getElementById('emailExcludeAlreadySentPlan')?.checked !== false;
+      var allBox = document.getElementById('emailExcludeAlreadySentAll');
+      if (allBox) allBox.checked = state.excludeAlreadySent;
+      void refreshAudienceStats();
+    });
+    document.getElementById('emailExcludeAlreadySentAll')?.addEventListener('change', function () {
+      state.excludeAlreadySent = document.getElementById('emailExcludeAlreadySentAll')?.checked !== false;
+      var planBox = document.getElementById('emailExcludeAlreadySentPlan');
+      if (planBox) planBox.checked = state.excludeAlreadySent;
+      void refreshAudienceStats();
+    });
+    document.getElementById('emailSendSingleBtn')?.addEventListener('click', function () { void sendTest(); });
+    document.getElementById('emailLoadProfileBtn')?.addEventListener('click', function () { void loadRecipientProfile(); });
+    document.getElementById('emailSendPlanBtn')?.addEventListener('click', function () { void sendBulk('plan'); });
+    document.getElementById('emailSendAllBtn')?.addEventListener('click', function () { void sendBulk('all'); });
+  }
+
+  async function loadRecipientProfile() {
+    var status = document.getElementById('emailRecipientStatus');
+    var recipient = document.getElementById('emailTestRecipient')?.value?.trim();
+    if (!recipient) {
+      if (status) status.textContent = 'Enter a recipient email first.';
+      return;
+    }
+    if (status) status.textContent = 'Loading profile…';
+    var res = await api('/api/admin/email-preview?action=recipient-data&email=' + encodeURIComponent(recipient));
+    if (!res.ok || !res.data?.profile) {
+      if (status) status.textContent = 'Could not load profile for this email.';
+      return;
+    }
+    var profile = res.data.profile;
+    var current = {};
+    try {
+      current = JSON.parse(document.getElementById('emailDataJson')?.value || state.dataJson || '{}');
+    } catch (_e) {
+      current = {};
+    }
+    var merged = Object.assign({}, current, {
+      firstName: profile.firstName,
+      lastName: profile.lastName || current.lastName,
+      email: profile.email,
+      planName: profile.planName || current.planName,
+    });
+    state.dataJson = JSON.stringify(merged, null, 2);
+    var ta = document.getElementById('emailDataJson');
+    if (ta) ta.value = state.dataJson;
+    if (status) {
+      status.textContent = profile.userFound
+        ? 'Loaded profile for ' + profile.firstName + '. Refresh preview to see it.'
+        : 'No account found — using name inferred from email (' + profile.firstName + ').';
+    }
+    void loadPreview();
+  }
+
   async function sendTest() {
     var status = document.getElementById('emailPreviewStatus');
     var recipient = document.getElementById('emailTestRecipient')?.value?.trim();
     if (!state.selected || !recipient) {
-      if (status) status.textContent = 'Select a template and enter a test recipient.';
+      if (status) status.textContent = 'Select a template and enter a recipient email.';
       return;
     }
     var data = {};
@@ -434,13 +719,20 @@
     var res = await api('/api/admin/email-preview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ template: state.selected, recipient: recipient, data: data }),
+      body: JSON.stringify({
+        template: state.selected,
+        recipient: recipient,
+        data: data,
+        useRecipientProfile: true,
+      }),
     });
     if (status) {
       var result = res.data?.result || {};
+      var sentData = res.data?.data || {};
       if (res.ok && result.sent) {
-        status.textContent = 'Test email sent' + (result.messageId ? ' (id: ' + result.messageId + ')' : '') + '.';
-        toast('Test email sent');
+        status.textContent = 'Email sent to ' + recipient + ' as ' + (sentData.firstName || 'recipient') +
+          (result.messageId ? ' (id: ' + result.messageId + ')' : '') + '.';
+        toast('Email sent');
         if (window.CutupAdminEmailDeliveryLog?.reload) window.CutupAdminEmailDeliveryLog.reload();
       } else if (result.skipped) {
         status.textContent = 'Send skipped — Resend/SMTP not configured.';
@@ -473,8 +765,8 @@
     });
 
     document.getElementById('emailPreviewBtn')?.addEventListener('click', function () { void loadPreview(); });
-    document.getElementById('emailSendTestBtn')?.addEventListener('click', function () { void sendTest(); });
     document.getElementById('emailCopyHtmlBtn')?.addEventListener('click', function () { void copyHtml(); });
+    bindSendDistributionEvents();
 
     document.getElementById('emailTemplateSearch')?.addEventListener('input', onSearchInput);
 
