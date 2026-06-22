@@ -2851,8 +2851,55 @@ function cutupRequirePermission(permission, options = {}) {
   const msg = window.CutupPlanPermissions?.getUpgradeMessage
     ? window.CutupPlanPermissions.getUpgradeMessage(permission)
     : (options.message || 'This feature is not available on your current plan.');
-  showMessage(options.message || msg, options.variant || 'error');
+  const text = options.message || msg;
+  showMessage(text, options.variant || 'error', { persistMs: 12000, scroll: true });
+  if (options.scrollToPricing !== false && permission === 'canTranslate') {
+    const pricing = document.getElementById('pricing');
+    if (pricing) {
+      setTimeout(() => pricing.scrollIntoView({ behavior: 'smooth', block: 'start' }), 600);
+    }
+  }
   return false;
+}
+
+/** Visual lock + inline hint for translate controls on Free (and other plans without canTranslate). */
+function applyTranslatePlanLocks(sub = window.userSubscription) {
+  const perms = sub?.permissions || cutupGetPermissions();
+  const locked = !perms.canTranslate;
+  const msg =
+    window.CutupPlanPermissions?.getUpgradeMessage?.('canTranslate') ||
+    'Translation requires Starter or higher.';
+  const btnIds = ['translateSrtBtn', 'translateFulltextBtn', 'translateSummaryBtn'];
+
+  btnIds.forEach((id) => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.classList.toggle('translate-srt-btn--locked', locked);
+    if (locked) {
+      btn.title = msg;
+      btn.setAttribute('aria-description', msg);
+    } else {
+      btn.removeAttribute('aria-description');
+      if (btn.title === msg) btn.title = '';
+    }
+  });
+
+  document.querySelectorAll('.srt-controls').forEach((controls) => {
+    const hasTranslate = controls.querySelector('.translate-srt-btn');
+    if (!hasTranslate) return;
+    let hint = controls.querySelector('.cutup-translate-upgrade-hint');
+    if (locked) {
+      if (!hint) {
+        hint = document.createElement('p');
+        hint.className = 'cutup-translate-upgrade-hint';
+        controls.appendChild(hint);
+      }
+      hint.textContent = msg;
+      hint.hidden = false;
+    } else if (hint) {
+      hint.hidden = true;
+    }
+  });
 }
 
 function cutupIsTopTierPlan(key) {
@@ -3111,6 +3158,7 @@ async function updateButtonsBasedOnSubscription(sessionId) {
       setButtonsForPaidPlan(audioExceeded, videoExceeded, monthlyCapExceeded, limits);
     }
     applyCutupPricingPlanLocks({ plan: userPlan });
+    applyTranslatePlanLocks(window.userSubscription);
     window.CutupPresetSelector?.applyPlanLocks?.();
     window.CutupApp.subscriptionHydration = 'ready';
   } catch (error) {
@@ -3123,6 +3171,7 @@ async function updateButtonsBasedOnSubscription(sessionId) {
     }
     setButtonsForFreePlan();
     applyCutupPricingPlanLocks({ plan: 'free' });
+    applyTranslatePlanLocks({ plan: 'free', permissions: cutupGetPermissions() });
     window.CutupApp.subscriptionHydration = 'ready';
   }
 }
@@ -3200,9 +3249,9 @@ function setButtonsForFreePlan(audioExceeded = false, videoExceeded = false, mon
       fullTextBtnMain.disabled = false;
     }
   }
-}
 
-// Set buttons state for paid plan
+  applyTranslatePlanLocks(window.userSubscription || { plan: 'free' });
+}
 function setButtonsForPaidPlan(audioExceeded = false, videoExceeded = false, monthlyCapExceeded = false, limits = null) {
   // All buttons enabled for paid users, but check limits
   if (downloadSubtitleBtnMain) {
@@ -3272,6 +3321,8 @@ function setButtonsForPaidPlan(audioExceeded = false, videoExceeded = false, mon
       fullTextBtnMain.disabled = false;
     }
   }
+
+  applyTranslatePlanLocks(window.userSubscription);
 }
 
 function showLoginButton() {
@@ -3681,8 +3732,22 @@ function getExampleUrl(platform) {
 }
 
 // Show message (toast-style; timings tuned so errors are readable on mobile)
+function resolveMessageAnchor(opts = {}) {
+  if (!downloadMessage) initCutupHomeToolDomRefs();
+  const resultSection = document.getElementById('resultSection');
+  const resultPanelMessage = document.getElementById('resultPanelMessage');
+  const resultsVisible =
+    resultSection &&
+    resultSection.style.display !== 'none' &&
+    !resultSection.hasAttribute('hidden');
+  if (opts.preferHero) return downloadMessage;
+  if (resultsVisible && resultPanelMessage) return resultPanelMessage;
+  return downloadMessage;
+}
+
 function showMessage(text, type = 'info', opts = {}) {
-  if (!downloadMessage) return;
+  const anchor = resolveMessageAnchor(opts);
+  if (!anchor) return;
   if (type === 'error') {
     console.warn('[ui-error-trigger]', {
       text,
@@ -3690,10 +3755,14 @@ function showMessage(text, type = 'info', opts = {}) {
       stack: new Error('[ui-error-trigger]').stack
     });
   }
-  downloadMessage.textContent = text;
-  downloadMessage.className = `download-message ${type}`;
-  downloadMessage.style.display = 'block';
-  clearTimeout(downloadMessage._hideT);
+  anchor.textContent = text;
+  anchor.className =
+    anchor.id === 'resultPanelMessage'
+      ? `download-message result-panel-message ${type}`
+      : `download-message ${type}`;
+  anchor.style.display = 'block';
+  anchor.hidden = false;
+  clearTimeout(anchor._hideT);
   const ms =
     Number(opts.persistMs) > 0
       ? Number(opts.persistMs)
@@ -3703,9 +3772,13 @@ function showMessage(text, type = 'info', opts = {}) {
           ? 8000
           : 5500;
   if (ms > 0) {
-    downloadMessage._hideT = setTimeout(() => {
-      downloadMessage.style.display = 'none';
+    anchor._hideT = setTimeout(() => {
+      anchor.style.display = 'none';
+      if (anchor.id === 'resultPanelMessage') anchor.hidden = true;
     }, ms);
+  }
+  if (opts.scroll !== false && anchor.scrollIntoView) {
+    anchor.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 }
 
@@ -6625,6 +6698,7 @@ function displayResults(summary, fullText, segments = null, options = {}) {
   }
 
   setupTranslateButtons();
+  applyTranslatePlanLocks(window.userSubscription);
 
   window.cutupLastTranscription = {
     cacheKey: getTranscriptionCacheKey(),
@@ -6917,6 +6991,7 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Translate buttons
   setupTranslateButtons();
+  applyTranslatePlanLocks(window.userSubscription || { plan: 'free' });
   updateTranslationOriginalLabel();
 
   const unlockPreviewBtn = document.getElementById('unlockPreviewBtn');
@@ -6947,7 +7022,12 @@ function setupTranslateButtons() {
       console.log('[translate-click]', { button: btnId });
       const sessionId = checkLogin({ pendingType: 'fulltext', payload: { mode: 'translate' } });
       if (!sessionId) return;
-      if (!cutupRequirePermission('canTranslate')) return;
+      if (!cutupRequirePermission('canTranslate')) {
+        applyTranslatePlanLocks();
+        const controls = btn.closest('.srt-controls');
+        controls?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+        return;
+      }
       const originalLanguage = window.cutupDetectedSourceLanguage || 'auto';
       await handler(sessionId, originalLanguage);
     });
