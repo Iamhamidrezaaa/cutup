@@ -1841,16 +1841,41 @@ button.file-input-btn-full {
   box-shadow: inset 0 0 0 1px rgba(124, 58, 237, 0.35);
 }
 
-.cutup-translate-upgrade-hint {
+.cutup-translate-inline-error {
   flex: 1 1 100%;
   margin: 0;
   padding: 8px 12px;
   font-size: 13px;
   line-height: 1.45;
-  color: #5b21b6;
-  background: rgba(124, 58, 237, 0.08);
-  border: 1px solid rgba(124, 58, 237, 0.18);
+  color: #991b1b;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
   border-radius: 8px;
+  animation: cutupTranslateFlashIn 0.22s ease-out;
+}
+
+.cutup-translate-inline-error--out {
+  animation: cutupTranslateFlashOut 0.4s ease-in forwards;
+}
+
+@keyframes cutupTranslateFlashIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cutupTranslateFlashOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 
 .result-panel-message {

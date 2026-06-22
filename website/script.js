@@ -2852,17 +2852,42 @@ function cutupRequirePermission(permission, options = {}) {
     ? window.CutupPlanPermissions.getUpgradeMessage(permission)
     : (options.message || 'This feature is not available on your current plan.');
   const text = options.message || msg;
-  showMessage(text, options.variant || 'error', { persistMs: 12000, scroll: true });
-  if (options.scrollToPricing !== false && permission === 'canTranslate') {
-    const pricing = document.getElementById('pricing');
-    if (pricing) {
-      setTimeout(() => pricing.scrollIntoView({ behavior: 'smooth', block: 'start' }), 600);
-    }
+  if (options.inlineAnchor) {
+    showTranslateInlineError(options.inlineAnchor, text);
+    return false;
   }
+  showMessage(text, options.variant || 'error', {
+    persistMs: options.persistMs,
+    scroll: options.scroll === true
+  });
   return false;
 }
 
-/** Visual lock + inline hint for translate controls on Free (and other plans without canTranslate). */
+/** Flash an error beside the Translate button; fades out in place (no page scroll). */
+function showTranslateInlineError(btn, text) {
+  const controls = btn?.closest?.('.srt-controls');
+  if (!controls) return;
+  let flash = controls.querySelector('.cutup-translate-inline-error');
+  if (!flash) {
+    flash = document.createElement('p');
+    flash.className = 'cutup-translate-inline-error';
+    flash.setAttribute('role', 'alert');
+    controls.appendChild(flash);
+  }
+  flash.textContent = text;
+  flash.classList.remove('cutup-translate-inline-error--out');
+  flash.hidden = false;
+  clearTimeout(flash._hideT);
+  flash._hideT = setTimeout(() => {
+    flash.classList.add('cutup-translate-inline-error--out');
+    flash._hideT2 = setTimeout(() => {
+      flash.hidden = true;
+      flash.classList.remove('cutup-translate-inline-error--out');
+    }, 420);
+  }, 5200);
+}
+
+/** Subtle locked styling on translate buttons when plan lacks canTranslate. */
 function applyTranslatePlanLocks(sub = window.userSubscription) {
   const perms = sub?.permissions || cutupGetPermissions();
   const locked = !perms.canTranslate;
@@ -2877,29 +2902,12 @@ function applyTranslatePlanLocks(sub = window.userSubscription) {
     btn.classList.toggle('translate-srt-btn--locked', locked);
     if (locked) {
       btn.title = msg;
-      btn.setAttribute('aria-description', msg);
-    } else {
-      btn.removeAttribute('aria-description');
-      if (btn.title === msg) btn.title = '';
+    } else if (btn.title === msg) {
+      btn.title = '';
     }
   });
 
-  document.querySelectorAll('.srt-controls').forEach((controls) => {
-    const hasTranslate = controls.querySelector('.translate-srt-btn');
-    if (!hasTranslate) return;
-    let hint = controls.querySelector('.cutup-translate-upgrade-hint');
-    if (locked) {
-      if (!hint) {
-        hint = document.createElement('p');
-        hint.className = 'cutup-translate-upgrade-hint';
-        controls.appendChild(hint);
-      }
-      hint.textContent = msg;
-      hint.hidden = false;
-    } else if (hint) {
-      hint.hidden = true;
-    }
-  });
+  document.querySelectorAll('.cutup-translate-upgrade-hint').forEach((hint) => hint.remove());
 }
 
 function cutupIsTopTierPlan(key) {
@@ -3777,7 +3785,7 @@ function showMessage(text, type = 'info', opts = {}) {
       if (anchor.id === 'resultPanelMessage') anchor.hidden = true;
     }, ms);
   }
-  if (opts.scroll !== false && anchor.scrollIntoView) {
+  if (opts.scroll === true && anchor.scrollIntoView) {
     anchor.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 }
@@ -7022,12 +7030,7 @@ function setupTranslateButtons() {
       console.log('[translate-click]', { button: btnId });
       const sessionId = checkLogin({ pendingType: 'fulltext', payload: { mode: 'translate' } });
       if (!sessionId) return;
-      if (!cutupRequirePermission('canTranslate')) {
-        applyTranslatePlanLocks();
-        const controls = btn.closest('.srt-controls');
-        controls?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
-        return;
-      }
+      if (!cutupRequirePermission('canTranslate', { inlineAnchor: btn })) return;
       const originalLanguage = window.cutupDetectedSourceLanguage || 'auto';
       await handler(sessionId, originalLanguage);
     });
