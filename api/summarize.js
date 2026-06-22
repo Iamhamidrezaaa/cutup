@@ -114,6 +114,20 @@ function extractKeyPointsFromText(text, count) {
 }
 
 async function summarizeWithGPT(text, detectedLanguage = null) {
+  const MAX_SUMMARIZE_CHARS = 120000;
+  let sourceText = text;
+  if (sourceText.length > MAX_SUMMARIZE_CHARS) {
+    const headSize = Math.floor(MAX_SUMMARIZE_CHARS * 0.55);
+    const tailSize = Math.floor(MAX_SUMMARIZE_CHARS * 0.35);
+    sourceText =
+      sourceText.slice(0, headSize) +
+      '\n\n[... middle of transcript omitted for length ...]\n\n' +
+      sourceText.slice(-tailSize);
+    console.log(
+      `SUMMARIZE: Truncated input from ${text.length} to ${sourceText.length} characters for model limits`
+    );
+  }
+
   const dl =
     detectedLanguage != null && detectedLanguage !== ''
       ? String(detectedLanguage).toLowerCase().trim()
@@ -132,8 +146,8 @@ async function summarizeWithGPT(text, detectedLanguage = null) {
   const isPersian = langIso === 'fa';
 
   // Calculate text length and determine summary length
-  const wordCount = text.split(/\s+/).length;
-  const charCount = text.length;
+  const wordCount = sourceText.split(/\s+/).length;
+  const charCount = sourceText.length;
   
   // Determine summary ratio based on text length
   // Short texts (< 200 words): 30-40% summary
@@ -177,7 +191,7 @@ ${outputLanguageRule}`;
     ? `متن زیر را خلاصه کنید و ${keyPointsCount} نکته کلیدی استخراج کنید. همچنین یک خلاصه یک‌پاراگرافی ارائه دهید که حدود ${targetSummaryWords} کلمه باشد.
 
 متن (${wordCount} کلمه):
-${text}
+${sourceText}
 
 لطفاً پاسخ را به این فرمت JSON برگردانید:
 {
@@ -189,7 +203,7 @@ ${text}
 ${outputLanguageRule}
 
 Text (${wordCount} words):
-${text}
+${sourceText}
 
 Return JSON only in this shape (use the output language rule for all string values):
 {

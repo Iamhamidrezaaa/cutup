@@ -2311,6 +2311,121 @@ function replayCachedResultIfMatch(activeTab = 'fulltext', outputMode = 'fulltex
   return true;
 }
 
+const SUMMARY_GENERATING_MSG = 'Summary is generating…';
+
+function isSummaryGenerating(summary) {
+  return (
+    summary &&
+    typeof summary === 'object' &&
+    summary.unavailable &&
+    summary.message === SUMMARY_GENERATING_MSG
+  );
+}
+
+function isSummaryFailed(summary) {
+  return (
+    summary &&
+    typeof summary === 'object' &&
+    summary.unavailable &&
+    summary.message !== SUMMARY_GENERATING_MSG
+  );
+}
+
+function shouldFetchSummary(summary) {
+  if (!summary) return true;
+  if (isSummaryGenerating(summary) || isSummaryFailed(summary)) return true;
+  if (typeof summary === 'object') {
+    const body = String(summary.summary || '').trim();
+    const points = Array.isArray(summary.keyPoints) ? summary.keyPoints : [];
+    return !body && !points.length;
+  }
+  return false;
+}
+
+let cutupSummaryFetchToken = 0;
+
+async function ensureSummaryForTranscript(fullText, language, sessionId, contextMeta = {}) {
+  const text = String(fullText || '').trim();
+  if (!sessionId || !text) return null;
+
+  const cached = window.cutupLastTranscription;
+  const current = cached?.summary;
+  if (current && !shouldFetchSummary(current)) return current;
+  if (cached?._summaryFetchInFlight) return null;
+
+  const fetchToken = ++cutupSummaryFetchToken;
+  if (cached) cached._summaryFetchInFlight = true;
+
+  patchSummaryInResults({ unavailable: true, message: SUMMARY_GENERATING_MSG });
+
+  try {
+    const summary = await summarizeText(text, language, sessionId, contextMeta);
+    if (fetchToken !== cutupSummaryFetchToken) return summary;
+    patchSummaryInResults(summary);
+    return summary;
+  } catch (summaryErr) {
+    console.warn('Summary generation failed:', summaryErr);
+    if (fetchToken === cutupSummaryFetchToken) {
+      patchSummaryInResults({
+        unavailable: true,
+        message: 'Summary could not be generated for this file.'
+      });
+    }
+    return null;
+  } finally {
+    if (cached && fetchToken === cutupSummaryFetchToken) {
+      cached._summaryFetchInFlight = false;
+    }
+  }
+}
+
+function wireInlineResultCopyButtons() {
+  document.querySelectorAll('.result-text-copy-btn').forEach((btn) => {
+    if (btn._cutupCopyBound) return;
+    btn._cutupCopyBound = true;
+    btn.addEventListener('click', async () => {
+      const targetId = btn.dataset.copyTarget;
+      let text = '';
+      if (targetId === 'fulltext') {
+        text = (document.getElementById('fulltext')?.textContent || '').trim();
+      } else if (targetId === 'summaryText') {
+        text = (document.getElementById('summaryText')?.innerText || '').trim();
+      }
+      if (!text) return;
+
+      const label = btn.querySelector('.result-text-copy-btn__label');
+      const showCopied = () => {
+        btn.classList.add('is-copied');
+        if (label) label.textContent = 'Copied';
+        window.setTimeout(() => {
+          btn.classList.remove('is-copied');
+          if (label) label.textContent = 'Copy';
+        }, 2000);
+      };
+
+      try {
+        await navigator.clipboard.writeText(text);
+        showCopied();
+      } catch {
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed';
+          ta.style.left = '-9999px';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          showCopied();
+        } catch {
+          /* ignore */
+        }
+      }
+    });
+  });
+}
+
 function patchSummaryInResults(summary) {
   const cached = window.cutupLastTranscription;
   if (!cached) return;
@@ -5120,7 +5235,7 @@ async function processFullTextFile(file, sessionId, activeTab = 'fulltext') {
 
     const summaryPending = {
       unavailable: true,
-      message: 'Summary is generating…'
+      message: SUMMARY_GENERATING_MSG
     };
 
     // Final update to 100%
@@ -5149,7 +5264,7 @@ async function processFullTextFile(file, sessionId, activeTab = 'fulltext') {
     });
 
     if (sessionId && transcription.text) {
-      void summarizeText(
+      void ensureSummaryForTranscript(
         transcription.text,
         normalizeSummaryLanguage(transcription.language),
         sessionId,
@@ -5158,15 +5273,7 @@ async function processFullTextFile(file, sessionId, activeTab = 'fulltext') {
           title: file.name || 'Uploaded file',
           sourceUrl: 'upload://local-file'
         }
-      )
-        .then((summary) => patchSummaryInResults(summary))
-        .catch((summaryErr) => {
-          console.warn('Summary generation failed for file flow:', summaryErr);
-          patchSummaryInResults({
-            unavailable: true,
-            message: 'Summary could not be generated for this file.'
-          });
-        });
+      );
     }
     
     if (sessionId) {
@@ -6519,8 +6626,14 @@ function displayResults(summary, fullText, segments = null, options = {}) {
     // Format paragraphs with beautiful styling
     formattedSummary = paragraphs.map(p => `<p class="summary-paragraph">${p}</p>`).join('');
   }
-  if (!summaryTextContent && (previewFullText || '').trim().length > 0) {
-    summaryUnavailableNotice = summaryUnavailableNotice || 'Summary could not be generated for this file.';
+  if (!summaryTextContent) {
+    if (isSummaryGenerating(summary)) {
+      summaryUnavailableNotice = SUMMARY_GENERATING_MSG;
+    } else if (!summary) {
+      summaryUnavailableNotice = SUMMARY_GENERATING_MSG;
+    } else if (isSummaryFailed(summary)) {
+      summaryUnavailableNotice = summary.message || 'Summary could not be generated for this file.';
+    }
   }
   if (summaryUnavailableNotice) {
     formattedSummary += `<p class="summary-notice">${summaryUnavailableNotice}</p>`;
@@ -6756,6 +6869,27 @@ function displayResults(summary, fullText, segments = null, options = {}) {
   initStickyLayerAfterResults();
   window.CutupWorkspaceAutosave?.scheduleSave?.();
 
+  wireInlineResultCopyButtons();
+
+  if (
+    options.cacheReplay &&
+    getCutupSessionId() &&
+    shouldFetchSummary(summary) &&
+    String(previewFullText || '').trim()
+  ) {
+    void ensureSummaryForTranscript(
+      previewFullText,
+      normalizeSummaryLanguage(finalUiLanguage || options.originalLanguage),
+      getCutupSessionId(),
+      {
+        platform: options.platform || null,
+        title: options.title || null,
+        sourceUrl: options.sourceUrl || null,
+        durationSeconds: options.videoDurationSeconds || null
+      }
+    );
+  }
+
   if (!options.cacheReplay) {
     recordRetentionAfterResults({
       sourceUrl: options.sourceUrl || (typeof getCurrentUrl === 'function' ? getCurrentUrl() : ''),
@@ -6982,6 +7116,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   
   // Copy / share (active result tab)
+  wireInlineResultCopyButtons();
   const copyBtn = document.getElementById('copyBtn');
   if (copyBtn) {
     copyBtn.addEventListener('click', () => {

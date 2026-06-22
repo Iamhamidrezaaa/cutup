@@ -330,7 +330,16 @@
                     <button class="download-btn" id="downloadFulltextTxtBtn" type="button">📥 Download TXT</button>
                     <button class="download-btn" id="downloadFulltextDocxBtn" type="button">📄 Download DOCX</button>
                   </div>
-                  <p class="fulltext" id="fulltext" style="line-height:1.8; text-align:left; padding:16px; background:#f5f5f5; border-radius:8px;"></p>
+                  <div class="result-text-panel">
+                    <button type="button" class="result-text-copy-btn" data-copy-target="fulltext" aria-label="Copy transcript" title="Copy">
+                      <svg class="result-text-copy-btn__icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                      </svg>
+                      <span class="result-text-copy-btn__label">Copy</span>
+                    </button>
+                    <p class="fulltext" id="fulltext" style="line-height:1.8; text-align:left; padding:16px; background:#f5f5f5; border-radius:8px;"></p>
+                  </div>
                 </div>
               </div>
               <div class="tab-content" id="summary-tab">
@@ -342,7 +351,16 @@
                     <button class="download-btn" id="downloadSummaryTxtBtn" type="button">📥 Download TXT</button>
                     <button class="download-btn" id="downloadSummaryDocxBtn" type="button">📄 Download DOCX</button>
                   </div>
-                  <div class="summary-text" id="summaryText"></div>
+                  <div class="result-text-panel">
+                    <button type="button" class="result-text-copy-btn" data-copy-target="summaryText" aria-label="Copy summary" title="Copy">
+                      <svg class="result-text-copy-btn__icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                      </svg>
+                      <span class="result-text-copy-btn__label">Copy</span>
+                    </button>
+                    <div class="summary-text" id="summaryText"></div>
+                  </div>
                 </div>
               </div>
               <div class="tab-content active" id="srt-tab">

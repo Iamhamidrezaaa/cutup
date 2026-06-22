@@ -2393,6 +2393,7 @@ button.file-input-btn-full {
 .summary-text,
 .fulltext {
   padding: 20px;
+  padding-top: 44px;
   background: var(--bg-gray);
   border-radius: 8px;
   font-size: 15px;
@@ -2401,6 +2402,45 @@ button.file-input-btn-full {
   max-height: 500px;
   overflow-y: auto;
   color: var(--text-primary);
+}
+
+.result-text-panel {
+  position: relative;
+}
+
+.result-text-copy-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text-secondary, #64748b);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.result-text-copy-btn:hover {
+  color: var(--primary, #635bff);
+  border-color: #c7d2fe;
+}
+
+.result-text-copy-btn.is-copied {
+  color: #0f766e;
+  border-color: #99f6e4;
+  background: #f0fdfa;
+}
+
+.result-text-copy-btn__icon {
+  flex-shrink: 0;
 }
 
 .summary-text {
