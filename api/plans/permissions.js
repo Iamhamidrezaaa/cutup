@@ -261,8 +261,8 @@ export function buildLegacyFeatures(planKey) {
     priorityQueue: p.canUsePriorityQueue,
     teams: p.canUseTeams,
     prioritySupport: p.canUsePrioritySupport,
-    downloadAudio: k !== 'free',
-    downloadVideo: k !== 'free',
+    downloadAudio: true,
+    downloadVideo: true,
     maxVideoQuality: k === 'free' ? '480p' : 'unlimited'
   };
 }

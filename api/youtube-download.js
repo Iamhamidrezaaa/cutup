@@ -130,7 +130,7 @@ export default async function handler(req, res) {
     console.log(`[youtube-download] Session verified: userId=${userId}, sessionId=${sessionId.substring(0, 8)}...`);
 
     // **STEP 2: Parse request body**
-    const { videoId, url, type, quality, platform } = req.body;
+    const { videoId, url, type, quality, platform, purpose } = req.body;
     plog('REQUEST_PARSED', { hasUrl: !!url, hasVideoId: !!videoId, type, quality, platform });
     traceLog(traceId, 'parse', { type, quality, platform: platform || null, hasUrl: !!url, hasVideoId: !!videoId });
 
@@ -221,7 +221,11 @@ export default async function handler(req, res) {
       traceLog(traceId, 'normalize', { platform: detectedPlatform, urlLen: (finalUrl || '').length });
     }
 
-    const slot = await consumeDownloadSlotAtomic(userId, type, metadata);
+    const isTranscriptionExtract = String(purpose || '').toLowerCase() === 'transcription';
+
+    const slot = isTranscriptionExtract
+      ? { ok: true, transcriptionExtract: true }
+      : await consumeDownloadSlotAtomic(userId, type, metadata);
     if (!slot.ok) {
       setCORSHeaders(res);
       const reason = slot.reason || 'Download not allowed for your plan.';

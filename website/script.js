@@ -5129,7 +5129,8 @@ async function extractYouTubeAudioViaDownload(resolved, sessionId, traceId) {
       videoId: resolved.videoId,
       type: 'audio',
       quality: 'best',
-      platform: 'youtube'
+      platform: 'youtube',
+      purpose: 'transcription'
     }),
     signal: AbortSignal.timeout(getPipelineFetchTimeoutMs('extract'))
   });
@@ -5274,6 +5275,10 @@ async function extractYouTubeAudio(url, sessionId = null) {
         }
       } catch (fallbackErr) {
         console.error('[youtube-extract-fallback-error]', { traceId, message: fallbackErr?.message });
+        const fbCode = String(fallbackErr?.errorCode || fallbackErr?.pipelineCode || '').toUpperCase();
+        if (fbCode === 'FEATURE_NOT_AVAILABLE' || fbCode === 'LIMIT_EXCEEDED') {
+          throw error?.errorCode ? error : fallbackErr;
+        }
         throw fallbackErr?.errorCode ? fallbackErr : error;
       }
     }
