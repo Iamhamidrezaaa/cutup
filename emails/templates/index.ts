@@ -15,3 +15,7 @@ export { SecurityNotification, type SecurityNotificationData } from './SecurityN
 export { SystemNotification, type SystemNotificationData } from './SystemNotification';
 export { OfferPromotionEmail, type OfferPromotionEmailData, type OfferUpgradeHighlight } from './OfferPromotionEmail';
 export { FirstProjectFollowUpEmail, type FirstProjectFollowUpEmailData } from './FirstProjectFollowUpEmail';
+export {
+  FreeMp4ExportAnnouncementEmail,
+  type FreeMp4ExportAnnouncementEmailData,
+} from './FreeMp4ExportAnnouncementEmail';

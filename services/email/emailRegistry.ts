@@ -263,6 +263,19 @@ export const EMAIL_REGISTRY: Record<EmailTemplateId, EmailRegistryEntry> = {
       dashboardUrl: goLink({ dest: 'dashboard' }),
     },
   },
+  [EMAIL_TEMPLATES.FREE_MP4_EXPORT_ANNOUNCEMENT]: {
+    template: EMAIL_TEMPLATES.FREE_MP4_EXPORT_ANNOUNCEMENT,
+    subject: () => 'Free accounts can now export captioned MP4 videos',
+    preview: () =>
+      'Upload, caption, and download a ready-to-post MP4 — no editing software needed',
+    senderRole: 'hello',
+    sampleData: {
+      firstName: sample.firstName,
+      launchUrl: EMAIL_CONFIG.siteUrl,
+      founderName: 'Hamidreza',
+      founderTitle: 'Founder, CutUp',
+    },
+  },
 };
 
 export function getRegistryEntry(template: EmailTemplateId): EmailRegistryEntry {

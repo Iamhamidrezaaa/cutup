@@ -20,6 +20,7 @@ export const TEMPLATE_DISPLAY_NAMES = {
   SYSTEM_NOTIFICATION: 'System Notification',
   OFFER_PROMOTION: 'Offer Promotion',
   FIRST_PROJECT_FOLLOW_UP: 'First Project Follow-Up',
+  FREE_MP4_EXPORT_ANNOUNCEMENT: 'Free MP4 Export Announcement',
 };
 
 function goLink(params) {
@@ -263,6 +264,19 @@ const EMAIL_REGISTRY_META = {
     sampleData: {
       firstName: sample.firstName,
       dashboardUrl: goLink({ dest: 'dashboard' }),
+    },
+  },
+  FREE_MP4_EXPORT_ANNOUNCEMENT: {
+    template: 'FREE_MP4_EXPORT_ANNOUNCEMENT',
+    subject: () => 'Free accounts can now export captioned MP4 videos',
+    preview: () =>
+      'Upload, caption, and download a ready-to-post MP4 — no editing software needed',
+    senderRole: 'hello',
+    sampleData: {
+      firstName: sample.firstName,
+      launchUrl: SITE_URL,
+      founderName: 'Hamidreza',
+      founderTitle: 'Founder, CutUp',
     },
   },
 };

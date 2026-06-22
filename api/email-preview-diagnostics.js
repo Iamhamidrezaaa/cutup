@@ -29,6 +29,7 @@ export const TEMPLATE_SOURCE_PATHS = {
   SYSTEM_NOTIFICATION: 'emails/templates/SystemNotification.tsx',
   OFFER_PROMOTION: 'emails/templates/OfferPromotionEmail.tsx',
   FIRST_PROJECT_FOLLOW_UP: 'emails/templates/FirstProjectFollowUpEmail.tsx',
+  FREE_MP4_EXPORT_ANNOUNCEMENT: 'emails/templates/FreeMp4ExportAnnouncementEmail.tsx',
 };
 
 function readBuildStamp() {

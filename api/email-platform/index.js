@@ -262,7 +262,8 @@ var EMAIL_TEMPLATES = {
   SECURITY_NOTIFICATION: "SECURITY_NOTIFICATION",
   SYSTEM_NOTIFICATION: "SYSTEM_NOTIFICATION",
   OFFER_PROMOTION: "OFFER_PROMOTION",
-  FIRST_PROJECT_FOLLOW_UP: "FIRST_PROJECT_FOLLOW_UP"
+  FIRST_PROJECT_FOLLOW_UP: "FIRST_PROJECT_FOLLOW_UP",
+  FREE_MP4_EXPORT_ANNOUNCEMENT: "FREE_MP4_EXPORT_ANNOUNCEMENT"
 };
 var EMAIL_EVENTS = {
   USER_REGISTERED: "user_registered",
@@ -537,6 +538,18 @@ var EMAIL_REGISTRY = {
     sampleData: {
       firstName: sample.firstName,
       dashboardUrl: goLink({ dest: "dashboard" })
+    }
+  },
+  [EMAIL_TEMPLATES.FREE_MP4_EXPORT_ANNOUNCEMENT]: {
+    template: EMAIL_TEMPLATES.FREE_MP4_EXPORT_ANNOUNCEMENT,
+    subject: () => "Free accounts can now export captioned MP4 videos",
+    preview: () => "Upload, caption, and download a ready-to-post MP4 \u2014 no editing software needed",
+    senderRole: "hello",
+    sampleData: {
+      firstName: sample.firstName,
+      launchUrl: EMAIL_CONFIG.siteUrl,
+      founderName: "Hamidreza",
+      founderTitle: "Founder, CutUp"
     }
   }
 };
@@ -13423,6 +13436,55 @@ function FirstProjectFollowUpEmail({
   ] });
 }
 
+// emails/templates/FreeMp4ExportAnnouncementEmail.tsx
+import { jsx as jsx53, jsxs as jsxs29 } from "react/jsx-runtime";
+var BENEFIT_LINES = [
+  "No editing software.",
+  "No manual subtitle syncing.",
+  "No complicated workflow."
+];
+function FreeMp4ExportAnnouncementEmail({
+  firstName = "there",
+  launchUrl,
+  founderName = "Hamidreza",
+  founderTitle = "Founder, CutUp"
+}) {
+  const name2 = String(firstName).trim() || "there";
+  const ctaUrl = launchUrl || SITE.url;
+  return /* @__PURE__ */ jsxs29(CutupLayout, { preview: "Free accounts can now export captioned MP4 videos from CutUp", children: [
+    /* @__PURE__ */ jsx53(StatusBadge, { variant: "success", children: "Good news" }),
+    /* @__PURE__ */ jsx53(HeroSection, { title: "Captioned MP4 export is here", subtitle: `Hi ${name2},` }),
+    /* @__PURE__ */ jsx53(EmailText, { children: "Good news." }),
+    /* @__PURE__ */ jsx53(EmailText, { children: "Free accounts can now export captioned videos directly from CutUp." }),
+    /* @__PURE__ */ jsx53(EmailText, { children: "Upload a video, generate captions, and download a ready-to-post MP4 video in minutes." }),
+    BENEFIT_LINES.map((line) => /* @__PURE__ */ jsx53(EmailText, { style: { margin: "0 0 6px" }, children: line }, line)),
+    /* @__PURE__ */ jsx53(EmailText, { children: "Just upload your video and let CutUp do the work." }),
+    /* @__PURE__ */ jsxs29(EmailBlock, { padding: BRAND.ctaPad, children: [
+      /* @__PURE__ */ jsx53(
+        Text3,
+        {
+          style: {
+            margin: "0 0 14px",
+            fontSize: "14px",
+            fontWeight: 600,
+            color: BRAND.text
+          },
+          children: "Try it now:"
+        }
+      ),
+      /* @__PURE__ */ jsx53(EmailButton, { href: ctaUrl, fullWidth: true, children: "Open CutUp" })
+    ] }),
+    /* @__PURE__ */ jsxs29(EmailText, { inset: true, muted: true, small: true, children: [
+      /* @__PURE__ */ jsxs29("span", { style: { color: BRAND.text, fontWeight: 600 }, children: [
+        "\u2014 ",
+        founderName
+      ] }),
+      /* @__PURE__ */ jsx53("br", {}),
+      founderTitle
+    ] })
+  ] });
+}
+
 // services/email/render.ts
 var TEMPLATE_COMPONENTS = {
   [EMAIL_TEMPLATES.WELCOME_EMAIL]: WelcomeEmail,
@@ -13441,7 +13503,8 @@ var TEMPLATE_COMPONENTS = {
   [EMAIL_TEMPLATES.SECURITY_NOTIFICATION]: SecurityNotification,
   [EMAIL_TEMPLATES.SYSTEM_NOTIFICATION]: SystemNotification,
   [EMAIL_TEMPLATES.OFFER_PROMOTION]: OfferPromotionEmail,
-  [EMAIL_TEMPLATES.FIRST_PROJECT_FOLLOW_UP]: FirstProjectFollowUpEmail
+  [EMAIL_TEMPLATES.FIRST_PROJECT_FOLLOW_UP]: FirstProjectFollowUpEmail,
+  [EMAIL_TEMPLATES.FREE_MP4_EXPORT_ANNOUNCEMENT]: FreeMp4ExportAnnouncementEmail
 };
 function stripHtml(html) {
   return String(html || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
