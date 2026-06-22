@@ -1193,6 +1193,10 @@ app.get(['/admin/email-preview'], (_req, res) => {
   res.redirect(302, '/adminha.html/email-preview');
 });
 
+app.get(/^\/adminha\.html\/?$/i, (_req, res) => {
+  res.sendFile(join(__dirname, 'website', 'adminha.html'));
+});
+
 app.get(/^\/adminha\.html\/[^/]+\/?$/i, (_req, res) => {
   res.sendFile(join(__dirname, 'website', 'adminha.html'));
 });

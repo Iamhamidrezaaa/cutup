@@ -19,6 +19,11 @@
   },
   "redirects": [
     {
+      "source": "/adminha.html/",
+      "destination": "/adminha.html",
+      "permanent": true
+    },
+    {
       "source": "/admin/email-preview",
       "destination": "/adminha.html/email-preview",
       "permanent": false
