@@ -9,11 +9,21 @@
   const SHOW_DELAY_MS = 1400;
 
   let root = null;
-  let pending = null;
+  let pendingTimer = null;
+  /** Active prompt session — survives after the show timer fires. */
+  let active = null;
 
   function getSessionId() {
     if (typeof global.getCutupSessionId === 'function') return global.getCutupSessionId();
     return global.localStorage?.getItem('cutup_session') || null;
+  }
+
+  function feedbackApiUrl() {
+    const base =
+      typeof global.API_BASE_URL === 'string' && global.API_BASE_URL
+        ? global.API_BASE_URL.replace(/\/$/, '')
+        : '';
+    return `${base}/api/pipeline-feedback`;
   }
 
   function dedupeKey(action, contextKey) {
@@ -37,7 +47,10 @@
   }
 
   function ensureRoot() {
-    if (root && document.body.contains(root)) return root;
+    if (root && document.body.contains(root)) {
+      bindRootEvents(root);
+      return root;
+    }
     root = document.createElement('div');
     root.id = 'cutupPipelineFeedback';
     root.className = 'cutup-pipeline-feedback';
@@ -45,7 +58,34 @@
     root.setAttribute('role', 'status');
     root.setAttribute('aria-live', 'polite');
     document.body.appendChild(root);
+    bindRootEvents(root);
     return root;
+  }
+
+  function bindRootEvents(el) {
+    if (!el || el.dataset.cutupPfBound === '1') return;
+    el.dataset.cutupPfBound = '1';
+    el.addEventListener('click', (event) => {
+      const ratingBtn = event.target.closest('[data-rating]');
+      if (ratingBtn) {
+        event.preventDefault();
+        event.stopPropagation();
+        const rating = ratingBtn.getAttribute('data-rating');
+        if (rating === 'up') onUp();
+        else if (rating === 'down') onDown();
+        return;
+      }
+      if (event.target.closest('[data-cancel]')) {
+        event.preventDefault();
+        onDownSubmit('');
+        return;
+      }
+      if (event.target.closest('[data-submit]')) {
+        event.preventDefault();
+        const textarea = el.querySelector('.cutup-pipeline-feedback__textarea');
+        onDownSubmit(String(textarea?.value || '').trim());
+      }
+    });
   }
 
   function fadeOut(el, done) {
@@ -61,7 +101,9 @@
     }, FADE_MS);
   }
 
-  function renderPrompt(el, action) {
+  function renderPrompt(el) {
+    if (!active) return;
+    el.classList.remove('is-fading');
     el.innerHTML = `
       <div class="cutup-pipeline-feedback__prompt">
         <p class="cutup-pipeline-feedback__question">How did it go?</p>
@@ -72,16 +114,16 @@
       </div>
     `;
     el.hidden = false;
-    el.querySelector('[data-rating="up"]')?.addEventListener('click', () => onUp(action));
-    el.querySelector('[data-rating="down"]')?.addEventListener('click', () => onDown(action));
   }
 
   function renderThanks(el) {
+    el.classList.remove('is-fading');
     el.innerHTML = '<p class="cutup-pipeline-feedback__thanks">Thanks for your feedback!</p>';
     el.hidden = false;
   }
 
-  function renderComment(el, action) {
+  function renderComment(el) {
+    el.classList.remove('is-fading');
     el.innerHTML = `
       <div class="cutup-pipeline-feedback__comment">
         <textarea class="cutup-pipeline-feedback__textarea" rows="2" maxlength="500" placeholder="What could we improve? (optional)"></textarea>
@@ -92,25 +134,22 @@
       </div>
     `;
     el.hidden = false;
-    const textarea = el.querySelector('textarea');
-    el.querySelector('[data-cancel]')?.addEventListener('click', () => {
-      submitFeedback(action, 'down', '', pending?.meta || {});
-      dismiss();
-    });
-    el.querySelector('[data-submit]')?.addEventListener('click', () => {
-      const comment = String(textarea?.value || '').trim();
-      submitFeedback(action, 'down', comment, pending?.meta || {});
-      dismiss();
-    });
-    textarea?.focus();
+    el.querySelector('textarea')?.focus();
   }
 
   function dismiss() {
-    const el = ensureRoot();
+    clearPendingTimer();
+    active = null;
+    const el = root;
+    if (!el) return;
     fadeOut(el, () => {
       el.innerHTML = '';
-      pending = null;
     });
+  }
+
+  function clearPendingTimer() {
+    if (pendingTimer) global.clearTimeout(pendingTimer);
+    pendingTimer = null;
   }
 
   function submitFeedback(action, rating, comment, meta) {
@@ -121,20 +160,25 @@
       comment: comment || undefined,
       metadata: meta || {}
     };
-    global.fetch('/api/pipeline-feedback', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(sessionId ? { 'X-Session-Id': sessionId } : {})
-      },
-      body: JSON.stringify(payload)
-    }).catch(() => {});
+    global
+      .fetch(feedbackApiUrl(), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(sessionId ? { 'X-Session-Id': sessionId } : {})
+        },
+        body: JSON.stringify(payload)
+      })
+      .catch((err) => {
+        console.warn('[pipeline-feedback] submit failed', err?.message || err);
+      });
   }
 
-  function onUp(action) {
-    if (!pending) return;
-    markShown(action, pending.contextKey);
-    submitFeedback(action, 'up', '', pending.meta);
+  function onUp() {
+    if (!active) return;
+    const { action, contextKey, meta } = active;
+    markShown(action, contextKey);
+    submitFeedback(action, 'up', '', meta);
     const el = ensureRoot();
     fadeOut(el, () => {
       renderThanks(el);
@@ -142,12 +186,19 @@
     });
   }
 
-  function onDown(action) {
-    if (!pending) return;
-    const ctx = pending;
-    markShown(action, ctx.contextKey);
+  function onDown() {
+    if (!active) return;
+    const { action, contextKey } = active;
+    markShown(action, contextKey);
     const el = ensureRoot();
-    fadeOut(el, () => renderComment(el, action));
+    fadeOut(el, () => renderComment(el));
+  }
+
+  function onDownSubmit(comment) {
+    if (!active) return;
+    const { action, meta } = active;
+    submitFeedback(action, 'down', comment, meta);
+    dismiss();
   }
 
   function show(action, meta = {}) {
@@ -159,22 +210,33 @@
 
     if (wasShown(action, contextKey)) return;
 
-    if (pending?.timer) global.clearTimeout(pending.timer);
-    pending = {
+    clearPendingTimer();
+
+    const el = ensureRoot();
+    el.innerHTML = '';
+    el.hidden = true;
+    el.classList.remove('is-fading');
+
+    active = {
       action,
       contextKey,
-      meta: { ...meta, contextKey },
-      timer: global.setTimeout(() => {
-        if (wasShown(action, contextKey)) return;
-        const el = ensureRoot();
-        renderPrompt(el, action);
-      }, SHOW_DELAY_MS)
+      meta: { ...meta, contextKey }
     };
+
+    pendingTimer = global.setTimeout(() => {
+      pendingTimer = null;
+      if (!active || active.contextKey !== contextKey) return;
+      if (wasShown(action, contextKey)) {
+        active = null;
+        return;
+      }
+      const el = ensureRoot();
+      renderPrompt(el);
+    }, SHOW_DELAY_MS);
   }
 
   function cancelPending() {
-    if (pending?.timer) global.clearTimeout(pending.timer);
-    pending = null;
+    clearPendingTimer();
   }
 
   global.CutupPipelineFeedback = {
