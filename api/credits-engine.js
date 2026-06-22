@@ -4,7 +4,7 @@
  */
 import { getPool } from './db/pool.js';
 import { getPlanDef, resolvePlanKey } from './plans-config.js';
-import { PLAN_CREDITS } from './plans/permissions.js';
+import { PLAN_CREDITS, getMp4ExportLimit } from './plans/permissions.js';
 import { getPlanPermissions, resolveApiFeature, getUpgradeMessage } from './plans/permissions.js';
 import { createHash } from 'crypto';
 async function getSubscriptionRowByEmail(email) {
@@ -212,6 +212,59 @@ export async function normalizeUsageForEmail(email) {
 /**
  * Single source of truth for dashboard credit counters.
  */
+async function countMp4ExportsInCycle(client, userId, cycleStart) {
+  const r = await client.query(
+    `SELECT COUNT(*)::int AS c FROM usage_history
+     WHERE user_id = $1 AND type = 'mp4_export' AND minutes > 0
+       AND created_at >= $2::timestamptz`,
+    [userId, cycleStart]
+  );
+  return Number(r.rows[0]?.c) || 0;
+}
+
+/**
+ * Monthly MP4 export quota — separate from video processing credits.
+ */
+export async function getMp4ExportsSnapshot(email) {
+  if (email === UNLIMITED_EMAIL) {
+    const sub = await getSubscriptionRowByEmail(email);
+    const cycle = resolveBillingCycle(sub || { created_at: new Date() });
+    return {
+      used: 0,
+      remaining: 999999,
+      limit: 999999,
+      cycleStart: cycle.cycleStart,
+      cycleEnd: cycle.cycleEnd
+    };
+  }
+
+  const sub = await getSubscriptionRowByEmail(email);
+  const planKey = resolvePlanKey(sub?.plan || 'free');
+  const limit = getMp4ExportLimit(planKey);
+  const u = await normalizeUsageForEmail(email);
+  const pool = getPool();
+  const userRes = await pool.query('SELECT id FROM users WHERE lower(email) = lower($1)', [email]);
+  const userId = userRes.rows[0]?.id;
+  let used = 0;
+  if (userId) {
+    const client = await pool.connect();
+    try {
+      used = await countMp4ExportsInCycle(client, userId, u.cycle.cycleStart);
+    } finally {
+      client.release();
+    }
+  }
+  const remaining = Math.max(0, limit - used);
+
+  return {
+    used,
+    remaining,
+    limit,
+    cycleStart: u.cycle.cycleStart,
+    cycleEnd: u.cycle.cycleEnd
+  };
+}
+
 export async function getCreditsSnapshot(email) {
   if (email === UNLIMITED_EMAIL) {
     const sub = await getSubscriptionRowByEmail(email);
@@ -354,6 +407,17 @@ export async function consumeProcessingCredit(email, operation, metadata = {}) {
       }
     }
 
+    if (operation === 'mp4_export') {
+      return consumeMp4ExportQuota(client, {
+        userId,
+        planKey,
+        u,
+        metadata,
+        email,
+        opDef
+      });
+    }
+
     if (operation === 'transcript' && normalizedSourceHash) {
       const reused = await client.query(
         `SELECT id FROM usage_history
@@ -437,6 +501,50 @@ export async function consumeProcessingCredit(email, operation, metadata = {}) {
   } finally {
     client.release();
   }
+}
+
+async function consumeMp4ExportQuota(client, { userId, planKey, u, metadata, email, opDef }) {
+  const limit = getMp4ExportLimit(planKey);
+  const used = await countMp4ExportsInCycle(client, userId, u.cycle.cycleStart);
+
+  if (used + 1 > limit) {
+    await client.query('ROLLBACK');
+    return {
+      ok: false,
+      reason: `You've used all ${limit} MP4 exports this cycle. Upgrade for more capacity.`,
+      code: 'MP4_EXPORT_LIMIT_EXCEEDED'
+    };
+  }
+
+  const usageMeta = {
+    ...(metadata || {}),
+    operation: 'mp4_export',
+    creditConsumed: false,
+    mp4ExportConsumed: true
+  };
+
+  await client.query(
+    `INSERT INTO usage_history (user_id, type, minutes, metadata)
+     VALUES ($1, $2, 1, $3::jsonb)`,
+    [userId, opDef.usageType, JSON.stringify(usageMeta)]
+  );
+
+  await client.query('COMMIT');
+
+  if (!metadata?.skipActivityFeed) {
+    const { recordProcessingActivityFromCredit } = await import('./activity-feed-repository.js');
+    void recordProcessingActivityFromCredit(email, 'mp4_export', metadata);
+  }
+
+  return {
+    ok: true,
+    consumed: true,
+    mp4Exports: {
+      used: used + 1,
+      limit,
+      remaining: Math.max(0, limit - used - 1)
+    }
+  };
 }
 
 async function applyUnlimitedProcessingCredit(email, opDef, metadata) {

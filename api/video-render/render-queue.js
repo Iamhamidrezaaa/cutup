@@ -10,7 +10,8 @@ import { generateAssContent, generateAssFromExportDoc } from './ass-generator.js
 import {
   probeVideo,
   checkFfmpegAvailable,
-  resolveSubtitleRenderGeometry
+  resolveSubtitleRenderGeometry,
+  applyExportWatermarkInPlace
 } from './ffmpeg-renderer.js';
 import { executeBurnExportPhase } from './burn-export-phase.js';
 import {
@@ -367,7 +368,8 @@ export function createRenderJob(payload) {
     renderFps: null,
     diagnosticsPath: null,
     diagnostics: null,
-    presetDisplayName: presetDef.name
+    presetDisplayName: presetDef.name,
+    applyWatermark: Boolean(payload.applyWatermark)
   };
   jobs.set(id, job);
   waitQueue.push(id);
@@ -1010,6 +1012,13 @@ async function runJob(job) {
           }
         });
         await downloadGpuRenderOutput(gpuResult.outputUrl, outputPath);
+        if (job.applyWatermark) {
+          await applyExportWatermarkInPlace(outputPath, {
+            jobId: job.id,
+            signal: job.ffmpegAbort.signal,
+            onProgress: onBurnProgress
+          });
+        }
         job.gpuRenderMs = gpuResult.renderMs;
         job.burnAssPath = resolve(job.assPath);
         job.exportAssPath = join(job.jobDir, 'export.ass');
@@ -1038,6 +1047,7 @@ async function runJob(job) {
             Boolean(job.burnFromPreviewExportDoc) ||
             (Array.isArray(job.segments) && job.segments.length > 0 && job.segments.every((s) => s?.locked)),
           burnFromPreviewExportDoc: Boolean(job.burnFromPreviewExportDoc),
+          applyWatermark: Boolean(job.applyWatermark),
           timelineTrace,
           signal: job.ffmpegAbort.signal,
           onProgress: onBurnProgress

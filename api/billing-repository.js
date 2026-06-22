@@ -10,11 +10,12 @@ import {
   lockUsageForBillingCycle,
   resolveBillingCycle,
   getCreditsSnapshot,
+  getMp4ExportsSnapshot,
   getLifetimeMetrics,
   consumeProcessingCredit
 } from './credits-engine.js';
 
-export { getCreditsSnapshot, getLifetimeMetrics, consumeProcessingCredit, resolveBillingCycle };
+export { getCreditsSnapshot, getMp4ExportsSnapshot, getLifetimeMetrics, consumeProcessingCredit, resolveBillingCycle };
 
 const UNLIMITED_EMAIL = 'h.asgarizade@gmail.com';
 
@@ -2437,8 +2438,6 @@ export async function canUseFeatureDb(email, feature, videoDurationMinutes = 0) 
     }
   }
 
-  const creditsSnap = await getCreditsSnapshot(email);
-
   if (feature === 'downloadAudio' || feature === 'downloadVideo') {
     const pool = getPool();
     const uid = (await pool.query('SELECT id FROM users WHERE email = $1', [email])).rows[0].id;
@@ -2458,12 +2457,34 @@ export async function canUseFeatureDb(email, feature, videoDurationMinutes = 0) 
     return { allowed: true };
   }
 
+  if (feature === 'mp4Export') {
+    const mp4Snap = await getMp4ExportsSnapshot(email);
+    if (mp4Snap.used + 1 > mp4Snap.limit) {
+      return {
+        allowed: false,
+        reason: `You've used all ${mp4Snap.limit} MP4 exports this cycle. Upgrade for more capacity.`,
+        code: 'MP4_EXPORT_LIMIT_EXCEEDED',
+        mp4Exports: mp4Snap
+      };
+    }
+    return {
+      allowed: true,
+      mp4Exports: {
+        used: mp4Snap.used,
+        limit: mp4Snap.limit,
+        remaining: Math.max(0, mp4Snap.limit - mp4Snap.used - 1)
+      }
+    };
+  }
+
+  const creditsSnap = await getCreditsSnapshot(email);
+
   const genLimit = creditsSnap.limit;
   const maxJob = plan.maxJobMinutes != null ? plan.maxJobMinutes : 180;
   const usedGens = creditsSnap.used;
   const consumesCredit = featureDef?.consumesCredit === true;
 
-  if (consumesCredit || feature === 'transcription' || feature === 'translate' || feature === 'subtitles' || feature === 'mp4Export') {
+  if (consumesCredit || feature === 'transcription' || feature === 'translate' || feature === 'subtitles') {
     if (usedGens + 1 > genLimit) {
       return {
         allowed: false,

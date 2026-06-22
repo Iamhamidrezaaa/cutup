@@ -7,7 +7,8 @@ import {
   burnSubtitles,
   normalizeVideoForBurn,
   verifyNormalizedBurnSync,
-  resolveSubtitleRenderGeometry
+  resolveSubtitleRenderGeometry,
+  applyExportWatermarkInPlace
 } from './ffmpeg-renderer.js';
 import { parseAssDialogueTimes } from './ffmpeg-timeline.js';
 import {
@@ -42,6 +43,7 @@ export async function executeBurnExportPhase(opts) {
     burnFromPreviewExportDoc = false,
     timelineTrace = null,
     subtitleCues: subtitleCuesIn = null,
+    applyWatermark = false,
     onProgress,
     signal
   } = opts;
@@ -165,6 +167,7 @@ export async function executeBurnExportPhase(opts) {
     subtitleCues,
     inputAlreadyNormalized,
     trustPreviewTimings: Boolean(trustPreviewTimings),
+    applyWatermark: Boolean(applyWatermark),
     signal,
     onProgress
   });

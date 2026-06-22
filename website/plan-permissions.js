@@ -9,12 +9,60 @@
 
   var PLAN_CREDITS = { free: 3, starter: 15, pro: 35, business: 100 };
 
+  var PLAN_MP4_EXPORT_LIMITS = { free: 1, starter: 5, pro: 35, business: 100 };
+
+  var PLAN_MP4_EXPORT_TIERS = {
+    free: 'Limited',
+    starter: 'Basic',
+    pro: 'Full',
+    business: 'Full'
+  };
+
+  var MP4_TIER_RANK = { Limited: 0, Basic: 1, Full: 2 };
+
+  var PLAN_PRICING_FEATURES = {
+    free: [
+      '3 monthly video credits',
+      '1 MP4 export',
+      'Watermark',
+      'Basic styles',
+      'AI captions',
+      'Transcript',
+      'Summary'
+    ],
+    starter: [
+      '15 monthly video credits',
+      '5 MP4 exports',
+      'No watermark',
+      'Translation',
+      'TXT export',
+      'DOCX export'
+    ],
+    pro: [
+      '35 monthly video credits',
+      '35 MP4 exports',
+      'Translation',
+      'Premium caption styles',
+      'Priority processing',
+      'Advanced exports'
+    ],
+    business: [
+      '100 monthly video credits',
+      '100 MP4 exports',
+      'Translation',
+      'Premium caption styles',
+      'Priority processing',
+      'Priority support',
+      'Agency features'
+    ]
+  };
+
   /** Keep in sync with api/plans/permissions.js PLAN_LABELS + api/plans-config.js priceEur */
   var PLAN_LABELS = {
-    free: { name: 'Free', tagline: 'For trying CutUp' },
-    starter: { name: 'Starter', tagline: 'Caption & Transcript Plan' },
-    pro: { name: 'Pro', tagline: 'Video Creator Plan' },
-    business: { name: 'Business', tagline: 'Teams & Agencies' }
+    free: { name: 'Free', tagline: 'Try CutUp with real exports' },
+    starter: { name: 'Starter', tagline: 'Perfect for occasional creators' },
+    pro: { name: 'Pro', tagline: 'Everything needed to create viral-ready videos' },
+    business: { name: 'Business', tagline: 'For agencies and content teams' }
   };
 
   var PLAN_PRICES = {
@@ -24,37 +72,36 @@
     business: { display: '€49.99/mo', monthly: 49.99 }
   };
 
-  /** Pricing matrix rows — permission keys drive ✅/❌ cells */
+  /** Pricing comparison table rows (desktop table + mobile compare details). */
   var MATRIX_FEATURES = [
-    { id: 'credits', label: 'Monthly video processing credits', type: 'credits', highlight: true },
+    { id: 'credits', label: 'Monthly video credits', type: 'credits', highlight: true },
+    { id: 'mp4VideoExport', label: 'MP4 Video Export', type: 'mp4_tier', highlight: true, upgradeTrigger: true },
+    { id: 'canWatermarkFreeExport', label: 'Watermark Free Export', upgradeTrigger: true },
+    { id: 'canUseBasicStyles', label: 'Basic styles' },
     { id: 'canUseAiCaptions', label: 'AI captions' },
-    { id: 'canUseSummary', label: 'Summary generation' },
-    { id: 'canUseBasicTranscript', label: 'Basic transcript' },
+    { id: 'canUseBasicTranscript', label: 'Transcript' },
+    { id: 'canUseSummary', label: 'Summary' },
     { id: 'canTranslate', label: 'Translation' },
     { id: 'canExportTxt', label: 'TXT export' },
     { id: 'canExportDocx', label: 'DOCX export' },
-    { id: 'canViewProjectHistory', label: 'Project history' },
-    { id: 'canExportMp4', label: 'MP4 export', upgradeTrigger: true },
-    { id: 'canUseCreatorStyles', label: 'Creator styles' },
-    { id: 'canUsePremiumStyles', label: 'Premium styles' },
-    { id: 'canUseBurnedCaptions', label: 'Burned-in captions' },
-    { id: 'canUsePriorityQueue', label: 'Export queue priority' },
-    { id: 'canUseTeams', label: 'Team usage' },
-    { id: 'canUsePrioritySupport', label: 'Priority support' }
+    { id: 'canUsePremiumStyles', label: 'Premium Caption Styles', upgradeTrigger: true },
+    { id: 'canUsePriorityQueue', label: 'Priority Processing' },
+    { id: 'canUseAdvancedExports', label: 'Advanced exports' },
+    { id: 'canUsePrioritySupport', label: 'Priority Support' },
+    { id: 'canUseAgencyFeatures', label: 'Agency features' }
   ];
 
   var UPGRADE_BENEFIT_LABELS = {
     canTranslate: 'Translation',
     canExportTxt: 'TXT export',
     canExportDocx: 'DOCX export',
-    canViewProjectHistory: 'Project history',
-    canExportMp4: 'MP4 exports',
-    canUseCreatorStyles: 'Creator styles',
-    canUsePremiumStyles: 'Premium styles',
-    canUseBurnedCaptions: 'Burned-in captions',
-    canUsePriorityQueue: 'Priority export queue',
-    canUseTeams: 'Team usage',
-    canUsePrioritySupport: 'Priority support'
+    canWatermarkFreeExport: 'Watermark-free export',
+    canUsePremiumStyles: 'Premium Caption Styles',
+    canUsePriorityQueue: 'Priority Processing',
+    canUseAdvancedExports: 'Advanced exports',
+    canUsePrioritySupport: 'Priority Support',
+    canUseAgencyFeatures: 'Agency features',
+    mp4VideoExport: 'MP4 Video Export'
   };
 
   var PLAN_PERMISSIONS = {
@@ -67,13 +114,18 @@
       canExportDocx: false,
       canDownloadSrt: false,
       canViewProjectHistory: false,
-      canExportMp4: false,
+      canExportMp4: true,
       canUseCreatorStyles: false,
       canUsePremiumStyles: false,
       canUseBurnedCaptions: false,
       canUsePriorityQueue: false,
       canUseTeams: false,
-      canUsePrioritySupport: false
+      canUsePrioritySupport: false,
+      hasWatermark: true,
+      canWatermarkFreeExport: false,
+      canUseBasicStyles: true,
+      canUseAdvancedExports: false,
+      canUseAgencyFeatures: false
     },
     starter: {
       canUseAiCaptions: true,
@@ -84,13 +136,18 @@
       canExportDocx: true,
       canDownloadSrt: true,
       canViewProjectHistory: true,
-      canExportMp4: false,
+      canExportMp4: true,
       canUseCreatorStyles: false,
       canUsePremiumStyles: false,
       canUseBurnedCaptions: false,
       canUsePriorityQueue: false,
       canUseTeams: false,
-      canUsePrioritySupport: false
+      canUsePrioritySupport: false,
+      hasWatermark: false,
+      canWatermarkFreeExport: true,
+      canUseBasicStyles: true,
+      canUseAdvancedExports: false,
+      canUseAgencyFeatures: false
     },
     pro: {
       canUseAiCaptions: true,
@@ -107,7 +164,12 @@
       canUseBurnedCaptions: true,
       canUsePriorityQueue: true,
       canUseTeams: false,
-      canUsePrioritySupport: false
+      canUsePrioritySupport: false,
+      hasWatermark: false,
+      canWatermarkFreeExport: true,
+      canUseBasicStyles: false,
+      canUseAdvancedExports: true,
+      canUseAgencyFeatures: false
     },
     business: {
       canUseAiCaptions: true,
@@ -123,8 +185,13 @@
       canUsePremiumStyles: true,
       canUseBurnedCaptions: true,
       canUsePriorityQueue: true,
-      canUseTeams: true,
-      canUsePrioritySupport: true
+      canUseTeams: false,
+      canUsePrioritySupport: true,
+      hasWatermark: false,
+      canWatermarkFreeExport: true,
+      canUseBasicStyles: false,
+      canUseAdvancedExports: true,
+      canUseAgencyFeatures: true
     }
   };
 
@@ -134,13 +201,17 @@
     canExportDocx: 'DOCX export is available on Starter and above.',
     canDownloadSrt: 'SRT download is available on Starter and above.',
     canViewProjectHistory: 'Project history is available on Starter and above.',
-    canExportMp4: 'MP4 export is available on Pro and Business plans.',
+    canExportMp4: 'Upgrade your plan for more MP4 export capacity.',
+    canWatermarkFreeExport: 'Watermark-free export is available on Starter and above.',
     canUseCreatorStyles: 'Creator styles are available on Pro and Business plans.',
     canUsePremiumStyles: 'Premium styles are available on Pro and Business plans.',
     canUseBurnedCaptions: 'Burned-in captions are available on Pro and Business plans.',
     canUsePriorityQueue: 'Priority export queue is available on Pro and Business plans.',
     canUseTeams: 'Business plan required.',
-    canUsePrioritySupport: 'Priority support is available on the Business plan.'
+    canUsePrioritySupport: 'Priority support is available on the Business plan.',
+    canUseAgencyFeatures: 'Agency features are available on the Business plan.',
+    canUseAdvancedExports: 'Advanced exports are available on Pro and Business plans.',
+    canUseBasicStyles: 'Basic styles are included on Free and Starter plans.'
   };
 
   function resolvePlanKey(planKey) {
@@ -181,7 +252,13 @@
     var cur = getPermissions(planKey);
     var nxt = getPermissions(next);
     return MATRIX_FEATURES.filter(function (row) {
-      if (row.type === 'credits' || !row.id || row.id === 'credits') return false;
+      if (row.type === 'credits') return false;
+      if (row.type === 'mp4_tier') {
+        var curTier = PLAN_MP4_EXPORT_TIERS[resolvePlanKey(planKey)] || 'Limited';
+        var nextTier = PLAN_MP4_EXPORT_TIERS[next] || 'Limited';
+        return (MP4_TIER_RANK[nextTier] || 0) > (MP4_TIER_RANK[curTier] || 0);
+      }
+      if (!row.id) return false;
       return !cur[row.id] && nxt[row.id];
     }).map(function (row) {
       return UPGRADE_BENEFIT_LABELS[row.id] || row.label;
@@ -193,9 +270,24 @@
     return (PLAN_LABELS[k] && PLAN_LABELS[k].name) || k;
   }
 
+  function getMp4ExportTier(planKey) {
+    return PLAN_MP4_EXPORT_TIERS[resolvePlanKey(planKey)] || 'Limited';
+  }
+
+  function getMp4ExportLimit(planKey) {
+    return PLAN_MP4_EXPORT_LIMITS[resolvePlanKey(planKey)] || 0;
+  }
+
+  function getPricingFeatures(planKey) {
+    return (PLAN_PRICING_FEATURES[resolvePlanKey(planKey)] || []).slice();
+  }
+
   window.CutupPlanPermissions = {
     PLAN_ORDER: PLAN_ORDER,
     PLAN_CREDITS: PLAN_CREDITS,
+    PLAN_MP4_EXPORT_LIMITS: PLAN_MP4_EXPORT_LIMITS,
+    PLAN_MP4_EXPORT_TIERS: PLAN_MP4_EXPORT_TIERS,
+    PLAN_PRICING_FEATURES: PLAN_PRICING_FEATURES,
     PLAN_LABELS: PLAN_LABELS,
     PLAN_PRICES: PLAN_PRICES,
     PLAN_PERMISSIONS: PLAN_PERMISSIONS,
@@ -209,6 +301,9 @@
     planRank: planRank,
     getNextPlanKey: getNextPlanKey,
     getUpgradeBenefits: getUpgradeBenefits,
-    displayPlanName: displayPlanName
+    displayPlanName: displayPlanName,
+    getMp4ExportLimit: getMp4ExportLimit,
+    getMp4ExportTier: getMp4ExportTier,
+    getPricingFeatures: getPricingFeatures
   };
 })();

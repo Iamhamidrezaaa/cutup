@@ -15,6 +15,14 @@ import {
 } from './video-render/gpu-render-artifacts.js';
 import { handleCORS, setCORSHeaders } from './cors.js';
 import { requireSessionEmail, enforceQuota } from './processing-enforcement.js';
+import { getSubscriptionRowByEmail } from './billing-repository.js';
+import { resolvePlanKey } from './plans-config.js';
+import { getPlanPermissions, getUpgradeMessage } from './plans/permissions.js';
+import {
+  canUsePresetForPlan,
+  getStyleTier,
+  permissionKeyForStyleTier
+} from './plans/style-tiers.js';
 import { resolveTraceId } from './transcript-errors.js';
 import { checkFfmpegHealth } from './media-tool-health.js';
 import {
@@ -227,15 +235,22 @@ async function handleStart(req, res) {
     });
   }
 
-  const presetNorm = String(presetId).toLowerCase().replace(/[_\s]/g, '-');
-  const isCleanPreset = presetNorm === 'clean-srt' || presetNorm === 'cleansrt';
-  if (!isCleanPreset) {
-    if (!(await enforceQuota(res, email, 'creatorStyles', 0, req))) return;
+  const sub = await getSubscriptionRowByEmail(email);
+  const planKey = resolvePlanKey(sub?.plan || 'free');
+  if (!canUsePresetForPlan(presetId, planKey)) {
+    const tier = getStyleTier(presetId);
+    const permKey = permissionKeyForStyleTier(tier);
+    setCORSHeaders(res);
+    return res.status(403).json({
+      error: 'plan_limit',
+      code: 'FEATURE_NOT_AVAILABLE',
+      message: getUpgradeMessage(permKey),
+      traceId
+    });
   }
-  const isPremiumPreset = presetNorm === 'tiktok-neon' || presetNorm === 'luxury-minimal';
-  if (isPremiumPreset) {
-    if (!(await enforceQuota(res, email, 'premiumStyles', 0, req))) return;
-  }
+
+  const planPerms = getPlanPermissions(planKey);
+  const applyWatermark = Boolean(planPerms.hasWatermark);
 
   const firstExportCue = exportDoc?.cues?.[0];
   const firstSegment = segments[0];
@@ -294,6 +309,7 @@ async function handleStart(req, res) {
     userEmail: email,
     sessionId,
     presetId,
+    applyWatermark,
     selectedVersion,
     quality,
     captionMode,

@@ -154,6 +154,29 @@
     const select = container?.querySelector('#cutupExportStyleSelect');
     if (select) select.value = styleId;
     setSelectedPresetId(styleId);
+    applyExportStylePlanLocks(container);
+  }
+
+  function applyExportStylePlanLocks(container) {
+    const select = container?.querySelector('#cutupExportStyleSelect');
+    if (!select) return;
+    const requiresUpgrade = global.CutupPresetSelector?.presetRequiresUpgrade;
+    if (typeof requiresUpgrade !== 'function') return;
+
+    const fallbackOrder = ['clean-srt', 'ali-abdaal', 'podcast'];
+    Array.from(select.options).forEach((opt) => {
+      const locked = requiresUpgrade(opt.value);
+      opt.disabled = locked;
+    });
+
+    const current = styleOptionFromPresetId(select.value);
+    if (requiresUpgrade(current)) {
+      const fallback = fallbackOrder.find((id) => !requiresUpgrade(id));
+      if (fallback) {
+        select.value = fallback;
+        setSelectedPresetId(fallback);
+      }
+    }
   }
 
   function applyStyleSelectionToPreset(styleSelection) {
@@ -413,10 +436,18 @@
       styleSelect.dataset.bound = '1';
       styleSelect.addEventListener('change', () => {
         const selected = getExportStyleSelection(container);
+        if (global.CutupPresetSelector?.presetRequiresUpgrade?.(selected.selectedPresetId)) {
+          const msg = global.CutupPlanPermissions?.getUpgradeMessage?.('canUseCreatorStyles')
+            || 'This style is not available on your current plan.';
+          if (typeof global.showMessage === 'function') global.showMessage(msg, 'error');
+          applyExportStylePlanLocks(container);
+          return;
+        }
         applyStyleSelectionToPreset(selected);
       });
     }
     syncStyleSelectFromPreset(container, getActivePresetId());
+    applyExportStylePlanLocks(container);
     if (!global.__cutupExportPresetSyncBound) {
       global.__cutupExportPresetSyncBound = true;
       global.addEventListener?.('cutup:preset-changed', (event) => {
@@ -743,6 +774,7 @@
 
     const planLocked = isPlanLockedForMp4();
     const check = canExport();
+    if (mount) applyExportStylePlanLocks(mount);
     const proPrice =
       global.CutupPlanPermissions?.PLAN_PRICES?.pro?.display || '€19.99/mo';
     const planKey = getCurrentPlanKey();

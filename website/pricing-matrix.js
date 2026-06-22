@@ -8,140 +8,32 @@
   var PAID_PLANS = ['starter', 'pro', 'business'];
   var modalEl = null;
 
-  /** Visual-only CRO highlights — maps to existing permission keys, no logic changes */
-  var KEY_FEATURE_BADGES = [
-    { id: 'canTranslate', icon: '⭐', label: 'AI Translation' },
-    { id: 'canExportMp4', icon: '🎬', label: 'MP4 Export' },
-    { id: 'canUsePremiumStyles', icon: '✨', label: 'Premium Caption Styles' },
-    { id: 'canUseTeams', icon: '👥', label: 'Team Workflow' },
-    { id: 'canUsePriorityQueue', icon: '🚀', label: 'Priority Processing' }
-  ];
-
   var CRO_COMPARE_ROW_IDS = {
     canTranslate: true,
-    canExportMp4: true,
+    mp4VideoExport: true,
+    canWatermarkFreeExport: true,
     canUsePremiumStyles: true,
-    canUseCreatorStyles: true,
-    canUseTeams: true,
-    canUsePriorityQueue: true
+    canUsePriorityQueue: true,
+    canUseAdvancedExports: true,
+    canUsePrioritySupport: true,
+    canUseAgencyFeatures: true
   };
 
-  var KEY_SECTION_EXCLUDE = {
-    canTranslate: true,
-    canExportMp4: true,
-    canUsePremiumStyles: true,
-    canUseCreatorStyles: true,
-    canUseTeams: true,
-    canUsePriorityQueue: true
-  };
-
-  var GENERIC_SECONDARY_IDS = {
-    canUseAiCaptions: true,
-    canUseSummary: true,
-    canUseBasicTranscript: true
-  };
-
-  function planKeyFeatureIds(plan) {
-    if (plan === 'pro') return ['canTranslate', 'canExportMp4', 'canUsePremiumStyles'];
-    if (plan === 'business') {
-      return ['canTranslate', 'canExportMp4', 'canUsePremiumStyles', 'canUseTeams', 'canUsePriorityQueue'];
-    }
-    if (plan === 'starter') return ['canTranslate'];
-    return [];
-  }
-
-  function keyBadgeDef(id) {
-    for (var i = 0; i < KEY_FEATURE_BADGES.length; i++) {
-      if (KEY_FEATURE_BADGES[i].id === id) return KEY_FEATURE_BADGES[i];
-    }
-    return null;
-  }
-
-  function hasKeyFeature(plan, badgeId) {
-    if (badgeId === 'canUsePremiumStyles') {
-      return (
-        (P().hasPermission && P().hasPermission(plan, 'canUsePremiumStyles')) ||
-        (P().hasPermission && P().hasPermission(plan, 'canUseCreatorStyles'))
-      );
-    }
-    return P().hasPermission && P().hasPermission(plan, badgeId);
-  }
-
-  function buildKeyBadgeHtml(plan, badgeId, compact) {
-    var def = keyBadgeDef(badgeId);
-    if (!def) return '';
-    var on = hasKeyFeature(plan, badgeId);
-    var cls = 'pricing-key-badge';
-    if (compact) cls += ' pricing-key-badge--compact';
-    if (!on) cls += ' pricing-key-badge--locked';
+  function buildProHighlight() {
     return (
-      '<span class="' +
-      cls +
-      '">' +
-      '<span class="pricing-key-badge__icon" aria-hidden="true">' +
-      def.icon +
-      '</span>' +
-      '<span class="pricing-key-badge__text">' +
-      esc(def.label) +
-      '</span></span>'
+      '<div class="pricing-pro-highlight">' +
+      '<p class="pricing-pro-highlight__title">Most creators choose Pro because it includes:</p>' +
+      '<ul class="pricing-pro-highlight__list">' +
+      '<li><span class="pricing-pro-highlight__check" aria-hidden="true">✓</span> MP4 video export</li>' +
+      '<li><span class="pricing-pro-highlight__check" aria-hidden="true">✓</span> AI Translation</li>' +
+      '<li><span class="pricing-pro-highlight__check" aria-hidden="true">✓</span> Premium Caption Styles</li>' +
+      '</ul></div>'
     );
-  }
-
-  function buildKeyBadgesRow(plan, compact) {
-    var ids = planKeyFeatureIds(plan);
-    if (!ids.length) return '';
-    return (
-      '<div class="pricing-key-badges' +
-      (compact ? ' pricing-key-badges--compact' : '') +
-      '">' +
-      ids
-        .map(function (id) {
-          return buildKeyBadgeHtml(plan, id, compact);
-        })
-        .join('') +
-      '</div>'
-    );
-  }
-
-  function buildKeyFeaturesSection(plan, compact) {
-    var ids = planKeyFeatureIds(plan);
-    if (!ids.length) return '';
-    if (plan !== 'pro' && plan !== 'business' && plan !== 'starter') return '';
-    var heading = plan === 'starter' ? 'Highlights' : 'Key features';
-    var audience =
-      plan === 'business'
-        ? '<p class="pricing-key__audience">For agencies and teams</p>'
-        : '';
-    return (
-      '<div class="pricing-key">' +
-      '<h4 class="pricing-key__heading">' +
-      heading +
-      '</h4>' +
-      buildKeyBadgesRow(plan, compact) +
-      audience +
-      '</div>'
-    );
-  }
-
-  function buildPlanTrustLine(plan) {
-    if (plan === 'pro') {
-      return '<p class="pricing-key__trust">Best for TikTok &amp; YouTube creators</p>';
-    }
-    return '';
   }
 
   function buildHeadExtras(plan) {
-    var parts = [];
-    if (plan === 'pro') {
-      parts.push('<span class="pricing-compare__trust-line">Best for TikTok &amp; YouTube creators</span>');
-    }
-    if (plan === 'business') {
-      parts.push('<span class="pricing-compare__audience-line">For agencies and teams</span>');
-    }
-    if (plan === 'pro' || plan === 'business') {
-      parts.push(buildKeyBadgesRow(plan, true));
-    }
-    return parts.join('');
+    if (plan === 'pro') return buildProHighlight();
+    return '';
   }
 
   function isCroCompareRow(row) {
@@ -182,8 +74,31 @@
     return (
       '<span class="pricing-compare__export-num">' +
       n +
-      '</span><span class="pricing-compare__export-unit">videos/mo</span>'
+      '</span><span class="pricing-compare__export-unit">credits/mo</span>'
     );
+  }
+
+  function mp4TierCell(planKey) {
+    var tiers = P().PLAN_MP4_EXPORT_TIERS || {};
+    var label = tiers[planKey];
+    if (label == null && P().getMp4ExportTier) label = P().getMp4ExportTier(planKey);
+    if (label == null) label = '—';
+    var cls = 'pricing-compare__tier';
+    if (planKey === 'free') cls += ' pricing-compare__tier--limited';
+    else if (planKey === 'starter') cls += ' pricing-compare__tier--basic';
+    else if (planKey === 'pro' || planKey === 'business') cls += ' pricing-compare__tier--full';
+    return '<span class="' + cls + '">' + esc(label) + '</span>';
+  }
+
+  function matrixCellValue(plan, row, cro) {
+    if (row.type === 'credits') {
+      return creditsCell(plan);
+    }
+    if (row.type === 'mp4_tier') {
+      return mp4TierCell(plan);
+    }
+    var on = P().hasPermission && P().hasPermission(plan, row.id);
+    return yesNoCell(on, cro);
   }
 
   function resolveCurrentPlan(currentPlan) {
@@ -255,8 +170,7 @@
             if (row.type === 'credits') {
               return '<td' + tdAttr + ' data-cutup-plan-exports="' + plan + '">' + creditsCell(plan) + '</td>';
             }
-            var on = P().hasPermission && P().hasPermission(plan, row.id);
-            return '<td' + tdAttr + '>' + yesNoCell(on, cro) + '</td>';
+            return '<td' + tdAttr + '>' + matrixCellValue(plan, row, cro) + '</td>';
           })
           .join('');
         return '<tr' + trClass + '><th scope="row">' + esc(row.label) + '</th>' + cells + '</tr>';
@@ -333,45 +247,30 @@
     );
   }
 
-  function planCardCreditsBlock(plan) {
+  function planCardFeatureBullets(plan) {
+    var features =
+      (P().getPricingFeatures && P().getPricingFeatures(plan)) ||
+      (P().PLAN_PRICING_FEATURES && P().PLAN_PRICING_FEATURES[plan]) ||
+      [];
+    if (!features.length) return '';
     return (
-      '<div class="pricing-mobile__credits">' +
-      '<span data-cutup-plan-exports="' +
-      plan +
-      '">' +
-      creditsCell(plan) +
-      '</span></div>'
-    );
-  }
-
-  function planCardSecondaryFeatures(plan) {
-    var lines = [];
-    (P().MATRIX_FEATURES || []).forEach(function (row) {
-      if (row.type === 'credits') return;
-      if (KEY_SECTION_EXCLUDE[row.id]) return;
-      if (!(P().hasPermission && P().hasPermission(plan, row.id))) return;
-      var secondary = GENERIC_SECONDARY_IDS[row.id];
-      lines.push(
-        '<li class="pricing-mobile__feat-line' +
-          (secondary ? ' pricing-mobile__feat-line--secondary' : '') +
-          '">' +
-          '<span class="pricing-mobile__feat-check" aria-hidden="true">✓</span>' +
-          esc(row.label) +
-          '</li>'
-      );
-    });
-    if (!lines.length) return '';
-    return (
-      '<div class="pricing-mobile__also">' +
-      '<p class="pricing-mobile__also-label">Also includes</p>' +
-      '<ul class="pricing-mobile__feat-list pricing-mobile__feat-list--secondary">' +
-      lines.join('') +
-      '</ul></div>'
+      '<ul class="pricing-mobile__feat-list">' +
+      features
+        .map(function (line) {
+          return (
+            '<li class="pricing-mobile__feat-line">' +
+            '<span class="pricing-mobile__feat-check" aria-hidden="true">✓</span>' +
+            esc(line) +
+            '</li>'
+          );
+        })
+        .join('') +
+      '</ul>'
     );
   }
 
   function planCardFeaturesList(plan) {
-    return planCardCreditsBlock(plan) + buildKeyFeaturesSection(plan, false) + planCardSecondaryFeatures(plan);
+    return planCardFeatureBullets(plan);
   }
 
   function buildMobilePlanCard(plan, context, currentPlan, subscriptionExpired) {
@@ -408,7 +307,7 @@
       '<p class="pricing-mobile__price">' +
       esc(price) +
       '</p>' +
-      buildPlanTrustLine(plan) +
+      (isPro ? buildProHighlight() : '') +
       planCardFeaturesList(plan) +
       '<div class="pricing-mobile__cta">' +
       ctaForPlan(plan, context, currentPlan, subscriptionExpired) +
@@ -434,7 +333,7 @@
                 creditsCell(plan) +
                 '</span>';
             } else {
-              val = yesNoCell(P().hasPermission && P().hasPermission(plan, row.id), cro);
+              val = matrixCellValue(plan, row, cro);
             }
             var cellClass = 'pricing-mobile__compare-cell';
             if (plan === 'pro') cellClass += ' pricing-mobile__compare-cell--pro';
@@ -494,9 +393,30 @@
     );
   }
 
+  function buildConversionBanner(context, currentPlan) {
+    if (context === 'dashboard') {
+      var cur = resolveCurrentPlan(currentPlan);
+      var curRank = P().planRank ? P().planRank(cur) : 0;
+      var proRank = P().planRank ? P().planRank('pro') : 2;
+      if (curRank >= proRank) return '';
+    }
+    return (
+      '<div class="pricing-conversion-banner" role="region" aria-label="Pro plan recommendation">' +
+      '<p class="pricing-conversion-banner__text">' +
+      'Most creators start with <strong>Pro</strong> because it includes ' +
+      'video export, AI translation and premium caption styles.' +
+      '</p>' +
+      '<a href="javascript:void(0)" class="btn btn-primary pricing-conversion-banner__cta pricing-dashboard-cta" data-cutup-plan="pro">' +
+      'Choose Pro' +
+      '</a></div>'
+    );
+  }
+
   function buildMatrixHtml(context, currentPlan, subscriptionExpired) {
+    var ctx = context || 'landing';
     return (
       '<div class="pricing-matrix-root">' +
+      buildConversionBanner(ctx, currentPlan) +
       '<div class="pricing-compare-desktop">' +
       '<div class="pricing-compare-wrap" role="region" aria-label="Plan comparison">' +
       '<table class="pricing-compare">' +
@@ -506,7 +426,7 @@
       '<tbody>' +
       buildBodyRows(currentPlan) +
       '</tbody>' +
-      buildFoot(context || 'landing', currentPlan, subscriptionExpired) +
+      buildFoot(ctx, currentPlan, subscriptionExpired) +
       '</table></div></div>' +
       buildMobileHtml(context, currentPlan, subscriptionExpired) +
       '<p class="pricing-compare__footnote">Plans renew monthly in EUR. You will always see the exact total on the checkout page before you confirm.</p></div>'

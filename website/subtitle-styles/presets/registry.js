@@ -63,6 +63,7 @@
   const PRESETS = {
     'clean-srt': merge({
       id: 'clean-srt',
+      tier: 'basic',
       name: 'Clean SRT',
       tagline: 'Maximum readability',
       mood: 'clear stable captions',
@@ -88,6 +89,7 @@
     }),
     hormozi: merge({
       id: 'hormozi',
+      tier: 'creator',
       name: 'Alex Hormozi',
       tagline: 'Retention machine',
       mood: 'high-energy business',
@@ -124,6 +126,7 @@
     }),
     mrbeast: merge({
       id: 'mrbeast',
+      tier: 'creator',
       name: 'MrBeast',
       tagline: 'Viral dopamine',
       mood: 'YouTube entertainment',
@@ -153,6 +156,7 @@
     }),
     'ali-abdaal': merge({
       id: 'ali-abdaal',
+      tier: 'basic',
       name: 'Ali Abdaal Clean',
       tagline: 'Calm productivity',
       mood: 'smart calm creator',
@@ -179,6 +183,7 @@
     }),
     'tiktok-neon': merge({
       id: 'tiktok-neon',
+      tier: 'premium',
       name: 'TikTok Neon',
       tagline: 'Gen Z glow',
       mood: 'TikTok-native',
@@ -208,6 +213,7 @@
     }),
     'luxury-minimal': merge({
       id: 'luxury-minimal',
+      tier: 'premium',
       name: 'Luxury Minimal',
       tagline: 'Cinematic premium',
       mood: 'luxury brand',
@@ -236,6 +242,7 @@
     }),
     podcast: merge({
       id: 'podcast',
+      tier: 'basic',
       name: 'Podcast',
       tagline: 'Interview clarity',
       mood: 'long-form clips',

@@ -221,6 +221,91 @@ export function inferAspect({ width, height, rotation }) {
   return 'square';
 }
 
+const EXPORT_WATERMARK_TEXT = 'cutup.shop';
+
+export function buildExportWatermarkFilter() {
+  return `drawtext=text='${EXPORT_WATERMARK_TEXT}':fontsize=28:fontcolor=white@0.55:box=1:boxcolor=black@0.35:boxborderw=8:x=w-tw-48:y=h-th-48`;
+}
+
+export function appendExportWatermarkFilter(vf) {
+  return `${vf},${buildExportWatermarkFilter()}`;
+}
+
+/**
+ * Second-pass watermark for outputs that skipped the CPU burn filter chain (e.g. GPU worker).
+ */
+export async function applyExportWatermarkInPlace(videoPath, { jobId = null, signal, onProgress } = {}) {
+  if (!existsSync(videoPath)) return Promise.reject(new Error('WATERMARK_INPUT_MISSING'));
+  const tmpPath = `${videoPath}.wm-tmp.mp4`;
+  const wm = buildExportWatermarkFilter();
+  const args = [
+    '-hide_banner',
+    '-y',
+    '-nostats',
+    '-progress',
+    'pipe:2',
+    '-i',
+    videoPath,
+    '-vf',
+    wm,
+    '-c:v',
+    'libx264',
+    '-preset',
+    'veryfast',
+    '-crf',
+    '20',
+    '-c:a',
+    'copy',
+    '-movflags',
+    '+faststart',
+    tmpPath
+  ];
+
+  return new Promise((resolve, reject) => {
+    const proc = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    let stderr = '';
+    let settled = false;
+
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      try {
+        proc.kill('SIGKILL');
+      } catch {
+        /* noop */
+      }
+      reject(err);
+    };
+
+    const onAbort = () => fail(new Error('FFMPEG_ABORTED'));
+    signal?.addEventListener?.('abort', onAbort, { once: true });
+
+    proc.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+      const m = stderr.match(/out_time_ms=(\d+)/g);
+      if (m?.length) onProgress?.({ pct: 50, phase: 'watermark' });
+    });
+
+    proc.on('error', (err) => fail(err));
+    proc.on('close', async (code) => {
+      signal?.removeEventListener?.('abort', onAbort);
+      if (settled) return;
+      settled = true;
+      if (code !== 0) {
+        reject(new Error(`WATERMARK_FFMPEG_FAILED:${code}:${stderr.slice(-400)}`));
+        return;
+      }
+      try {
+        const { renameSync } = await import('fs');
+        renameSync(tmpPath, videoPath);
+        resolve({ watermarked: true, jobId });
+      } catch (err) {
+        reject(err);
+      }
+    });
+  });
+}
+
 /**
  * Burn ASS subtitles — spawn + stderr progress (avoids silent hangs with no UI updates).
  */
@@ -238,6 +323,7 @@ export async function burnSubtitles(opts) {
     jobDir = null,
     inputAlreadyNormalized = false,
     trustPreviewTimings = false,
+    applyWatermark = false,
     onProgress,
     signal
   } = opts;
@@ -345,11 +431,12 @@ export async function burnSubtitles(opts) {
   const assDir = dirname(resolve(burnAssPath));
   const assName = basename(burnAssPath);
   const skipTimelineFilters = Boolean(timelinePlan.skipTimelineCorrection);
-  const vf = buildAlignedVideoFilter(assName, timelinePlan, {
+  const vfBase = buildAlignedVideoFilter(assName, timelinePlan, {
     skipTimelineFilters,
     playResX: geometry.playResX,
     playResY: geometry.playResY
   });
+  const vf = applyWatermark ? appendExportWatermarkFilter(vfBase) : vfBase;
   const audioFilters = buildFfmpegAudioFiltersForBurn(timelinePlan, { skipTimelineFilters });
   const syncFlags = buildFfmpegOutputSyncFlags();
   const inputFlags = buildFfmpegInputFlags();

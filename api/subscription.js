@@ -30,6 +30,7 @@ import {
   syncStripeSubscriptionFromStripeObject,
   downgradeStripeSubscriptionDb,
   getCreditsSnapshot,
+  getMp4ExportsSnapshot,
   getLifetimeMetrics
 } from './billing-repository.js';
 import { getActivityFeedDb } from './activity-feed-repository.js';
@@ -208,6 +209,9 @@ export default async function handler(req, res) {
       const creditsSnapshot = userId === SPECIAL_EMAIL
         ? { used: 0, remaining: 999999, limit: 999999, cycleStart: null, cycleEnd: subShape.endDate }
         : await getCreditsSnapshot(userId);
+      const mp4ExportsSnapshot = userId === SPECIAL_EMAIL
+        ? { used: 0, remaining: 999999, limit: 999999, cycleStart: null, cycleEnd: subShape.endDate }
+        : await getMp4ExportsSnapshot(userId);
       const lifetime = userId === SPECIAL_EMAIL
         ? { outputs: 0, mp4Exports: 0, processingJobs: 0 }
         : await getLifetimeMetrics(userId);
@@ -222,10 +226,16 @@ export default async function handler(req, res) {
         permissions: getPlanPermissions(planKey),
         monthlyGenerationLimit: creditsSnapshot.limit,
         creditsSnapshot,
+        mp4ExportsSnapshot,
         credits: {
           used: creditsSnapshot.used,
           limit: creditsSnapshot.limit,
           remaining: creditsSnapshot.remaining
+        },
+        mp4Exports: {
+          used: mp4ExportsSnapshot.used,
+          limit: mp4ExportsSnapshot.limit,
+          remaining: mp4ExportsSnapshot.remaining
         },
         lifetime,
         usage: {

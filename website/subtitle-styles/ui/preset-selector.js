@@ -5,7 +5,9 @@
   'use strict';
 
   const STORAGE_KEY = 'cutup_style_preset';
+  const BASIC_PRESET_IDS = new Set(['clean-srt', 'ali-abdaal', 'podcast']);
   const PREMIUM_PRESET_IDS = new Set(['tiktok-neon', 'luxury-minimal']);
+  const BASIC_FALLBACK_ORDER = ['ali-abdaal', 'podcast', 'clean-srt'];
 
   function resolvePermissions() {
     const sub = global.userSubscription || {};
@@ -17,19 +19,41 @@
     return {};
   }
 
+  function getPresetTier(id) {
+    const preset = global.CutupStylePresets?.getPreset?.(id);
+    if (preset?.tier) return preset.tier;
+    if (PREMIUM_PRESET_IDS.has(id)) return 'premium';
+    if (BASIC_PRESET_IDS.has(id)) return 'basic';
+    return 'creator';
+  }
+
   function presetRequiresUpgrade(id) {
     const perms = resolvePermissions();
-    if (PREMIUM_PRESET_IDS.has(id)) return !perms.canUsePremiumStyles;
+    const tier = getPresetTier(id);
+    if (tier === 'basic') return !perms.canUseBasicStyles;
+    if (tier === 'premium') return !perms.canUsePremiumStyles;
     return !perms.canUseCreatorStyles;
   }
 
   function upgradeMessageForPreset(id) {
+    const tier = getPresetTier(id);
+    const key =
+      tier === 'premium'
+        ? 'canUsePremiumStyles'
+        : tier === 'basic'
+          ? 'canUseBasicStyles'
+          : 'canUseCreatorStyles';
     if (global.CutupPlanPermissions?.getUpgradeMessage) {
-      return PREMIUM_PRESET_IDS.has(id)
-        ? global.CutupPlanPermissions.getUpgradeMessage('canUsePremiumStyles')
-        : global.CutupPlanPermissions.getUpgradeMessage('canUseCreatorStyles');
+      return global.CutupPlanPermissions.getUpgradeMessage(key);
     }
-    return 'Creator styles are available on Pro and Business plans.';
+    return 'This style is not available on your current plan.';
+  }
+
+  function firstUnlockedPresetId() {
+    for (const id of BASIC_FALLBACK_ORDER) {
+      if (!presetRequiresUpgrade(id)) return id;
+    }
+    return global.CutupStylePresets?.DEFAULT_PRESET_ID || 'ali-abdaal';
   }
 
   function paintActiveCards(id) {
@@ -42,13 +66,16 @@
   }
 
   function getActivePresetId() {
+    let stored = null;
     try {
       const v = localStorage.getItem(STORAGE_KEY);
-      if (v && global.CutupStylePresets?.PRESETS?.[v]) return v;
+      if (v && global.CutupStylePresets?.PRESETS?.[v]) stored = v;
     } catch {
       /* ignore */
     }
-    return global.CutupStylePresets?.DEFAULT_PRESET_ID || 'hormozi';
+    const candidate = stored || global.CutupStylePresets?.DEFAULT_PRESET_ID || 'hormozi';
+    if (presetRequiresUpgrade(candidate)) return firstUnlockedPresetId();
+    return candidate;
   }
 
   function setActivePresetId(id, source = 'unknown') {
@@ -155,6 +182,7 @@
     getActivePresetId,
     setActivePresetId,
     applyPlanLocks,
+    presetRequiresUpgrade,
     STORAGE_KEY
   };
 })(typeof window !== 'undefined' ? window : globalThis);
