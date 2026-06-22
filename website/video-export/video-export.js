@@ -273,6 +273,38 @@
     return !(perms.canExportMp4 === true || sub.features?.mp4Export === true);
   }
 
+  function getMp4ExportQuota() {
+    const sub = global.userSubscription || {};
+    const mp4 = sub.mp4Exports;
+    if (mp4 && mp4.limit != null) {
+      const used = Number(mp4.used) || 0;
+      const limit = Number(mp4.limit) || 0;
+      const remaining =
+        mp4.remaining != null ? Math.max(0, Number(mp4.remaining) || 0) : Math.max(0, limit - used);
+      return { used, limit, remaining };
+    }
+    const planKey = getCurrentPlanKey();
+    const limits = global.CutupPlanPermissions?.PLAN_MP4_EXPORT_LIMITS || { free: 1 };
+    const limit = limits[planKey] ?? limits.free ?? 1;
+    return { used: 0, limit, remaining: limit };
+  }
+
+  function mp4QuotaExceededMessage(quota) {
+    const limit = quota?.limit ?? 1;
+    const noun = limit === 1 ? 'export' : 'exports';
+    return `You've used all ${limit} MP4 ${noun} this month. Upgrade your plan for more.`;
+  }
+
+  function patchLocalMp4Exports(snapshot) {
+    if (!snapshot || snapshot.limit == null) return;
+    const sub = global.userSubscription || (global.userSubscription = {});
+    sub.mp4Exports = {
+      used: Number(snapshot.used) || 0,
+      limit: Number(snapshot.limit) || 0,
+      remaining: Math.max(0, Number(snapshot.remaining) || 0)
+    };
+  }
+
   function openMp4UpgradeFlow() {
     const planKey = getCurrentPlanKey();
     const foot = document.getElementById('cutupExportUpgradeFoot');
@@ -310,6 +342,10 @@
         ? global.CutupPlanPermissions.getUpgradeMessage('canExportMp4')
         : 'MP4 export is available on Pro and Business plans.';
       return { ok: false, lock: 'plan', reason: msg };
+    }
+    const mp4Quota = getMp4ExportQuota();
+    if (mp4Quota.remaining <= 0 || mp4Quota.used >= mp4Quota.limit) {
+      return { ok: false, lock: 'quota', reason: mp4QuotaExceededMessage(mp4Quota) };
     }
     const payload = getExportPayload();
     if (!payload) return { ok: false, lock: 'transcript', reason: 'Transcribe a video first.' };
@@ -774,15 +810,17 @@
 
     const planLocked = isPlanLockedForMp4();
     const check = canExport();
+    const mp4Quota = getMp4ExportQuota();
+    const quotaExceeded = !planLocked && (mp4Quota.remaining <= 0 || mp4Quota.used >= mp4Quota.limit);
     if (mount) applyExportStylePlanLocks(mount);
     const proPrice =
       global.CutupPlanPermissions?.PLAN_PRICES?.pro?.display || '€19.99/mo';
     const planKey = getCurrentPlanKey();
 
     viralCard?.classList.toggle('cutup-export-options__card--viral-locked', planLocked);
-    proBadge?.toggleAttribute('hidden', !planLocked);
 
     if (planLocked) {
+      proBadge?.toggleAttribute('hidden', !planLocked);
       banner?.removeAttribute('hidden');
       if (foot) {
         foot.textContent =
@@ -797,9 +835,32 @@
       btn.classList.add('cutup-viral-export__btn--upgrade');
       btn.textContent = getSessionId() ? 'Unlock with Pro' : 'Sign in & upgrade';
       btn.title = check.reason || 'MP4 export requires Pro or Business';
+      if (mount && !activeJobId) showError(mount, '');
       return;
     }
 
+    proBadge?.setAttribute('hidden', '');
+
+    if (quotaExceeded) {
+      banner?.setAttribute('hidden', '');
+      btn.classList.remove('cutup-viral-export__btn--upgrade');
+      btn.textContent = mount?.dataset?.readyJobId ? 'Export again' : 'Export MP4';
+      btn.disabled = true;
+      btn.title = mp4QuotaExceededMessage(mp4Quota);
+      if (mount && !activeJobId) {
+        showError(mount, mp4QuotaExceededMessage(mp4Quota));
+      }
+      return;
+    }
+
+    if (mount && !activeJobId) {
+      const errEl = mount.querySelector('#cutupExportError');
+      if (errEl && /used all .* MP4/i.test(errEl.textContent || '')) {
+        showError(mount, '');
+      }
+    }
+
+    viralCard?.classList.toggle('cutup-export-options__card--viral-locked', false);
     banner?.setAttribute('hidden', '');
     btn.classList.remove('cutup-viral-export__btn--upgrade');
     btn.textContent = mount?.dataset?.readyJobId ? 'Export again' : 'Export MP4';
@@ -906,6 +967,9 @@
         btn.textContent = 'Export again';
       }
       activeJobId = null;
+      if (typeof global.CutupRefreshSubscription === 'function') {
+        void global.CutupRefreshSubscription(getSessionId());
+      }
       refreshExportButton();
       return;
     }
@@ -916,6 +980,9 @@
       const btn = container.querySelector('#cutupExportMp4Btn');
       if (btn) btn.disabled = false;
       activeJobId = null;
+      if (typeof global.CutupRefreshSubscription === 'function') {
+        void global.CutupRefreshSubscription(getSessionId());
+      }
       refreshExportButton();
       return;
     }
@@ -961,6 +1028,9 @@
     const text = String(msg || '').trim();
     if (/PRESET_NOT_APPLIED/i.test(text)) {
       return 'Selected subtitle style could not be applied. Please choose a valid preset.';
+    }
+    if (/MP4 export|MP4 exports|export limit|export capacity/i.test(text)) {
+      return text;
     }
     if (/timed out|timeout|ffmpeg|stalled/i.test(text)) {
       return 'HQ cinematic rendering takes longer for premium exports. Please try Fast preview or a shorter clip.';
@@ -1148,8 +1218,22 @@
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.message || data.error || `Export failed (${res.status})`);
+        const apiMsg = data.message || data.error || `Export failed (${res.status})`;
+        if (res.status === 403 && /MP4 export/i.test(apiMsg)) {
+          patchLocalMp4Exports({
+            used: getMp4ExportQuota().limit,
+            limit: getMp4ExportQuota().limit,
+            remaining: 0
+          });
+          showError(container, toFriendlyRenderError(apiMsg));
+          if (btn) btn.disabled = true;
+          refreshExportButton();
+          return;
+        }
+        throw new Error(apiMsg);
       }
+
+      if (data.mp4Exports) patchLocalMp4Exports(data.mp4Exports);
 
       activeJobId = data.jobId;
       exportStartedAt = Date.now();

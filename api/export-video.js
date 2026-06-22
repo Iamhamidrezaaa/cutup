@@ -14,7 +14,12 @@ import {
   purgeExpiredGpuArtifacts
 } from './video-render/gpu-render-artifacts.js';
 import { handleCORS, setCORSHeaders } from './cors.js';
-import { requireSessionEmail, enforceQuota } from './processing-enforcement.js';
+import {
+  requireSessionEmail,
+  enforceQuota,
+  consumeMp4ExportUsage,
+  respondConsumeFailure
+} from './processing-enforcement.js';
 import { getSubscriptionRowByEmail } from './billing-repository.js';
 import { resolvePlanKey } from './plans-config.js';
 import { getPlanPermissions, getUpgradeMessage } from './plans/permissions.js';
@@ -333,6 +338,24 @@ async function handleStart(req, res) {
     traceId
   });
 
+  const consumeResult = await consumeMp4ExportUsage(email, {
+    jobId: result.jobId,
+    presetId,
+    traceId,
+    sourceUrl: sourceUrl && !String(sourceUrl).startsWith('upload://') ? sourceUrl : null
+  });
+  if (!consumeResult?.ok) {
+    cancelJob(result.jobId, email);
+    setCORSHeaders(res);
+    if (respondConsumeFailure(res, consumeResult, req)) return;
+    return res.status(403).json({
+      error: 'quota_exceeded',
+      code: consumeResult.code || 'MP4_EXPORT_LIMIT_EXCEEDED',
+      message: consumeResult.reason || 'MP4 export limit reached.',
+      traceId
+    });
+  }
+
   try {
     const { recordExportStartDb } = await import('./projects-repository.js');
     await recordExportStartDb(email, {
@@ -356,6 +379,7 @@ async function handleStart(req, res) {
     success: true,
     ...result,
     traceId,
+    mp4Exports: consumeResult.mp4Exports || null,
     queue: getQueueStats(),
     infrastructure: getQueueMetrics()
   });

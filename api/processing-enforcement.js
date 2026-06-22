@@ -64,7 +64,9 @@ export function planDenied(res, code, message, req) {
   const traceId = resolveTraceId(req);
   const c = String(code || '');
   let errorCode = 'QUOTA_EXCEEDED';
-  if (c.includes('FEATURE_NOT_AVAILABLE') || c.includes('INVALID_PLAN')) {
+  if (c.includes('MP4_EXPORT_LIMIT_EXCEEDED')) {
+    errorCode = 'QUOTA_EXCEEDED';
+  } else if (c.includes('FEATURE_NOT_AVAILABLE') || c.includes('INVALID_PLAN')) {
     errorCode = 'PROVIDER_ERROR';
   } else if (c.includes('SUBSCRIPTION_INACTIVE')) {
     errorCode = 'SESSION_EXPIRED';
@@ -83,13 +85,15 @@ export function planDenied(res, code, message, req) {
 export function respondConsumeFailure(res, consumeResult, req) {
   if (!consumeResult || consumeResult.ok) return false;
   const reason = consumeResult.reason || 'Quota exceeded.';
-  planDenied(res, classifyDenial(reason), reason, req);
+  const code = consumeResult.code || classifyDenial(reason);
+  planDenied(res, code, reason, req);
   return true;
 }
 
 function classifyDenial(reason) {
   if (!reason) return 'LIMIT_EXCEEDED';
   const r = String(reason);
+  if (r.includes('MP4 export')) return 'MP4_EXPORT_LIMIT_EXCEEDED';
   if (r.includes('not available on your current plan')) return 'FEATURE_NOT_AVAILABLE';
   if (r.includes('past due') || r.includes('has expired')) return 'SUBSCRIPTION_INACTIVE';
   if (r.includes('Invalid plan')) return 'INVALID_PLAN';

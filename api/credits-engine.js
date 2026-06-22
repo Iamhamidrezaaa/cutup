@@ -547,6 +547,24 @@ async function consumeMp4ExportQuota(client, { userId, planKey, u, metadata, ema
   };
 }
 
+/** Release a reserved MP4 export when render fails or is cancelled. */
+export async function refundMp4ExportQuota(email, jobId) {
+  if (!email || !jobId || email === UNLIMITED_EMAIL) return { ok: true, refunded: false };
+  const pool = getPool();
+  const userRes = await pool.query('SELECT id FROM users WHERE lower(email) = lower($1)', [email]);
+  const userId = userRes.rows[0]?.id;
+  if (!userId) return { ok: false, reason: 'User not found.' };
+
+  const del = await pool.query(
+    `DELETE FROM usage_history
+     WHERE user_id = $1 AND type = 'mp4_export' AND minutes > 0
+       AND metadata->>'jobId' = $2
+     RETURNING id`,
+    [userId, String(jobId)]
+  );
+  return { ok: true, refunded: del.rowCount > 0 };
+}
+
 async function applyUnlimitedProcessingCredit(email, opDef, metadata) {
   const pool = getPool();
   const userRes = await pool.query('SELECT id FROM users WHERE email = $1', [email]);

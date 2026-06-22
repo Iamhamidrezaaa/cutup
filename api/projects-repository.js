@@ -539,16 +539,6 @@ export async function updateExportFromJobDb(job) {
       );
     }
     try {
-      const { consumeProcessingCredit } = await import('./credits-engine.js');
-      await consumeProcessingCredit(job.userEmail, 'mp4_export', {
-        jobId: job.id,
-        presetId: job.presetId || null,
-        sourceUrl: job.sourceUrl || null
-      });
-    } catch (err) {
-      console.warn('[project_exports] credit consume skipped:', err?.message || err);
-    }
-    try {
       const site = (process.env.FRONTEND_URL || 'https://cutup.shop').replace(/\/$/, '');
       const { emitExportCompleted } = await import('./email-events-bus.js');
       void emitExportCompleted({
@@ -562,7 +552,16 @@ export async function updateExportFromJobDb(job) {
     } catch (mailErr) {
       console.warn('[project_exports] export email skipped:', mailErr?.message || mailErr);
     }
-  } else if (status === 'failed' && job.userEmail) {
+  } else if ((status === 'failed' || status === 'cancelled') && job.userEmail) {
+    try {
+      const { refundMp4ExportQuota } = await import('./credits-engine.js');
+      await refundMp4ExportQuota(job.userEmail, job.id);
+    } catch (err) {
+      console.warn('[project_exports] mp4 quota refund skipped:', err?.message || err);
+    }
+  }
+
+  if (status === 'failed' && job.userEmail) {
     const userId = await resolveUserId(job.userEmail);
     if (userId) {
       await pool.query(

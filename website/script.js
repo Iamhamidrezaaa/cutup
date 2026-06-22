@@ -3130,6 +3130,15 @@ async function updateButtonsBasedOnSubscription(sessionId) {
       features: features,
       permissions: subData.permissions || cutupGetPermissions({ plan: userPlan }),
       credits,
+      mp4Exports: subData.mp4Exports || {
+        used: subData.mp4ExportsSnapshot?.used ?? 0,
+        limit:
+          subData.mp4ExportsSnapshot?.limit ??
+          (typeof window.CutupPlanPermissions?.getMp4ExportLimit === 'function'
+            ? window.CutupPlanPermissions.getMp4ExportLimit(userPlan)
+            : 1),
+        remaining: subData.mp4ExportsSnapshot?.remaining ?? 0
+      },
       monthlyGenerationLimit: subData.monthlyGenerationLimit ?? monthlyLimit,
       planTagline: subData.planTagline || null,
       usage: {
@@ -3183,6 +3192,8 @@ async function updateButtonsBasedOnSubscription(sessionId) {
     window.CutupApp.subscriptionHydration = 'ready';
   }
 }
+
+window.CutupRefreshSubscription = updateButtonsBasedOnSubscription;
 
 // Set buttons state for free plan
 function setButtonsForFreePlan(audioExceeded = false, videoExceeded = false, monthlyCapExceeded = false, dailyCapExceeded = false) {
