@@ -69,6 +69,7 @@ import {
   normalizeLockedMasterCues
 } from './master-subtitle-cues.js';
 import {
+  SHORT_FORM_MAX_CHARS,
   VERTICAL_SHORT_FORM_MAX_CHARS,
   VERTICAL_SHORT_FORM_MAX_WORDS,
   VERTICAL_SHORT_FORM_MIN_WORDS
@@ -550,9 +551,9 @@ export function generateAssContent(segments, presetId, dims = {}) {
   } else {
     masterCues = buildMasterCleanSrtFromSegments(finalOnlySegments, {
       shortForm: true,
-      maxWords: requestedIsVertical ? VERTICAL_SHORT_FORM_MAX_WORDS : undefined,
-      maxChars: requestedIsVertical ? VERTICAL_SHORT_FORM_MAX_CHARS : undefined,
-      minWords: requestedIsVertical ? VERTICAL_SHORT_FORM_MIN_WORDS : undefined
+      maxWords: VERTICAL_SHORT_FORM_MAX_WORDS,
+      maxChars: requestedIsVertical ? VERTICAL_SHORT_FORM_MAX_CHARS : SHORT_FORM_MAX_CHARS,
+      minWords: VERTICAL_SHORT_FORM_MIN_WORDS
     });
   }
 

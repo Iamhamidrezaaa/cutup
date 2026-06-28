@@ -971,6 +971,13 @@ function stripSrtForTranslation(srt) {
 }
 
 function getStoredSrtContent() {
+  try {
+    const clean =
+      typeof buildCleanSrtFromSource === 'function' ? buildCleanSrtFromSource() : '';
+    if (clean) return stripSrtForTranslation(clean);
+  } catch (_e) {
+    /* fall through */
+  }
   const raw = window.originalSrtContent || window.currentSrtContent || '';
   const cleaned = stripSrtForTranslation(raw);
   if (cleaned) return cleaned;
@@ -6089,9 +6096,9 @@ function normalizeSegmentsForDisplay(segments) {
   return segments;
 }
 
-/** Only trust creator-uploaded YouTube captions; auto-generated rolling tracks go to Whisper. */
-function shouldUseYoutubeSubtitles(youtubeResult) {
-  return Boolean(youtubeResult?.subtitles && youtubeResult.subtitlesSource === 'manual');
+/** Always transcribe audio — same Whisper + short-form SRT rules as TikTok/Instagram/upload. */
+function shouldUseYoutubeSubtitles(_youtubeResult) {
+  return false;
 }
 
 // Parse YouTube VTT subtitles to segments (like extension)
@@ -6778,14 +6785,18 @@ function displayResults(summary, fullText, segments = null, options = {}) {
       );
       
       if (validSegments.length > 0) {
-        const srtContent = generateSRT(validSegments);
-        const srtPreviewEl = document.getElementById('srtPreview');
-        if (srtPreviewEl) {
-          srtPreviewEl.textContent = previewMode
-            ? `${srtContent}\n\n[Preview only—you're one step away from the full, downloadable SRT.]${CUTUP_SRT_ATTRIBUTION}`
-            : `${srtContent}${CUTUP_SRT_ATTRIBUTION}`;
+        window.cutupSourceSegments = cloneSourceSegments(validSegments);
+        if (!rebuildCleanSrtDisplay({ previewMode })) {
+          const srtContent = generateSRT(validSegments);
+          const srtPreviewEl = document.getElementById('srtPreview');
+          if (srtPreviewEl) {
+            srtPreviewEl.textContent = previewMode
+              ? `${srtContent}\n\n[Preview only—you're one step away from the full, downloadable SRT.]${CUTUP_SRT_ATTRIBUTION}`
+              : `${srtContent}${CUTUP_SRT_ATTRIBUTION}`;
+          }
+          window.currentSrtContent = srtContent;
+          window.originalSrtContent = stripSrtForTranslation(srtContent);
         }
-        window.currentSrtContent = srtContent;
       } else {
         // Create simple SRT with full text
         const wordCount = previewFullText.split(/\s+/).length;
@@ -6816,9 +6827,14 @@ function displayResults(summary, fullText, segments = null, options = {}) {
     // Store original SRT for translation (without attribution line)
     window.originalSrtContent = stripSrtForTranslation(window.currentSrtContent);
     window.originalSrtSegments = segments;
-    window.cutupSourceSegments = cloneSourceSegments(
-      previewSegments && previewSegments.length ? previewSegments : segments
-    );
+    if (!window.cutupSourceSegments?.length) {
+      window.cutupSourceSegments = cloneSourceSegments(
+        previewSegments && previewSegments.length ? previewSegments : segments
+      );
+    }
+    if (window.cutupSourceSegments?.length) {
+      rebuildCleanSrtDisplay({ previewMode });
+    }
     if (window.CutupSubtitleVersions) {
       window.CutupSubtitleVersions.reset();
       window.CutupSubtitleVersions.registerOriginal({
@@ -7178,6 +7194,35 @@ function buildCleanSrtFromSource() {
   const cues = window.CutupSubtitleClean?.getMasterBurnCues?.();
   if (!cues || !cues.length) return '';
   return generateSRT(cues);
+}
+
+function rebuildCleanSrtDisplay({ previewMode = false } = {}) {
+  window.cutupSourceSegments = cloneSourceSegments(
+    window.cutupSourceSegments ||
+      window.cutupLastTranscription?.segments ||
+      []
+  );
+  let body = '';
+  try {
+    body = buildCleanSrtFromSource();
+  } catch (err) {
+    console.warn('[rebuildCleanSrtDisplay] clean build failed:', err?.message || err);
+  }
+  if (!body && Array.isArray(window.cutupSourceSegments) && window.cutupSourceSegments.length) {
+    body = generateSRT(window.cutupSourceSegments);
+  }
+  if (!body) return false;
+
+  const suffix = previewMode
+    ? `\n\n[Preview only—you're one step away from the full, downloadable SRT.]${CUTUP_SRT_ATTRIBUTION}`
+    : `${CUTUP_SRT_ATTRIBUTION}`;
+  const full = `${body}${suffix}`;
+  window.currentSrtContent = full;
+  window.originalSrtContent = stripSrtForTranslation(body);
+  const srtPreviewEl = document.getElementById('srtPreview');
+  if (srtPreviewEl) srtPreviewEl.textContent = full;
+  syncSrtRawPanel();
+  return true;
 }
 
 window.buildCleanSrtFromSource = buildCleanSrtFromSource;

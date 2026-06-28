@@ -941,9 +941,9 @@ async function dataUrlToTranscribeFile(dataUrl, name = 'extracted-audio.mp3') {
   return new File([blob], name, { type: mime });
 }
 
-/** Only trust creator-uploaded YouTube captions; auto-generated tracks go to Whisper. */
-function shouldUseYoutubeSubtitles(youtubeResult) {
-  return Boolean(youtubeResult?.subtitles && youtubeResult.subtitlesSource === 'manual');
+/** Always transcribe audio — same short-form SRT rules as other platforms. */
+function shouldUseYoutubeSubtitles(_youtubeResult) {
+  return false;
 }
 
 // API Calls
