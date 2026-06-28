@@ -167,7 +167,7 @@
       canUsePrioritySupport: false,
       hasWatermark: false,
       canWatermarkFreeExport: true,
-      canUseBasicStyles: false,
+      canUseBasicStyles: true,
       canUseAdvancedExports: true,
       canUseAgencyFeatures: false
     },
@@ -189,7 +189,7 @@
       canUsePrioritySupport: true,
       hasWatermark: false,
       canWatermarkFreeExport: true,
-      canUseBasicStyles: false,
+      canUseBasicStyles: true,
       canUseAdvancedExports: true,
       canUseAgencyFeatures: true
     }

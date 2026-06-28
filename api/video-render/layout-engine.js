@@ -244,7 +244,7 @@ export function resolveRenderLayout(dims, cues, preset) {
     presetLayout.maxWidthRatio != null
       ? presetLayout.maxWidthRatio
       : isVertical
-        ? 0.74
+        ? 0.68
         : 0.84;
   const sideRatio = (1 - maxWidthRatio) / 2;
   const marginL = Math.round(playResX * sideRatio);
@@ -288,6 +288,17 @@ export function resolveBurnBottomMarginV(playResY, isVertical) {
       (isVertical ? 0.152 : 0.15)
   );
   return Math.round(h * Math.min(0.22, Math.max(0.08, ratio)));
+}
+
+/** Lift multi-line vertical blocks so the bottom row stays inside TikTok/Reels safe zone. */
+export function resolveVerticalBottomMarginV(baseMarginV, lineCount, fontSize, playResY) {
+  const h = Math.max(2, Number(playResY) || 1920);
+  const base = Math.max(0, Number(baseMarginV) || 0);
+  const lines = Math.max(1, Number(lineCount) || 1);
+  const fs = Math.max(1, Number(fontSize) || 48);
+  if (lines <= 1) return base;
+  const lift = Math.round(fs * 1.08 * (lines - 1));
+  return Math.min(Math.round(h * 0.28), base + lift);
 }
 
 /** @deprecated use resolveBurnBottomMarginV — kept for callers; ignores line count. */

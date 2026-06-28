@@ -30,7 +30,13 @@
   function presetRequiresUpgrade(id) {
     const perms = resolvePermissions();
     const tier = getPresetTier(id);
-    if (tier === 'basic') return !perms.canUseBasicStyles;
+    if (tier === 'basic') {
+      return !(
+        perms.canUseBasicStyles ||
+        perms.canUseCreatorStyles ||
+        perms.canUsePremiumStyles
+      );
+    }
     if (tier === 'premium') return !perms.canUsePremiumStyles;
     return !perms.canUseCreatorStyles;
   }

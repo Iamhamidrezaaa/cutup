@@ -3292,6 +3292,7 @@ async function updateButtonsBasedOnSubscription(sessionId) {
     applyCutupPricingPlanLocks({ plan: userPlan });
     applyTranslatePlanLocks(window.userSubscription);
     window.CutupPresetSelector?.applyPlanLocks?.();
+    window.CutupViralExport?.refreshStylePlanLocks?.();
     window.CutupApp.subscriptionHydration = 'ready';
   } catch (error) {
     console.error('Error loading subscription info:', error);

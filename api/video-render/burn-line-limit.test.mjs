@@ -40,7 +40,7 @@ test('expandCueVisualChunks splits long cues without changing first chunk start'
   assert.ok(out[0].text.split(/\s+/).length <= 5);
 });
 
-test('export ASS collapses multi-line exportDoc cues to one row', () => {
+test('export ASS keeps vertical preview lines inside safe band (max 2 rows)', () => {
   const exportDoc = {
     format: 'cutup-style-v1',
     preset: { id: 'alexHormozi' },
@@ -62,6 +62,34 @@ test('export ASS collapses multi-line exportDoc cues to one row', () => {
   const dialogue = ass.content.split('\n').find((l) => l.startsWith('Dialogue:'));
   assert.ok(dialogue);
   const textField = dialogue.split(',').slice(9).join(',');
-  const rowCount = textField.split('\\N').length;
-  assert.equal(rowCount, 1, `expected 1 row, got ${rowCount}`);
+  const rows = textField.split('\\N');
+  assert.ok(rows.length >= 1 && rows.length <= 2, `expected 1–2 rows, got ${rows.length}`);
+  const dialogueCount = ass.content.split('\n').filter((l) => l.startsWith('Dialogue:')).length;
+  assert.equal(dialogueCount, 1, 'master cue must stay one dialogue event');
+});
+
+test('export ASS shrinks MrBeast vertical overflow to fit safe band', () => {
+  const longText =
+    'MUSIC IS CHANGING THIS FUCKING VIDEO HIS PICTURE STOP STOP DOING IT';
+  const exportDoc = {
+    format: 'cutup-style-v1',
+    preset: { id: 'mrBeast' },
+    cues: [{ start: 1, end: 4, text: longText, lines: [longText] }]
+  };
+  const ass = generateAssFromExportDoc(exportDoc, {
+    captionMode: 'viral',
+    playResX: 1080,
+    playResY: 1920,
+    durationSec: 30
+  });
+  const dialogue = ass.content.split('\n').find((l) => l.startsWith('Dialogue:'));
+  assert.ok(dialogue);
+  const textField = dialogue.split(',').slice(9).join(',');
+  const rows = textField.split('\\N');
+  assert.ok(rows.length <= 2, `expected at most 2 rows, got ${rows.length}`);
+  const plain = rows.join(' ').replace(/\{\\[^}]*\}/g, '').replace(/\{[^}]*\}/g, '');
+  assert.ok(
+    plain.includes('MUSIC') && plain.includes('DOING'),
+    `expected full caption text, got: ${plain}`
+  );
 });

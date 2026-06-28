@@ -1322,11 +1322,17 @@
     }
   }
 
+  function refreshStylePlanLocks() {
+    const mount = document.getElementById('cutupViralExportMount');
+    if (mount) applyExportStylePlanLocks(mount);
+  }
+
   global.CutupViralExport = {
     mount,
     initAfterResults,
     resetForNewTranscription,
     refreshExportButton,
+    refreshStylePlanLocks,
     restoreReadyExport,
     destroy,
     canExport

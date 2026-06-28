@@ -45,7 +45,6 @@ export function resolveFittedFontSizeForLines(lines, baseFontSize, maxWidthPx, m
     .map((l) => String(l || '').trim())
     .filter(Boolean);
   if (!list.length) return resolveFittedFontSize('', baseFontSize, maxWidthPx, minFontSize);
-  const baseFs = Math.round(Number(baseFontSize) || 48);
   let widest = list[0];
   let maxUnits = 0;
   for (const line of list) {
@@ -57,6 +56,61 @@ export function resolveFittedFontSizeForLines(lines, baseFontSize, maxWidthPx, m
     }
   }
   return resolveFittedFontSize(widest, baseFontSize, maxWidthPx, minFontSize);
+}
+
+/**
+ * Break long lines into shorter rows that fit the safe band (max two rows for vertical).
+ * All words are kept — lines are rebalanced, never truncated.
+ */
+export function clampLinesToSafeBand(lines, fontSize, maxWidthPx, maxLines = 2) {
+  const cap = Math.max(1, Number(maxLines) || 2);
+  const maxW = Math.max(80, Number(maxWidthPx) || 900);
+  const fs = Math.max(1, Number(fontSize) || 48);
+  const input = (Array.isArray(lines) ? lines : [lines])
+    .map((l) => String(l || '').trim())
+    .filter(Boolean);
+  if (!input.length) return [''];
+
+  const words = input.join(' ').split(/\s+/).filter(Boolean);
+  if (!words.length) return [''];
+
+  if (words.length === 1) {
+    return [words[0]];
+  }
+
+  const charBudget = Math.max(12, Math.floor(maxW / (fs * 0.54)));
+  const chunks = splitWordsByCharBudget(words, charBudget);
+  if (chunks.length <= cap) {
+    return chunks.map((c) => c.join(' '));
+  }
+
+  // More chunks than allowed rows — merge into `cap` balanced lines without dropping words.
+  const merged = [];
+  let bucket = [];
+  let targetPerRow = Math.ceil(words.length / cap);
+  for (const word of words) {
+    bucket.push(word);
+    const nextWouldOverflow =
+      bucket.length >= targetPerRow &&
+      merged.length < cap - 1 &&
+      estimateBurnTextWidthPx(bucket.join(' '), fs) > maxW;
+    if (bucket.length >= targetPerRow || nextWouldOverflow) {
+      merged.push(bucket.join(' '));
+      bucket = [];
+      targetPerRow = Math.ceil((words.length - merged.join(' ').split(/\s+/).length) / (cap - merged.length));
+    }
+  }
+  if (bucket.length) merged.push(bucket.join(' '));
+
+  if (merged.length <= cap) return merged;
+
+  // Fallback: hard split word list evenly across cap rows.
+  const perRow = Math.ceil(words.length / cap);
+  const even = [];
+  for (let i = 0; i < words.length; i += perRow) {
+    even.push(words.slice(i, i + perRow).join(' '));
+  }
+  return even.slice(0, cap);
 }
 
 /**

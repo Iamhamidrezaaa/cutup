@@ -6,7 +6,9 @@ import {
   resolveFittedFontSize,
   resolveFittedFontSizeForLines,
   splitWordsByCharBudget,
-  cueNeedsVerticalSplit
+  cueNeedsVerticalSplit,
+  clampLinesToSafeBand,
+  maxSubtitleBandWidthPx
 } from './subtitle-width-fit.js';
 
 test('splitWordsByCharBudget breaks long English lines for vertical', () => {
@@ -78,6 +80,15 @@ test('expandCueVisualChunks does not split RTL cues on vertical overflow', () =>
   });
   assert.equal(out.length, 1);
   assert.equal(out[0].text, ar);
+});
+
+test('clampLinesToSafeBand splits wide vertical rows without dropping words', () => {
+  const maxW = maxSubtitleBandWidthPx(1080, 173, 173);
+  const source = 'MUSIC IS CHANGING THIS FUCKING VIDEO';
+  const lines = clampLinesToSafeBand([source], 85, maxW, 2);
+  assert.ok(lines.length >= 1 && lines.length <= 2);
+  const joined = lines.join(' ');
+  assert.equal(joined.split(/\s+/).length, source.split(/\s+/).length);
 });
 
 test('cueNeedsVerticalSplit detects wide lines', () => {

@@ -32,6 +32,7 @@ import {
   resolveRenderLayout,
   resolveCueLineLayout,
   buildAssBottomAnchorTag,
+  resolveVerticalBottomMarginV,
   BURN_VERTICAL_LTR_MAX_LINES
 } from './layout-engine.js';
 import {
@@ -50,7 +51,9 @@ import {
   maxSubtitleBandWidthPx,
   resolveFittedFontSize,
   resolveFittedFontSizeForLines,
-  resolveVerticalChunkCharBudget
+  resolveVerticalChunkCharBudget,
+  clampLinesToSafeBand,
+  estimateBurnTextWidthPx
 } from './subtitle-width-fit.js';
 import { isTimingForensicEnabled, logTimingForensics } from './timing-forensics.js';
 import {
@@ -845,10 +848,15 @@ export function generateAssContent(segments, presetId, dims = {}) {
     const previewLines = enrichedCue.previewLines;
     const builtLines = buildCueLines(enrichedCue, cueLineLayout, useUppercase);
     const previewLineCap = layout.isVertical && !cueRtl ? BURN_VERTICAL_LTR_MAX_LINES : 1;
+    const maxBandPreview = maxSubtitleBandWidthPx(playResX, layout.marginL, layout.marginR);
+    const previewTooWide =
+      Array.isArray(previewLines) &&
+      previewLines.some((l) => estimateBurnTextWidthPx(String(l), layout.fontSize) > maxBandPreview);
     const hasPreviewLines =
       Array.isArray(previewLines) &&
       previewLines.length >= 1 &&
-      previewLines.length <= previewLineCap;
+      previewLines.length <= previewLineCap &&
+      !previewTooWide;
     const preferBuiltOverSinglePreview =
       hasPreviewLines &&
       previewLines.length === 1 &&
@@ -864,6 +872,10 @@ export function generateAssContent(segments, presetId, dims = {}) {
     const lines = cueRtl
       ? resolveRtlAssDisplayLines(previewLines, builtLines, cueText, useUppercase)
       : resolveLtrAssDisplayLines(lineSource, cueText, layout.isVertical);
+    const maxBand = maxSubtitleBandWidthPx(playResX, layout.marginL, layout.marginR);
+    const assLines = layout.isVertical && !cueRtl
+      ? clampLinesToSafeBand(lines, layout.fontSize, maxBand, BURN_VERTICAL_LTR_MAX_LINES)
+      : lines;
     if (isDebugExportEnabled() && cueRtl && !rtlLayoutDebugLogged) {
       rtlLayoutDebugLogged = true;
       console.log('[rtl-layout-debug]', {
@@ -884,14 +896,13 @@ export function generateAssContent(segments, presetId, dims = {}) {
     if (isCaptionForensicEnabled() && segmentIndex < 10) {
       forensicExportSegmentedLines[segmentIndex] = Array.isArray(lines) ? [...lines] : [];
     }
-    const lineCount = Math.max(1, lines.length);
+    const lineCount = Math.max(1, assLines.length);
     totalLines += lineCount;
     maxLineCount = Math.max(maxLineCount, lineCount);
     if (lineCount > 1) wrappedCount += 1;
     totalChars += String(enrichedCue.text || '').length;
 
     // With {\an2\pos} bottom anchor, first \N line is the top row — match preview top→bottom order.
-    const assLines = lines;
     if (
       isDebugExportEnabled() &&
       cueRtl &&
@@ -921,13 +932,11 @@ export function generateAssContent(segments, presetId, dims = {}) {
       forensicAfterLinesToAssText.push({ id: cueKey, text: bodyResult.text });
     }
 
-    const maxBand = maxSubtitleBandWidthPx(playResX, layout.marginL, layout.marginR);
-    const minFs = layout.isVertical ? Math.max(28, Math.round(34 * (playResY / 1920))) : layout.fontSize;
-    const fittedFs = layout.isVertical
-      ? layout.fontSize
-      : resolveFittedFontSizeForLines(assLines, layout.fontSize, maxBand, minFs);
-    const fsPrefix =
-      !cueRtl && !layout.isVertical && fittedFs < layout.fontSize ? `{\\fs${fittedFs}}` : '';
+    const minFs = layout.isVertical
+      ? Math.max(24, Math.round(28 * (playResY / 1920)))
+      : Math.max(28, Math.round(34 * (playResY / 1920)));
+    const fittedFs = resolveFittedFontSizeForLines(assLines, layout.fontSize, maxBand, minFs);
+    const fsPrefix = !cueRtl && fittedFs < layout.fontSize ? `{\\fs${fittedFs}}` : '';
 
     let text;
     let styleName = 'Default';
@@ -950,7 +959,12 @@ export function generateAssContent(segments, presetId, dims = {}) {
         });
       }
     } else {
-      const bottomAnchor = buildAssBottomAnchorTag(playResX, playResY, layout.marginV);
+      const effectiveMarginV =
+        layout.isVertical && assLines.length > 1
+          ? resolveVerticalBottomMarginV(layout.marginV, assLines.length, fittedFs, playResY)
+          : layout.marginV;
+      const bottomAnchor = buildAssBottomAnchorTag(playResX, playResY, effectiveMarginV);
+      dialogueMarginV = effectiveMarginV;
       const glowPrefix = preset.glow > 0 ? `{\\blur${Number(preset.glow).toFixed(2)}}` : '';
       text = `${bottomAnchor}${glowPrefix}${fsPrefix}${bodyResult.text}`;
     }

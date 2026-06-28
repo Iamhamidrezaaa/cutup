@@ -138,7 +138,7 @@ export const PLAN_PERMISSIONS = {
     canUsePrioritySupport: false,
     hasWatermark: false,
     canWatermarkFreeExport: true,
-    canUseBasicStyles: false,
+    canUseBasicStyles: true,
     canUseAdvancedExports: true,
     canUseAgencyFeatures: false
   },
@@ -160,7 +160,7 @@ export const PLAN_PERMISSIONS = {
     canUsePrioritySupport: true,
     hasWatermark: false,
     canWatermarkFreeExport: true,
-    canUseBasicStyles: false,
+    canUseBasicStyles: true,
     canUseAdvancedExports: true,
     canUseAgencyFeatures: true
   }
