@@ -6104,8 +6104,8 @@ function shouldUseYoutubeSubtitles(youtubeResult) {
 }
 
 function flattenWordsFromSegments(segments) {
-  if (global.CutupVttParser?.flattenSegmentWords) {
-    return global.CutupVttParser.flattenSegmentWords(segments);
+  if (window.CutupVttParser?.flattenSegmentWords) {
+    return window.CutupVttParser.flattenSegmentWords(segments);
   }
   const out = [];
   for (const seg of segments || []) {
@@ -6119,8 +6119,8 @@ function flattenWordsFromSegments(segments) {
 
 // Parse YouTube VTT subtitles to segments with word-level timing when available
 async function parseYouTubeSubtitles(vttContent, language) {
-  const parsed = global.CutupVttParser?.parseVttToSegmentsWithWords
-    ? global.CutupVttParser.parseVttToSegmentsWithWords(vttContent)
+  const parsed = window.CutupVttParser?.parseVttToSegmentsWithWords
+    ? window.CutupVttParser.parseVttToSegmentsWithWords(vttContent)
     : null;
 
   let segments;
