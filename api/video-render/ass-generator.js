@@ -296,6 +296,44 @@ function resolveLtrAssDisplayLines(lines, fallbackText = '', isVertical = false)
   return flat.slice(0, BURN_VERTICAL_LTR_MAX_LINES);
 }
 
+/** Captions-style progressive word highlight via ASS karaoke \\k tags. */
+function buildKaraokeAssFromCueWords(cue, preset, { allowMultiline = false } = {}) {
+  const words = (cue?.words || []).filter(
+    (w) => w && String(w.word || w.text || '').trim() && Number.isFinite(Number(w.start))
+  );
+  if (words.length < 2) return null;
+
+  const handler = preset.emphasis?.handler || 'default';
+  const primary = preset.primaryColor || '&H00FFFFFF&';
+  const highlight =
+    handler === 'mrbeast'
+      ? preset.emphasis?.wordColors?.[0] || '&H004444FF&'
+      : preset.emphasis?.highlightColor || preset.secondaryColor || '&H0000E5FF&';
+
+  const mid = allowMultiline ? Math.ceil(words.length / 2) : words.length;
+  const parts = [];
+  for (let i = 0; i < words.length; i++) {
+    if (allowMultiline && i === mid && i > 0 && i < words.length) {
+      parts.push('\\N');
+    }
+    const w = words[i];
+    const start = Number(w.start);
+    const end = Number(w.end ?? w.start);
+    const nextStart = i + 1 < words.length ? Number(words[i + 1].start) : end;
+    const durCs = Math.max(1, Math.round(Math.max(0.04, nextStart - start) * 100));
+    const wordText = escapeAssText(String(w.word || w.text).trim());
+    if (!wordText) continue;
+    parts.push(`{\\k${durCs}}${wordText}`);
+    if (i < words.length - 1 && !(allowMultiline && i === mid - 1)) {
+      parts.push(' ');
+    }
+  }
+
+  const joined = parts.join('').trim();
+  if (!joined) return null;
+  return `{\\1c${primary}\\2c${highlight}\\kf0}${joined}`;
+}
+
 function linesToAssText(
   lines,
   preset,
@@ -315,6 +353,17 @@ function linesToAssText(
   const presetInline = Number(preset.emphasis?.maxPerLine || 0);
   const maxInline =
     mode === 'spokenWord' ? 1 : mode === 'cycleWords' ? 99 : clamp(Math.max(profileInline, presetInline), 1, 2);
+
+  const karaokeText = buildKaraokeAssFromCueWords(cue, preset, {
+    allowMultiline: allowMultiline && mode === 'spokenWord'
+  });
+  if (karaokeText && (mode === 'spokenWord' || handler === 'hormozi' || handler === 'mrbeast')) {
+    return {
+      text: rtl ? buildRtlWordRunAssText([karaokeText]) : karaokeText,
+      emphasisWords: []
+    };
+  }
+
   let emphasized = 0;
   let wordIndex = 0;
   const parts = [];
@@ -974,9 +1023,11 @@ export function generateAssContent(segments, presetId, dims = {}) {
       : layout.isVertical
         ? Math.max(32, Math.round(40 * (playResY / 1920)))
         : Math.max(28, Math.round(34 * (playResY / 1920)));
-    const fittedFs = needsWidthShrink
-      ? resolveFittedFontSizeForLines(assLines, layout.fontSize, maxBand, minFs)
-      : layout.fontSize;
+    const stableViralFs = layout.isVertical && styledShortFormBurn;
+    const fittedFs =
+      stableViralFs || !needsWidthShrink
+        ? layout.fontSize
+        : resolveFittedFontSizeForLines(assLines, layout.fontSize, maxBand, minFs);
     const fsPrefix = !cueRtl && fittedFs < layout.fontSize ? `{\\fs${fittedFs}}` : '';
 
     let text;
@@ -1000,9 +1051,15 @@ export function generateAssContent(segments, presetId, dims = {}) {
         });
       }
     } else {
+      const FIXED_VIRAL_LINES = 2;
       const effectiveMarginV =
-        layout.isVertical && assLines.length > 1
-          ? resolveVerticalBottomMarginV(layout.marginV, assLines.length, fittedFs, playResY)
+        layout.isVertical
+          ? resolveVerticalBottomMarginV(
+              layout.marginV,
+              FIXED_VIRAL_LINES,
+              stableViralFs ? layout.fontSize : fittedFs,
+              playResY
+            )
           : layout.marginV;
       const bottomAnchor = buildAssBottomAnchorTag(playResX, playResY, effectiveMarginV);
       dialogueMarginV = effectiveMarginV;

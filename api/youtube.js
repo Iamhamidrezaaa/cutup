@@ -318,10 +318,57 @@ export default async function handler(req, res) {
               console.warn('YOUTUBE: Could not download manual subtitles:', subtitleError.message);
             }
           } else if (hasAuto) {
-            subtitlesSource = 'auto';
-            console.log(
-              `YOUTUBE: Auto-generated captions available for ${subtitleLanguage} — skipping download; client will transcribe audio for accuracy`
-            );
+            console.log(`YOUTUBE: Downloading auto-generated subtitles in language: ${subtitleLanguage}`);
+            try {
+              await runYtDlpRobust({
+                ytDlpPath,
+                baseArgs: [
+                  '--no-playlist',
+                  '--write-auto-sub',
+                  '--sub-lang',
+                  subtitleLanguage,
+                  '--skip-download',
+                  '--sub-format',
+                  'vtt',
+                  '-o',
+                  `${tempDir}/youtube_${finalVideoId}_autosub`
+                ],
+                url: youtubeUrl,
+                isShorts: isShortsInput,
+                requestKey: userEmail,
+                traceId,
+                mode: 'subtitle_fetch_auto',
+                maxTotalMs: 18000
+              });
+
+              const fs = await import('fs');
+              const files = fs.readdirSync(tempDir);
+              const subtitleFile = files.find(
+                (f) =>
+                  f.includes(finalVideoId) &&
+                  (f.endsWith('.vtt') || f.endsWith('.srt')) &&
+                  (f.includes('.auto.') || f.includes('_autosub'))
+              ) || files.find((f) => f.includes(finalVideoId) && f.endsWith('.vtt'));
+
+              if (subtitleFile) {
+                const subtitlePath = join(tempDir, subtitleFile);
+                const subtitleContent = fs.readFileSync(subtitlePath, 'utf8');
+                subtitles = subtitleContent;
+                subtitlesSource = 'auto';
+
+                try {
+                  fs.unlinkSync(subtitlePath);
+                } catch (cleanupErr) {
+                  console.warn('YOUTUBE: Failed to cleanup auto subtitle file:', cleanupErr);
+                }
+
+                console.log(
+                  `YOUTUBE: Successfully downloaded auto subtitles (${subtitleContent.length} chars)`
+                );
+              }
+            } catch (subtitleError) {
+              console.warn('YOUTUBE: Could not download auto subtitles:', subtitleError.message);
+            }
           }
         }
       } catch (subtitleErr) {

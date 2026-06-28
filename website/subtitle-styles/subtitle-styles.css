@@ -162,6 +162,18 @@
   align-items: center;
 }
 
+.cutup-subtitle-stage--vertical .cutup-subtitle-stage__inner {
+  justify-content: flex-end;
+  min-height: 200px;
+}
+
+.cutup-subtitle-stage--vertical .cutup-cue-body {
+  min-height: 2.8em;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
 .cutup-cue {
   width: 100%;
   max-width: var(--cutup-max-w);

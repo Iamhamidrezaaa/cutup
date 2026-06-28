@@ -886,6 +886,10 @@ function normalizeTranscriptionResult(result) {
     });
   }
   const rawSegments = Array.isArray(result.segments) ? result.segments : [];
+  const flatWords = flattenWordsFromSegments(rawSegments);
+  if (flatWords.length) {
+    window.cutupProviderWords = flatWords;
+  }
   if (result.asrPipeline === 'v2') {
     window.cutupAsrPipeline = 'v2';
     window.cutupProviderWords = Array.isArray(result.words) ? result.words : [];
@@ -5684,17 +5688,15 @@ async function resolveTranscriptionFromExtract(extractResult, {
   transcribeProgressSec = null
 } = {}) {
   if (shouldUseYoutubeSubtitles(extractResult)) {
-    console.log('YOUTUBE: Using manual YouTube subtitles');
+    const src = extractResult.subtitlesSource === 'manual' ? 'manual' : 'auto';
+    console.log(`YOUTUBE: Using ${src} YouTube captions (VTT word timing when available)`);
     updateProgressBar(0, 0, 28, CUTUP_PIPELINE.CHECK_SUBTITLES);
     startProgressTracking(progressStartPct, progressEndPct, subtitleProgressSec, CUTUP_PIPELINE.READ_CAPTIONS, CUTUP_PIPELINE.READ_CAPTIONS);
     const transcription = await parseYouTubeSubtitles(extractResult.subtitles, extractResult.subtitleLanguage);
     stopProgressTracking(progressEndPct, 'Subtitles parsed');
-    return { transcription, usedManualSubtitles: true };
+    return { transcription, usedManualSubtitles: extractResult.subtitlesSource === 'manual' };
   }
 
-  if (extractResult.subtitles && extractResult.subtitlesSource === 'auto') {
-    console.log('YOUTUBE: Skipping auto-generated captions — transcribing audio for accuracy');
-  }
   console.log(`${platform.toUpperCase()}: Transcribing audio`);
   const estimatedTranscriptionTime = transcribeProgressSec ?? estimateTranscriptionDuration(null, durationSeconds);
   startProgressTracking(
@@ -6096,21 +6098,49 @@ function normalizeSegmentsForDisplay(segments) {
   return segments;
 }
 
-/** Always transcribe audio — same Whisper + short-form SRT rules as TikTok/Instagram/upload. */
-function shouldUseYoutubeSubtitles(_youtubeResult) {
-  return false;
+/** Prefer YouTube VTT (manual or auto) — matches on-video captions; Whisper is fallback only. */
+function shouldUseYoutubeSubtitles(youtubeResult) {
+  return Boolean(youtubeResult?.subtitles);
 }
 
-// Parse YouTube VTT subtitles to segments (like extension)
+function flattenWordsFromSegments(segments) {
+  if (global.CutupVttParser?.flattenSegmentWords) {
+    return global.CutupVttParser.flattenSegmentWords(segments);
+  }
+  const out = [];
+  for (const seg of segments || []) {
+    for (const w of seg.words || []) {
+      if (!w?.word) continue;
+      out.push({ word: w.word, start: Number(w.start), end: Number(w.end) });
+    }
+  }
+  return out.sort((a, b) => a.start - b.start);
+}
+
+// Parse YouTube VTT subtitles to segments with word-level timing when available
 async function parseYouTubeSubtitles(vttContent, language) {
-  // Convert VTT to SRT format
-  const srtContent = vttToSRT(vttContent);
-  
-  // Parse SRT to segments + collapse rolling/blink duplicates
-  const segments = normalizeSegmentsForDisplay(parseSRTToSegments(srtContent));
-  
-  // Extract full text
-  const fullText = segments.map(s => s.text).join(' ');
+  const parsed = global.CutupVttParser?.parseVttToSegmentsWithWords
+    ? global.CutupVttParser.parseVttToSegmentsWithWords(vttContent)
+    : null;
+
+  let segments;
+  let fullText;
+  if (parsed?.segments?.length) {
+    segments = normalizeSegmentsForDisplay(parsed.segments);
+    fullText = parsed.fullText || segments.map((s) => s.text).join(' ');
+    window.cutupProviderWords = flattenWordsFromSegments(segments);
+    console.log('[youtube-vtt]', {
+      segmentCount: segments.length,
+      wordCount: window.cutupProviderWords.length,
+      hasInlineTiming: parsed.hasInlineTiming,
+      hasWordTiming: parsed.hasWordTiming
+    });
+  } else {
+    const srtContent = vttToSRT(vttContent);
+    segments = normalizeSegmentsForDisplay(parseSRTToSegments(srtContent));
+    fullText = segments.map((s) => s.text).join(' ');
+    window.cutupProviderWords = flattenWordsFromSegments(segments);
+  }
   
   const audioDurationSec = segments.length
     ? Math.max(...segments.map((s) => Number(s.end) || 0))
