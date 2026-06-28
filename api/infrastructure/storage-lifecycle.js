@@ -442,6 +442,10 @@ export function runStorageLifecycleCleanup() {
     })
   );
 
+  void import('../founder-bot/storage-cleanup-notify.js')
+    .then((m) => m.notifyStorageCleanupIfNeeded(result))
+    .catch(() => {});
+
   return Promise.resolve(result);
 }
 

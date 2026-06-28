@@ -1,9 +1,10 @@
 /**
  * Founder Bot — business metrics for /users /sales /mrr /health commands.
  */
-import { statfsSync } from 'fs';
 import { getPool, isBillingDbConfigured } from '../db/pool.js';
 import { getPlanDef, resolvePlanKey } from '../plans-config.js';
+import { getDiskUsageForPath } from '../infrastructure/disk-usage.js';
+import { CUTUP_STORAGE_ROOT, getStorageLifecycleSnapshot } from '../infrastructure/storage-lifecycle.js';
 
 const PAYMENT_DATE_EXPR = 'COALESCE(p.paid_at, p.created_at)';
 const PAYMENT_AMOUNT_EXPR =
@@ -154,22 +155,26 @@ function getMemoryUsage() {
 }
 
 function getDiskUsage() {
+  return getDiskUsageForPath(process.platform === 'win32' ? process.cwd() : '/');
+}
+
+function getStorageMetrics() {
   try {
-    const path = process.platform === 'win32' ? process.cwd().slice(0, 3) : '/';
-    const s = statfsSync(path);
-    const total = Number(s.blocks) * Number(s.bsize);
-    const free = Number(s.bfree) * Number(s.bsize);
-    const used = total - free;
-    const usedPct = total > 0 ? Math.round((used / total) * 1000) / 10 : 0;
+    const snapshot = getStorageLifecycleSnapshot();
+    const disk = getDiskUsageForPath(CUTUP_STORAGE_ROOT);
+    if (!disk.ok) {
+      return { ok: false, label: disk.label || 'Unavailable', temporaryJobsCount: snapshot.jobCount || 0 };
+    }
     return {
       ok: true,
-      path,
-      usedPct,
-      freeGb: Math.round((free / 1024 / 1024 / 1024) * 10) / 10,
-      totalGb: Math.round((total / 1024 / 1024 / 1024) * 10) / 10
+      usedGb: disk.usedGb,
+      freeGb: disk.freeGb,
+      usedPct: disk.usedPct,
+      totalGb: disk.totalGb,
+      temporaryJobsCount: snapshot.jobCount || 0
     };
   } catch (err) {
-    return { ok: false, label: err?.message || 'Unavailable' };
+    return { ok: false, label: err?.message || 'Unavailable', temporaryJobsCount: 0 };
   }
 }
 
@@ -177,6 +182,7 @@ export async function getHealthMetrics() {
   const db = await checkDatabaseHealth();
   const stripe = checkStripeHealth();
   const disk = getDiskUsage();
+  const storage = getStorageMetrics();
   const memory = getMemoryUsage();
 
   return {
@@ -185,6 +191,7 @@ export async function getHealthMetrics() {
     database: db,
     stripe,
     disk,
+    storage,
     memory
   };
 }

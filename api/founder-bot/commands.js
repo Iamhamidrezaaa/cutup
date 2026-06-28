@@ -81,6 +81,19 @@ function formatHealth(m) {
   const diskLine = m.disk?.ok
     ? `${m.disk.usedPct}% used · ${m.disk.freeGb} GB free`
     : m.disk?.label || 'Unavailable';
+  const storageLines =
+    m.storage?.ok
+      ? [
+          '',
+          'Storage',
+          `Used Space: ${m.storage.usedGb} GB`,
+          `Free Space: ${m.storage.freeGb} GB`,
+          `Disk Usage: ${m.storage.usedPct}%`,
+          `Temporary Jobs: ${m.storage.temporaryJobsCount}`
+        ]
+      : m.storage?.temporaryJobsCount != null
+        ? ['', 'Storage', `Temporary Jobs: ${m.storage.temporaryJobsCount}`, m.storage.label || 'Disk unavailable']
+        : [];
   return [
     '🩺 Health',
     '',
@@ -88,6 +101,7 @@ function formatHealth(m) {
     `Database: ${status(m.database?.ok)} ${m.database?.label || '—'}`,
     `Stripe: ${status(m.stripe?.ok)} ${m.stripe?.label || '—'}`,
     `Disk: ${diskLine}`,
+    ...storageLines,
     `Memory: ${m.memory?.heapUsed || '—'} heap · ${m.memory?.rss || '—'} RSS`
   ].join('\n');
 }
