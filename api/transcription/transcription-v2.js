@@ -12,6 +12,10 @@ import {
 import { transcribeLargeFile } from '../chunk-processor.js';
 import { isFailoverEligibleError } from './errors.js';
 import { fillTimelineGapsWithRetranscription } from './asr-gap-fill.js';
+import {
+  filterProviderWords,
+  filterUnreliableAsrSegments
+} from './asr-quality-filter.js';
 import { sanitizeTranscriptSegments } from '../video-render/non-speech-tags.js';
 
 const V2_PROVIDER_ORDER = [GROQ_PROVIDER_ID, OPENAI_PROVIDER_ID];
@@ -45,18 +49,22 @@ export function isAsrPipelineV2() {
  */
 export function preserveProviderOutput(providerResult, providerId) {
   const raw = providerResult?.asrCapture?.rawResponse || providerResult || {};
-  const segments = Array.isArray(raw.segments)
+  const rawSegments = Array.isArray(raw.segments)
     ? JSON.parse(JSON.stringify(raw.segments))
     : Array.isArray(providerResult?.segments)
       ? JSON.parse(JSON.stringify(providerResult.segments))
       : [];
 
+  const qualityFiltered = filterUnreliableAsrSegments(rawSegments);
+  const segments = qualityFiltered.segments;
+
   let words = [];
   if (Array.isArray(raw.words) && raw.words.length) {
     words = JSON.parse(JSON.stringify(raw.words));
   } else {
-    words = collectProviderWords([], segments);
+    words = collectProviderWords([], rawSegments);
   }
+  words = filterProviderWords(words, rawSegments);
 
   const timeline = resolveV2SegmentTimeline(segments, words);
 
@@ -69,7 +77,8 @@ export function preserveProviderOutput(providerResult, providerId) {
     model: V2_MODELS[providerId] || null,
     durationSeconds: providerResult?.durationSeconds ?? null,
     segmentSource: timeline.segmentSource,
-    wordGapFill: timeline.wordGapFill
+    wordGapFill: timeline.wordGapFill,
+    asrQualityFilter: qualityFiltered.stats
   };
 }
 
@@ -203,7 +212,8 @@ export function groupProviderWordsByPause(words, pauseSec = WORD_GROUP_PAUSE_SEC
       end: Number(bucket[bucket.length - 1].end),
       text,
       words: bucket.map((w) => ({ ...w })),
-      fromProviderWords: true
+      fromProviderWords: true,
+      fromWordGapFill: true
     });
     bucket = [];
   }
@@ -335,7 +345,8 @@ export async function transcribeAsrV2(ctx) {
         { fetch, audioBuffer, mimeType, extension, languageHint, traceId },
         preserved.segments
       );
-      const finalSegments = sanitizeTranscriptSegments(gapFilled.segments);
+      const postGapQuality = filterUnreliableAsrSegments(gapFilled.segments, { strict: true });
+      const finalSegments = sanitizeTranscriptSegments(postGapQuality.segments);
       console.log('[asr-v2]', {
         traceId,
         phase: 'provider_ok',
@@ -344,7 +355,11 @@ export async function transcribeAsrV2(ctx) {
         wordCount: preserved.words.length,
         segmentSource: preserved.segmentSource,
         wordGapFill: preserved.wordGapFill,
-        gapRetranscribe: gapFilled.gapRetranscribe
+        gapRetranscribe: gapFilled.gapRetranscribe,
+        asrQualityFilter: {
+          provider: preserved.asrQualityFilter || null,
+          postGap: postGapQuality.stats
+        }
       });
       const text = finalSegments.map((s) => String(s.text || '').trim()).filter(Boolean).join(' ');
       return {
@@ -354,6 +369,10 @@ export async function transcribeAsrV2(ctx) {
         success: true,
         asrPipeline: 'v2',
         gapRetranscribe: gapFilled.gapRetranscribe,
+        asrQualityFilter: {
+          provider: preserved.asrQualityFilter || null,
+          postGap: postGapQuality.stats
+        },
         cleanSrt: segmentsToCleanSrt(finalSegments)
       };
     } catch (err) {

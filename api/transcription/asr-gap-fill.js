@@ -9,6 +9,7 @@ import { tmpdir } from 'os';
 import { transcribeGroq, GROQ_PROVIDER_ID } from './providers/groq-provider.js';
 import { transcribeOpenAi, OPENAI_PROVIDER_ID } from './providers/openai-provider.js';
 import { isFailoverEligibleError } from './errors.js';
+import { isUnreliableAsrSegment } from './asr-quality-filter.js';
 
 const GAP_FILL_MIN_SEC = Number(process.env.ASR_V2_GAP_MIN_SEC || 2.5);
 /** Gaps longer than ~12s are usually music/outro — re-ASR often hallucinates. */
@@ -157,7 +158,11 @@ export async function fillTimelineGapsWithRetranscription(ctx, segments, opts = 
           : [];
 
       const offsetSegs = offsetGapSegments(rawSegs, gap.start).filter(
-        (s) => s.text && String(s.text).trim() && s.end > s.start
+        (s) =>
+          s.text &&
+          String(s.text).trim() &&
+          s.end > s.start &&
+          !isUnreliableAsrSegment(s, { strict: true })
       );
 
       if (offsetSegs.length) {
