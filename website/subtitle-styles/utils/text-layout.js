@@ -4,8 +4,8 @@
 (function (global) {
   'use strict';
 
-  const VERTICAL_MAX_WORDS = 5;
-  const VERTICAL_MAX_CHARS = 18;
+  const VERTICAL_MAX_WORDS = 7;
+  const VERTICAL_MAX_CHARS = 22;
   const VERTICAL_MIN_WORDS = 2;
 
   function words(text) {
@@ -39,7 +39,7 @@
     if (aspect !== 'vertical') return out;
     out.mode = 'stack';
     out.wordsPerLineMin = 2;
-    out.wordsPerLineMax = 3;
+    out.wordsPerLineMax = 4;
     out.maxCharsPerLine = VERTICAL_MAX_CHARS;
     out.maxLines = 2;
     out.maxWidth = '78%';

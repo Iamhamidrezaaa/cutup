@@ -186,14 +186,17 @@ export function buildMasterCleanSrtFromSegments(rawSegments, opts = {}) {
   });
   const duration = clipDurationFromSegments(prepared);
   const shortClip = duration > 0 && duration <= SHORT_CLIP_MAX_SEC;
-  const segmented = shortClip
-    ? expandPreparedSegmentsBySentences(prepared)
-    : shortForm
-      ? segmentPreparedSegmentsToMasterCues(prepared, {
+  const segmented = shortForm
+    ? segmentPreparedSegmentsToMasterCues(
+        shortClip ? expandPreparedSegmentsBySentences(prepared) : prepared,
+        {
           maxWords: opts.maxWords ?? SHORT_FORM_MAX_WORDS,
           maxChars: opts.maxChars ?? SHORT_FORM_MAX_CHARS,
           minWords: opts.minWords
-        })
+        }
+      )
+    : shortClip
+      ? expandPreparedSegmentsBySentences(prepared)
       : prepared.map((s) => ({
           start: Number(s.start),
           end: Number(s.end),

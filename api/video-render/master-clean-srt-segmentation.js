@@ -10,9 +10,11 @@ const TOKEN_RE = /[\p{L}\p{M}\p{N}]+(?:[''\-][\p{L}\p{M}\p{N}]+)*/gu;
 
 export const SHORT_FORM_MAX_WORDS = 5;
 export const SHORT_FORM_MAX_CHARS = 42;
-/** Vertical 9:16 — Captions-app style: short beats, min 2 words when possible. */
-export const VERTICAL_SHORT_FORM_MAX_WORDS = 5;
-export const VERTICAL_SHORT_FORM_MAX_CHARS = 18;
+/** Vertical 9:16 — short beats (6–8 words), two lines max in burn. */
+export const VIRAL_ON_SCREEN_MAX_WORDS = 7;
+export const VIRAL_ON_SCREEN_MAX_WORDS_HARD = 8;
+export const VERTICAL_SHORT_FORM_MAX_WORDS = VIRAL_ON_SCREEN_MAX_WORDS;
+export const VERTICAL_SHORT_FORM_MAX_CHARS = 22;
 export const VERTICAL_SHORT_FORM_MIN_WORDS = 2;
 export const PAUSE_GAP_SEC = 0.28;
 

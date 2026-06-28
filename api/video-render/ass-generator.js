@@ -276,10 +276,10 @@ function applyVerticalVisualChunking(visibleCues, layout, playResX) {
   return clipOverlappingCueRenderEnds(
     expandCueVisualChunks(visibleCues, {
       isVertical: true,
-      maxWordsPerChunk: 5,
-      minWordsToSplit: 5,
-      minChunkSec: 0.34,
-      minDurToSplitSec: 0.42,
+      maxWordsPerChunk: 7,
+      minWordsToSplit: 6,
+      minChunkSec: 0.26,
+      minDurToSplitSec: 0.35,
       maxCharsPerChunk: verticalChunkChars,
       forceSplitOverflow: true
     })
@@ -505,9 +505,39 @@ export function generateAssContent(segments, presetId, dims = {}) {
   const inputLocked = finalOnlySegments.length > 0 && finalOnlySegments.every((s) => s?.locked === true);
   const masterExactInput = inputLocked || strictCleanSrtTimings || burnFromPreviewCues;
 
+  const renderStyleMode =
+    dims.renderHints?.styleMode === 'safe' ||
+    dims.renderHints?.styleMode === 'aggressive' ||
+    dims.renderHints?.styleMode === 'cinematic'
+      ? dims.renderHints.styleMode
+      : 'cinematic';
+  const styledShortFormBurn =
+    captionModeNorm !== 'accurate' &&
+    requestedIsVertical &&
+    (captionModeNorm === 'viral' ||
+      renderStyleMode === 'cinematic' ||
+      renderStyleMode === 'aggressive');
+
   let masterCues;
   if (inputLocked) {
-    masterCues = normalizeLockedMasterCues(finalOnlySegments);
+    const countWords = (text) =>
+      String(text || '')
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean).length;
+    const needsResegment = finalOnlySegments.some(
+      (s) => countWords(s.text) > VERTICAL_SHORT_FORM_MAX_WORDS + 1
+    );
+    if (styledShortFormBurn && needsResegment) {
+      masterCues = buildMasterCleanSrtFromSegments(finalOnlySegments, {
+        shortForm: true,
+        maxWords: VERTICAL_SHORT_FORM_MAX_WORDS,
+        maxChars: VERTICAL_SHORT_FORM_MAX_CHARS,
+        minWords: VERTICAL_SHORT_FORM_MIN_WORDS
+      });
+    } else {
+      masterCues = normalizeLockedMasterCues(finalOnlySegments);
+    }
   } else if (masterExactInput) {
     masterCues = lockMasterCues(
       buildCleanSrtExactSubtitles(finalOnlySegments).map((c) => ({
@@ -932,10 +962,20 @@ export function generateAssContent(segments, presetId, dims = {}) {
       forensicAfterLinesToAssText.push({ id: cueKey, text: bodyResult.text });
     }
 
-    const minFs = layout.isVertical
-      ? Math.max(24, Math.round(28 * (playResY / 1920)))
-      : Math.max(28, Math.round(34 * (playResY / 1920)));
-    const fittedFs = resolveFittedFontSizeForLines(assLines, layout.fontSize, maxBand, minFs);
+    const onScreenWords = assLines.join(' ').split(/\s+/).filter(Boolean).length;
+    const shortViralCue =
+      layout.isVertical && !cueRtl && onScreenWords <= VERTICAL_SHORT_FORM_MAX_WORDS + 1;
+    const needsWidthShrink = assLines.some(
+      (l) => estimateBurnTextWidthPx(String(l), layout.fontSize) > maxBand
+    );
+    const minFs = shortViralCue
+      ? Math.max(Math.round(layout.fontSize * 0.85), Math.round(52 * (playResY / 1920)))
+      : layout.isVertical
+        ? Math.max(32, Math.round(40 * (playResY / 1920)))
+        : Math.max(28, Math.round(34 * (playResY / 1920)));
+    const fittedFs = needsWidthShrink
+      ? resolveFittedFontSizeForLines(assLines, layout.fontSize, maxBand, minFs)
+      : layout.fontSize;
     const fsPrefix = !cueRtl && fittedFs < layout.fontSize ? `{\\fs${fittedFs}}` : '';
 
     let text;

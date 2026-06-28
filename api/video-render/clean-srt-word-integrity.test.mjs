@@ -77,7 +77,7 @@ test('contractions (I\'m) preserve word integrity across master cues', () => {
   assert.equal(report.ok, true, report.missingWords?.join(', '));
 });
 
-test('short clip uses one cue per sentence', () => {
+test('short clip uses short-form beats (max ~7 words per cue)', () => {
   const postProcessed = [
     {
       start: 0,
@@ -86,13 +86,18 @@ test('short clip uses one cue per sentence', () => {
     }
   ];
   const locked = buildMasterCleanSrtFromSegments(postProcessed, { shortForm: true });
-  assert.equal(locked.length, 3);
-  assert.match(locked[0].text, /I'm single!/i);
-  assert.match(locked[1].text, /high maintenance/i);
-  assert.match(locked[2].text, /love you so much/i);
+  assert.ok(locked.length >= 3);
+  for (const cue of locked) {
+    const wc = cue.text.split(/\s+/).filter(Boolean).length;
+    assert.ok(wc <= 7, `cue too long: ${cue.text}`);
+  }
+  const joined = locked.map((c) => c.text).join(' ');
+  assert.match(joined, /I'm single!/i);
+  assert.match(joined, /high maintenance/i);
+  assert.match(joined, /love you so much/i);
 });
 
-test('vertical short-form caps at three words and twelve chars per cue', () => {
+test('vertical short-form caps at seven words per cue', () => {
   const postProcessed = [
     {
       start: 0,

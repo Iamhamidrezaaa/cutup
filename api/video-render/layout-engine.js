@@ -155,8 +155,8 @@ export function resolveRenderLayout(dims, cues, preset) {
   if (isVertical) {
     layout.mode = 'stack';
     layout.wordsPerLineMin = 2;
-    layout.wordsPerLineMax = 3;
-    layout.maxCharsPerLine = 18;
+    layout.wordsPerLineMax = 4;
+    layout.maxCharsPerLine = 22;
     layout.rtlMaxCharsPerLine = 24;
     layout.maxLines = BURN_VERTICAL_LTR_MAX_LINES;
   } else if (isHorizontal) {

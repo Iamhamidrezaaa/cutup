@@ -1463,17 +1463,41 @@ export function applyCleanSrtFirstCueLeadIn(cues, opts = {}) {
 /**
  * Split long SRT cues into shorter on-screen chunks (render times only; source SRT unchanged).
  */
+function wordTimelineFromCue(cue, words) {
+  const segStart = Number(cue.renderStart ?? cue.sourceStart ?? cue.start);
+  const segEnd = Number(cue.renderEnd ?? cue.sourceEnd ?? cue.end);
+  const raw = Array.isArray(cue.words) ? cue.words : [];
+  const timed = raw.filter((w) => w && Number.isFinite(Number(w.start)) && Number.isFinite(Number(w.end)));
+  if (timed.length >= words.length && words.length) {
+    return words.map((word, i) => {
+      const tw = timed[i] || timed[timed.length - 1];
+      return {
+        word,
+        start: Number(tw.start),
+        end: Number(tw.end)
+      };
+    });
+  }
+  const dur = Math.max(0.08 * words.length, segEnd - segStart);
+  const per = dur / Math.max(1, words.length);
+  return words.map((word, i) => {
+    const start = segStart + i * per;
+    const end = Math.min(segEnd, Math.max(start + 0.05, segStart + (i + 1) * per));
+    return { word, start, end };
+  });
+}
+
 export function expandCueVisualChunks(cues, opts = {}) {
   const isVertical = Boolean(opts.isVertical);
-  const maxWordsPerChunk = Math.max(2, Number(opts.maxWordsPerChunk ?? (isVertical ? 4 : 5)));
+  const maxWordsPerChunk = Math.max(2, Number(opts.maxWordsPerChunk ?? (isVertical ? 7 : 5)));
   const minWordsToSplit = Math.max(
     3,
-    Number(opts.minWordsToSplit ?? (isVertical ? 4 : maxWordsPerChunk + 1))
+    Number(opts.minWordsToSplit ?? (isVertical ? 6 : maxWordsPerChunk + 1))
   );
-  const minChunkSec = Math.max(0.28, Number(opts.minChunkSec ?? 0.38));
+  const minChunkSec = Math.max(0.22, Number(opts.minChunkSec ?? (isVertical ? 0.26 : 0.38)));
   const minDurToSplitSec = Math.max(
-    isVertical ? 0.35 : 2,
-    Number(opts.minDurToSplitSec ?? (isVertical ? 0.5 : 2.2))
+    isVertical ? 0.3 : 2,
+    Number(opts.minDurToSplitSec ?? (isVertical ? 0.35 : 2.2))
   );
   const gapSec = Math.max(0.01, Number(opts.gapSec ?? 0.02));
   const maxCharsPerChunk = Math.max(0, Number(opts.maxCharsPerChunk ?? 0));
@@ -1517,18 +1541,29 @@ export function expandCueVisualChunks(cues, opts = {}) {
     }
 
     const sliceDur = dur / wordChunks.length;
+    const timeline = wordTimelineFromCue(cue, w);
+    let wordOffset = 0;
     for (let i = 0; i < wordChunks.length; i++) {
       const chunkWords = wordChunks[i];
       if (!chunkWords?.length) continue;
-      const chunkStart = start + i * sliceDur;
-      const chunkEnd = i === wordChunks.length - 1 ? end : start + (i + 1) * sliceDur - gapSec;
+      const tokenStart = wordOffset;
+      const tokenEnd = wordOffset + chunkWords.length - 1;
+      wordOffset += chunkWords.length;
+      const slice = timeline.slice(tokenStart, tokenEnd + 1);
+      let chunkStart = start + i * sliceDur;
+      let chunkEnd = i === wordChunks.length - 1 ? end : start + (i + 1) * sliceDur - gapSec;
+      if (slice.length) {
+        chunkStart = Number(slice[0].start);
+        chunkEnd = Number(slice[slice.length - 1].end);
+      }
       out.push({
         ...cue,
         id: `${cue.id || 'cue'}-v${i}`,
         text: chunkWords.join(' '),
         renderStart: Number(chunkStart.toFixed(3)),
         renderEnd: Math.max(chunkStart + minChunkSec, Number(chunkEnd.toFixed(3))),
-        previewLines: null
+        previewLines: null,
+        words: slice.map((tw) => ({ word: tw.word, start: tw.start, end: tw.end }))
       });
     }
   }
@@ -1762,9 +1797,9 @@ export function buildPhraseBurnSubtitles(rawSegments) {
 export function buildCanonicalSubtitles(rawSegments) {
   const raw = Array.isArray(rawSegments) ? rawSegments : [];
   const composed = composeRhythmBlocks(raw, {
-    maxWordsPerBlock: 5,
-    minDurationSec: 0.7,
-    maxDurationSec: 2.6,
+    maxWordsPerBlock: 7,
+    minDurationSec: 0.45,
+    maxDurationSec: 2.1,
     overlapGuardSec: SYNC_OVERLAP_GAP_SEC,
     lowConfidenceThreshold: Number(process.env.ASR_LOW_CONF_THRESHOLD || 0.62),
     enableModelVoting: String(process.env.ASR_ENABLE_MODEL_VOTING || '0') === '1',
