@@ -4742,6 +4742,43 @@ function blobToDataUrl(blob) {
   });
 }
 
+async function cacheSocialVideoForExport(url, platform, sessionId) {
+  if (!sessionId || !url) return null;
+  const requestId = makeRequestId();
+  const traceId = makeTraceId();
+  try {
+    const response = await fetchWithRetry(`${API_BASE_URL}/api/youtube-download`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': sessionId,
+        'X-Request-Id': requestId,
+        'X-Trace-Id': traceId
+      },
+      body: JSON.stringify({
+        url,
+        type: 'video',
+        quality: 'best',
+        platform,
+        purpose: 'transcription'
+      }),
+      signal: AbortSignal.timeout(getPipelineFetchTimeoutMs('extract'))
+    });
+    if (!response.ok) {
+      console.warn('[social-video-cache] download failed', { platform, status: response.status });
+      return null;
+    }
+    const blob = await response.blob();
+    if (!blob?.size) return null;
+    const ext = String(blob.type || '').includes('webm') ? 'webm' : 'mp4';
+    const mime = blob.type || (ext === 'webm' ? 'video/webm' : 'video/mp4');
+    return new File([blob], `export-source-${platform}.${ext}`, { type: mime });
+  } catch (err) {
+    console.warn('[social-video-cache]', err?.message || err);
+    return null;
+  }
+}
+
 async function extractSocialAudio(url, platform, sessionId) {
   const requestId = makeRequestId();
   const traceId = makeTraceId();
@@ -4782,6 +4819,8 @@ async function extractSocialAudio(url, platform, sessionId) {
     throw e;
   }
 
+  const videoCachePromise = cacheSocialVideoForExport(finalUrl, platform, sessionId);
+
   const response = await fetchWithRetry(`${API_BASE_URL}/api/youtube-download`, {
     method: 'POST',
     headers: {
@@ -4794,7 +4833,8 @@ async function extractSocialAudio(url, platform, sessionId) {
       url: finalUrl,
       type: 'audio',
       quality: 'best',
-      platform
+      platform,
+      purpose: 'transcription'
     }),
     signal: AbortSignal.timeout(getPipelineFetchTimeoutMs('extract'))
   });
@@ -4815,6 +4855,12 @@ async function extractSocialAudio(url, platform, sessionId) {
   }
 
   const audioUrl = await blobToDataUrl(audioBlob);
+  const videoFile = await videoCachePromise;
+  if (videoFile) {
+    window.cutupLastSourceVideoFile = videoFile;
+    window.cutupUploadHasVideo = true;
+    console.log('[social-video-cache] ready for MP4 export', { platform, bytes: videoFile.size });
+  }
   return {
     audioUrl,
     language: null,

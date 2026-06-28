@@ -1035,6 +1035,12 @@
     if (/timed out|timeout|ffmpeg|stalled/i.test(text)) {
       return 'HQ cinematic rendering takes longer for premium exports. Please try Fast preview or a shorter clip.';
     }
+    if (/Authentication required|SOCIAL_LOGIN|INSTAGRAM/i.test(text)) {
+      return 'Could not download this Reel for export. Wait a minute and try Export again, or paste the link once more.';
+    }
+    if (/LIMIT_EXCEEDED|download limit/i.test(text)) {
+      return text;
+    }
     return text || 'Export failed. Please try again.';
   }
 
