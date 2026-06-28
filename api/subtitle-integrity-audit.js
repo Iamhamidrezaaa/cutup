@@ -4,7 +4,10 @@
  */
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { tmpdir } from 'os';
+import {
+  createDiagnosticsStorage,
+  resolveSubtitleIntegrityStorageDir
+} from './infrastructure/storage-lifecycle.js';
 import {
   buildMasterCleanSrtFromSegments,
   validateMasterVsAss
@@ -264,21 +267,23 @@ export function buildSubtitleIntegrityReport(opts = {}) {
 }
 
 export function resolveSubtitleIntegrityDir(traceId) {
-  const id = String(traceId || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 120);
-  return join(tmpdir(), 'cutup-subtitle-integrity', id);
+  return resolveSubtitleIntegrityStorageDir(traceId);
 }
 
 export function saveSubtitleIntegrityArtifacts(opts = {}) {
   const {
     traceId,
-    jobDir = null,
+    jobId = null,
     report,
     stages = {},
     wordMapping = null
   } = opts;
 
-  const dirs = [resolveSubtitleIntegrityDir(traceId)];
-  if (jobDir) dirs.push(jobDir);
+  const dirs = [
+    createDiagnosticsStorage('subtitle-integrity', traceId, {
+      jobId: jobId || null
+    })
+  ];
 
   const written = [];
   for (const dir of dirs) {
@@ -317,7 +322,7 @@ export function saveSubtitleIntegrityArtifacts(opts = {}) {
     JSON.stringify({
       event: 'subtitle_integrity_report_saved',
       traceId,
-      jobDir: jobDir || null,
+      jobId: jobId || null,
       rawSegments: report?.rawSegments,
       cleanedSegments: report?.cleanedSegments,
       exportedSegments: report?.exportedSegments,
@@ -432,7 +437,6 @@ export function captureExportSubtitleIntegrity(opts = {}) {
   const {
     traceId,
     jobId,
-    jobDir,
     rawProvider = [],
     postProcessed = [],
     cleanSrtSegments = [],
@@ -477,7 +481,7 @@ export function captureExportSubtitleIntegrity(opts = {}) {
 
   return saveSubtitleIntegrityArtifacts({
     traceId,
-    jobDir,
+    jobId,
     report,
     wordMapping,
     stages: {

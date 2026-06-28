@@ -21,12 +21,17 @@ import {
 } from './gpu-render-client.js';
 import { registerGpuRenderArtifacts, purgeExpiredGpuArtifacts } from './gpu-render-artifacts.js';
 import {
-  createJobDir,
   downloadVideoFromUrl,
   saveUploadedVideo,
   stageLocalPath
 } from './source-resolver.js';
-import { cleanupJobArtifacts } from './temp-cleanup.js';
+import {
+  createRenderJobStorage,
+  markRenderJobStorageCompleted,
+  markRenderJobStorageFailed,
+  syncRenderJobStorageStatus
+} from '../infrastructure/storage-lifecycle.js';
+import { getUserIdByEmail } from '../billing-repository.js';
 import { resolvePresetIdOrThrow } from './style-presets.js';
 import {
   createRenderTimelineTrace,
@@ -284,6 +289,11 @@ function setStage(job, stage, extra = {}) {
   if (extra.progress != null) bumpProgress(job, extra.progress);
   job.updatedAt = Date.now();
   Object.assign(job, extra);
+  try {
+    syncRenderJobStorageStatus(job);
+  } catch {
+    /* storage metadata is best-effort */
+  }
   syncProjectExportRecord(job);
   notifyJobChanged(job);
 }
@@ -476,7 +486,20 @@ async function runJob(job) {
   const ffmpegOk = await checkFfmpegAvailable();
   if (!ffmpegOk) throw new Error('FFmpeg is not available on this server');
 
-  job.jobDir = createJobDir();
+  let userId = null;
+  try {
+    userId = job.userEmail ? await getUserIdByEmail(job.userEmail) : null;
+  } catch {
+    userId = null;
+  }
+  job.userId = userId ? String(userId) : null;
+  job.storageDirs = createRenderJobStorage({
+    jobId: job.id,
+    userId: job.userId,
+    userEmail: job.userEmail || null
+  });
+  job.jobDir = job.storageDirs.root;
+  const paths = job.storageDirs;
   let videoPath = null;
   const queueStartedAt = Date.now();
   const memStart = memorySnapshotMb();
@@ -509,7 +532,7 @@ async function runJob(job) {
     let rawVideoPath = null;
     if (job.localVideoPath) {
         beginExportStage(job.id, 'normalize_staged_copy');
-        videoPath = stageLocalPath(job.localVideoPath, job.jobDir);
+        videoPath = stageLocalPath(job.localVideoPath, paths.input);
         endExportStage(job.id, 'normalize_staged_copy');
         rawVideoPath = videoPath;
         traceRenderTimeline(timelineTrace, 'source_local_staged', { path: videoPath });
@@ -518,7 +541,7 @@ async function runJob(job) {
         videoPath = saveUploadedVideo({
           buffer: job.uploadBuffer,
           filename: job.uploadFilename || 'upload.mp4',
-          jobDir: job.jobDir
+          jobDir: paths.input
         });
         endExportStage(job.id, 'normalize_staged_copy');
         rawVideoPath = videoPath;
@@ -549,7 +572,7 @@ async function runJob(job) {
 
     if (job.cancelled) return;
 
-    const stagedVideo = join(job.jobDir, 'source.mp4');
+    const stagedVideo = join(paths.input, 'source.mp4');
     const beforeStageProbe = await recordFileStage(timelineTrace, videoPath, 'pre_copy_to_job_source');
     if (videoPath !== stagedVideo) {
       beginExportStage(job.id, 'normalize_staged_copy');
@@ -632,7 +655,7 @@ async function runJob(job) {
       forensicCtx: {
         jobId: job.id,
         traceId: job.traceId || null,
-        jobDir: job.jobDir,
+        jobDir: paths.logs,
         previewRows: job.captionForensics?.previewRows || [],
         transcriptSegments: job.captionForensics?.transcriptSegments || [],
         translatedSegments: job.captionForensics?.translatedSegments || [],
@@ -740,7 +763,7 @@ async function runJob(job) {
     assTiming.end = Date.now();
 
     setSubStage(job, 'Building cinematic caption layer…', 50);
-    job.assPath = join(job.jobDir, 'subtitles.ass');
+    job.assPath = join(paths.subtitles, 'subtitles.ass');
     const assContent = String(assResult.content || '').replace(/\r\n/g, '\n');
     await fsp.writeFile(job.assPath, assContent, 'utf8');
     const verifyContent = await fsp.readFile(job.assPath, 'utf8');
@@ -774,7 +797,7 @@ async function runJob(job) {
     job.subtitleIntegrity = captureExportSubtitleIntegrity({
       traceId: job.traceId || job.id,
       jobId: job.id,
-      jobDir: job.jobDir,
+      jobDir: null,
       rawProvider: job.captionForensics?.transcriptSegments || [],
       postProcessed: job.captionForensics?.transcriptSegments || [],
       cleanSrtSegments: exportCleanSrtSegments,
@@ -807,7 +830,7 @@ async function runJob(job) {
         positionMode: assOpts.positionMode,
         jobId: job.id,
         traceId: job.traceId || null,
-        jobDir: job.jobDir
+        jobDir: paths.logs
       });
         logPhraseTimingForensics({
           rawSegments: job.segments,
@@ -822,7 +845,7 @@ async function runJob(job) {
                 : 0.74,
           jobId: job.id,
           traceId: job.traceId || null,
-          jobDir: job.jobDir
+          jobDir: paths.logs
         });
         logWhisperStarttimeForensics({
           exportSegments: job.segments,
@@ -831,7 +854,7 @@ async function runJob(job) {
           segmentTimingLineage: job.captionForensics?.segmentTimingLineage,
           jobId: job.id,
           traceId: job.traceId || null,
-          jobDir: job.jobDir
+          jobDir: paths.logs
         });
         logRtlPhraseOrderForensics({
           exportSegments: job.segments,
@@ -842,7 +865,7 @@ async function runJob(job) {
           captionMode: job.captionMode || 'viral',
           jobId: job.id,
           traceId: job.traceId || null,
-          jobDir: job.jobDir
+          jobDir: paths.logs
         });
         logCaptionPositionForensics({
           segments: job.segments,
@@ -861,7 +884,7 @@ async function runJob(job) {
                 : 0.74,
           jobId: job.id,
           traceId: job.traceId || null,
-          jobDir: job.jobDir
+          jobDir: paths.logs
         });
         logLineLayoutForensics({
           segments: job.segments,
@@ -880,7 +903,7 @@ async function runJob(job) {
                 : 0.74,
           jobId: job.id,
           traceId: job.traceId || null,
-          jobDir: job.jobDir
+          jobDir: paths.logs
         });
         await logFirstCaptionForensics({
           segments: job.segments,
@@ -899,12 +922,12 @@ async function runJob(job) {
                 : 0.74,
           jobId: job.id,
           traceId: job.traceId || null,
-          jobDir: job.jobDir
+          jobDir: paths.logs
         });
       }
 
     if (isDebugExportEnabled()) {
-      const assDebugPath = join(job.jobDir, 'subtitles.final.ass');
+      const assDebugPath = join(paths.subtitles, 'subtitles.final.ass');
       await fsp.writeFile(assDebugPath, verifyContent, 'utf8');
       job.assDebugPath = assDebugPath;
       job.assDebug = extractAssDebugInfo(verifyContent);
@@ -933,7 +956,7 @@ async function runJob(job) {
       progress: 52
     });
 
-    const outputPath = join(job.jobDir, 'export.mp4');
+    const outputPath = join(paths.output, 'export.mp4');
     job.ffmpegAbort = new AbortController();
     ffmpegStartedAt.at = Date.now();
 
@@ -1021,7 +1044,7 @@ async function runJob(job) {
         }
         job.gpuRenderMs = gpuResult.renderMs;
         job.burnAssPath = resolve(job.assPath);
-        job.exportAssPath = join(job.jobDir, 'export.ass');
+        job.exportAssPath = join(paths.subtitles, 'export.ass');
         copyFileSync(job.assPath, job.exportAssPath);
         console.log('[gpu-render] complete', {
           jobId: job.id,
@@ -1032,7 +1055,7 @@ async function runJob(job) {
         setSubStage(job, 'Encoding with synced subtitles…', 51);
         const phase = await executeBurnExportPhase({
           jobId: job.id,
-          jobDir: job.jobDir,
+          jobDir: paths.root,
           videoPath,
           assPath: job.assPath,
           outputPath,
@@ -1157,7 +1180,7 @@ async function runJob(job) {
         : null
     };
     job.diagnostics = diagnostics;
-    job.diagnosticsPath = join(job.jobDir, 'render-diagnostics.json');
+    job.diagnosticsPath = join(paths.logs, 'render-diagnostics.json');
     writeFileSync(job.diagnosticsPath, JSON.stringify(diagnostics, null, 2), 'utf8');
     recordRenderStat({
       quality: job.quality,
@@ -1172,6 +1195,11 @@ async function runJob(job) {
       etaSec: 0
     });
     endExportStage(job.id, 'upload_final_mp4');
+    try {
+      markRenderJobStorageCompleted(job.jobDir, { userId: job.userId });
+    } catch {
+      /* best-effort storage metadata */
+    }
 
   } catch (err) {
     job.error = toSafeRenderError(err);
@@ -1190,9 +1218,13 @@ async function runJob(job) {
           createdAt: new Date(job.createdAt).toISOString(),
           failedAt: new Date().toISOString()
         };
-        job.diagnosticsPath = join(job.jobDir, 'render-diagnostics.json');
+        job.diagnosticsPath = join(job.storageDirs?.logs || job.jobDir, 'render-diagnostics.json');
         writeFileSync(job.diagnosticsPath, JSON.stringify(failureDiagnostics, null, 2), 'utf8');
         job.diagnostics = failureDiagnostics;
+        markRenderJobStorageFailed(job.jobDir, {
+          error: err?.message || String(err),
+          hasDiagnostics: true
+        });
       }
     } catch {
       /* noop diagnostics failure */
@@ -1212,7 +1244,6 @@ export function purgeStaleJobs() {
   const now = Date.now();
   for (const [id, job] of jobs) {
     if (now - job.updatedAt < JOB_TTL_MS) continue;
-    cleanupJobArtifacts(job);
     jobs.delete(id);
   }
 }

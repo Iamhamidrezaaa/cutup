@@ -1,11 +1,13 @@
 /**
  * Temp directory cleanup for render jobs.
+ * Disk deletion is owned by storage-lifecycle; this module handles guarded purge requests.
  */
-import { rmSync, existsSync, unlinkSync, readdirSync, lstatSync } from 'fs';
-import { join, basename } from 'path';
-import { tmpdir } from 'os';
-
-const POST_DOWNLOAD_CLEANUP_MS = Number(process.env.VIDEO_RENDER_POST_DOWNLOAD_CLEANUP_MS || 10 * 60 * 1000);
+import { rmSync, existsSync, unlinkSync } from 'fs';
+import {
+  canDeleteRenderJobStorage,
+  readJobMetadata,
+  markRenderJobStorageDeleted
+} from '../infrastructure/storage-lifecycle.js';
 
 export function safeRmDir(dir) {
   if (!dir || !existsSync(dir)) return;
@@ -26,15 +28,7 @@ export function safeUnlink(filePath) {
 }
 
 export function resolveCleanupRoots() {
-  const cwd = process.cwd();
-  const raw = String(process.env.VIDEO_RENDER_CLEANUP_PATHS || 'exports,jobs,render-artifacts').trim();
-  const roots = raw
-    .split(',')
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .map((part) => (part.startsWith('/') || /^[A-Za-z]:[\\/]/.test(part) ? part : join(cwd, part)));
-  roots.unshift(tmpdir());
-  return [...new Set(roots)];
+  return [];
 }
 
 export function isJobProcessingActive(job) {
@@ -46,57 +40,44 @@ export function isJobProcessingActive(job) {
     'subtitle_layout',
     'rendering',
     'muxing',
-    'finalizing'
+    'finalizing',
+    'generating_captions'
   ]);
   return activeStages.has(job.stageKey);
 }
 
-function entryMatchesJob(entryName, job) {
-  if (!job?.id) return false;
-  if (entryName.includes(job.id)) return true;
-  const jobBase = job.jobDir ? basename(job.jobDir) : '';
-  const downloadBase = job.downloadJobDir ? basename(job.downloadJobDir) : '';
-  return (jobBase && entryName === jobBase) || (downloadBase && entryName === downloadBase);
-}
-
-function purgeRootEntries(root, job) {
-  if (!root || !existsSync(root)) return;
-  let entries = [];
-  try {
-    entries = readdirSync(root);
-  } catch (err) {
-    console.warn('[video-render] cleanup scan failed:', root, err?.message);
+export function purgeJobStorage(job) {
+  if (!job?.jobDir) return;
+  if (isJobProcessingActive(job)) {
+    console.log('[video-render] cleanup deferred — job still active', { jobId: job.id });
     return;
   }
 
-  for (const entry of entries) {
-    if (!entryMatchesJob(entry, job)) continue;
-    const fullPath = join(root, entry);
+  const metadata = readJobMetadata(job.jobDir);
+  if (metadata) {
+    const decision = canDeleteRenderJobStorage(metadata, job.jobDir);
+    if (!decision.ok) {
+      console.log('[video-render] cleanup deferred — storage lifecycle', {
+        jobId: job.id,
+        reason: decision.reason
+      });
+      return;
+    }
     try {
-      const st = lstatSync(fullPath);
-      if (st.isDirectory()) safeRmDir(fullPath);
-      else safeUnlink(fullPath);
-    } catch (err) {
-      console.warn('[video-render] cleanup entry failed:', fullPath, err?.message);
+      markRenderJobStorageDeleted(job.jobDir);
+    } catch {
+      /* best effort */
     }
   }
-}
 
-export function purgeJobStorage(job) {
-  if (!job) return;
-
-  console.log('[video-render] post-download cleanup', {
+  console.log('[video-render] purge job storage', {
     jobId: job.id,
-    jobDir: job.jobDir || null,
-    outputPath: job.outputPath || null
+    jobDir: job.jobDir
   });
 
-  safeUnlink(job.outputPath);
   safeRmDir(job.jobDir);
-  safeRmDir(job.downloadJobDir);
-
-  for (const root of resolveCleanupRoots()) {
-    purgeRootEntries(root, job);
+  if (job.downloadJobDir && job.downloadJobDir !== job.jobDir) {
+    safeRmDir(job.downloadJobDir);
   }
 
   job.outputPath = null;
@@ -107,24 +88,13 @@ export function purgeJobStorage(job) {
 
 export function schedulePostDownloadCleanup(job) {
   if (!job) return;
-  if (job.postDownloadCleanupTimer) {
-    clearTimeout(job.postDownloadCleanupTimer);
-  }
-
   job.downloadCompletedAt = Date.now();
-  job.postDownloadCleanupTimer = setTimeout(() => {
-    job.postDownloadCleanupTimer = null;
-    if (isJobProcessingActive(job)) {
-      console.log('[video-render] cleanup deferred — job still active', { jobId: job.id });
-      return;
-    }
-    purgeJobStorage(job);
-  }, POST_DOWNLOAD_CLEANUP_MS);
-  job.postDownloadCleanupTimer.unref?.();
+  console.log('[video-render] download complete — disk retention managed by storage lifecycle', {
+    jobId: job.id,
+    jobDir: job.jobDir || null
+  });
 }
 
 export function cleanupJobArtifacts(job) {
-  if (!job) return;
-  if (isJobProcessingActive(job)) return;
   purgeJobStorage(job);
 }

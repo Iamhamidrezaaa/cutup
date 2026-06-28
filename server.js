@@ -139,7 +139,7 @@ app.get('/api/system-health', async (req, res) => {
 app.get('/sitemap.xml', async (req, res) => sitemapHandler(req, res));
 
 // Import and use API routes
-let uploadHandler, adminCmsMediaHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, projectsHandler, oauthGoogleStartHandler, generateDocxHandler, exportVideoHandler, stripeCheckoutHandler, stripePortalHandler, paymentCreateHandler, paymentVerifyHandler, paymentCallbackHandler, paymentRetryHandler, paymentPayInvoiceHandler, paymentCancelInvoiceHandler, invoicesHandler, invoiceByIdHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, pipelineFeedbackHandler, cronConversionEmailsHandler, cronSubscriptionExpiryHandler, userProfileHandler, accountSecurityHandler, auditEventHandler, adminAuditSummaryHandler, adminAuditListHandler, adminAuditUserTimelineHandler, adminAuditChartsHandler, adminAuditFunnelHandler, adminAuditAlertsHandler, adminAuditEvaluateAlertsHandler, adminAuditSeedHandler, adminAuditDashboardHandler, adminAuditJourneyHandler, adminAuditNotesHandler, adminAuditExportHandler, offersHandler, adminOffersHandler, creatorWallHandler, adminCreatorWallHandler, systemHealthHandler, adminOpsStateHandler, adminProvidersHandler, debugRawAsrHandler;
+let uploadHandler, adminCmsMediaHandler, transcribeHandler, summarizeHandler, youtubeHandler, translateSrtHandler, youtubeTitleHandler, authHandler, youtubeDownloadHandler, youtubeFormatsHandler, subscriptionHandler, projectsHandler, oauthGoogleStartHandler, generateDocxHandler, exportVideoHandler, stripeCheckoutHandler, stripePortalHandler, paymentCreateHandler, paymentVerifyHandler, paymentCallbackHandler, paymentRetryHandler, paymentPayInvoiceHandler, paymentCancelInvoiceHandler, invoicesHandler, invoiceByIdHandler, analyticsHandler, adminHandler, adminUsersManageHandler, adminLoginHandler, adminLogoutHandler, adminAuthMeHandler, adminForgotPasswordHandler, adminResetPasswordHandler, toolsContentHandler, pingGoogleHandler, growthDecisionHandler, growthTrackHandler, retentionHandler, leadsHandler, contactHandler, pipelineFeedbackHandler, cronConversionEmailsHandler, cronSubscriptionExpiryHandler, cronStorageLifecycleHandler, userProfileHandler, accountSecurityHandler, auditEventHandler, adminAuditSummaryHandler, adminAuditListHandler, adminAuditUserTimelineHandler, adminAuditChartsHandler, adminAuditFunnelHandler, adminAuditAlertsHandler, adminAuditEvaluateAlertsHandler, adminAuditSeedHandler, adminAuditDashboardHandler, adminAuditJourneyHandler, adminAuditNotesHandler, adminAuditExportHandler, offersHandler, adminOffersHandler, creatorWallHandler, adminCreatorWallHandler, systemHealthHandler, adminOpsStateHandler, adminProvidersHandler, debugRawAsrHandler;
 
 async function loadRoutes() {
   try {
@@ -350,7 +350,11 @@ async function loadRoutes() {
     cronConversionEmailsHandler = cronConvModule.default;
     const cronSubExpiryModule = await import('./api/cron-subscription-expiry.js');
     cronSubscriptionExpiryHandler = cronSubExpiryModule.default;
-    console.log('✅ Leads + conversion + subscription expiry cron handlers loaded');
+    const cronStorageLifecycleModule = await import('./api/cron-storage-lifecycle.js');
+    cronStorageLifecycleHandler = cronStorageLifecycleModule.default;
+    const { startStorageLifecycleScheduler } = await import('./api/infrastructure/storage-lifecycle.js');
+    startStorageLifecycleScheduler();
+    console.log('✅ Leads + conversion + subscription expiry + storage lifecycle cron loaded');
 
     const userProfileModule = await import('./api/user-profile.js');
     userProfileHandler = userProfileModule.default;
@@ -725,6 +729,20 @@ app.post('/api/cron/subscription-expiry', async (req, res) => {
     return res.status(503).json({ ok: false });
   }
   return cronSubscriptionExpiryHandler(req, res);
+});
+
+app.get('/api/cron/storage-lifecycle', async (req, res) => {
+  if (!cronStorageLifecycleHandler) {
+    return res.status(503).json({ ok: false });
+  }
+  return cronStorageLifecycleHandler(req, res);
+});
+
+app.post('/api/cron/storage-lifecycle', async (req, res) => {
+  if (!cronStorageLifecycleHandler) {
+    return res.status(503).json({ ok: false });
+  }
+  return cronStorageLifecycleHandler(req, res);
 });
 
 app.get('/api/user/profile', async (req, res) => {

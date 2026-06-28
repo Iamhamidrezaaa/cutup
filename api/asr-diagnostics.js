@@ -5,6 +5,10 @@
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import {
+  createDiagnosticsStorage,
+  resolveAsrDiagnosticsStorageDir
+} from './infrastructure/storage-lifecycle.js';
 import { spawn } from 'child_process';
 import { mkdtemp, writeFile, rm } from 'fs/promises';
 import { resolveBackendLabel } from './transcription/asr-provider-capture.js';
@@ -304,8 +308,7 @@ export function compareAudioToRawTranscript(opts = {}) {
 }
 
 export function resolveAsrDiagnosticsDir(traceId) {
-  const id = String(traceId || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 120);
-  return join(tmpdir(), 'cutup-asr-diagnostics', id);
+  return resolveAsrDiagnosticsStorageDir(traceId);
 }
 
 export function buildAsrDiagnosticsReport(opts = {}) {
@@ -473,8 +476,7 @@ export async function captureTranscriptionAsrDiagnostics(opts = {}) {
     audioDurationSec
   });
 
-  const dirs = [resolveAsrDiagnosticsDir(traceId)];
-  if (jobDir) dirs.push(jobDir);
+  const dirs = [createDiagnosticsStorage('asr', traceId, { route: route || null })];
 
   const written = [];
   const primaryRaw = captures[captures.length - 1]?.rawResponse ?? null;

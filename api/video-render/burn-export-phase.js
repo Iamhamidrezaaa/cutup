@@ -3,6 +3,7 @@
  */
 import { copyFileSync } from 'fs';
 import { join, resolve } from 'path';
+import { getJobStorageLayout } from '../infrastructure/storage-lifecycle.js';
 import {
   burnSubtitles,
   normalizeVideoForBurn,
@@ -66,7 +67,8 @@ export async function executeBurnExportPhase(opts) {
       }
     });
 
-  const normalizedPath = join(jobDir, 'normalized.cfr.mp4');
+  const layout = getJobStorageLayout(jobDir);
+  const normalizedPath = join(layout.input, 'normalized.cfr.mp4');
   const assBurnCues =
     subtitleCuesIn && subtitleCuesIn.length
       ? subtitleCuesIn
@@ -155,7 +157,7 @@ export async function executeBurnExportPhase(opts) {
     outputPath,
     quality,
     jobId,
-    jobDir,
+    jobDir: layout.logs,
     timelineTrace,
     renderHints: {
       hqSafeguards,
@@ -172,7 +174,7 @@ export async function executeBurnExportPhase(opts) {
     onProgress
   });
 
-  const exportAssPath = join(jobDir, 'export.ass');
+  const exportAssPath = join(layout.subtitles, 'export.ass');
   const burnAssPath = burnResult?.burnAssPath || resolve(assPath);
   copyFileSync(burnAssPath, exportAssPath);
 
@@ -180,7 +182,7 @@ export async function executeBurnExportPhase(opts) {
     logTimingForensics({
       ...assResult.timingAudit,
       timelinePlan: burnResult?.timelinePlan || null,
-      jobDir,
+      jobDir: layout.logs,
       jobId
     });
   }
