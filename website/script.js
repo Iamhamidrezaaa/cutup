@@ -308,9 +308,6 @@ function resolveYouTubeUrlForPipeline(inputUrl) {
   const cleaned = stripTrackingQueryParamsClient(original);
   const videoId = parseYouTubeVideoIdCanonical(cleaned);
   const normalizedUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : null;
-  console.log('[shorts-debug] original', original);
-  console.log('[shorts-debug] normalized', normalizedUrl || cleaned);
-  console.log('[shorts-debug] videoId', videoId);
   return { original, cleaned, normalizedUrl, videoId };
 }
 
@@ -1298,7 +1295,9 @@ function cutupWriteLocalPendingActionForLogin(type, payload) {
   const p = payload || {};
   const { mode, fileFlow } = cutupMapPendingTypeToLocalMode(type);
   const inputVal = fileFlow ? '' : String(p.url != null ? p.url : getCurrentUrl()).trim();
-  const platform = String(p.platform || currentPlatform || 'youtube').trim();
+  const platform = String(
+    p.platform || detectPlatformFromUrl(inputVal) || currentPlatform || 'youtube'
+  ).trim();
   const activeTab =
     p.activeTab || (p.mode === 'subtitle' || mode === 'subtitle' ? 'srt' : mode === 'summary' ? 'summary' : 'fulltext');
   const obj = {
@@ -1514,6 +1513,15 @@ async function resumeCutupPendingAction() {
 
   const { type, payload } = action;
   const p = payload || {};
+  const pendingUrl = String(p.url || localStorage.getItem('cutup_pending_url') || '').trim();
+  const pendingPlatform =
+    p.platform ||
+    localStorage.getItem('cutup_pending_platform') ||
+    detectPlatformFromUrl(pendingUrl) ||
+    'youtube';
+  if (pendingUrl) {
+    retentionSwitchPlatformWithUrl(pendingPlatform, pendingUrl);
+  }
 
   await new Promise((r) => setTimeout(r, 400));
 
@@ -3846,6 +3854,36 @@ function resolveRequestedPlatform(url, file) {
   return getActivePlatformFromTab() || currentPlatform || 'youtube';
 }
 
+function cutupInvalidPlatformUrlMessage(url) {
+  const v = String(url || '').trim();
+  if (/youtube\.com\/shorts/i.test(v) || /youtu\.be\//i.test(v)) {
+    return 'We could not read that YouTube link. Try pasting it on the YouTube tab, or use https://www.youtube.com/watch?v=VIDEO_ID';
+  }
+  if (/youtube/i.test(v)) {
+    return 'That does not look like a valid YouTube video link. Use watch or Shorts format.';
+  }
+  return 'Invalid URL for the selected platform.';
+}
+
+function findUrlFromAnyInput() {
+  const candidates = [];
+  const push = (raw) => {
+    const v = String(raw || '').trim();
+    if (v && !candidates.includes(v)) candidates.push(v);
+  };
+
+  push(getCurrentUrlInput()?.value);
+  push(document.getElementById('heroUrlInput')?.value);
+  for (const id of ['youtubeUrlInput', 'instagramUrlInput', 'tiktokUrlInput']) {
+    push(document.getElementById(id)?.value);
+  }
+
+  for (const v of candidates) {
+    if (detectPlatformFromUrl(v)) return v;
+  }
+  return candidates[0] || '';
+}
+
 // Get platform name in Persian
 function getPlatformName(platform) {
   const names = {
@@ -4577,14 +4615,17 @@ async function handleSummarize() {
     if (file && (currentPlatform === 'audiofile' || !url || url.startsWith('📁'))) {
       trackEvent('link_submitted', { platform: 'file', mode: 'summary', auth: !!sessionId });
       await processSummarizeFile(file, sessionId);
-    } else if (requestedPlatform === 'youtube' && isYouTubeUrl(url)) {
-      trackEvent('link_submitted', { platform: 'youtube', mode: 'summary', auth: !!sessionId });
-      await processSummarize(url, sessionId, 'youtube');
-    } else if ((requestedPlatform === 'instagram' && isInstagramUrl(url)) || (requestedPlatform === 'tiktok' && isTikTokUrl(url))) {
-      trackEvent('link_submitted', { platform: requestedPlatform, mode: 'summary', auth: !!sessionId });
-      await processSummarize(url, sessionId, requestedPlatform);
     } else {
-      showMessage('Invalid URL for the selected platform.', 'error');
+      const socialPlatform = detectPlatformFromUrl(url);
+      if (socialPlatform) {
+        if (socialPlatform !== currentPlatform) {
+          switchPlatform(socialPlatform, { carriedUrl: url });
+        }
+        trackEvent('link_submitted', { platform: socialPlatform, mode: 'summary', auth: !!sessionId });
+        await processSummarize(url, sessionId, socialPlatform);
+      } else {
+        showMessage(cutupInvalidPlatformUrlMessage(url), 'error');
+      }
     }
   };
   cutupLastPipelineRetry = () => {
@@ -4669,14 +4710,17 @@ async function handleFullText(activeTab = 'fulltext') {
     if (file && (currentPlatform === 'audiofile' || !url || url.startsWith('📁'))) {
       trackEvent('link_submitted', { platform: 'file', mode: 'fulltext', auth: !!sessionId });
       await processFullTextFile(file, sessionId, activeTab);
-    } else if (requestedPlatform === 'youtube' && isYouTubeUrl(url)) {
-      trackEvent('link_submitted', { platform: 'youtube', mode: 'fulltext', auth: !!sessionId });
-      await processFullText(url, sessionId, 'youtube', activeTab);
-    } else if ((requestedPlatform === 'instagram' && isInstagramUrl(url)) || (requestedPlatform === 'tiktok' && isTikTokUrl(url))) {
-      trackEvent('link_submitted', { platform: requestedPlatform, mode: 'fulltext', auth: !!sessionId });
-      await processFullText(url, sessionId, requestedPlatform, activeTab);
     } else {
-      showMessage('Invalid URL for the selected platform.', 'error');
+      const socialPlatform = detectPlatformFromUrl(url);
+      if (socialPlatform) {
+        if (socialPlatform !== currentPlatform) {
+          switchPlatform(socialPlatform, { carriedUrl: url });
+        }
+        trackEvent('link_submitted', { platform: socialPlatform, mode: 'fulltext', auth: !!sessionId });
+        await processFullText(url, sessionId, socialPlatform, activeTab);
+      } else {
+        showMessage(cutupInvalidPlatformUrlMessage(url), 'error');
+      }
     }
   };
   cutupLastPipelineRetry = () => {
@@ -8909,10 +8953,9 @@ function getCurrentUrlInput() {
   return null;
 }
 
-// Get current URL value
+// Get current URL value (active tab first, then hero / other platform fields)
 function getCurrentUrl() {
-  const input = getCurrentUrlInput();
-  const value = input ? input.value.trim() : '';
+  const value = findUrlFromAnyInput();
   window.CutupApp.currentUrl = value;
   return value;
 }
